@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kira Desktop
+Comment=Durable workspace for local AI and Codex agents
+Comment[it]=Spazio di lavoro persistente per IA locale e agenti Codex
+Exec=kira-desktop
+Icon=kira-desktop
+Terminal=false
+Categories=Development;Utility;
+StartupWMClass=kira-desktop
+Keywords=AI;Ollama;Codex;Projects;

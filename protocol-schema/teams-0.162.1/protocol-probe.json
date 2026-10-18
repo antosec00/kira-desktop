@@ -1,0 +1,181 @@
+{
+  "scope": "Protocol only: no inference, authentication, global configuration writes or dynamic-tool invocation",
+  "probes": [
+    {
+      "binary_version": "0.162.1",
+      "inference_started": false,
+      "isolated_account_directory": true,
+      "ephemeral_thread": true,
+      "experimental_api": false,
+      "dynamic_namespace_accepted": false,
+      "model": "gpt-6-astra",
+      "reasoning_effort": "ultra",
+      "sandbox": {
+        "type": "readOnly",
+        "networkAccess": false
+      },
+      "features": [
+        {
+          "name": "multi_agent",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": true
+        },
+        {
+          "name": "multi_agent_v2",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        },
+        {
+          "name": "multi_agent_v2_dynamic_tools",
+          "stage": "underDevelopment",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        }
+      ],
+      "status": "PASS"
+    },
+    {
+      "binary_version": "0.162.1",
+      "inference_started": false,
+      "isolated_account_directory": true,
+      "ephemeral_thread": true,
+      "experimental_api": true,
+      "dynamic_namespace_accepted": true,
+      "model": "gpt-6-astra",
+      "reasoning_effort": "ultra",
+      "sandbox": {
+        "type": "readOnly",
+        "networkAccess": false
+      },
+      "features": [
+        {
+          "name": "multi_agent",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": true
+        },
+        {
+          "name": "multi_agent_v2",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        },
+        {
+          "name": "multi_agent_v2_dynamic_tools",
+          "stage": "underDevelopment",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        }
+      ],
+      "status": "PASS"
+    },
+    {
+      "binary_version": "0.162.0",
+      "inference_started": false,
+      "isolated_account_directory": true,
+      "ephemeral_thread": true,
+      "experimental_api": false,
+      "dynamic_namespace_accepted": false,
+      "model": "gpt-6-astra",
+      "reasoning_effort": "ultra",
+      "sandbox": {
+        "type": "readOnly",
+        "networkAccess": false
+      },
+      "features": [
+        {
+          "name": "multi_agent",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": true
+        },
+        {
+          "name": "multi_agent_v2",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        },
+        {
+          "name": "multi_agent_v2_dynamic_tools",
+          "stage": "underDevelopment",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        }
+      ],
+      "status": "PASS"
+    },
+    {
+      "binary_version": "0.162.0",
+      "inference_started": false,
+      "isolated_account_directory": true,
+      "ephemeral_thread": true,
+      "experimental_api": true,
+      "dynamic_namespace_accepted": true,
+      "model": "gpt-6-astra",
+      "reasoning_effort": "ultra",
+      "sandbox": {
+        "type": "readOnly",
+        "networkAccess": false
+      },
+      "features": [
+        {
+          "name": "multi_agent",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": true
+        },
+        {
+          "name": "multi_agent_v2",
+          "stage": "stable",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        },
+        {
+          "name": "multi_agent_v2_dynamic_tools",
+          "stage": "underDevelopment",
+          "displayName": null,
+          "description": null,
+          "announcement": null,
+          "enabled": false,
+          "defaultEnabled": false
+        }
+      ],
+      "status": "PASS"
+    }
+  ]
+}

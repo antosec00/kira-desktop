@@ -1,0 +1,17 @@
+[Unit]
+Description=Kira Desktop user runtime
+Documentation=file:/usr/share/doc/kira-desktop/README.md
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kira-desktop service
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=25
+KillMode=control-group
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
