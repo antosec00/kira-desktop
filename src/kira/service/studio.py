@@ -95,12 +95,14 @@ class Studio:
 
     def _create_world(self, project_id: str) -> None:
         self.store.db.execute(
-            "INSERT OR IGNORE INTO studio_worlds(project_id,enabled,revision,created_at,updated_at) "
+            "INSERT OR IGNORE INTO studio_worlds"
+            "(project_id,enabled,revision,created_at,updated_at) "
             "VALUES (?,0,0,?,?)", (project_id, now(), now())
         )
 
     def _mutate(self, project_id: str, request_id: str, method: str, values: Json) -> Json:
-        fingerprint = hashlib.sha256(encode({"method": method, "params": values}).encode()).hexdigest()
+        payload = encode({"method": method, "params": values}).encode("utf-8")
+        fingerprint = hashlib.sha256(payload).hexdigest()
         db = self.store.db
         db.execute("BEGIN IMMEDIATE")
         try:
@@ -166,7 +168,8 @@ class Studio:
                 )
             result = self._world(project_id)
             db.execute(
-                "INSERT INTO studio_operations(project_id,request_id,fingerprint,result,created_at) "
+                "INSERT INTO studio_operations"
+                "(project_id,request_id,fingerprint,result,created_at) "
                 "VALUES(?,?,?,?,?)",
                 (project_id, request_id, fingerprint, encode(result), now())
             )
@@ -290,7 +293,8 @@ class Studio:
                 return {"path": str(preview), "revision": revision}
             destination = self._directory("exports")
             exported = self._atomic_png(destination,
-                                        f"poster-{project_id}-r{revision}-{uuid.uuid4().hex[:8]}.png",
+                                        f"poster-{project_id}-r{revision}-"
+                                        f"{uuid.uuid4().hex[:8]}.png",
                                         output)
             return {"path": str(exported), "revision": revision}
         finally:
