@@ -10,7 +10,7 @@ from kira.service import storage
 from kira.service.schema11 import LIVE_CONVERSATION_SCHEMA
 from kira.service.storage import Store
 from test_live_conversation_migration import v10_database
-from test_service_migration import V13_TABLES, V14_TABLES, all_table_records
+from test_service_migration import V13_TABLES, V14_TABLES, V15_TABLES, all_table_records
 
 
 def schema(database):
@@ -65,7 +65,7 @@ def test_v11_full_access_upgrade_retains_every_row_and_only_rebuilds_lane_constr
     original = v11_database(path)
     before = all_table_records(original)
     before_schema = schema(original)
-    before_backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    before_backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     assert len(before["run_lanes"]) == 3 and len(before["assistant_followups"]) == 1
     assert path.with_name(path.name + "-wal").stat().st_size > 0
     with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
@@ -74,16 +74,16 @@ def test_v11_full_access_upgrade_retains_every_row_and_only_rebuilds_lane_constr
 
     upgraded = Store(path)
     try:
-        assert {name: rows for name, rows in all_table_records(upgraded.db).items() if name not in V13_TABLES + V14_TABLES} == before
-        assert all(all_table_records(upgraded.db)[name] == [] for name in V13_TABLES + V14_TABLES)
+        assert {name: rows for name, rows in all_table_records(upgraded.db).items() if name not in V13_TABLES + V14_TABLES + V15_TABLES} == before
+        assert all(all_table_records(upgraded.db)[name] == [] for name in V13_TABLES + V14_TABLES + V15_TABLES)
         after_schema = schema(upgraded.db)
         assert set(before_schema) <= set(after_schema)
-        assert {name for kind, name in set(after_schema) - set(before_schema) if kind == "table"} == set(V13_TABLES + V14_TABLES)
+        assert {name for kind, name in set(after_schema) - set(before_schema) if kind == "table"} == set(V13_TABLES + V14_TABLES + V15_TABLES)
         assert {name for name in before_schema if after_schema[name] != before_schema[name]} == {
             ("table", "run_lanes")}
         assert "full_access" in after_schema[("table", "run_lanes")]
         assert "full_access" not in before_schema[("table", "run_lanes")]
-        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 15
         assert upgraded.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert not upgraded.db.execute("PRAGMA foreign_key_check").fetchall()
         assert upgraded.one("sessions", "session")["settings"] == {
@@ -96,13 +96,13 @@ def test_v11_full_access_upgrade_retains_every_row_and_only_rebuilds_lane_constr
         with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
             upgraded.db.execute("UPDATE run_lanes SET effective_permission='invalid'")
         upgraded.db.execute("ROLLBACK")
-        assert {name: rows for name, rows in all_table_records(upgraded.db).items() if name not in V13_TABLES + V14_TABLES} == before
-        assert all(all_table_records(upgraded.db)[name] == [] for name in V13_TABLES + V14_TABLES)
+        assert {name: rows for name, rows in all_table_records(upgraded.db).items() if name not in V13_TABLES + V14_TABLES + V15_TABLES} == before
+        assert all(all_table_records(upgraded.db)[name] == [] for name in V13_TABLES + V14_TABLES + V15_TABLES)
     finally:
         upgraded.close()
         original.close()
 
-    added = set(tmp_path.glob("*.pre-v14-*.bak")) - before_backups
+    added = set(tmp_path.glob("*.pre-v15-*.bak")) - before_backups
     assert len(added) == 1
     backup = added.pop()
     assert backup.stat().st_mode & 0o777 == 0o600
@@ -113,10 +113,10 @@ def test_v11_full_access_upgrade_retains_every_row_and_only_rebuilds_lane_constr
         assert database.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert not database.execute("PRAGMA foreign_key_check").fetchall()
     reopened = Store(path)
-    assert {name: rows for name, rows in all_table_records(reopened.db).items() if name not in V13_TABLES + V14_TABLES} == before
-    assert all(all_table_records(reopened.db)[name] == [] for name in V13_TABLES + V14_TABLES)
+    assert {name: rows for name, rows in all_table_records(reopened.db).items() if name not in V13_TABLES + V14_TABLES + V15_TABLES} == before
+    assert all(all_table_records(reopened.db)[name] == [] for name in V13_TABLES + V14_TABLES + V15_TABLES)
     reopened.close()
-    assert set(tmp_path.glob("*.pre-v14-*.bak")) - before_backups == {backup}
+    assert set(tmp_path.glob("*.pre-v15-*.bak")) - before_backups == {backup}
 
 
 def test_v11_collision_keeps_original_lanes_followups_and_private_backup(tmp_path):
@@ -126,7 +126,7 @@ def test_v11_collision_keeps_original_lanes_followups_and_private_backup(tmp_pat
     original.execute("INSERT INTO run_lanes_v12 VALUES ('Retain collision evidence')")
     before = all_table_records(original)
     before_schema = schema(original)
-    before_backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    before_backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     try:
         with pytest.raises(sqlite3.OperationalError, match="run_lanes_v12 already exists"):
             Store(path)
@@ -137,7 +137,7 @@ def test_v11_collision_keeps_original_lanes_followups_and_private_backup(tmp_pat
         assert not original.execute("PRAGMA foreign_key_check").fetchall()
     finally:
         original.close()
-    added = set(tmp_path.glob("*.pre-v14-*.bak")) - before_backups
+    added = set(tmp_path.glob("*.pre-v15-*.bak")) - before_backups
     assert len(added) == 1
     backup = added.pop()
     assert backup.stat().st_mode & 0o777 == 0o600
@@ -152,9 +152,9 @@ def test_v11_reader_refuses_current_and_can_open_original_private_backup(tmp_pat
     original = v11_database(path)
     before = all_table_records(original)
     original.close()
-    before_backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    before_backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     Store(path).close()
-    added = set(tmp_path.glob("*.pre-v14-*.bak")) - before_backups
+    added = set(tmp_path.glob("*.pre-v15-*.bak")) - before_backups
     assert len(added) == 1
     backup = added.pop()
     monkeypatch.setattr(storage, "SCHEMA_VERSION", 11)
