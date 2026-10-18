@@ -2,6 +2,10 @@
 
 Integration owner: coordinator. Contract edits are serialized through the coordinator.
 
+The private experimental Studio branch uses database schema 16 and IPC/event
+version 1, with separate per-chat Studio grants and agent-attributed revisions.
+The paragraph below describes stable 0.15.1 release contracts.
+
 Desktop 0.15.1 uses database schema 14 with IPC/event envelopes 1.
 [Personalized identities](KIRA_SOULS.md) governs user-level profiles, immutable
 run snapshots, scoped source-linked learning, review and identity rebinding.
