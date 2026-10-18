@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import re
-from typing import Any
+from typing import Any, NoReturn
 
 from kira.domain.contracts import Json, KiraError
 
@@ -20,7 +20,7 @@ MAX_OBJECTS = 12
 COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
-def _invalid(message: str) -> None:
+def _invalid(message: str) -> NoReturn:
     raise KiraError("INVALID_ARGUMENT", message)
 
 
