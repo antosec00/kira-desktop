@@ -150,3 +150,47 @@ def test_schema14_migration_keeps_existing_projects_and_creates_private_backup(t
                                       (pid,)).fetchone()[0] == "important"
     finally:
         migrated.close()
+
+
+
+@pytest.mark.asyncio
+async def test_schema15_to16_preserves_user_poster_and_history(tmp_path):
+    """A user who tried M1 must retain their poster on the provider upgrade."""
+    studio, store, pid = fixture(tmp_path)
+    try:
+        await studio.dispatch("studio.enable", {
+            "project_id": pid, "request_id": str(uuid4()),
+            "enabled": True, "expected_enabled": False,
+        })
+        await studio.dispatch("studio.poster", {
+            "project_id": pid, "request_id": str(uuid4()),
+            "text": "Ambra mi manchi", "expected_revision": 0,
+        })
+        before = await studio.dispatch("studio.status", {"project_id": pid})
+    finally:
+        await studio.close()
+        store.close()
+    # An M1 v15 profile has no chat-grant or agent-attribution tables.
+    old = sqlite3.connect(tmp_path / "studio.sqlite3", isolation_level=None)
+    old.execute("DROP TABLE studio_agent_commits")
+    old.execute("DROP TABLE studio_grants")
+    old.execute("PRAGMA user_version=15")
+    old.close()
+    upgraded = Store(tmp_path / "studio.sqlite3")
+    try:
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 16
+        recovered = Studio(SimpleNamespace(
+            store=upgraded, paths=SimpleNamespace(data=tmp_path / "data")))
+        state = await recovered.dispatch("studio.status", {"project_id": pid})
+        assert state == before
+        assert upgraded.db.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert upgraded.db.execute(
+            "SELECT origin FROM studio_revisions WHERE project_id=?", (pid,)
+        ).fetchone()["origin"] == "user"
+        backup, = list(tmp_path.glob("*.pre-v16-*.bak"))
+        with sqlite3.connect(backup) as prior:
+            assert prior.execute("PRAGMA user_version").fetchone()[0] == 15
+            assert prior.execute("SELECT COUNT(*) FROM studio_revisions").fetchone()[0] == 1
+        await recovered.close()
+    finally:
+        upgraded.close()
