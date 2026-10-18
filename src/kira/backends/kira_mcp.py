@@ -30,6 +30,7 @@ from kira.domain.research import research_tool_specs
 from kira.domain.knowledge import knowledge_tool_specs
 from kira.domain.project_tools import PROJECT_TOOL_CALL_TIMEOUT, PROJECT_TOOL_NAMES, project_tool_specs
 from kira.domain.souls import soul_tool_specs
+from kira.domain.studio import studio_tool_specs
 from kira.domain.contracts import Json, RunContext
 
 MCP_SERVER_NAME = "kira"
@@ -265,7 +266,8 @@ async def _stdio(config: Json) -> None:
             elif method == "tools/list":
                 result = {"tools": [{key: value for key, value in tool.items() if key != "type"}
                                     for tool in [*assistant_tool_specs()[0]["tools"], *research_tool_specs(),
-                                                 *knowledge_tool_specs(), *project_tool_specs(), *soul_tool_specs()]
+                                                 *knowledge_tool_specs(), *project_tool_specs(), *soul_tool_specs(),
+                                                 *studio_tool_specs()]
                                     if "kira." + tool["name"] in config["tools"]]}
             elif method == "tools/call" and isinstance(params, dict):
                 name, arguments = params.get("name"), params.get("arguments", {})
