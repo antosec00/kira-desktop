@@ -123,7 +123,7 @@ Rectangle {
                           ? qsTr("Kira può modificare questo Studio dalla chat.")
                           : pane.studio.agentEligible
                           ? qsTr("Puoi autorizzare Kira a creare e modificare dalla chat.")
-                          : qsTr("Le modifiche IA richiedono una chat con permesso di scrittura.")
+                          : qsTr("Le modifiche IA richiedono un progetto scrivibile e strumenti attivi nella chat.")
                     color: appearance.colors.muted
                     wrapMode: Text.WordWrap
                 }
@@ -132,7 +132,8 @@ Rectangle {
                     text: pane.studio.agentEnabled
                           ? qsTr("Revoca accesso IA") : qsTr("Consenti modifiche IA")
                     checked: pane.studio.agentEnabled
-                    enabled: !pane.studio.busy && pane.studio.agentEligible
+                    enabled: !pane.studio.busy
+                             && (pane.studio.agentEligible || pane.studio.agentEnabled)
                     onClicked: pane.studio.setAgentEnabled(!pane.studio.agentEnabled)
                     toolTipText: qsTr("Permesso specifico per questa chat. Non concede accesso al sistema.")
                 }
