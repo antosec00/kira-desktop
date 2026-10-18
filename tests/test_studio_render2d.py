@@ -6,6 +6,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QImage
 
+import pytest
+
+from kira.domain.contracts import KiraError
+
 from kira.domain.studio import patch_scene, poster_scene
 from kira.studio.paint2d import render_png, star_path
 
@@ -27,3 +31,34 @@ def test_bounded_own_star_path(qapp):
     path = star_path(100, 100, 20)
     assert not path.isEmpty()
     assert path.boundingRect().width() <= 41
+
+
+@pytest.mark.asyncio
+async def test_short_lived_packaged_worker_generates_private_preview_and_export(tmp_path):
+    from uuid import uuid4
+    from test_studio_service import fixture
+
+    studio, store, pid = fixture(tmp_path)
+    try:
+        await studio.dispatch("studio.enable", {"project_id": pid,
+            "enabled": True, "expected_enabled": False, "request_id": str(uuid4())})
+        await studio.dispatch("studio.poster", {"project_id": pid,
+            "text": "Ambra mi manchi", "expected_revision": 0, "request_id": str(uuid4())})
+        preview = await studio.dispatch("studio.render", {"project_id": pid})
+        assert preview["revision"] == 1
+        with open(preview["path"], "rb") as image:
+            assert image.read(8) == b"\x89PNG\r\n\x1a\n"
+        exported = await studio.dispatch("studio.export", {"project_id": pid})
+        assert exported["revision"] == 1
+        assert "/studio/exports/" in exported["path"]
+        with open(exported["path"], "rb") as image:
+            assert image.read(8) == b"\x89PNG\r\n\x1a\n"
+        assert not studio._renders
+        await studio.dispatch("studio.enable", {"project_id": pid,
+            "enabled": False, "expected_enabled": True, "request_id": str(uuid4())})
+        with pytest.raises(KiraError):
+            await studio.dispatch("studio.render", {"project_id": pid})
+        assert not studio._renders
+    finally:
+        await studio.close()
+        store.close()
