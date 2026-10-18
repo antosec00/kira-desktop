@@ -270,7 +270,7 @@ wheels = [
 
 [[package]]
 name = "kira-desktop"
-version = "0.16.0.dev0"
+version = "0.16.0.dev1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
