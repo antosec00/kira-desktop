@@ -178,7 +178,9 @@ def test_schema6_migration_preserves_original_rows_and_creates_private_backup(co
     path = store.path
     store.create_run("chat", new_id(), "Keep the exact original")
     original = [tuple(row) for row in store.db.execute("SELECT * FROM events")]
-    for table in ("soul_tool_calls", "soul_operations", "soul_revision_memories", "soul_memories",
+    for table in ("studio_agent_commits", "studio_grants", "studio_revisions",
+                  "studio_operations", "studio_worlds",
+                  "soul_tool_calls", "soul_operations", "soul_revision_memories", "soul_memories",
                   "soul_proposals", "soul_sources", "soul_run_snapshots", "soul_bindings",
                   "soul_revisions", "souls", "goal_tool_calls", "goal_commands", "goal_cycles", "autonomous_goals",
                   "assistant_followups", "run_lanes", "project_tool_process_members", "project_tool_processes", "project_tool_operations",
