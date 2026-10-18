@@ -190,6 +190,11 @@ class StudioController(QObject):
     def setEnabled(self, value: bool) -> None:
         if type(value) is not bool or value == self._enabled:
             return
+        if not value and self._busy:
+            # Human revocation takes priority over a pending preview request.
+            # Stale callbacks are ignored; the service terminates its worker.
+            self._generation += 1
+            self._busy = False
         self._request("studio.enable",
                       {"enabled": value, "expected_enabled": self._enabled,
                        "request_id": str(uuid.uuid4())},
