@@ -42,13 +42,15 @@ ApplicationWindow {
     property alias workspacePanels: panelHost
     onPageChanged: panelHost.closeCurrent()
     readonly property bool browserFocused: workspace.web.paneVisible && (workspace.web.expanded || window.width < 1120)
+    readonly property bool studioFocused: workspace.studio.paneVisible && (workspace.studio.expanded || window.width < 1120)
+    readonly property bool visualFocused: browserFocused || studioFocused
     readonly property bool motionEnabled: !appearance.reduceMotion && window.visible && window.visibility !== Window.Minimized
     readonly property bool chatMotionEnabled: motionEnabled && page === 0
     readonly property var chatIndicators: workspace.chatStatusIndicators
     readonly property bool browserPresented: window.visible && window.visibility !== Window.Minimized && page === 0
     onBrowserPresentedChanged: workspace.web.setWindowActive(browserPresented)
     readonly property bool detailsVisible: workspace.uiPreferences.details_visible
-    readonly property bool detailsDrawerRequested: detailsVisible && width < 1120 && hasProject && page === 0 && !workspace.web.paneVisible
+    readonly property bool detailsDrawerRequested: detailsVisible && width < 1120 && hasProject && page === 0 && !workspace.web.paneVisible && !workspace.studio.paneVisible
     onDetailsDrawerRequestedChanged: syncDetailsDrawer()
     Component.onCompleted: syncDetailsDrawer()
     function syncDetailsDrawer() {
@@ -205,12 +207,22 @@ ApplicationWindow {
         height: workspaceStack.height
         onPanelPresented: {
             if (workspace.web.paneVisible) workspace.web.hideBrowser()
+            if (workspace.studio.paneVisible) workspace.studio.hideStudio()
             if (detailsDrawer.visible) detailsDrawer.close()
         }
     }
     Connections {
         target: workspace.web
-        function onChanged() { if (workspace.web.paneVisible) panelHost.closeCurrent() }
+        function onChanged() {
+            if (workspace.web.paneVisible) {
+                workspace.studio.hideStudio()
+                panelHost.closeCurrent()
+            }
+        }
+    }
+    Connections {
+        target: workspace.studio
+        function onChanged() { if (workspace.studio.paneVisible) panelHost.closeCurrent() }
     }
 
     RowLayout {
@@ -528,7 +540,7 @@ ApplicationWindow {
                         handle: Rectangle { implicitWidth: 6; color: SplitHandle.pressed ? appearance.colors.accent : appearance.colors.border }
                         ColumnLayout {
                             id: chatColumn; objectName: "chatColumn"
-                            visible: !window.browserFocused
+                            visible: !window.visualFocused
                             SplitView.fillWidth: true; SplitView.minimumWidth: 430
                             spacing: 0
                             Rectangle {
@@ -1301,7 +1313,8 @@ ApplicationWindow {
                                 ChatToolButton { objectName: "chatUsageButton"; text: qsTr("Uso"); iconName: "usage"; onClicked: metricsDialog.open() }
                                 ChatToolButton { objectName: "chatContextButton"; text: chatContext.compacting ? qsTr("Compattazione…") : chatColumn.width < 750 ? qsTr("Contesto") : qsTr("Contesto e memoria"); iconName: "context"; enabled: workspace.sessionId.length > 0; onClicked: chatContextDialog.open() }
                                 ChatToolButton { objectName: "chatKnowledgeButton"; text: qsTr("Conoscenza"); iconName: "memory"; enabled: workspace.sessionId.length > 0; onClicked: assistantTeamPanel.showEnvironment(); toolTipText: qsTr("Conoscenza e strumenti") }
-                                ChatToolButton { objectName: "chatWebButton"; text: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; onClicked: workspace.web.showBrowser(); toolTipText: workspace.backend === "openai_chatgpt" ? qsTr("Apri il browser integrato") : qsTr("Il browser integrato è disponibile con OpenAI diretto.") }
+                                ChatToolButton { objectName: "chatWebButton"; text: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; onClicked: { workspace.studio.hideStudio(); workspace.web.showBrowser() }; toolTipText: workspace.backend === "openai_chatgpt" ? qsTr("Apri il browser integrato") : qsTr("Il browser integrato è disponibile con OpenAI diretto.") }
+                                ChatToolButton { objectName: "chatStudioButton"; text: qsTr("Studio"); iconName: "file"; enabled: workspace.connected; onClicked: workspace.studio.showStudio(); toolTipText: qsTr("Apri il mondo creativo locale di questo progetto") }
                                 ChatToolButton { objectName: "sharedMemoryButton"; text: chatColumn.width < 750 ? qsTr("Memoria") : qsTr("Memoria del progetto"); iconName: "memory"; toolTipText: qsTr("Memoria del progetto"); onClicked: sharedMemoryDialog.open() }
                                 ChatToolButton { objectName: "chatWebSettingsButton"; text: ""; iconName: "settings"; toolTipText: qsTr("Impostazioni web"); Accessible.name: toolTipText; implicitWidth: 38; enabled: workspace.web.available; onClicked: webDialog.open() }
                             }
@@ -1365,6 +1378,11 @@ ApplicationWindow {
                             SplitView.minimumWidth: 340; SplitView.fillWidth: window.browserFocused
                             onSettingsRequested: webDialog.open()
                         }
+                        StudioPane {
+                            visible: workspace.studio.paneVisible
+                            SplitView.preferredWidth: Math.max(400, browserSplit.width * 0.55)
+                            SplitView.minimumWidth: 340; SplitView.fillWidth: window.studioFocused
+                        }
                         Item {
                             objectName: "workspacePanelSpace"
                             visible: panelHost.reservedWidth > 0
@@ -1376,7 +1394,7 @@ ApplicationWindow {
                             id: detailsPanel; objectName: "detailsPanel"
                             SplitView.preferredWidth: 282; SplitView.minimumWidth: 282
                             color: appearance.colors.surface; radius: 16; border.color: appearance.colors.border
-                            visible: window.detailsVisible && window.width >= 1120 && !workspace.web.paneVisible && !panelHost.activePanel
+                            visible: window.detailsVisible && window.width >= 1120 && !workspace.web.paneVisible && !workspace.studio.paneVisible && !panelHost.activePanel
                             Loader { anchors.fill: parent; anchors.margins: 0; sourceComponent: projectDetails }
                         }
                     }
