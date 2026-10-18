@@ -1,5 +1,15 @@
 # Guida a Kira Desktop
 
+
+> **Nota per il ramo sperimentale `feature/kira-studio`:** la versione
+> 0.16.0.dev0 include un prototipo M1 non ancora qualificato. Il pulsante
+> **Studio** apre un pannello disattivato per ogni nuovo progetto, che può essere
+> abilitato esplicitamente per creare un poster 2D modificabile, conservare
+> revisioni ed esportare PNG. Non è ancora controllabile dal modello tramite
+> strumenti Studio. Non avviare questo ramo sul profilo della versione stabile:
+> usare un KIRA_HOME separato e consultare [M1](studio/M1_IMPLEMENTED.md).
+
+
 La versione corrente **0.15.1** corregge un errore che impediva di inviare
 richieste con un’anima in modalità Suggerimenti o Adattiva e gli strumenti
 abilitati. Identità, ricordi e permessi rimangono invariati.
