@@ -224,3 +224,56 @@ async def test_read_only_projects_cannot_grant_agent_writes(fixture):
     with pytest.raises(KiraError, match="project write"):
         await grant(service, project, session, True, False)
     assert not service.studio.grant_state(project["id"], session["id"])["agent_enabled"]
+
+
+
+@pytest.mark.asyncio
+async def test_model_change_invalidates_previous_grant_even_if_reverted(fixture):
+    service, _, project = fixture
+    session = await chat(service, project, "codex")
+    await enable_project(service, project)
+    await grant(service, project, session, True, False)
+    sid = session["id"]
+    assert service.studio.grant_state(project["id"], sid)["agent_enabled"]
+    # Real configure path clears the grant, not merely an ephemeral model check.
+    await service.dispatch("session.configure", {
+        "project_id": project["id"], "session_id": sid, "model": "another-model",
+    })
+    assert not service.studio.grant_state(project["id"], sid)["agent_enabled"]
+    await service.dispatch("session.configure", {
+        "project_id": project["id"], "session_id": sid, "model": "synthetic-provider",
+    })
+    assert not service.studio.grant_state(project["id"], sid)["agent_enabled"]
+
+
+@pytest.mark.asyncio
+async def test_project_permission_transition_retracts_grant(fixture):
+    service, _, project = fixture
+    session = await chat(service, project, "codex")
+    await enable_project(service, project)
+    await grant(service, project, session, True, False)
+    await service.dispatch("project.update", {
+        "project_id": project["id"], "permission": "read_only",
+    })
+    assert not service.studio.grant_state(project["id"], session["id"])["agent_enabled"]
+    await service.dispatch("project.update", {
+        "project_id": project["id"], "permission": "project_write",
+    })
+    assert not service.studio.grant_state(project["id"], session["id"])["agent_enabled"]
+
+
+@pytest.mark.asyncio
+async def test_archived_chat_grant_does_not_reactivate_when_restored(fixture):
+    service, _, project = fixture
+    session = await chat(service, project, "ollama")
+    await enable_project(service, project)
+    await grant(service, project, session, True, False)
+    await service.dispatch("session.archive", {
+        "project_id": project["id"], "session_id": session["id"],
+        "archived": True,
+    })
+    await service.dispatch("session.archive", {
+        "project_id": project["id"], "session_id": session["id"],
+        "archived": False,
+    })
+    assert not service.studio.grant_state(project["id"], session["id"])["agent_enabled"]
