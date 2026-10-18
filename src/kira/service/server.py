@@ -1485,6 +1485,8 @@ class Service:
                 context_options = self.project_tools.attach(session, project, run_id, cancel, tool_mode, context_options)
                 context_options = self.knowledge.attach(session, project, run_id, cancel, tool_mode, context_options)
                 context_options = self.goals.attach(session, project, run_id, cancel, tool_mode, context_options)
+                context_options = self.studio.attach(session, project, run_id, cancel,
+                                                     tool_mode, context_options)
             instructions = (context_options or {}).get("assistant_instructions", "")
             if instructions:
                 inspected_context = "Kira application instructions:\n" + instructions + "\n" + inspected_context
