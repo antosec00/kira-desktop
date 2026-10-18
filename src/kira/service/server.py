@@ -477,7 +477,7 @@ class Service:
                      "prompt_queue": True, "run_modes": True, "chat_goals": True, "autonomous_goals": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
-                     "studio_m1": True}}
+                     "studio_m1": True, "studio_agent_gateway": True}}
         if method == "project.list":
             fields(params, set())
             return {"projects": self.store.all("SELECT * FROM projects ORDER BY updated_at DESC")}
@@ -521,10 +521,17 @@ class Service:
                 project["memory"]["share_session_summaries"] = params["share_session_summaries"]
                 if len(encode(project["memory"]).encode()) > 100_000:
                     raise KiraError("INVALID_ARGUMENT", "memory must be an object of at most 100000 encoded bytes")
+            old_permission = project["permission"]
             project["permission"] = params.get("permission", project["permission"])
             self.store.db.execute("UPDATE projects SET name=?,instructions=?,permission=?,memory=?,updated_at=? WHERE id=?",
                                   (project["name"], project["instructions"], project["permission"],
                                    encode(project["memory"]), now(), project["id"]))
+            if project["permission"] != old_permission:
+                self.store.db.execute(
+                    "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                    "updated_at=? WHERE project_id=? AND enabled=1",
+                    (now(), project["id"]),
+                )
             return {"project": self.store.one("projects", project["id"])}
         if method == "session.create":
             fields(params, {"project_id", "backend", "model", "settings", "handoff", "title", "soul_id"})
@@ -600,6 +607,12 @@ class Service:
                                   (model, encode(config), configured_session_id, project_id))
             updated = self.store.one("sessions", configured_session_id)
             self.provider_routing.refresh_generation(updated)
+            if model != session["model"]:
+                self.store.db.execute(
+                    "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                    "updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
+                    (now(), project_id, configured_session_id),
+                )
             return {"session": chats.enrich(updated)}
         if method in {"session.list", "session.snapshot", "session.rename", "project.context"}:
             allowed = {"project_id", "offset", "limit", "archived"} if method == "session.list" else {"project_id", "session_id"}
