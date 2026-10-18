@@ -119,7 +119,10 @@ class StudioController(QObject):
             self._export_path = ""
             self._error = ""
             self.changed.emit()
-        self.refresh()
+        # OFF by default: ordinary project navigation must not start even a
+        # Studio status RPC. Read state only when the human opens the pane.
+        if self._pane_visible:
+            self.refresh()
 
     @Slot()
     def showStudio(self) -> None:
