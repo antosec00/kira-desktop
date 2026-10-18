@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kira-desktop"
-version = "0.15.1"
+version = "0.16.0.dev0"
 description = "A durable native workspace for local AI, Codex and direct OpenAI agents"
 requires-python = ">=3.12,<3.15"
 dependencies = [
