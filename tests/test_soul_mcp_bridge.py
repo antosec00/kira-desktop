@@ -14,12 +14,13 @@ from kira.domain.knowledge import KNOWLEDGE_TOOL_NAMES, knowledge_tool_specs
 from kira.domain.project_tools import PROJECT_TOOL_NAMES, project_tool_specs
 from kira.domain.research import RESEARCH_TOOL_NAMES, research_tool_specs
 from kira.domain.souls import SOUL_TOOL_NAMES, soul_tool_specs
+from kira.domain.studio import STUDIO_TOOL_NAMES, studio_tool_specs
 from kira.domain.teams import mailbox_tool_specs
 from test_backends_assistant import AssistantServer, context
 
 
 ALL_KIRA_TOOLS = (ASSISTANT_TOOL_NAMES | RESEARCH_TOOL_NAMES | KNOWLEDGE_TOOL_NAMES
-                  | PROJECT_TOOL_NAMES | SOUL_TOOL_NAMES)
+                  | PROJECT_TOOL_NAMES | SOUL_TOOL_NAMES | STUDIO_TOOL_NAMES)
 PROPOSAL_ARGUMENTS = {
     "statement": "Prefer a concise result before the supporting details.",
     "applicability": "When reporting the result of a completed task.",
@@ -42,7 +43,8 @@ def soul_context(tmp_path, *, full=False):
     ctx, calls, events = context(tmp_path)
     if full:
         ctx.client_tools[0]["tools"] += (research_tool_specs() + knowledge_tool_specs()
-                                         + project_tool_specs() + soul_tool_specs())
+                                         + project_tool_specs() + soul_tool_specs()
+                                         + studio_tool_specs())
     else:
         ctx.client_tools[0]["tools"] = soul_tool_specs()
 
