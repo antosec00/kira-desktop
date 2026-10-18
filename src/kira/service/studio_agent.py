@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from kira.domain.contracts import WRITE_PERMISSIONS, Json, KiraError
 from kira.domain.studio import (
     STUDIO_TOOL_NAMES, studio_action_contract, studio_tool_specs, validate_studio_action,
 )
-from kira.service.storage import now
 
 if TYPE_CHECKING:
     from kira.service.studio import Studio
