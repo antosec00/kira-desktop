@@ -1,0 +1,72 @@
+"""GUI Studio activation and IPC: no hidden model or browser grant."""
+
+import os
+from uuid import uuid4
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QCoreApplication, QEvent
+
+from kira.domain.paths import Paths
+from kira.ui.app import create_engine
+from kira.ui.controller import Workspace
+
+
+def test_studio_off_by_default_and_project_switch_ignores_late_callbacks(qapp, tmp_path,
+                                                                          monkeypatch):
+    paths = Paths(*(tmp_path / part for part in ("config", "data", "state", "runtime")))
+    workspace = Workspace(paths)
+    workspace._connected_value = True
+    pid = str(uuid4())
+    workspace._project = {"id": pid, "name": "Fixture", "root": str(tmp_path)}
+    requests = []
+    monkeypatch.setattr(workspace.client, "request",
+                        lambda *args, **kwargs: requests.append(args))
+    try:
+        studio = workspace.studio
+        assert not studio.enabled and not studio.paneVisible
+        studio.showStudio()
+        assert studio.paneVisible
+        assert requests[-1][0] == "studio.status"
+        requests[-1][2]({"enabled": False, "revision": 0, "scene": {}, "history": []})
+        assert not studio.enabled
+        studio.setEnabled(True)
+        assert requests[-1][0] == "studio.enable"
+        assert requests[-1][1]["enabled"] is True
+        requests[-1][2]({"enabled": True, "revision": 0, "scene": {}, "history": []})
+        assert studio.enabled
+        studio.createPoster("Ambra mi manchi")
+        assert requests[-1][0] == "studio.poster"
+        assert requests[-1][1]["expected_revision"] == 0
+        late = requests[-1][2]
+        workspace._project = {"id": str(uuid4()), "name": "Other", "root": str(tmp_path)}
+        workspace.projectOpened.emit()
+        assert not studio.enabled and not studio.paneVisible
+        late({"enabled": True, "revision": 1, "scene": {}, "history": []})
+        assert not studio.enabled and studio.revision == 0
+    finally:
+        workspace.close()
+        workspace.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_qml_has_an_off_by_default_studio_pane_without_hiding_browser(qapp, tmp_path):
+    workspace = Workspace(Paths(*(tmp_path / part for part in
+                                   ("config", "data", "state", "runtime"))))
+    engine = create_engine(workspace)
+    try:
+        assert engine.rootObjects()
+        window = engine.rootObjects()[0]
+        browser = window.findChild(type(window), "browserPane")
+        studio = window.findChild(type(window), "studioPane")
+        # Depending on the QML object type, locate by the QObject API.
+        from PySide6.QtCore import QObject
+        browser = browser or window.findChild(QObject, "browserPane")
+        studio = studio or window.findChild(QObject, "studioPane")
+        assert browser is not None and studio is not None
+        assert not workspace.studio.enabled and not workspace.studio.paneVisible
+    finally:
+        engine.deleteLater()
+        workspace.close()
+        workspace.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
