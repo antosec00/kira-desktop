@@ -112,11 +112,11 @@ def test_migrate_populated_v1_preserves_rows_and_consistent_private_wal_backup(t
     assert path.with_name(path.name + "-wal").stat().st_size > 0
     store = Store(path)
     try:
-        assert store.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert store.db.execute("PRAGMA user_version").fetchone()[0] == 15
         assert records(store.db) == before
         assert store.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert store.db.execute("PRAGMA foreign_key_check").fetchall() == []
-        backups = list(tmp_path.glob("*.pre-v14-*.bak"))
+        backups = list(tmp_path.glob("*.pre-v15-*.bak"))
         assert len(backups) == 1 and backups[0].stat().st_mode & 0o777 == 0o600
         with sqlite3.connect(backups[0]) as backup:
             assert backup.execute("PRAGMA user_version").fetchone()[0] == 1
@@ -134,7 +134,7 @@ def test_migrate_populated_v1_preserves_rows_and_consistent_private_wal_backup(t
         old.close()
     reopened = Store(path)
     reopened.close()
-    assert len(list(tmp_path.glob("*.pre-v14-*.bak"))) == 1
+    assert len(list(tmp_path.glob("*.pre-v15-*.bak"))) == 1
 
 
 def test_failed_migration_rolls_back_every_addition_and_preserves_v1(tmp_path):
@@ -152,7 +152,7 @@ def test_failed_migration_rolls_back_every_addition_and_preserves_v1(tmp_path):
             database.execute("SELECT name FROM sqlite_master WHERE name='workspaces'").fetchone()
             is None
         )
-    assert len(list(tmp_path.glob("*.pre-v14-*.bak"))) == 1
+    assert len(list(tmp_path.glob("*.pre-v15-*.bak"))) == 1
 
 
 def test_old_schema_reader_refuses_v2_and_retained_backup_is_v1(tmp_path, monkeypatch):
@@ -245,11 +245,11 @@ def test_v2_migration_preserves_ten_tables_and_old_reader_backup(tmp_path, monke
     assert v2_records(store.db) == before
     new_schema = dict(store.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
     assert all(new_schema[table] == old_schema[table] for table in V2_TABLES)
-    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 14
+    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 15
     assert store.db.execute("PRAGMA foreign_key_check").fetchall() == []
     store.close()
     old.close()
-    backups = list(tmp_path.glob("*.pre-v14-*.bak"))
+    backups = list(tmp_path.glob("*.pre-v15-*.bak"))
     assert len(backups) == 1 and backups[0].stat().st_mode & 0o777 == 0o600
     with sqlite3.connect(backups[0]) as backup:
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 2
@@ -284,6 +284,7 @@ V4_TABLES = ("control_process_members", "control_processes", "steering_requests"
 V6_TABLES = ("queue_image_attachments", "run_image_attachments", "image_attachments",
              "run_provider_bindings", "session_provider_switches", "session_provider_generations")
 V13_TABLES = ("goal_tool_calls", "goal_commands", "goal_cycles", "autonomous_goals")
+V15_TABLES = ("studio_operations", "studio_revisions", "studio_worlds")
 V14_TABLES = ("soul_tool_calls", "soul_operations", "soul_revision_memories", "soul_memories",
               "soul_proposals", "soul_sources", "soul_run_snapshots", "soul_bindings",
               "soul_revisions", "souls")
@@ -303,7 +304,7 @@ def v3_database(path):
     store = Store(path)
     store.close()
     database = sqlite3.connect(path, isolation_level=None)
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES, *V6_TABLES, "assistant_calls", "assistant_delegations", *V4_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES, *V6_TABLES, "assistant_calls", "assistant_delegations", *V4_TABLES):
         database.execute(f'DROP TABLE "{table}"')
     database.execute("PRAGMA user_version=3")
     return database
@@ -317,7 +318,7 @@ def test_populated_v3_upgrade_preserves_every_table_and_creates_original_schema_
     old.close()
     backups_before = set(tmp_path.glob("*.bak"))
     store = Store(path)
-    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 14
+    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 15
     assert {name: list(map(tuple, store.db.execute(f'SELECT * FROM "{name}"'))) for name in names} == before
     assert not store.db.execute("PRAGMA foreign_key_check").fetchall()
     store.close()
@@ -346,7 +347,7 @@ def v4_database(path):
     old.close()
     Store(path).close()
     database = sqlite3.connect(path, isolation_level=None)
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES, *V6_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES, *V6_TABLES):
         database.execute(f'DROP TABLE "{table}"')
     database.execute("DROP TABLE assistant_calls")
     database.execute("DROP TABLE assistant_delegations")
@@ -364,7 +365,7 @@ def test_v4_upgrade_retains_all_existing_rows_and_original_backup(tmp_path):
     previous.close()
     backups_before = set(tmp_path.glob("*.bak"))
     store = Store(path)
-    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 14
+    assert store.db.execute("PRAGMA user_version").fetchone()[0] == 15
     assert {name: list(map(tuple, store.db.execute(f'SELECT * FROM "{name}"'))) for name in tables} == before
     assert not store.db.execute("PRAGMA foreign_key_check").fetchall()
     assert not store.all("SELECT * FROM assistant_delegations")
@@ -395,7 +396,7 @@ def v5_database(path):
     Store(path).close()
     database = sqlite3.connect(path, isolation_level=None)
     database.execute("PRAGMA foreign_keys=ON")
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES, *V6_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES, *V6_TABLES):
         database.execute(f'DROP TABLE "{table}"')
     database.execute("INSERT INTO assistant_delegations "
         "(id,origin_run_id,project_id,session_id,call_id,fingerprint,config,state,summary,created_at,updated_at) "
@@ -427,13 +428,13 @@ def test_populated_v5_upgrade_preserves_all_tables_and_original_private_backup(t
     before = all_table_records(previous)
     old_schema = dict(previous.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
     previous.close()
-    backups_before = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups_before = set(tmp_path.glob("*.pre-v15-*.bak"))
     upgraded = Store(path)
     try:
-        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 15
         after = all_table_records(upgraded.db)
         assert {name: after[name] for name in before} == before
-        assert set(after) - set(before) == set(V6_TABLES + V7_TABLES + V8_TABLES + V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES)
+        assert set(after) - set(before) == set(V6_TABLES + V7_TABLES + V8_TABLES + V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES + V15_TABLES)
         new_schema = dict(upgraded.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
         assert {name: new_schema[name] for name in old_schema} == old_schema
         assert upgraded.db.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -442,7 +443,7 @@ def test_populated_v5_upgrade_preserves_all_tables_and_original_private_backup(t
         assert upgraded.one("sessions", "session")["settings"] == {"reasoning_effort": "high"}
     finally:
         upgraded.close()
-    backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups_before
+    backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups_before
     assert len(backups) == 1
     backup_path = backups.pop()
     assert backup_path.stat().st_mode & 0o777 == 0o600
@@ -461,7 +462,7 @@ def test_v5_failed_upgrade_rolls_back_every_new_table_and_preserves_original_bac
     before = all_table_records(previous)
     old_schema = dict(previous.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
     previous.close()
-    backups_before = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups_before = set(tmp_path.glob("*.pre-v15-*.bak"))
     with pytest.raises(sqlite3.OperationalError, match="queue_image_attachments"):
         Store(path)
     with sqlite3.connect(path) as retained:
@@ -469,7 +470,7 @@ def test_v5_failed_upgrade_rolls_back_every_new_table_and_preserves_original_bac
         assert all_table_records(retained) == before
         assert dict(retained.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")) == old_schema
         assert retained.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-    backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups_before
+    backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups_before
     assert len(backups) == 1
     with sqlite3.connect(backups.pop()) as backup:
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 5
@@ -483,7 +484,7 @@ def v6_database(path):
     Store(path).close()
     database = sqlite3.connect(path, isolation_level=None)
     database.execute("PRAGMA foreign_keys=ON")
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES, *V7_TABLES):
         database.execute(f'DROP TABLE "{table}"')
     database.execute("INSERT INTO session_provider_generations VALUES "
         "('session',0,'codex','selected-model','{\"reasoning_effort\":\"high\"}',"
@@ -518,14 +519,14 @@ def test_populated_v6_upgrade_preserves_every_original_schema_row_and_consistent
     previous = v6_database(path)
     before = all_table_records(previous)
     old_schema = dict(previous.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
-    backups_before = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups_before = set(tmp_path.glob("*.pre-v15-*.bak"))
     assert path.with_name(path.name + "-wal").stat().st_size
     upgraded = Store(path)
     try:
-        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 15
         after = all_table_records(upgraded.db)
         assert {name: after[name] for name in before} == before
-        assert set(after) - set(before) == set(V7_TABLES + V8_TABLES + V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES)
+        assert set(after) - set(before) == set(V7_TABLES + V8_TABLES + V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES + V15_TABLES)
         new_schema = dict(upgraded.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
         assert {name: new_schema[name] for name in old_schema} == old_schema
         assert upgraded.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -535,7 +536,7 @@ def test_populated_v6_upgrade_preserves_every_original_schema_row_and_consistent
     finally:
         upgraded.close()
         previous.close()
-    backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups_before
+    backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups_before
     assert len(backups) == 1
     saved = backups.pop()
     assert saved.stat().st_mode & 0o777 == 0o600
@@ -545,7 +546,7 @@ def test_populated_v6_upgrade_preserves_every_original_schema_row_and_consistent
         assert backup.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert backup.execute("PRAGMA foreign_key_check").fetchall() == []
     Store(path).close()
-    assert set(tmp_path.glob("*.pre-v14-*.bak")) - backups_before == {saved}
+    assert set(tmp_path.glob("*.pre-v15-*.bak")) - backups_before == {saved}
 
 
 def test_v6_failed_upgrade_keeps_original_data_and_rolls_back_all_context_tables(tmp_path):
@@ -556,14 +557,14 @@ def test_v6_failed_upgrade_keeps_original_data_and_rolls_back_all_context_tables
     before = all_table_records(previous)
     old_schema = dict(previous.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
     previous.close()
-    backups_before = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups_before = set(tmp_path.glob("*.pre-v15-*.bak"))
     with pytest.raises(sqlite3.OperationalError, match="chat_history_scans"):
         Store(path)
     with sqlite3.connect(path) as retained:
         assert retained.execute("PRAGMA user_version").fetchone()[0] == 6
         assert all_table_records(retained) == before
         assert dict(retained.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")) == old_schema
-    backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups_before
+    backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups_before
     assert len(backups) == 1
     with sqlite3.connect(backups.pop()) as backup:
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 6
@@ -576,7 +577,7 @@ def v7_database(path):
     Store(path).close()
     db = sqlite3.connect(path, isolation_level=None)
     db.execute("PRAGMA foreign_keys=ON")
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES, *V8_TABLES):
         db.execute(f'DROP TABLE "{table}"')
     db.execute("INSERT INTO chat_context_notes VALUES "
                "('original-note','session','Keep original note','before','before')")
@@ -596,22 +597,22 @@ def test_v7_browser_migration_preserves_all_existing_rows_and_original_backup(tm
     original = v7_database(path)
     before = all_table_records(original)
     schema = dict(original.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
-    backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     assert path.with_name(path.name + "-wal").stat().st_size > 0
     upgraded = Store(path)
     try:
         after = all_table_records(upgraded.db)
         assert {key: after[key] for key in before} == before
-        assert set(after) - set(before) == set(V8_TABLES + V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES)
+        assert set(after) - set(before) == set(V8_TABLES + V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES + V15_TABLES)
         new_schema = dict(upgraded.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
         assert {key: new_schema[key] for key in schema} == schema
-        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 15
         assert upgraded.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert not upgraded.db.execute("PRAGMA foreign_key_check").fetchall()
     finally:
         upgraded.close()
         original.close()
-    new_backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups
+    new_backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups
     assert len(new_backups) == 1
     with sqlite3.connect(new_backups.pop()) as backup:
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 7
@@ -639,7 +640,7 @@ def v8_database(path):
     Store(path).close()
     database = sqlite3.connect(path, isolation_level=None)
     database.execute("PRAGMA foreign_keys=ON")
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES, *V9_TABLES):
         database.execute(f'DROP TABLE "{table}"')
     database.execute("INSERT INTO browser_sessions VALUES "
         "('fixture-browser','session','project',1,'fixture-account',1,'closed',0,'run',NULL,'before','later')")
@@ -660,23 +661,23 @@ def test_v8_research_migration_preserves_all_original_tables_and_private_wal_bac
     original = v8_database(path)
     before = all_table_records(original)
     schema = dict(original.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
-    backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     assert path.with_name(path.name + "-wal").stat().st_size > 0
     upgraded = Store(path)
     try:
         after = all_table_records(upgraded.db)
         assert {key: after[key] for key in before} == before
-        assert set(after) - set(before) == set(V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES)
+        assert set(after) - set(before) == set(V9_TABLES + V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES + V15_TABLES)
         assert all(after[table] == [] for table in V9_TABLES)
         new_schema = dict(upgraded.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
         assert {key: new_schema[key] for key in schema} == schema
-        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 15
         assert upgraded.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert not upgraded.db.execute("PRAGMA foreign_key_check").fetchall()
     finally:
         upgraded.close()
         original.close()
-    new_backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups
+    new_backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups
     assert len(new_backups) == 1
     snapshot = new_backups.pop()
     assert snapshot.stat().st_mode & 0o777 == 0o600
@@ -685,7 +686,7 @@ def test_v8_research_migration_preserves_all_original_tables_and_private_wal_bac
         assert all_table_records(backup) == before
         assert not backup.execute("PRAGMA foreign_key_check").fetchall()
     Store(path).close()
-    assert set(tmp_path.glob("*.pre-v14-*.bak")) - backups == {snapshot}
+    assert set(tmp_path.glob("*.pre-v15-*.bak")) - backups == {snapshot}
 
 
 def test_v8_research_migration_collision_rolls_back_all_additions_and_keeps_backup(tmp_path):
@@ -696,7 +697,7 @@ def test_v8_research_migration_collision_rolls_back_all_additions_and_keeps_back
     before = all_table_records(original)
     schema = dict(original.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
     original.close()
-    backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     with pytest.raises(sqlite3.OperationalError, match="research_settings"):
         Store(path)
     with sqlite3.connect(path) as retained:
@@ -704,7 +705,7 @@ def test_v8_research_migration_collision_rolls_back_all_additions_and_keeps_back
         assert all_table_records(retained) == before
         assert dict(retained.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")) == schema
         assert retained.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-    new_backups = set(tmp_path.glob("*.pre-v14-*.bak")) - backups
+    new_backups = set(tmp_path.glob("*.pre-v15-*.bak")) - backups
     assert len(new_backups) == 1
     with sqlite3.connect(new_backups.pop()) as backup:
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 8
@@ -717,7 +718,7 @@ def v9_database(path):
     Store(path).close()
     database = sqlite3.connect(path, isolation_level=None)
     database.execute("PRAGMA foreign_keys=ON")
-    for table in (*V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES):
+    for table in (*V15_TABLES, *V14_TABLES, *V13_TABLES, *V11_TABLES, *V10_TABLES):
         database.execute(f'DROP TABLE "{table}"')
     database.execute("INSERT INTO research_records VALUES "
         "('fixture-record','project',1,'finding','draft','unverified',1,"
@@ -736,23 +737,23 @@ def test_v9_project_tools_migration_preserves_all_original_rows_and_consistent_b
     original = v9_database(path)
     before = all_table_records(original)
     schemas = dict(original.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
-    backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     assert path.with_name(path.name + "-wal").stat().st_size > 0
     upgraded = Store(path)
     try:
         after = all_table_records(upgraded.db)
         assert {name: after[name] for name in before} == before
-        assert set(after) - set(before) == set(V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES)
+        assert set(after) - set(before) == set(V10_TABLES + V11_TABLES + V13_TABLES + V14_TABLES + V15_TABLES)
         assert all(after[name] == [] for name in V10_TABLES)
         current = dict(upgraded.db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
         assert all(current[name] == ddl for name, ddl in schemas.items())
-        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 15
         assert upgraded.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert not upgraded.db.execute("PRAGMA foreign_key_check").fetchall()
     finally:
         upgraded.close()
         original.close()
-    added = set(tmp_path.glob("*.pre-v14-*.bak")) - backups
+    added = set(tmp_path.glob("*.pre-v15-*.bak")) - backups
     assert len(added) == 1
     snapshot = added.pop()
     assert snapshot.stat().st_mode & 0o777 == 0o600
@@ -760,7 +761,7 @@ def test_v9_project_tools_migration_preserves_all_original_rows_and_consistent_b
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 9
         assert all_table_records(backup) == before
     Store(path).close()
-    assert set(tmp_path.glob("*.pre-v14-*.bak")) - backups == {snapshot}
+    assert set(tmp_path.glob("*.pre-v15-*.bak")) - backups == {snapshot}
 
 
 def test_v9_project_tools_migration_failure_rolls_back_and_retains_original_backup(tmp_path):
@@ -769,13 +770,13 @@ def test_v9_project_tools_migration_failure_rolls_back_and_retains_original_back
     original.execute("CREATE TABLE project_tool_mutations (original TEXT)")
     original.execute("INSERT INTO project_tool_mutations VALUES ('Retain fixture collision')")
     before = all_table_records(original)
-    backups = set(tmp_path.glob("*.pre-v14-*.bak"))
+    backups = set(tmp_path.glob("*.pre-v15-*.bak"))
     with pytest.raises(sqlite3.OperationalError, match="already exists"):
         Store(path)
     assert original.execute("PRAGMA user_version").fetchone()[0] == 9
     assert all_table_records(original) == before
     original.close()
-    added = set(tmp_path.glob("*.pre-v14-*.bak")) - backups
+    added = set(tmp_path.glob("*.pre-v15-*.bak")) - backups
     assert len(added) == 1
     with sqlite3.connect(added.pop()) as backup:
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 9
