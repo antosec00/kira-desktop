@@ -2,12 +2,15 @@
 
 
 > **Nota per il ramo sperimentale `feature/kira-studio`:** la versione
-> 0.16.0.dev0 include un prototipo M1 non ancora qualificato. Il pulsante
+> 0.16.0.dev1 include un prototipo Studio con integrazione provider non ancora qualificata. Il pulsante
 > **Studio** apre un pannello disattivato per ogni nuovo progetto, che può essere
 > abilitato esplicitamente per creare un poster 2D modificabile, conservare
-> revisioni ed esportare PNG. Non è ancora controllabile dal modello tramite
-> strumenti Studio. Non avviare questo ramo sul profilo della versione stabile:
-> usare un KIRA_HOME separato e consultare [M1](studio/M1_IMPLEMENTED.md).
+> revisioni ed esportare PNG. Dopo l'attivazione nel progetto, la chat può
+> ricevere il permesso separato **Consenti modifiche IA**. Soltanto in modalità
+> Esegui e con permessi di scrittura, Kira può usare **kira.studio** per creare
+> un poster, modificare livelli e produrre anteprime; il permesso è revocabile.
+> Non avviare questo ramo sul profilo della versione stabile: usare un KIRA_HOME
+> separato e consultare [Provider Studio](studio/M2_PROVIDER_BRIDGE.md).
 
 
 La versione corrente **0.15.1** corregge un errore che impediva di inviare
