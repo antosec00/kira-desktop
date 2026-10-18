@@ -44,6 +44,7 @@ separate environment used for further experimental development.
 | Project records, evidence, assessments and agent proposals | [Research registry](RESEARCH_REGISTRY.md) |
 | Web research, rendered pages and isolated browser profiles | [Web and browser](WEB_BROWSER.md) |
 | Select the correct Ubuntu/Python package | [Platform targets](PLATFORM_TARGETS.md) |
+| Review experimental Kira Studio source (branch only) | [Studio M1 prototype](studio/M1_IMPLEMENTED.md) |
 | Review bundled licenses | [Third-party notices](THIRD_PARTY_NOTICES.md) |
 
 ## Feature contracts
