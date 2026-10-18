@@ -188,7 +188,7 @@ def ui(view, qtbot, qtlog):
     window.close()
     engine.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    assert not warnings, "\\n".join(warnings[:10])
+    assert not warnings, "\n".join(warnings[:10])
 
 
 def test_keyboard_palette_is_searchable_localized_and_preserves_draft(ui, qtbot):
