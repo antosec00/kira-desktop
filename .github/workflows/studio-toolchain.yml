@@ -1,0 +1,25 @@
+name: Studio offline toolchain
+on:
+  push:
+    branches: [feature/kira-studio]
+    paths: ['.github/workflows/studio-toolchain.yml']
+permissions:
+  contents: read
+jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Build isolated relocatable Python 3.12 toolchain
+        run: |
+          python3 -m venv "$RUNNER_TEMP/tooling"
+          "$RUNNER_TEMP/tooling/bin/pip" install uv==0.12.23
+          export UV_PYTHON_INSTALL_DIR="$RUNNER_TEMP/managed-python"
+          "$RUNNER_TEMP/tooling/bin/uv" python install 3.12
+          mkdir -p "$RUNNER_TEMP/toolchain-artifact"
+          tar -czf "$RUNNER_TEMP/toolchain-artifact/python312.tar.gz" -C "$UV_PYTHON_INSTALL_DIR" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: studio-python312
+          path: ${{ runner.temp }}/toolchain-artifact/
+          retention-days: 1
