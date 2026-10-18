@@ -37,6 +37,9 @@ class StudioController(QObject):
         self._preview_url = ""
         self._export_path = ""
         workspace.projectOpened.connect(self.syncProject)
+        # Tool availability and project permissions are Workspace properties.
+        # Refresh the derived eligibility whenever the selected chat changes config.
+        workspace.changed.connect(self.changed.emit)
         workspace.chatChanged.connect(self.syncChat)
         workspace.eventApplied.connect(self._onRunEvent)
         workspace.client.disconnected.connect(self._disconnected)
