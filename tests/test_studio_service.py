@@ -131,17 +131,18 @@ def test_schema14_migration_keeps_existing_projects_and_creates_private_backup(t
                       "{}", now(), now()))
     store.close()
     old = sqlite3.connect(db_path, isolation_level=None)
-    for table in ("studio_operations", "studio_revisions", "studio_worlds"):
+    for table in ("studio_agent_commits", "studio_grants",
+                  "studio_operations", "studio_revisions", "studio_worlds"):
         old.execute(f"DROP TABLE {table}")
     old.execute("PRAGMA user_version=14")
     old.close()
     migrated = Store(db_path)
     try:
-        assert migrated.db.execute("PRAGMA user_version").fetchone()[0] == 15
+        assert migrated.db.execute("PRAGMA user_version").fetchone()[0] == 16
         assert migrated.one("projects", pid)["instructions"] == "important"
         assert migrated.db.execute("SELECT COUNT(*) FROM studio_worlds").fetchone()[0] == 0
         assert migrated.db.execute("PRAGMA foreign_key_check").fetchall() == []
-        backups = list(tmp_path.glob("*.pre-v15-*.bak"))
+        backups = list(tmp_path.glob("*.pre-v16-*.bak"))
         assert len(backups) == 1
         with sqlite3.connect(backups[0]) as old_backup:
             assert old_backup.execute("PRAGMA user_version").fetchone()[0] == 14
