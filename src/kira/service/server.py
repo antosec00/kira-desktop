@@ -63,6 +63,7 @@ from kira.domain.knowledge import IDENTITY_INSTRUCTIONS
 from kira.service.knowledge import METHODS as KNOWLEDGE_METHODS, Knowledge
 from kira.service.souls import METHODS as SOUL_METHODS, Souls
 from kira.service.project_tools import METHODS as PROJECT_TOOL_METHODS, ProjectTools
+from kira.service.studio import METHODS as STUDIO_METHODS, Studio
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import CommandRunner
 
@@ -225,6 +226,7 @@ class Service:
             await self.processes.recover()
             self.project_tools = ProjectTools(self)
             await self.project_tools.recover()
+            self.studio = Studio(self)
             self.web = Web(self)
             await self.web.recover()
             self.control_processes = ProcessRegistry(self.store, kind="control")
@@ -294,6 +296,7 @@ class Service:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(provider.close(), 5)
         self._control_backends.clear()
+        await self.studio.close()
         await self.web.close()
         await self.project_tools.close()
         await self.processes.close()
@@ -420,7 +423,7 @@ class Service:
             raise KiraError("BUSY", "Provider settings are being updated; try again after they finish")
         if (self._closing or self.stopping.is_set()) and (method in {"run.start", "team.start", "team.resume",
                 "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume"}
-                or method in SOUL_METHODS | GOAL_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS):
+                or method in SOUL_METHODS | GOAL_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | STUDIO_METHODS):
             raise KiraError("SHUTTING_DOWN", "Service is draining; new work is not accepted")
         if method in {"assistant.snapshot", "assistant.cancel", "assistant.message", "assistant.resume"}:
             return await self.assistant.dispatch(method, params)
@@ -436,6 +439,8 @@ class Service:
             return await self.knowledge.dispatch(method, params)
         if method in PROJECT_TOOL_METHODS:
             return await self.project_tools.dispatch(method, params)
+        if method in STUDIO_METHODS:
+            return await self.studio.dispatch(method, params)
         if method in PROVIDER_METHODS:
             return await self.provider_routing.dispatch(method, params)
         if method == "attachment.import":
@@ -471,7 +476,8 @@ class Service:
                      "teams": True, "input_questions": True, "workbench": True,
                      "prompt_queue": True, "run_modes": True, "chat_goals": True, "autonomous_goals": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
-                     "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True}}
+                     "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
+                     "studio_m1": True}}
         if method == "project.list":
             fields(params, set())
             return {"projects": self.store.all("SELECT * FROM projects ORDER BY updated_at DESC")}
