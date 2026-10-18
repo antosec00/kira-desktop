@@ -266,7 +266,7 @@ class Studio:
             package_root,
             cwd=str(self.service.paths.data),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL, env=env
+            stderr=asyncio.subprocess.DEVNULL, env=env, start_new_session=True
         )
         self._renders[project_id] = process
         try:
@@ -285,7 +285,7 @@ class Studio:
             if not updated["enabled"] or updated["revision"] != revision:
                 raise KiraError("CONFLICT", "Studio changed while rendering")
             preview = self._atomic_png(self._directory("previews"),
-                                       f"{project_id}-{revision}.png", output)
+                                       f"{project_id}.png", output)
             if not export:
                 return {"path": str(preview), "revision": revision}
             destination = self._directory("exports")
