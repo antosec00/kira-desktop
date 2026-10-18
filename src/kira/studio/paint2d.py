@@ -86,6 +86,6 @@ def render_png(value: dict) -> bytes:
         painter.end()
     blob = QByteArray()
     buffer = QBuffer(blob)
-    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly) or not image.save(buffer, "PNG"):
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly) or not image.save(buffer, b"PNG"):
         raise RuntimeError("Studio PNG encoding failed")
-    return bytes(blob)
+    return bytes(blob.data())
