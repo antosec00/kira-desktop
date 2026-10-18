@@ -74,7 +74,8 @@ def validate_scene(value: Any) -> Json:
             messages += 1
         elif kind == "star":
             _object(obj, {"id", "kind", "color", "x", "y", "radius"})
-            if not isinstance(obj["id"], str) or re.fullmatch(r"star[1-9][0-9]?", obj["id"]) is None \
+            if (not isinstance(obj["id"], str)
+                    or re.fullmatch(r"star[1-9][0-9]?", obj["id"]) is None) \
                     or not _color(obj["color"]) \
                     or not _integer(obj["x"], 0, WIDTH) or not _integer(obj["y"], 0, HEIGHT) \
                     or not _integer(obj["radius"], 2, 80):
@@ -87,7 +88,8 @@ def validate_scene(value: Any) -> Json:
     if backgrounds != 1 or messages != 1:
         _invalid("The poster requires one background and one editable message")
     try:
-        if len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")) > MAX_SCENE_BYTES:
+        serialized = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        if len(serialized) > MAX_SCENE_BYTES:
             _invalid("Studio scene exceeds 16 KiB")
     except (TypeError, ValueError) as exc:
         raise KiraError("INVALID_ARGUMENT", "Non-serializable Studio scene") from exc
