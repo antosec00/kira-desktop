@@ -1,5 +1,9 @@
 # Kira Studio M1 — committed experimental implementation
 
+**Historical M1 snapshot:** The follow-on AI provider gateway is described
+in [M2_PROVIDER_BRIDGE.md](M2_PROVIDER_BRIDGE.md). The version and schema
+numbers below describe M1, not the newest development branch.
+
 **Development status:** source implementation committed on the private
 `feature/kira-studio` branch, **not yet run or qualified on an Ubuntu installation**.
 Application package identity: **0.16.0.dev0**; additive profile schema **15**.
