@@ -74,7 +74,7 @@ ApplicationWindow {
         id: toolButton
         subtle: true
         implicitHeight: 24 + Math.max(0, appearance.uiFont.pixelSize - 13)
-        implicitWidth: Math.max(38, toolLabel.advanceWidth + 44)
+        implicitWidth: Math.max(38, toolLabel.advanceWidth + (toolButton.text.length ? 44 : 38))
         font.pixelSize: Math.max(11, appearance.uiFont.pixelSize - 1)
         TextMetrics { id: toolLabel; text: toolButton.text; font: toolButton.font }
     }
