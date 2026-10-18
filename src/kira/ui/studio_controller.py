@@ -225,7 +225,8 @@ class StudioController(QObject):
         previous_revision = self._revision
         self._enabled = result.get("enabled") is True
         self._revision = int(result.get("revision", 0))
-        self._scene = result.get("scene") if isinstance(result.get("scene"), dict) else {}
+        scene = result.get("scene")
+        self._scene = scene if isinstance(scene, dict) else {}
         self._history = result.get("history", []) if isinstance(result.get("history"), list) else []
         if "agent_enabled" in result:
             self._agent_enabled = result["agent_enabled"] is True
