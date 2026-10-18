@@ -20,7 +20,8 @@ Rectangle {
             spacing: 6
             Label {
                 text: qsTr("Kira Studio")
-                font: appearance.uiFont
+                font.family: appearance.uiFont.family
+                font.pixelSize: appearance.uiFont.pixelSize
                 font.weight: Font.DemiBold
                 color: appearance.colors.text
             }
