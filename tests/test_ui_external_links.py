@@ -41,6 +41,36 @@ def test_native_failure_is_observable_outside_wsl(browser):
     assert results == [BrowserOpenResult(False, error="browser_unavailable")]
 
 
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_wsl_oauth_loopback_uses_windows_even_when_native_handler_would_say_yes(
+        browser, monkeypatch, qtbot, exit_code):
+    launcher, opened = browser
+    # xdg-open/Qt may acknowledge a link but launch nothing in Windows.
+    # The OAuth start URL is single-use: do not dispatch it twice.
+    monkeypatch.setattr(external_links.QDesktopServices, "openUrl",
+                        lambda _: pytest.fail("WSL OAuth must not use the misleading native handler"))
+    windows_fake(monkeypatch, (sys.executable, ["-c", f"raise SystemExit({exit_code})"]))
+    results = []
+    launcher.open("http://127.0.0.1:1455/auth/start/abcdefghijklmnop",
+                  results.append, allow_loopback=True)
+    qtbot.waitUntil(lambda: len(results) == 1)
+    assert opened == []
+    assert results == [BrowserOpenResult(exit_code == 0, "windows",
+                                         "" if exit_code == 0 else "launch_failed")]
+    assert not launcher._pending
+
+
+def test_wsl_oauth_uses_native_handler_only_if_windows_launcher_unavailable(
+        browser, monkeypatch):
+    launcher, opened = browser
+    windows_fake(monkeypatch, None)
+    results = []
+    launcher.open("http://127.0.0.1:1455/auth/start/abcdefghijklmnop",
+                  results.append, allow_loopback=True)
+    assert opened == ["http://127.0.0.1:1455/auth/start/abcdefghijklmnop"]
+    assert results == [BrowserOpenResult(False, error="browser_unavailable")]
+
+
 @pytest.mark.parametrize("url", [
     "file:///tmp/example", "javascript:alert(1)", "mailto:user@example.test", "https://",
     "https://user:secret@example.test", "https://user@example.test", "//example.test",
