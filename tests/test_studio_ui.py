@@ -84,6 +84,7 @@ def test_studio_grant_is_explicit_per_chat_and_stale_callbacks_are_ignored(
     workspace._session = {"id": str(uuid4()), "project_id": project,
                           "backend": "ollama", "model": "synthetic", "settings": {"tools": True}}
     workspace._backend = "ollama"
+    workspace._tools = True
     calls = []
     monkeypatch.setattr(workspace.client, "request",
                         lambda *args, **kwargs: calls.append(args))
