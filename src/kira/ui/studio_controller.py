@@ -243,7 +243,8 @@ class StudioController(QObject):
 
     @Slot(bool)
     def setAgentEnabled(self, value: bool) -> None:
-        if not self._enabled or not self.agentEligible or type(value) is not bool                 or value == self._agent_enabled:
+        if (not self._enabled or not self.agentEligible or type(value) is not bool
+                or value == self._agent_enabled):
             return
         if not value and self._busy:
             self._generation += 1
