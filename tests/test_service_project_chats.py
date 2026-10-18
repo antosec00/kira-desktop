@@ -81,7 +81,7 @@ async def test_chat_titles_create_derive_rename_and_keep_provider_state(chats):
     assert named["title"] == "Design review"
     assert named["backend_ref"] == chat["backend_ref"]
     assert (await service.dispatch("project.snapshot", {"project_id": project["id"]}))["sessions"][0]["title"] == "Design review"
-    assert service.store.db.execute("PRAGMA user_version").fetchone()[0] == 15
+    assert service.store.db.execute("PRAGMA user_version").fetchone()[0] == 16
 
 
 @pytest.mark.parametrize("title", ["", " \n ", "x" * 121, 5, None, "a\0b"])
