@@ -24,6 +24,7 @@ from kira.service.schema11 import LIVE_CONVERSATION_SCHEMA
 from kira.service.schema12 import FULL_ACCESS_SCHEMA
 from kira.service.schema13 import AUTONOMOUS_GOALS_SCHEMA
 from kira.service.schema14 import SOULS_SCHEMA
+from kira.service.schema15 import STUDIO_SCHEMA
 
 
 def now() -> str:
@@ -64,7 +65,7 @@ class Store:
         self.db.execute("PRAGMA synchronous=FULL")
 
     def _migrate(self, version: int) -> None:
-        if version not in {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}:
+        if version not in {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}:
             raise KiraError("INCOMPATIBLE_SCHEMA", f"No migration from schema {version}")
         initial = """
             CREATE TABLE projects (
@@ -134,7 +135,9 @@ class Store:
                                  + (LIVE_CONVERSATION_SCHEMA if version < 11 else "")
                                  + (FULL_ACCESS_SCHEMA if version < 12 else "")
                                  + (AUTONOMOUS_GOALS_SCHEMA if version < 13 else "")
-                                 + SOULS_SCHEMA + "PRAGMA user_version=14; COMMIT;")
+                                 + (SOULS_SCHEMA if version < 14 else "")
+                                 + (STUDIO_SCHEMA if version < 15 else "")
+                                 + "PRAGMA user_version=15; COMMIT;")
         except BaseException:
             if self.db.in_transaction:
                 self.db.execute("ROLLBACK")
