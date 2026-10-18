@@ -1,4 +1,10 @@
-# Kira Desktop 0.15.1
+# Kira Desktop 0.16.0.dev0 — experimental Studio branch
+
+> This branch contains **unqualified development changes** for Kira Studio M1.
+> The release description below documents the 0.15.1 baseline. Do not install
+> this experimental branch against an active profile. Schema 15 creates a new
+> migration and older releases cannot reopen that profile without a backup.
+> See [Studio prototype](docs/studio/M1_IMPLEMENTED.md).
 
 A native workspace for AI projects, conversations and collaborating agents.
 Kira connects a Qt desktop interface to an independent user service, with
