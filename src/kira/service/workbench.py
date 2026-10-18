@@ -438,6 +438,13 @@ class Workbench:
                 "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES (?,?,?,?) "
                 "ON CONFLICT(session_id) DO UPDATE SET archived=excluded.archived,updated_at=excluded.updated_at",
                 (session["id"], int(archived), timestamp, timestamp))
+            if archived:
+                # Restoring an archived chat must not resurrect prior AI authority.
+                self.store.db.execute(
+                    "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                    "updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
+                    (timestamp, project["id"], session["id"]),
+                )
             return {"session": self._session(session)}
         previous = self._goal(session["id"])["goal"]
         if "objective" not in params and "status" not in params:
