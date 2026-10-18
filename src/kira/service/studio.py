@@ -267,6 +267,69 @@ class Studio:
         result = self._mutate(project_id, request_id, method, payload)
         return result
 
+    def _grant(self, project_id: str, request_id: str, args: Json) -> Json:
+        """Only private user IPC, not registered in any provider tool catalog."""
+        session_id = _uuid(args["session_id"], "session_id")
+        self._session(project_id, session_id)
+        enabled, expected = args["enabled"], args["expected_enabled"]
+        if type(enabled) is not bool or type(expected) is not bool:
+            raise KiraError("INVALID_ARGUMENT", "Studio grants require boolean values")
+        if enabled and self.store.one("projects", project_id)["permission"] \
+                not in WRITE_PERMISSIONS:
+            raise KiraError("PERMISSION_DENIED", "Model edits require project write access")
+        fingerprint = hashlib.sha256(encode({
+            "method": "studio.grant", "session_id": session_id,
+            "enabled": enabled, "expected_enabled": expected,
+        }).encode("utf-8")).hexdigest()
+        db = self.store.db
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            self._create_world(project_id)
+            receipt = db.execute(
+                "SELECT fingerprint,result FROM studio_operations "
+                "WHERE project_id=? AND request_id=?", (project_id, request_id),
+            ).fetchone()
+            if receipt is not None:
+                if receipt["fingerprint"] != fingerprint:
+                    raise KiraError("CONFLICT", "Studio grant request ID was reused")
+                result = json.loads(receipt["result"])
+                db.execute("COMMIT")
+                return result
+            if enabled and not self._world(project_id)["enabled"]:
+                raise KiraError("STUDIO_DISABLED", "Enable Studio before granting AI edits")
+            current = self.grant_state(project_id, session_id)
+            if current["agent_enabled"] != expected:
+                raise KiraError("CONFLICT", "Studio chat permission changed; reload first")
+            generation = current["grant_generation"]
+            if enabled != expected:
+                generation += 1
+                db.execute(
+                    "INSERT INTO studio_grants"
+                    "(project_id,session_id,enabled,generation,updated_at) VALUES(?,?,?,?,?) "
+                    "ON CONFLICT(project_id,session_id) DO UPDATE SET "
+                    "enabled=excluded.enabled,generation=excluded.generation,"
+                    "updated_at=excluded.updated_at",
+                    (project_id, session_id, int(enabled), generation, now()),
+                )
+            result = {"agent_enabled": enabled, "grant_generation": generation}
+            db.execute(
+                "INSERT INTO studio_operations"
+                "(project_id,request_id,fingerprint,result,created_at) VALUES(?,?,?,?,?)",
+                (project_id, request_id, fingerprint, encode(result), now()),
+            )
+            db.execute("COMMIT")
+            return result
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+
+    def attach(self, session: Json, project: Json, run_id: str,
+               cancel: asyncio.Event, mode: str, options: Json) -> Json:
+        """Add one run-scoped model gateway only with current human consent."""
+        from kira.service.studio_agent import attach_studio
+        return attach_studio(self, session, project, run_id, cancel, mode, options)
+
     def _directory(self, name: str) -> Path:
         root = self.service.paths.data / "studio"
         # XDG profile path belongs to Kira. Reject replacement of the Studio dir.
