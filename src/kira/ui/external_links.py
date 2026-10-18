@@ -88,10 +88,11 @@ def _windows_browser_command() -> tuple[str, list[str]] | None:
 class BrowserLauncher(QObject):
     """Use on the GUI thread; callbacks never contain the requested URL.
 
-    The native desktop handler is attempted first. On WSL only, failed native
-    dispatch falls back to Windows' default browser without changing desktop
-    associations, installing software, or invoking a command shell. Call close()
-    when the owning workspace closes to cancel outstanding launcher processes.
+    In WSL, OAuth loopback URLs prefer the Windows browser directly: Qt may
+    report successful native dispatch while opening no usable browser at all.
+    Other URLs use the native desktop handler first, then the Windows fallback.
+    No browser associations are changed and no shell evaluates the URL. Call
+    close() when the owning workspace closes.
     """
 
     def __init__(self, parent: QObject | None = None, *, timeout_ms: int = 10_000):
@@ -109,10 +110,19 @@ class BrowserLauncher(QObject):
         if url is None:
             callback(BrowserOpenResult(False, error="invalid_url"))
             return
-        if QDesktopServices.openUrl(url):
-            callback(BrowserOpenResult(True, method="native"))
-            return
-        command = _windows_browser_command() if _is_wsl() else None
+        # Windows needs to open the browser for WSL-hosted OAuth callbacks.
+        # QDesktopServices.openUrl() can return True merely because xdg-open
+        # accepted the URL, even when the Windows browser never appears.
+        # Only the explicitly authorized WSL loopback flow overrides native
+        # dispatch; ordinary HTTPS links retain their previous behavior.
+        wsl_loopback = (allow_loopback and url.scheme() == "http"
+                        and url.host() == "127.0.0.1" and _is_wsl())
+        command = _windows_browser_command() if wsl_loopback else None
+        if command is None:
+            if QDesktopServices.openUrl(url):
+                callback(BrowserOpenResult(True, method="native"))
+                return
+            command = _windows_browser_command() if _is_wsl() else None
         if command is None:
             callback(BrowserOpenResult(False, error="browser_unavailable"))
             return
