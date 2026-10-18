@@ -282,6 +282,8 @@ class Studio:
         if enabled and self.store.one("projects", project_id)["permission"] \
                 not in WRITE_PERMISSIONS:
             raise KiraError("PERMISSION_DENIED", "Model edits require project write access")
+        if enabled and self._session(project_id, session_id)["settings"].get("tools") is False:
+            raise KiraError("PERMISSION_DENIED", "Enable chat tools before Studio AI editing")
         fingerprint = hashlib.sha256(encode({
             "method": "studio.grant", "session_id": session_id,
             "enabled": enabled, "expected_enabled": expected,
