@@ -128,3 +128,123 @@ def patch_scene(scene: Json, object_id: str, values: Any) -> Json:
         _invalid("Studio patch contains unsupported fields")
     target.update(values)
     return validate_scene(previous)
+
+
+# A single narrowly-scoped provider tool, reusing the existing Kira namespace.
+# No action can enable Studio, grant model access, or execute generated code.
+STUDIO_TOOL_NAMES = frozenset({"kira.studio"})
+STUDIO_ACTIONS = frozenset({
+    "describe", "inspect", "poster", "patch", "restore", "history", "render", "export",
+})
+
+
+def studio_tool_specs() -> list[Json]:
+    """Provider-independent Studio gateway. Detailed contracts are discoverable."""
+    return [{
+        "type": "function",
+        "name": "studio",
+        "description": (
+            "Work with the user's explicitly enabled, project-owned Kira Studio canvas. "
+            "Use describe to learn the exact action schemas and inspect to learn the "
+            "current revision before edits. Create an editable poster, change individual "
+            "layers or their colors/coordinates, restore, render or export PNG. "
+            "Only available with a separate per-chat user grant and Execute/write permission. "
+            "No source code, scripts, network or 3D actions. Never claim a PNG was "
+            "visually verified simply because rendering completed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": sorted(STUDIO_ACTIONS)},
+                "payload": {"type": "object"},
+            },
+            "required": ["action", "payload"],
+            "additionalProperties": False,
+        },
+    }]
+
+
+def validate_studio_action(action: Any, payload: Any) -> tuple[str, Json]:
+    """Strict service-side field/type/size policy, independent of model schema."""
+    if not isinstance(action, str) or action not in STUDIO_ACTIONS:
+        _invalid("Unsupported Studio action")
+    if not isinstance(payload, dict):
+        _invalid("Studio action payload must be an object")
+    shapes: dict[str, tuple[set[str], set[str]]] = {
+        "describe": (set(), set()),
+        "inspect": (set(), set()),
+        "history": (set(), set()),
+        "render": (set(), set()),
+        "export": (set(), set()),
+        "poster": ({"text", "expected_revision"}, {"text_color", "background"}),
+        "patch": ({"object_id", "values", "expected_revision"}, set()),
+        "restore": ({"target_revision", "expected_revision"}, set()),
+    }
+    required, optional = shapes[action]
+    if set(payload) - (required | optional) or required - set(payload):
+        _invalid("Unexpected fields in Studio action")
+    if "expected_revision" in payload and (
+            type(payload["expected_revision"]) is not int
+            or not 0 <= payload["expected_revision"] < 2000):
+        _invalid("Invalid expected Studio revision")
+    if "target_revision" in payload and (
+            type(payload["target_revision"]) is not int
+            or not 1 <= payload["target_revision"] <= 2000):
+        _invalid("Invalid target Studio revision")
+    if "text" in payload and (
+            not isinstance(payload["text"], str)
+            or not 1 <= len(payload["text"]) <= MAX_TEXT
+            or any(ord(c) < 32 for c in payload["text"])):
+        _invalid("Invalid Studio poster text")
+    for key in ("text_color", "background"):
+        if key in payload and not _color(payload[key]):
+            _invalid("Invalid Studio color")
+    if "object_id" in payload and (
+            not isinstance(payload["object_id"], str)
+            or len(payload["object_id"]) > 32):
+        _invalid("Invalid Studio object ID")
+    if "values" in payload and (not isinstance(payload["values"], dict)
+                                or not payload["values"] or len(payload["values"]) > 5):
+        _invalid("Invalid Studio patch fields")
+    import json
+    try:
+        encoded = json.dumps(payload, ensure_ascii=False,
+                             allow_nan=False, separators=(",", ":"))
+    except (ValueError, TypeError, OverflowError, RecursionError) as exc:
+        raise KiraError("INVALID_ARGUMENT", "Invalid Studio payload") from exc
+    if len(encoded.encode("utf-8")) > 8192:
+        _invalid("Studio action payload exceeds 8 KiB")
+    return action, deepcopy(payload)
+
+
+def studio_action_contract() -> Json:
+    return {
+        "revision": "Read inspect before edits; pass the current expected_revision.",
+        "actions": {
+            "describe": {},
+            "inspect": {},
+            "history": {},
+            "poster": {
+                "text": "Exact text, 1-90 Unicode characters",
+                "expected_revision": "Current revision, 0 for new world",
+                "text_color": "#RRGGBB (optional, default blue)",
+                "background": "#RRGGBB (optional, default lilac)",
+            },
+            "patch": {
+                "object_id": "background | message | star1 | star2 | star3",
+                "values": "Allowed fields depend on kind; see current scene",
+                "expected_revision": "Current revision",
+            },
+            "restore": {
+                "target_revision": "Existing revision (>=1)",
+                "expected_revision": "Current revision",
+            },
+            "render": {},
+            "export": {},
+        },
+        "limitations": (
+            "One 960x540 editable vector/raster poster scene per project. "
+            "No arbitrary image generation/inpainting, scripts, external URLs or 3D. "
+            "A render success reports a PNG file, not model visual inspection."
+        ),
+    }
