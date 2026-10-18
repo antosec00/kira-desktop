@@ -1,5 +1,9 @@
 # Desktop platform targets
 
+> On the private experimental `feature/kira-studio` branch, source version
+> **0.16.0.dev1** uses database schema **16**. The package paths and qualification
+> records below describe the stable **0.15.1** release, not this branch.
+
 | Target | Native runtime | Application artifact |
 | --- | --- | --- |
 | `noble` (default) | Ubuntu 24.04 amd64, Python 3.12 | `dist/kira-desktop_0.15.1_amd64.deb` |
