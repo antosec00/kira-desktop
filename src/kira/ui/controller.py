@@ -40,6 +40,7 @@ from kira.ui.status import run_visual_state
 from kira.ui.provider_switch import ProviderSwitchController
 from kira.ui.team_controller import TeamController
 from kira.ui.web_controller import WebController, browser_approval_description
+from kira.ui.studio_controller import StudioController
 
 Json = dict[str, Any]
 STATE_LABELS = {
@@ -288,6 +289,7 @@ class Workspace(QObject):
         self.providerSwitch = ProviderSwitchController(self)
         self.accountUsage = AccountUsageController(self)
         self._web = WebController(self)
+        self._studio = StudioController(self)
         self._soul_controller: Any = None
         self._reasoning = ReasoningController(self)
         self.chatChanged.connect(self.draftImagesChanged.emit)
@@ -295,6 +297,10 @@ class Workspace(QObject):
     @qt_property(QObject, constant=True)
     def web(self) -> WebController:
         return self._web
+
+    @qt_property(QObject, constant=True)
+    def studio(self) -> StudioController:
+        return self._studio
 
     @qt_property(QObject, constant=True)
     def reasoning(self) -> ReasoningController:
@@ -2448,6 +2454,7 @@ class Workspace(QObject):
     def close(self) -> None:
         self._message_link_generation += 1
         self._reasoning._timer.stop()
+        self._studio.hideStudio()
         self._web.hideBrowser()
         self._web.hide()
         self.accountUsage.close()
