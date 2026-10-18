@@ -1,7 +1,7 @@
-"""Project-owned, opt-in Studio world service (M1: one editable poster scene).
+"""Project-owned opt-in Studio worlds, durable grants and trusted renderer.
 
-No model tool is registered in M1. Only typed UI IPC commands mutate state.
-All scene history is immutable SQLite data; previews are derived, disposable PNGs.
+UI grants are never callable by model tools. Every agent edit rechecks its run,
+provider generation, chat, effective write scope and live opt-in grant.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ import uuid
 
 from kira.domain.contracts import Json, KiraError
 from kira.domain.studio import MAX_SCENE_BYTES, patch_scene, poster_scene, validate_scene
+from kira.domain.contracts import WRITE_PERMISSIONS
+from kira.service.project_context import ProjectChats
 from kira.service.storage import encode, now
 
 if TYPE_CHECKING:
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
 METHODS = frozenset({
     "studio.status", "studio.enable", "studio.poster", "studio.patch",
     "studio.restore", "studio.render", "studio.export", "studio.history",
+    "studio.grant",
 })
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MAX_PNG_BYTES = 4 * 1024 * 1024
@@ -67,12 +70,33 @@ class Studio:
         self.store.one("projects", project_id)
         return project_id
 
-    def _world(self, project_id: str) -> Json:
+    def _session(self, project_id: str, session_id: str) -> Json:
+        session = ProjectChats(self.store).owned_session(project_id, session_id)
+        if (self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?",
+                                  (session_id,)).fetchone()
+                or ProjectChats(self.store).enrich(session).get("archived")):
+            raise KiraError("UNSUPPORTED", "Studio AI grants require an ordinary active chat")
+        return session
+
+    def grant_state(self, project_id: str, session_id: str) -> Json:
+        self._session(project_id, session_id)
+        row = self.store.db.execute(
+            "SELECT enabled,generation FROM studio_grants "
+            "WHERE project_id=? AND session_id=?", (project_id, session_id)
+        ).fetchone()
+        enabled = bool(row["enabled"]) if row else False
+        return {"agent_enabled": enabled, "grant_generation":
+                int(row["generation"]) if row else 0}
+
+    def _world(self, project_id: str, session_id: str | None = None) -> Json:
         row = self.store.db.execute(
             "SELECT enabled,revision FROM studio_worlds WHERE project_id=?", (project_id,)
         ).fetchone()
         if row is None:
-            return {"enabled": False, "revision": 0, "scene": {}, "history": []}
+            state: Json = {"enabled": False, "revision": 0, "scene": {}, "history": []}
+            if session_id is not None:
+                state.update(self.grant_state(project_id, session_id))
+            return state
         revision = int(row["revision"])
         scene: Json = {}
         if revision:
@@ -90,8 +114,11 @@ class Studio:
                 "WHERE project_id=? ORDER BY revision DESC LIMIT 20", (project_id,)
             )
         ]
-        return {"enabled": bool(row["enabled"]), "revision": revision,
-                "scene": scene, "history": history}
+        state = {"enabled": bool(row["enabled"]), "revision": revision,
+                 "scene": scene, "history": history}
+        if session_id is not None:
+            state.update(self.grant_state(project_id, session_id))
+        return state
 
     def _create_world(self, project_id: str) -> None:
         self.store.db.execute(
@@ -100,8 +127,10 @@ class Studio:
             "VALUES (?,0,0,?,?)", (project_id, now(), now())
         )
 
-    def _mutate(self, project_id: str, request_id: str, method: str, values: Json) -> Json:
-        payload = encode({"method": method, "params": values}).encode("utf-8")
+    def _mutate(self, project_id: str, request_id: str, method: str, values: Json,
+                *, agent: Json | None = None) -> Json:
+        receipt_method = method if agent is None else "agent:" + method
+        payload = encode({"method": receipt_method, "params": values}).encode("utf-8")
         fingerprint = hashlib.sha256(payload).hexdigest()
         db = self.store.db
         db.execute("BEGIN IMMEDIATE")
@@ -130,6 +159,14 @@ class Studio:
                     "UPDATE studio_worlds SET enabled=?,updated_at=? WHERE project_id=?",
                     (int(enabled), now(), project_id)
                 )
+                if not enabled:
+                    # Disabling a world also revokes all prior per-chat grants.
+                    # A later re-enable must never resurrect model authority.
+                    db.execute(
+                        "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                        "updated_at=? WHERE project_id=? AND enabled=1",
+                        (now(), project_id),
+                    )
             else:
                 if not state["enabled"]:
                     raise KiraError("STUDIO_DISABLED", "Enable Studio in the project UI first")
@@ -139,7 +176,11 @@ class Studio:
                 if revision >= MAX_REVISIONS:
                     raise KiraError("LIMIT_REACHED", "Export world history before continuing")
                 if method == "studio.poster":
-                    scene = poster_scene(values["text"])
+                    scene = poster_scene(
+                        values["text"],
+                        blue=values.get("text_color", "#2467c9"),
+                        background=values.get("background", "#f0e7f3"),
+                    )
                 elif method == "studio.patch":
                     if not state["scene"]:
                         raise KiraError("NOT_FOUND", "Create a poster first")
@@ -156,12 +197,21 @@ class Studio:
                 else:
                     raise KiraError("METHOD_NOT_FOUND", "Unsupported Studio mutation")
                 new_revision = revision + 1
+                origin = ("agent" if agent is not None else
+                          "restore" if method == "studio.restore" else "user")
                 db.execute(
                     "INSERT INTO studio_revisions(project_id,revision,scene,origin,created_at) "
                     "VALUES(?,?,?,?,?)",
-                    (project_id, new_revision, encode(scene),
-                     "restore" if method == "studio.restore" else "user", now())
+                    (project_id, new_revision, encode(scene), origin, now())
                 )
+                if agent is not None:
+                    db.execute(
+                        "INSERT INTO studio_agent_commits "
+                        "(project_id,revision,session_id,run_id,tool_call_id) "
+                        "VALUES (?,?,?,?,?)",
+                        (project_id, new_revision, agent["session_id"],
+                         agent["run_id"], agent["call_id"]),
+                    )
                 db.execute(
                     "UPDATE studio_worlds SET revision=?,updated_at=? WHERE project_id=?",
                     (new_revision, now(), project_id)
@@ -188,10 +238,13 @@ class Studio:
         if method not in METHODS:
             raise KiraError("METHOD_NOT_FOUND", "Unknown Studio method")
         patterns = {
-            "studio.status": (set(), set()),
+            "studio.status": (set(), {"session_id"}),
             "studio.history": (set(), set()),
             "studio.enable": ({"enabled", "expected_enabled", "request_id"}, set()),
-            "studio.poster": ({"text", "expected_revision", "request_id"}, set()),
+            "studio.grant": (
+                {"session_id", "enabled", "expected_enabled", "request_id"}, set()),
+            "studio.poster": ({"text", "expected_revision", "request_id"},
+                              {"text_color", "background"}),
             "studio.patch": ({"object_id", "values", "expected_revision", "request_id"}, set()),
             "studio.restore": ({"target_revision", "expected_revision", "request_id"}, set()),
             "studio.render": (set(), set()),
@@ -201,11 +254,14 @@ class Studio:
         _fields(args, {"project_id"} | required, optional)
         project_id = self._project(args)
         if method in {"studio.status", "studio.history"}:
-            state = self._world(project_id)
+            session_id = (str(args["session_id"]) if "session_id" in args else None)
+            state = self._world(project_id, session_id)
             return {"history": state["history"]} if method == "studio.history" else state
         if method in {"studio.render", "studio.export"}:
             return await self._render(project_id, export=method == "studio.export")
         request_id = _uuid(args["request_id"], "request_id")
+        if method == "studio.grant":
+            return self._grant(project_id, request_id, args)
         payload = {key: value for key, value in args.items()
                    if key not in {"project_id", "request_id"}}
         result = self._mutate(project_id, request_id, method, payload)
