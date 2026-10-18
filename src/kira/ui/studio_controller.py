@@ -246,9 +246,12 @@ class StudioController(QObject):
             return ""
         try:
             root = (self.workspace.paths.data / "studio" / part).resolve(strict=True)
-            path = Path(value).resolve(strict=True)
+            original = Path(value)
+            if original.is_symlink():
+                return ""
+            path = original.resolve(strict=True)
             path.relative_to(root)
-            if path.suffix != ".png" or not path.is_file() or path.is_symlink() \
+            if path.suffix != ".png" or not path.is_file() \
                     or path.stat().st_size > 4 * 1024 * 1024:
                 return ""
         except (OSError, ValueError, RuntimeError):
