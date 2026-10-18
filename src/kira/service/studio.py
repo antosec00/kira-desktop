@@ -80,10 +80,16 @@ class Studio:
     def grant_state(self, project_id: str, session_id: str) -> Json:
         self._session(project_id, session_id)
         row = self.store.db.execute(
-            "SELECT enabled,generation FROM studio_grants "
+            "SELECT enabled,generation,provider_backend,provider_model,"
+            "provider_generation FROM studio_grants "
             "WHERE project_id=? AND session_id=?", (project_id, session_id)
         ).fetchone()
-        enabled = bool(row["enabled"]) if row else False
+        session = self._session(project_id, session_id)
+        current_generation = self.service.provider_routing.current_generation(session_id)
+        enabled = bool(row and row["enabled"]
+                       and row["provider_backend"] == session["backend"]
+                       and row["provider_model"] == session["model"]
+                       and row["provider_generation"] == current_generation)
         return {"agent_enabled": enabled, "grant_generation":
                 int(row["generation"]) if row else 0}
 
@@ -297,6 +303,8 @@ class Studio:
             if enabled and not self._world(project_id)["enabled"]:
                 raise KiraError("STUDIO_DISABLED", "Enable Studio before granting AI edits")
             current = self.grant_state(project_id, session_id)
+            selected = self._session(project_id, session_id)
+            provider_generation = self.service.provider_routing.current_generation(session_id)
             if current["agent_enabled"] != expected:
                 raise KiraError("CONFLICT", "Studio chat permission changed; reload first")
             generation = current["grant_generation"]
@@ -304,11 +312,17 @@ class Studio:
                 generation += 1
                 db.execute(
                     "INSERT INTO studio_grants"
-                    "(project_id,session_id,enabled,generation,updated_at) VALUES(?,?,?,?,?) "
+                    "(project_id,session_id,enabled,generation,provider_backend,"
+                    "provider_model,provider_generation,updated_at) "
+                    "VALUES(?,?,?,?,?,?,?,?) "
                     "ON CONFLICT(project_id,session_id) DO UPDATE SET "
                     "enabled=excluded.enabled,generation=excluded.generation,"
+                    "provider_backend=excluded.provider_backend,"
+                    "provider_model=excluded.provider_model,"
+                    "provider_generation=excluded.provider_generation,"
                     "updated_at=excluded.updated_at",
-                    (project_id, session_id, int(enabled), generation, now()),
+                    (project_id, session_id, int(enabled), generation,
+                     selected["backend"], selected["model"], provider_generation, now()),
                 )
             result = {"agent_enabled": enabled, "grant_generation": generation}
             db.execute(
