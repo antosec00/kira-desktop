@@ -58,6 +58,9 @@ def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
     previous = result.get("client_tool_call")
     generation = studio.service.provider_routing.current_generation(session["id"])
     grant_generation = studio.grant_state(project["id"], session["id"])["grant_generation"]
+    # Strict per-turn budgets; exported images are durable profile files.
+    limits = {"edits": 32, "renders": 8, "exports": 4}
+    consumed = {"edits": 0, "renders": 0, "exports": 0}
 
     def active() -> None:
         """Must run immediately before each effect, not just on tool registration."""
@@ -99,6 +102,13 @@ def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
             "tool_id": call_id, "name": "kira.studio", "arguments": arguments})
         try:
             active()
+            budget = ("edits" if action in {"poster", "patch", "restore"} else
+                      "renders" if action == "render" else
+                      "exports" if action == "export" else None)
+            if budget is not None:
+                if consumed[budget] >= limits[budget]:
+                    raise KiraError("LIMIT_REACHED", "Studio run budget exhausted")
+                consumed[budget] += 1
             if action == "describe":
                 response: Json = {"ok": True, "contract": studio_action_contract()}
             elif action == "inspect":
