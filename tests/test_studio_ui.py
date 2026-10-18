@@ -70,3 +70,48 @@ def test_qml_has_an_off_by_default_studio_pane_without_hiding_browser(qapp, tmp_
         workspace.close()
         workspace.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+
+def test_studio_grant_is_explicit_per_chat_and_stale_callbacks_are_ignored(
+        qapp, tmp_path, monkeypatch):
+    workspace = Workspace(Paths(*(tmp_path / x for x in
+                                   ("config", "data", "state", "runtime"))))
+    workspace._connected_value = True
+    project = str(uuid4())
+    workspace._project = {"id": project, "name": "Synthetic", "root": str(tmp_path),
+                          "permission": "project_write"}
+    workspace._session = {"id": str(uuid4()), "project_id": project,
+                          "backend": "ollama", "model": "synthetic", "settings": {"tools": True}}
+    workspace._backend = "ollama"
+    calls = []
+    monkeypatch.setattr(workspace.client, "request",
+                        lambda *args, **kwargs: calls.append(args))
+    studio = workspace.studio
+    try:
+        assert not studio.agentEnabled
+        studio.showStudio()
+        assert calls[-1][0] == "studio.status"
+        assert calls[-1][1]["session_id"] == workspace.sessionId
+        calls[-1][2]({"enabled": True, "revision": 0, "scene": {},
+                     "history": [], "agent_enabled": False, "grant_generation": 0})
+        assert studio.agentEligible and not studio.agentEnabled
+        studio.setAgentEnabled(True)
+        assert calls[-1][0] == "studio.grant"
+        assert calls[-1][1]["session_id"] == workspace.sessionId
+        callback = calls[-1][2]
+        callback({"agent_enabled": True, "grant_generation": 1})
+        assert studio.agentEnabled
+        studio.setAgentEnabled(False)
+        old_chat = calls[-1][2]
+        workspace._session = {"id": str(uuid4()), "project_id": project,
+                              "backend": "ollama", "model": "synthetic",
+                              "settings": {"tools": True}}
+        workspace.chatChanged.emit()
+        assert not studio.agentEnabled
+        old_chat({"agent_enabled": True, "grant_generation": 2})
+        assert not studio.agentEnabled
+    finally:
+        workspace.close()
+        workspace.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
