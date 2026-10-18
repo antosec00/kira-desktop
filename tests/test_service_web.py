@@ -227,9 +227,17 @@ async def test_manual_login_pauses_and_waits_for_user_confirmation(fixture, monk
     await service.dispatch("session.web.update", {"project_id": project["id"], "session_id": session["id"], "browser_persistent": True})
     transport.outputs = [[call("navigate", {"url": "https://example.com/"})], [call("manual_login")]]
     run = await start(fixture)
-    async with asyncio.timeout(5):
-        while not service.approvals:
-            await asyncio.sleep(0.01)
+    try:
+        async with asyncio.timeout(5):
+            while not service.approvals:
+                await asyncio.sleep(0.01)
+    except TimeoutError:
+        # The full suite can expose scheduling-sensitive hangs. Preserve the
+        # synthetic event sequence rather than guessing or increasing timeouts.
+        kinds = [event["type"] for event in service.store.events(run["id"])["events"]]
+        calls = [action for engine in Engine.instances for action, _ in engine.calls]
+        pytest.fail(f"Manual login approval absent: events={kinds[-20:]}; "
+                    f"browser_actions={calls}; provider_requests={len(transport.requests)}")
     assert Engine.instances[0].calls[-1][0] == "manual_pause"
     assert run["id"] in service.web.manual
     _, approval_id = next(iter(service.approvals))
