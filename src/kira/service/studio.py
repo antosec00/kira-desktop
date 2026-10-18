@@ -16,9 +16,8 @@ import tempfile
 from typing import TYPE_CHECKING, Any
 import uuid
 
-from kira.domain.contracts import Json, KiraError
+from kira.domain.contracts import Json, KiraError, WRITE_PERMISSIONS
 from kira.domain.studio import MAX_SCENE_BYTES, patch_scene, poster_scene, validate_scene
-from kira.domain.contracts import WRITE_PERMISSIONS
 from kira.service.project_context import ProjectChats
 from kira.service.storage import encode, now
 
