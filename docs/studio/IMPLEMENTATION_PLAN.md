@@ -1,6 +1,6 @@
 # Kira Studio — B: repository-specific implementation plan
 
-**Architecture proposal only, not executable project changes.** Baseline: current private `feature/kira-studio` branch from Kira Desktop 0.15.1 `main`. No automatic merging or installation. The branch should remain private and isolated from the independent `feature/project-research` branch and retained release branches. Follow `AGENTS.md` / `docs/OPERATIONS.md`, including backups and idle-state rules.
+**Architecture and staged plan.** M1 experimental source has now been committed to this branch but remains unqualified; see [M1_IMPLEMENTED](M1_IMPLEMENTED.md). Later milestones are proposals, not shipped capabilities. Baseline: current private `feature/kira-studio` branch from Kira Desktop 0.15.1 `main`. No automatic merging or installation. The branch should remain private and isolated from the independent `feature/project-research` branch and retained release branches. Follow `AGENTS.md` / `docs/OPERATIONS.md`, including backups and idle-state rules.
 
 ## Zero: architecture and release discipline
 
