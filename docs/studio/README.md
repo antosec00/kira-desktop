@@ -4,6 +4,12 @@
 **Language convention:** engineering specifications in English; user-facing labels and future guide in Italian.
 **Safety:** no changes to the installed application, service database, package, provider credentials, or existing branches are part of this dossier.
 
+## M1 experimental source
+
+The first opt-in poster prototype and its unverified test instructions are
+recorded in [M1_IMPLEMENTED.md](M1_IMPLEMENTED.md). Agent-generated scenes,
+advanced image editing, research visualizers and 3D remain future work.
+
 ## Vision
 
 Kira Studio is an **opt-in, persistent visual world** hosted in the right-hand workspace of Kira Desktop. When enabled by the human owner, a model may author, inspect, revise, simulate, explain, and export **structured, executable-by-Kira scenes**. A world is not a chat reply or a disposable screenshot: it is a versioned collection of canvases, layers, scene objects, relationships, timelines, user interactions, input data, and evidence.
