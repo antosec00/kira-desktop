@@ -116,7 +116,8 @@ def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
             elif action == "history":
                 response = {"ok": True, "history": studio._world(project["id"])["history"]}
             elif action in {"render", "export"}:
-                result_png = await studio._render(project["id"], export=action == "export")
+                result_png = await studio._render(project["id"], export=action == "export",
+                                                  guard=active)
                 active()
                 response = {"ok": True, "revision": result_png["revision"],
                             "png_ready": True,
@@ -136,7 +137,7 @@ def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
                             "scene": state["scene"],
                             "history": state["history"],
                             "source": "agent_edit"}
-        except (KiraError, OSError, ValueError, TypeError) as exc:
+        except (KiraError, OSError, ValueError, TypeError, TimeoutError) as exc:
             response = _failure(exc)
         response = studio.service.redactor.clean(response)
         await studio.service.emit(run_id, "tool.completed", {
