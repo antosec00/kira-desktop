@@ -25,6 +25,9 @@ CREATE TABLE studio_grants (
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
     generation INTEGER NOT NULL DEFAULT 0,
+    provider_backend TEXT NOT NULL,
+    provider_model TEXT NOT NULL,
+    provider_generation INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY(project_id,session_id)
 );
