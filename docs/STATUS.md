@@ -1,5 +1,12 @@
 # Kira Desktop status
 
+> **Experimental branch notice (feature/kira-studio):** this source checkout is
+> **0.16.0.dev0**, schema **15**, with an unqualified M1 Studio prototype.
+> The 0.15.1 release facts and test results below apply **only to main**, not
+> to this development branch. Do not install or migrate an active user profile;
+> use a separate KIRA_HOME and make a consistent full backup first.
+> See [Studio M1 implementation](studio/M1_IMPLEMENTED.md).
+
 Updated 2026-10-18. Current desktop **0.15.1**, database schema **14**,
 IPC/event envelopes **1**. This is the qualified current source release;
 private historical preparation, installation and recovery records are archived
