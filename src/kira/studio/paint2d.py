@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPointF, QRectF, Qt
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPointF, Qt
 from PySide6.QtGui import (
     QColor, QFont, QFontMetricsF, QGuiApplication, QImage, QLinearGradient,
     QPainter, QPainterPath, QPen,
