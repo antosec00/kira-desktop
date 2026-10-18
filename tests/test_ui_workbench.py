@@ -179,11 +179,16 @@ def ui(view, qtbot, qtlog):
     window.resize(880, 620)
     qtbot.wait(60)
     yield workspace, calls, engine, window
-    assert not any("ReferenceError" in r.message or "binding loop" in r.message.lower() for r in qtlog.records)
+    # Capture the actual warning text before cleanup. Even when the assertion
+    # fails, destroy the QML engine before the dependent Workspace fixture;
+    # otherwise Qt emits hundreds of unrelated null-context binding errors.
+    warnings = [r.message for r in qtlog.records
+                if "ReferenceError" in r.message or "binding loop" in r.message.lower()]
     window.setProperty("closeConfirmed", True)
     window.close()
     engine.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not warnings, "\\n".join(warnings[:10])
 
 
 def test_keyboard_palette_is_searchable_localized_and_preserves_draft(ui, qtbot):
