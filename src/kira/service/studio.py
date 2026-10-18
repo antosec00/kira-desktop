@@ -7,12 +7,10 @@ All scene history is immutable SQLite data; previews are derived, disposable PNG
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import sys
 import tempfile
 from typing import TYPE_CHECKING, Any
@@ -257,8 +255,16 @@ class Studio:
         # This worker is a crash/fault boundary, not a general same-UID sandbox.
         env = {"QT_QPA_PLATFORM": "offscreen", "PATH": os.defpath,
                "LANG": os.environ.get("LANG", "C.UTF-8")}
+        # Packaged .deb uses python -I with /opt/kira-desktop/lib injected by
+        # its launcher. A plain python -m here would fail to locate bundled Kira.
+        # Anchor this child to the already-imported, trusted Kira package root.
+        package_root = str(Path(__file__).resolve().parents[2])
         process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "kira.tools.studio_worker",
+            sys.executable, "-I", "-B", "-c",
+            "import runpy,sys; sys.path.insert(0,sys.argv[1]); "
+            "runpy.run_module('kira.tools.studio_worker',run_name='__main__')",
+            package_root,
+            cwd=str(self.service.paths.data),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL, env=env
         )
