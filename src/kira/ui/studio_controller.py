@@ -27,6 +27,8 @@ class StudioController(QObject):
         self._pane_visible = False
         self._expanded = False
         self._enabled = False
+        self._agent_enabled = False
+        self._grant_generation = 0
         self._busy = False
         self._error = ""
         self._revision = 0
@@ -35,6 +37,8 @@ class StudioController(QObject):
         self._preview_url = ""
         self._export_path = ""
         workspace.projectOpened.connect(self.syncProject)
+        workspace.chatChanged.connect(self.syncChat)
+        workspace.eventApplied.connect(self._onRunEvent)
         workspace.client.disconnected.connect(self._disconnected)
 
     @qt_property(bool, notify=changed)
@@ -48,6 +52,18 @@ class StudioController(QObject):
     @qt_property(bool, notify=changed)
     def enabled(self) -> bool:
         return self._enabled
+
+    @qt_property(bool, notify=changed)
+    def agentEnabled(self) -> bool:
+        return self._agent_enabled
+
+    @qt_property(bool, notify=changed)
+    def agentEligible(self) -> bool:
+        return (self.workspace.connected
+                and bool(self.workspace.sessionId)
+                and self.workspace.project.get("permission")
+                in {"project_write", "trusted_host", "full_access"}
+                and self.workspace.backend in {"codex", "openai_chatgpt", "ollama"})
 
     @qt_property(bool, notify=changed)
     def busy(self) -> bool:
@@ -99,6 +115,8 @@ class StudioController(QObject):
         self._busy = False
         self._pane_visible = False
         self._enabled = False
+        self._agent_enabled = False
+        self._grant_generation = 0
         self._preview_url = ""
         self._error = ""
         self.changed.emit()
@@ -111,6 +129,8 @@ class StudioController(QObject):
             self._project_id = project_id
             self._pane_visible = False
             self._enabled = False
+            self._agent_enabled = False
+            self._grant_generation = 0
             self._busy = False
             self._revision = 0
             self._scene = {}
@@ -122,6 +142,30 @@ class StudioController(QObject):
         # OFF by default: ordinary project navigation must not start even a
         # Studio status RPC. Read state only when the human opens the pane.
         if self._pane_visible:
+            self.refresh()
+
+    @Slot()
+    def syncChat(self) -> None:
+        # A delayed grant response for chat A must never be shown in chat B.
+        self._generation += 1
+        self._busy = False
+        self._agent_enabled = False
+        self._grant_generation = 0
+        self.changed.emit()
+        if self._pane_visible and self._selected():
+            self.refresh()
+
+    @Slot(dict)
+    def _onRunEvent(self, event: Json) -> None:
+        if not self._pane_visible or event.get("type") != "tool.completed":
+            return
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict) or payload.get("name") != "kira.studio":
+            return
+        run = self.workspace._runs.get(str(event.get("run_id", "")), {})
+        if run.get("session_id") != self.workspace.sessionId:
+            return
+        if not self._busy:
             self.refresh()
 
     @Slot()
@@ -179,6 +223,11 @@ class StudioController(QObject):
         self._revision = int(result.get("revision", 0))
         self._scene = result.get("scene") if isinstance(result.get("scene"), dict) else {}
         self._history = result.get("history", []) if isinstance(result.get("history"), list) else []
+        if "agent_enabled" in result:
+            self._agent_enabled = result["agent_enabled"] is True
+            self._grant_generation = int(result.get("grant_generation", 0))
+        if not self._enabled:
+            self._agent_enabled = False
         if not self._enabled or self._revision != previous_revision:
             self._preview_url = ""
         if self._pane_visible and self._enabled and self._scene:
@@ -187,7 +236,27 @@ class StudioController(QObject):
 
     @Slot()
     def refresh(self) -> None:
-        self._request("studio.status", {}, self._accept_state)
+        params: Json = {}
+        if self.workspace.sessionId:
+            params["session_id"] = self.workspace.sessionId
+        self._request("studio.status", params, self._accept_state)
+
+    @Slot(bool)
+    def setAgentEnabled(self, value: bool) -> None:
+        if not self._enabled or not self.agentEligible or type(value) is not bool                 or value == self._agent_enabled:
+            return
+        if not value and self._busy:
+            self._generation += 1
+            self._busy = False
+        self._request("studio.grant",
+                      {"session_id": self.workspace.sessionId,
+                       "enabled": value, "expected_enabled": self._agent_enabled,
+                       "request_id": str(uuid.uuid4())},
+                      self._accept_grant)
+
+    def _accept_grant(self, result: Json) -> None:
+        self._agent_enabled = result.get("agent_enabled") is True
+        self._grant_generation = int(result.get("grant_generation", 0))
 
     @Slot(bool)
     def setEnabled(self, value: bool) -> None:
