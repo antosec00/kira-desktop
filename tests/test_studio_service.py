@@ -1,8 +1,6 @@
 """Studio durable-world tests with synthetic projects, no real provider or profile."""
 
-import json
 import sqlite3
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
