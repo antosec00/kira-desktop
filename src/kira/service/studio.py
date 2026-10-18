@@ -14,6 +14,7 @@ from pathlib import Path
 import sys
 import tempfile
 from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
 import uuid
 
 from kira.domain.contracts import Json, KiraError, WRITE_PERMISSIONS
@@ -377,7 +378,10 @@ class Studio:
                 os.unlink(temporary)
         return file_name
 
-    async def _render(self, project_id: str, *, export: bool) -> Json:
+    async def _render(self, project_id: str, *, export: bool,
+                      guard: Callable[[], None] | None = None) -> Json:
+        if guard is not None:
+            guard()
         state = self._world(project_id)
         if not state["enabled"] or not state["scene"]:
             raise KiraError("STUDIO_DISABLED", "Studio is not enabled or has no scene")
@@ -418,6 +422,8 @@ class Studio:
                 raise KiraError("RENDER_FAILED", "Studio graphics worker failed")
             if not output.startswith(PNG_SIGNATURE) or len(output) > MAX_PNG_BYTES:
                 raise KiraError("RENDER_FAILED", "Studio returned invalid image data")
+            if guard is not None:
+                guard()
             updated = self._world(project_id)
             if not updated["enabled"] or updated["revision"] != revision:
                 raise KiraError("CONFLICT", "Studio changed while rendering")
