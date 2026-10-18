@@ -414,7 +414,7 @@
   "Le domande e la bozza restano nel pannello Domande.": "Questions and the draft remain in the Questions panel.",
   "Le domande restano qui anche quando arrivano nuovi aggiornamenti.": "Questions stay here while new updates arrive.",
   "Le impostazioni si possono modificare quando il progetto non ha attività in corso.": "Settings can be changed when the project has no active work.",
-  "Le modifiche IA richiedono una chat con permesso di scrittura.": "AI edits require a chat with project write permission.",
+  "Le modifiche IA richiedono un progetto scrivibile e strumenti attivi nella chat.": "AI edits require a writable project and chat tools enabled.",
   "Leggi dettagli": "Read details",
   "Leggi obiettivo": "Read goal",
   "Lettura": "Read",
