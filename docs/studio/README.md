@@ -1,6 +1,6 @@
 # Kira Studio — design dossier (proposal, not implemented)
 
-**Status:** architecture and product research only. **Baseline:** Kira Desktop 0.15.1, GitHub private branch `feature/kira-studio`, forked from `main` on 2026-10-18.
+**Status:** M1 experimental implementation exists in this branch, **not qualified or installed**. M2–M5 remain proposals. **Baseline:** Kira Desktop 0.15.1, GitHub private branch `feature/kira-studio`, forked from `main` on 2026-10-18.
 **Language convention:** engineering specifications in English; user-facing labels and future guide in Italian.
 **Safety:** no changes to the installed application, service database, package, provider credentials, or existing branches are part of this dossier.
 
