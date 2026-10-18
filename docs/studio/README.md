@@ -1,14 +1,15 @@
 # Kira Studio — design dossier (proposal, not implemented)
 
-**Status:** M1 experimental implementation exists in this branch, **not qualified or installed**. M2–M5 remain proposals. **Baseline:** Kira Desktop 0.15.1, GitHub private branch `feature/kira-studio`, forked from `main` on 2026-10-18.
+**Status:** M1 and a guarded provider gateway are committed as experimental source, **not yet qualified or installed**. Advanced M2 image editing and M3–M5 remain proposals. **Baseline:** Kira Desktop 0.15.1, GitHub private branch `feature/kira-studio`, forked from `main` on 2026-10-18.
 **Language convention:** engineering specifications in English; user-facing labels and future guide in Italian.
 **Safety:** no changes to the installed application, service database, package, provider credentials, or existing branches are part of this dossier.
 
 ## M1 experimental source
 
-The first opt-in poster prototype and its unverified test instructions are
-recorded in [M1_IMPLEMENTED.md](M1_IMPLEMENTED.md). Agent-generated scenes,
-advanced image editing, research visualizers and 3D remain future work.
+The first opt-in poster prototype and its tests are recorded in
+[M1_IMPLEMENTED.md](M1_IMPLEMENTED.md). The separate provider gateway is
+specified in [M2_PROVIDER_BRIDGE.md](M2_PROVIDER_BRIDGE.md).
+Advanced image editing, research visualizers and 3D remain future work.
 
 ## Vision
 
