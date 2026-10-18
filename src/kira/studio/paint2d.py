@@ -86,6 +86,13 @@ def render_png(value: dict) -> bytes:
         painter.end()
     blob = QByteArray()
     buffer = QBuffer(blob)
-    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly) or not image.save(buffer, b"PNG"):
-        raise RuntimeError("Studio PNG encoding failed")
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+        raise RuntimeError("Studio PNG buffer could not be opened")
+    try:
+        # PySide6 accepts a str at runtime for the format argument. Its type
+        # stubs incorrectly require bytes: see the existing attachments encoder.
+        if not image.save(buffer, "PNG"):  # type: ignore[call-overload]
+            raise RuntimeError("Studio PNG encoding failed")
+    finally:
+        buffer.close()
     return bytes(blob.data())
