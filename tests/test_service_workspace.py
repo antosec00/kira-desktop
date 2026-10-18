@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from kira.domain.contracts import KiraError
+from kira.domain.contracts import KiraError, SCHEMA_VERSION
 from kira.domain.paths import Paths
 from kira.service import desktop
 from kira.service.desktop import ACTIONS, Desktop, native_environment
@@ -231,7 +231,7 @@ async def test_diagnostics_export_whitelists_values_and_excludes_content(workspa
     exported = await service.dispatch("diagnostics.export", {})
     data = Path(exported["path"]).read_text()
     assert json.loads(data) == report
-    assert report["database_schema"] == 14 and report["event_schema"] == 1
+    assert report["database_schema"] == SCHEMA_VERSION and report["event_schema"] == 1
     assert report["platform"]["session"] == "unknown"
     assert set(report) == {"app_version", "database_schema", "event_schema", "platform", "service", "actions"}
     assert canary not in data and project["root"] not in data and project["id"] not in data
