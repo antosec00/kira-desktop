@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 IPC_VERSION = 1
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 EVENT_SCHEMA_VERSION = 1
 MAX_FRAME_BYTES = 1_048_576
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "interrupted"})
