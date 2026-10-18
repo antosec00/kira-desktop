@@ -61,6 +61,7 @@ class StudioController(QObject):
     def agentEligible(self) -> bool:
         return (self.workspace.connected
                 and bool(self.workspace.sessionId)
+                and self.workspace.toolsEnabled
                 and self.workspace.project.get("permission")
                 in {"project_write", "trusted_host", "full_access"}
                 and self.workspace.backend in {"codex", "openai_chatgpt", "ollama"})
@@ -243,8 +244,9 @@ class StudioController(QObject):
 
     @Slot(bool)
     def setAgentEnabled(self, value: bool) -> None:
-        if (not self._enabled or not self.agentEligible or type(value) is not bool
-                or value == self._agent_enabled):
+        if (not self._enabled or type(value) is not bool
+                or value == self._agent_enabled
+                or (value and not self.agentEligible)):
             return
         if not value and self._busy:
             self._generation += 1
