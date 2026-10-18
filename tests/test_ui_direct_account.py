@@ -42,6 +42,9 @@ def direct(qapp, tmp_path, monkeypatch):
 
     monkeypatch.setattr(workspace.client, "request", request)
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()) or True)
+    # Synthetic Qt callback, not a real WSL->Windows browser launch.
+    from kira.ui import external_links
+    monkeypatch.setattr(external_links, "_is_wsl", lambda: False)
     workspace.changed.emit()
     yield workspace, workspace.directAccount, requests, opened
     workspace.close()
