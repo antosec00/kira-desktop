@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose an improvement or a new capability for Kira Desktop.
+title: "[Idea]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kira is a harness: it gives models a project, memory, inspectable tools and clear boundaries.
+        Ideas that keep execution recorded, permissions explicit and data private are the easiest to adopt.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem or need
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: How should Kira behave? Which panel, provider or tool is involved?
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Permissions, evidence and privacy
+      description: How does the idea respect project permissions, recorded execution and the user's data?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -2,7 +2,18 @@
 
 This repository contains the native Desktop application. Start with the Italian
 user guide for everyday use; engineering and operational references are English.
-Current desktop: **0.15.1**, with personalized Kira identities and scoped experience.
+Released desktop: **0.15.1** (`main`); development line **0.18.0.dev1**
+(`dev/0.18`) with the quiet interface, the Claude Code and DeepSeek providers
+and Ollama robustness fixes — see the [changelog](../CHANGELOG.md).
+
+## Start here
+
+| You are… | Begin with |
+| --- | --- |
+| New to Kira | [README](../README.md), then the [Italian user guide](USER_GUIDE_IT.md) |
+| Installing or operating it | [Operations](OPERATIONS.md), [Profiles](PROFILES.md), [Platform targets](PLATFORM_TARGETS.md) |
+| Connecting a provider | [Backends](BACKENDS.md), [OpenAI direct](OPENAI_DIRECT.md), [Status](STATUS.md) |
+| Working on the code | [Developer guide](DEVELOPER_GUIDE.md), [Architecture](ARCHITECTURE.md), [Contracts](CONTRACTS.md), [CONTRIBUTING](../CONTRIBUTING.md) |
 The 0.15.1 patch fixes provider tool registration for learning-enabled profiles.
 The [identity contract](KIRA_SOULS.md) defines versioned profiles, learning review
 and compaction continuity. It retains compact public provider reasoning summaries.
@@ -33,12 +44,13 @@ separate environment used for further experimental development.
 | Choose or migrate an application profile | [Profiles](PROFILES.md) |
 | Understand supported local actions and control boundaries | [Control](CONTROL.md) |
 | Build packages and customize the interface | [Build and customization](BUILD_AND_CUSTOMIZATION.md) |
+| Orient yourself in the code, tests and release process | [Developer guide](DEVELOPER_GUIDE.md) |
 | Understand processes, persistence and architectural decisions | [Architecture](ARCHITECTURE.md) |
 | Read canonical IPC, event and permission contracts | [Contracts](CONTRACTS.md) |
 | Configure providers and understand live-test limits | [Backends](BACKENDS.md) |
 | Use a ChatGPT plan directly with Kira | [OpenAI direct](OPENAI_DIRECT.md) |
 | Inspect account limits and recorded consumption | [Account usage](ACCOUNT_USAGE.md) |
-| Automatic direct context, compaction and chat memory | [Direct context](DIRECT_CONTEXT.md) |
+| Provider context compaction and chat memory | [Direct context](DIRECT_CONTEXT.md) |
 | Common identity, selective knowledge and reusable project tools | [Kira identity](KIRA_IDENTITY.md) |
 | Personal profiles, scoped experience and learning review | [Anima di Kira](KIRA_SOULS.md) |
 | Project records, evidence, assessments and agent proposals | [Research registry](RESEARCH_REGISTRY.md) |
@@ -61,6 +73,7 @@ separate environment used for further experimental development.
 | Public provider reasoning summaries | [Reasoning summaries](REASONING_SUMMARIES.md) |
 | Formatted assistant replies | [Markdown](MARKDOWN_OUTPUT.md) |
 | Mascot and compact model controls | [Design](DESIGN_033.md) |
+| Quiet workspace: top bar, sidebar modes, composer chips, inspector tabs | [Design 0.18](DESIGN_018.md) |
 | Activity row, dismissible hint and compact tool groups | [Chat layout](CHAT_LAYOUT.md) |
 | Expandable tool output | [Tool output](TOOL_OUTPUT.md) |
 | File paths, screenshots, paste and drop | [Attachments](ATTACHMENT_INPUT.md) |

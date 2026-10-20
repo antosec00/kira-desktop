@@ -50,3 +50,20 @@ Playwright wheel also contains its upstream driver and accompanying notices.
 Chromium/Chrome for Testing and FFmpeg are downloaded separately by explicit
 user setup; their upstream license/notice files remain in the profile-local
 engine distribution. They are not part of Kira's application source license.
+
+## Added in 0.16–0.18 development
+
+- `playwright` (Apache-2.0) drives Kira's isolated browser; browser engines are
+  installed separately by the user and keep their own licenses.
+- `PyJWT` (MIT) and `wasmtime` (Apache-2.0 WITH LLVM-exception) support the
+  experimental DeepSeek account and web providers.
+- `claude-agent-sdk` (MIT, optional `claude-code` extra, not packaged) drives the
+  locally signed-in Claude Code for the personal-use provider; Claude Code itself
+  is installed and licensed by Anthropic to the signed-in user.
+- `src/kira/backends/deepseek_pow_solver.wasm` is a small Rust-compiled
+  WebAssembly helper that solves the proof-of-work challenge of the experimental
+  DeepSeek Web endpoint. It imports nothing and runs as pure computation inside
+  the wasmtime sandbox; its SHA-256 is pinned in `scripts/check_public_tree.py`.
+  The Rust source and build recipe are not yet part of this repository; they
+  must be added or the module rebuilt from documented source before a public
+  release that includes the DeepSeek Web provider.

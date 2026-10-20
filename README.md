@@ -1,143 +1,168 @@
-# Kira Desktop 0.16.0.dev1 — experimental Studio branch
+<p align="center">
+  <img src="src/kira/ui/assets/kira-mascot.png" alt="Kira, the mascot" width="140">
+</p>
 
-> This branch contains **unqualified development changes** for Kira Studio M1 and its
-> The release description below documents the 0.15.1 baseline. Do not install
-> provider bridge. Do not install it against an active profile. Schema 16 adds
-> new migration and older releases cannot reopen it without a backup.
-> See [Studio prototype](docs/studio/M1_IMPLEMENTED.md) and
-> [Provider bridge](docs/studio/M2_PROVIDER_BRIDGE.md).
+<h1 align="center">Kira Desktop</h1>
 
-A native workspace for AI projects, conversations and collaborating agents.
-Kira connects a Qt desktop interface to an independent user service, with
-persistent chats, explicit permissions and inspectable execution records.
-Closing the window leaves active work running while the user session and service
-remain available.
+<p align="center">
+  A native desktop harness that amplifies the AI models you already use.<br>
+  Projects, chats, tools, an isolated browser and collaborating agents — with your permissions, your data, on your machine.
+</p>
 
-This release includes [personalized Kira identities](docs/KIRA_SOULS.md): named
-profiles, a compact working philosophy, scoped experience, source-linked learning
-suggestions and reversible revisions. The 0.15.1 patch fixes tool registration
-for learning-enabled profiles across the shared provider bridge and Codex MCP.
+<p align="center">
+  <a href="README.it.md">🇮🇹 Leggi in italiano</a> ·
+  <a href="docs/USER_GUIDE_IT.md">Guida utente</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="docs/STATUS.md">Status</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-[Autonomous objectives](docs/AUTONOMOUS_GOALS.md) continue explicitly authorized
-work across cycles with durable checkpoints. [Live conversation](docs/LIVE_CONVERSATION.md)
-lets users send guidance at a safe boundary, converse while a Team works and
-receive Team results in the originating chat. [Public reasoning summaries](docs/REASONING_SUMMARIES.md)
-show provider-supplied summaries where supported; private reasoning stays opaque.
+<p align="center">
+  <img alt="Version 0.18.0.dev1" src="https://img.shields.io/badge/version-0.18.0.dev1-e0a06a">
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776ab">
+  <img alt="Qt 6 / PySide6" src="https://img.shields.io/badge/Qt-6.11%20%7C%20PySide6-41cd52">
+  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue">
+</p>
 
-The interface retains compact tool receipts, scoped consultation panels, an
-[integrated browser and Kira Computer](docs/WEB_BROWSER.md), reusable project tools
-and the [project registry with linked evidence](docs/RESEARCH_REGISTRY.md).
-Research sharing is optional and initially disabled for each project.
-[Qualification and limits](docs/STATUS.md).
+![Kira Desktop: a project chat with Claude Code, tool receipts and the composer](docs/images/chat-dark.png)
 
-This repository contains the application, tests, packaging and documentation.
-[Source and user profiles](docs/PROFILES.md) explains how application code and
-private user data are managed separately.
+## What Kira is
 
-## Start
+Kira is not another chat window. It is a **harness**: a durable workspace that
+gives a model a project, a memory, a set of inspectable tools and clear
+boundaries, so that the model you choose — local or hosted — can do more, more
+safely, and you can always see what happened.
 
-After installing the package for your Ubuntu version, launch `kira-desktop`
-from the terminal or **Kira Desktop** from the application menu. On WSL, a
-working graphical session such as WSLg is required.
+- **The model reasons; Kira executes.** File reads, writes, commands, web pages
+  and browser actions run in an independent user service with the permission you
+  chose for the project. Every operation leaves a receipt in the chat.
+- **Nothing leaves your machine without you.** Projects, chats, run events,
+  screenshots and attachments live in SQLite and private folders under your own
+  profile. Credentials stay with the provider's official sign-in; Kira never
+  reads or stores them.
+- **Bring your own model.** Ollama on your computer, OpenAI Codex, a ChatGPT
+  plan, DeepSeek, or your own Claude Code sign-in — switch provider inside the
+  same chat and keep the conversation.
 
-For a development checkout on Ubuntu 24.04/Python 3.12, install `uv`, open a
-terminal in the checkout root (where `pyproject.toml` is located), then run:
+## Highlights
+
+- **Projects and named chats** with instructions, memory, per-chat provider and
+  reasoning settings, drafts that survive restarts, image attachments with previews.
+- **Tools with receipts.** Reading, searching, writing, running commands, web
+  search, browsing: each call shows its literal target and recorded outcome,
+  expandable to the original data.
+- **An isolated browser and “Kira Computer”.** The agent browses in a sandboxed
+  profile beside the chat, takes screenshots it can actually see, and hands
+  control back to you for logins and consent.
+- **Teams of agents** organised by you or by a coordinator, with durable messages,
+  pause/resume and results delivered back into the originating chat.
+- **Research registry.** Attributed records, evidence links, assessments and
+  agent proposals that you accept or reject — knowledge that survives the chat.
+- **Anima di Kira.** User-owned identities with a working philosophy, scoped
+  experience and reviewable learning.
+- **Persistent questions, autonomous objectives, live guidance** while a run is
+  in progress, and public reasoning summaries where a provider offers them.
+- **A quiet interface.** One top bar, a sidebar you can shrink to icons or hide,
+  chips in the composer, side panels with inspector tabs, light and dark themes,
+  Italian and English.
+
+<p align="center">
+  <img src="docs/images/model-popover.png" alt="Provider, model and reasoning popover with the sidebar collapsed to icons" width="48%">
+  <img src="docs/images/models.png" alt="Models page with provider segments and model cards" width="48%">
+</p>
+
+## Providers
+
+| Provider | How it connects | Notes |
+| --- | --- | --- |
+| **Ollama** | Local HTTP API (`http://127.0.0.1:11434` by default) | No automatic downloads. Tools are verified before first use; context presets per chat. |
+| **Codex** | Managed OpenAI Codex App Server with the official sign-in | Native agent tools, observed and recorded by Kira. |
+| **OpenAI direct · ChatGPT** | Your ChatGPT plan through the official sign-in | Kira-owned tool loop, image inputs, automatic context management. |
+| **DeepSeek Account** | PKCE account flow (experimental) | Messages adapter with Kira's tool loop. |
+| **DeepSeek Web** | Session token to the web endpoint (experimental) | Kira-mediated tools; see [Backends](docs/BACKENDS.md) for limits. |
+| **Claude Code · personal use** | Your locally signed-in Claude Code through the Agent SDK (optional extra) | Built-in tools observed by Kira; Kira's browser, Computer, questions and research through an in-process MCP server. Not packaged; for the signed-in user's own work only. |
+
+Providers are chosen per chat in **Modelli**. [Backends](docs/BACKENDS.md)
+describes each connection, its verification status and known limits.
+
+## Quick start
+
+Kira runs on Ubuntu 24.04 (Python 3.12) and Ubuntu 26.04 (Python 3.14),
+natively or under WSL2 with WSLg. KDE Plasma/Wayland is the reference desktop.
+
+**From a checkout** (recommended while 0.18 is in development):
 
 ```sh
-uv sync --frozen
+# 1. Install uv (https://docs.astral.sh/uv/) and clone the repository
+git clone https://github.com/antosec00/kira-desktop-app.git
+cd kira-desktop-app
+
+# 2. Install the locked dependencies (add the Claude Code extra if you want it)
+uv sync --frozen                     # or: uv sync --frozen --extra claude-code
+
+# 3. Launch
 uv run kira-desktop
 ```
 
-Choose the project folder in the interface; launching the application does not
-create a project from the shell's working directory. Application data follows
-the user's XDG config/data/state/runtime paths, independently of the checkout.
-Set an absolute `KIRA_HOME` to select a separate profile for development or
-testing. Keep experimental builds separate from an active user store.
-[Startup, data paths and recovery](docs/OPERATIONS.md).
+On first launch the onboarding guide opens. Create a project by choosing a
+folder, pick a provider and model in **Modelli**, and write your first request.
+The [Italian user guide](docs/USER_GUIDE_IT.md) walks through every panel.
 
-Existing older profiles upgrade to schema 14 after a consistent database backup.
-The 0.15.1 patch adds no migration beyond 0.15.0.
-Before upgrading, finish active work and follow the full profile backup and
-shutdown procedure in [Operations](docs/OPERATIONS.md#package-installation-and-upgrades).
-Returning to an earlier application requires its code and a compatible profile backup.
-Provider account configuration requires separate consideration; `KIRA_HOME`
-does not isolate Codex credentials or shared-account allowance.
+**Native packages.** `python3 scripts/build_deb.py` builds the Ubuntu 24.04
+package (`--target resolute` for 26.04); `scripts/check_deb.py` qualifies it.
+[Platform targets](docs/PLATFORM_TARGETS.md) and
+[Operations](docs/OPERATIONS.md) cover installation, data paths, profiles,
+backups and upgrades. Keep experimental builds on a separate `KIRA_HOME`.
 
-## What is included
+## Safety and your data
 
-- Projects with separate named chats, provider sessions, instructions and memory.
-- Multiple [personalized identities](docs/KIRA_SOULS.md), compact per-turn context,
-  scoped experience, source inspection, usefulness feedback and revision rollback.
-- A shared Kira identity and scoped knowledge search/read, with an inspectable
-  project tool library. Python tool revisions require declared tests and current
-  trusted-host permission before execution; no implicit dependency installation.
-- Codex App Server, Ollama, and [direct ChatGPT plan access](docs/OPENAI_DIRECT.md)
-  with official sign-in and a Kira-owned tool loop. Kira downloads no models automatically.
-- Manual or coordinator-organized teams with Codex or OpenAI direct, durable messages and run evidence.
-- A service-aware Kira assistant that delegates from chat and receives Team results
-  in the original conversation, with scoped controls and explicit recovery.
-- Persistent structured questions with choices and free answers.
-- [Automatic direct context](docs/DIRECT_CONTEXT.md), persistent compaction, important notes and recovery from original chat records.
-- [Project research](docs/RESEARCH_REGISTRY.md): attributed records, source links,
-  correction history, explicit assessments, file rechecks and optional agent proposals.
-- [Provider changes in the same chat](docs/PROVIDER_CONTINUITY.md), preserving the conversation and separate provider settings.
-- [Real image attachments](docs/IMAGE_ATTACHMENTS.md) with previews for OpenAI direct, plus explicit file references for other providers.
-- Markdown responses, expandable tool output, persistent drafts and attachment previews.
-- [Web research and an integrated browser](docs/WEB_BROWSER.md) beside the chat,
-  with live navigation, isolated profiles and explicit agent/user control handoff.
-- [Kira Computer](docs/WEB_BROWSER.md#kira-computer-visual-tools): screenshot-based
-  mouse/keyboard actions, fresh-view checks and verified visual results.
-- [Account usage](docs/ACCOUNT_USAGE.md) with reported Codex limits/credits and separate local consumption, plus readable resource cards.
-- Project-only context excerpts, bounded to five other ordinary chats and 6000
-  characters, inspectable and optional. This is not a filesystem sandbox.
-- On-demand details/model controls, text size, reduced motion and close preferences.
-- Configurable appearance and a live Italian/English interface, with extensible local language catalogs.
-- Quick actions, project file search, persistent composer drafts and reusable sent-message history.
-- A durable editable queue, guidance delivered at supported turn boundaries, and read-only planning, review and recap modes.
-- Explicit autonomous `/obiettivo`, `/obbiettivo` or `/goal` commands, durable progress,
-  pause/resume and optional cycle limits; completion remains evidence-based.
-- Archived chats, native or copied-context branches, full Markdown chat export and explicit chat objectives.
-- Bounded Git changes previews and a separate, provider-dependent context-compaction action.
-- Durable activity, explicit cancellation, reconnect, export and SQLite backup.
+- **Permissions are per project:** read-only, project write, trusted host
+  (commands as your user) or full filesystem access. Nothing escalates silently;
+  [Control](docs/CONTROL.md) and [Full access](docs/FULL_ACCESS.md) define the boundary.
+- **Execution is recorded.** Durable run events establish what happened; model
+  narration never does. Failed or unconfirmed tools stay visible.
+- **Browser isolation.** Public pages are untrusted data, never instructions.
+  Logins and consent require you; profiles are isolated per chat unless you opt in.
+- **Private by default.** XDG paths or an explicit `KIRA_HOME`, 0600 files, a
+  private Unix socket between GUI and service, no telemetry.
 
-Permission modes are read-only, project-write, trusted-host and explicit
-[full access](docs/FULL_ACCESS.md). Full access permits file tools outside the
-project under the current OS user, without administrator privileges. Trusted-host
-commands act as the user; a project directory alone is not isolation. Kira never
-re-executes observed Codex tool notifications. Unfinished work is recovered as
-interrupted and requires explicit continuation. Service restart pauses queued
-dispatch until the user resumes it. A chat branch preserves its source conversation;
-it does not restore project files. [Chat controls](docs/WORKBENCH.md).
-
-## Build and verify
-
-```sh
-QT_QPA_PLATFORM=offscreen uv run pytest tests -q
-uv run ruff check src tests scripts packaging
-uv run mypy src
-python3 scripts/check_public_tree.py
-python3 scripts/check_translations.py
-python3 scripts/build_deb.py
-python3 scripts/check_deb.py dist/kira-desktop_0.15.1_amd64.deb --target noble
-```
-
-The separate Ubuntu 26.04/Python 3.14 artifact uses `--target resolute` and
-`dist/resolute/`. Never interchange the two native ABI packages.
-[Build instructions](docs/BUILD_AND_CUSTOMIZATION.md),
-[platform matrix](docs/PLATFORM_TARGETS.md), [qualification](docs/STATUS.md).
-
-Install a matching package with `sudo apt install --no-remove ./PACKAGE.deb`,
-then launch `kira-desktop`. Before an upgrade pause pending queues, finish active work, create a
-consistent backup, close the GUI and use `kira-desktop stop-service` with the
-current client and profile. Package removal preserves user data.
+See [SECURITY.md](SECURITY.md) for reporting and the threat model summary.
 
 ## Documentation
 
-[Documentation index](docs/README.md) · [Guida italiana](docs/USER_GUIDE_IT.md) ·
-[Operations](docs/OPERATIONS.md) · [Architecture](docs/ARCHITECTURE.md) ·
-[Contracts](docs/CONTRACTS.md) · [Providers](docs/BACKENDS.md).
+| If you want to… | Read |
+| --- | --- |
+| Use Kira day to day (Italian) | [Guida utente](docs/USER_GUIDE_IT.md) |
+| Install, back up, upgrade, choose a profile | [Operations](docs/OPERATIONS.md), [Profiles](docs/PROFILES.md), [Platform targets](docs/PLATFORM_TARGETS.md) |
+| Connect a provider | [Backends](docs/BACKENDS.md), [OpenAI direct](docs/OPENAI_DIRECT.md) |
+| Understand what is verified and what is not | [Status](docs/STATUS.md) |
+| Work on the code | [Developer guide](docs/DEVELOPER_GUIDE.md), [Architecture](docs/ARCHITECTURE.md), [Contracts](docs/CONTRACTS.md), [Build and customization](docs/BUILD_AND_CUSTOMIZATION.md) |
+| Browse every feature contract | [Documentation index](docs/README.md) |
 
-Current qualification and remaining limits are in [STATUS](docs/STATUS.md).
-Private installation reports are excluded from this repository; see
-[evidence policy](docs/evidence/README.md). License: [MIT](LICENSE), with preserved
-[third-party notices](docs/THIRD_PARTY_NOTICES.md).
+## Development
+
+```sh
+uv sync --frozen --extra claude-code
+QT_QPA_PLATFORM=offscreen uv run pytest tests      # full synthetic suite
+uv run ruff check src tests scripts packaging
+uv run mypy src
+python3 scripts/check_translations.py
+python3 scripts/check_public_tree.py
+```
+
+Synthetic tests are not live-provider evidence; [Status](docs/STATUS.md) keeps
+the two apart. [CONTRIBUTING.md](CONTRIBUTING.md) explains branches, commits,
+documentation languages and the review checklist.
+
+## Project status
+
+`main` holds one reviewed snapshot of the current release (0.15.1).
+`dev/0.18` is the active development line: the 0.18 interface, the Claude Code
+and DeepSeek providers and the Ollama robustness fixes. Development versions are
+marked `.devN` and must not be installed over an active user profile.
+
+## License
+
+Kira Desktop is released under the [MIT License](LICENSE). Bundled and linked
+third-party components keep their own licenses; see
+[Third-party notices](docs/THIRD_PARTY_NOTICES.md).
