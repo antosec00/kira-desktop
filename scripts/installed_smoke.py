@@ -225,29 +225,28 @@ def main():
         assert not image.isNull() and image.hasAlphaChannel()
         assert image.pixelColor(0, 0).alpha() == 0
         assert hashlib.sha256(asset.read_bytes()).hexdigest() == hashlib.sha256(menu_icon.read_bytes()).hexdigest()
-        panel = window.findChild(QObject, "modelControlsExpanded")
+        popover = window.findChild(QObject, "modelPopover")
         toggle = window.findChild(QObject, "modelControlsToggle")
         conversation = window.findChild(QObject, "conversation")
-        assert panel is not None and toggle is not None and conversation is not None
+        assert popover is not None and toggle is not None and conversation is not None
         selected = (workspace.backend, workspace.selectedModel, workspace.selectedEffort, workspace.sessionId)
-        workspace.setModelControlsVisible(False)
         QTest.qWait(30)
         collapsed = conversation.property("height")
-        assert not panel.property("visible") and toggle.property("text") == "Mostra"
+        assert not popover.property("visible")
         QMetaObject.invokeMethod(toggle, "clicked")
         QTest.qWait(30)
-        assert panel.property("visible") and workspace.modelControlsVisible
-        gain = collapsed - conversation.property("height")
-        assert gain >= 80
+        # The 0.18 options float over the conversation instead of taking its space.
+        assert popover.property("visible")
+        assert abs(collapsed - conversation.property("height")) < 1
         QMetaObject.invokeMethod(toggle, "clicked")
         QTest.qWait(30)
-        assert not workspace.modelControlsVisible
+        assert not popover.property("visible")
         assert selected == (workspace.backend, workspace.selectedModel, workspace.selectedEffort, workspace.sessionId)
         saved = json.loads((workspace.paths.config / "ui.json").read_text())
-        assert saved["model_controls_visible"] is False
+        assert saved.get("model_controls_visible", False) is False
         return {"available": True, "window_icon": True, "transparent_mascot": True,
                 "menu_icon_matches": True, "show_hide_persisted": True,
-                "chat_height_gain": gain, "model_and_session_unchanged": True}
+                "popover_keeps_chat_height": True, "model_and_session_unchanged": True}
 
     def verify_markdown():
         renderer = engine.rootContext().contextProperty("markdownRenderer")
@@ -529,9 +528,12 @@ def main():
 
     def verify_popup():
         was_visible = getattr(workspace, "modelControlsVisible", True)
-        if hasattr(workspace, "setModelControlsVisible"):
+        popover = window.findChild(QObject, "modelPopover")
+        if popover is not None:
+            QMetaObject.invokeMethod(popover, "open")
+        elif hasattr(workspace, "setModelControlsVisible"):
             workspace.setModelControlsVisible(True)
-            QTest.qWait(30)
+        QTest.qWait(30)
         combo = window.findChild(QObject, "backendBox")
         assert combo is not None
 

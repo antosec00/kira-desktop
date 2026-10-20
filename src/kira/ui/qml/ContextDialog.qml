@@ -21,7 +21,7 @@ KiraPanel {
         spacing: 10
         RowLayout {
             Layout.fillWidth: true
-            ReadText { objectName: "contextMode"; text: chatContext.directContext ? qsTr("Automatico — massimo disponibile") : qsTr("Note e fonti della chat"); Layout.fillWidth: true; color: appearance.colors.accent }
+            ReadText { objectName: "contextMode"; text: workspace.backend === "deepseek_account" ? qsTr("Automatico — compattazione Kira") : chatContext.directContext ? qsTr("Automatico — massimo disponibile") : qsTr("Note e fonti della chat"); Layout.fillWidth: true; color: appearance.colors.accent }
             KButton { objectName: "contextRefresh"; text: qsTr("Aggiorna"); enabled: chatContext.available; onClicked: chatContext.refresh() }
         }
         ReadText { objectName: "contextStatus"; text: chatContext.busy ? qsTr("Preparazione o compattazione in corso…") : chatContext.report.status; Layout.fillWidth: true; color: appearance.colors.muted }
@@ -56,7 +56,7 @@ KiraPanel {
                 }
                 ReadText { visible: chatContext.directContext; text: qsTr("Compattazione"); font.bold: true; color: appearance.colors.accent; Layout.fillWidth: true }
                 ReadText { objectName: "contextCompactionInfo"; visible: chatContext.directContext; text: qsTr("Ultima compattazione: %1\nCompattazioni: %2\nMetodo: %3").arg(chatContext.report.last_compacted).arg(chatContext.report.compaction_count).arg(chatContext.report.method); Layout.fillWidth: true }
-                ReadText { visible: chatContext.directContext; text: qsTr("Kira compatta automaticamente prima di esaurire il contesto. Compatta ora può usare il piano collegato e richiedere tempo. I messaggi originali restano conservati."); color: appearance.colors.muted; Layout.fillWidth: true }
+                ReadText { visible: chatContext.directContext; text: qsTr("Kira compatta automaticamente prima di esaurire il contesto. La sintesi usa il provider selezionato e può richiedere tempo o quota. I messaggi originali restano conservati."); color: appearance.colors.muted; Layout.fillWidth: true }
                 KButton { objectName: "contextCompact"; text: qsTr("Compatta ora"); visible: chatContext.directContext; enabled: chatContext.canEdit; onClicked: chatContext.compact() }
                 ReadText { text: qsTr("Note importanti della chat"); font.bold: true; color: appearance.colors.accent; Layout.fillWidth: true }
                 ReadText { text: qsTr("Le tue note restano separate dalla sintesi automatica e vengono incluse nel contesto. Conserva qui vincoli e dettagli che vuoi tenere sempre presenti."); color: appearance.colors.muted; Layout.fillWidth: true }

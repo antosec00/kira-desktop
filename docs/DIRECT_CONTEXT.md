@@ -1,4 +1,4 @@
-# OpenAI direct context and chat memory
+# Provider context compaction and chat memory
 
 Kira maintains a private working context for each direct chat, provider generation,
 account and model. Original messages, questions, tool observations and image assets
@@ -126,7 +126,10 @@ maintenance unknown and does not automatically repeat it.
 ## Important information and original sources
 
 Desktop 0.10.0 makes explicit pinned chat notes available to all ordinary chat
-providers. Only OpenAI direct uses this document's automatic compaction contract.
+providers. OpenAI direct uses the provider's native Responses compaction when
+available, with a Kira-managed structured fallback. The experimental DeepSeek
+account provider uses Kira-managed structured compaction over its Messages
+route; DeepSeek server-side automatic compaction is not assumed.
 The common knowledge gateway retrieves original sources and the latest readable
 summary with provenance; it never transfers encrypted provider-private state.
 
@@ -182,6 +185,39 @@ planning measurements may precede the newest response; they are not a live meter
 of the complete next request. It provides **Context and memory**,
 **Compact now**, important notes and paginated original sources. Current model,
 account, project permissions and reasoning effort are preserved.
+
+## DeepSeek account compaction
+
+DeepSeek compaction is managed by Kira; it does not send OpenAI's unsupported
+`context_management` parameter or assume the provider will shorten history.
+Before each Messages request, Kira estimates the complete system, tool and chat
+envelope. It calibrates the estimate against DeepSeek's reported input-token
+usage after a response. The default pressure boundary is the lower of 80% of
+the selected model window and the window minus the request output cap and
+65,536 tokens of headroom. The compactor folds old complete chat runs and keeps
+at least the newest 16% of the usable window verbatim. If model metadata comes
+from Kira's fallback catalog, Kira caps the working window at 256K and labels
+that capacity unverified.
+
+The summarizer uses the selected DeepSeek model and account with thinking and
+tools disabled. It summarizes bounded batches of old history, validates source
+references, and commits a checkpoint only when the result reduces the working
+context. Oversized recorded tool results may be shortened in the working view;
+their original source remains in Kira history and can be read with
+`kira_history.read`. Historical tool calls are represented as inert text and are
+never executed again. Recent messages, Kira instructions and current-turn tool
+effects stay outside the summary. The original event archive is unchanged.
+
+DeepSeek reports usage after inference rather than providing Kira a preflight
+token count on this Messages route, so the panel distinguishes calibrated
+estimates from measured usage. Normal DeepSeek responses are capped locally at
+65,536 generated tokens (or the smaller catalog/byte limit); maintenance summaries
+use an 8,192 token cap. If a bounded HTTP 400/413 response explicitly
+identifies context capacity, Kira may compact once and retry that rejected
+request. Other errors and uncertain outcomes are never retried. A too-large
+indivisible history run or current request can still fail; Kira retains the
+prior checkpoint and original records. Manual **Compact now** uses the same
+Kira-managed path while the chat is idle.
 
 ## Qualification and future work
 

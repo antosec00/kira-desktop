@@ -179,11 +179,12 @@ def test_links_only_open_on_explicit_click(workspace, ui, monkeypatch, qtbot, tm
     qtbot.waitUntil(lambda: not workspace._jobs)
 
 
-@pytest.mark.parametrize("target", ["javascript:alert(1)", "data:text/html,test", "ftp://example.invalid/file", "https://name:secret@example.invalid/", "file://remote/share/file", "//remote/file", "../outside.txt", "missing.txt", "launch.desktop", "script.sh", "app.AppImage", "executable.txt", "binary", "symlink.txt", "."])
+@pytest.mark.parametrize("target", ["javascript:alert(1)", "data:text/html,test", "ftp://example.invalid/file", "https://name:secret@example.invalid/", "file://remote/share/file", "//remote/file", "../outside.txt", "missing.txt", "launch.desktop", "script.sh", "app.AppImage", "report.hta", "Shortcut.LNK", "site.url", "executable.txt", "binary", "symlink.txt", "."])
 def test_message_link_rejects_non_document_targets(workspace, monkeypatch, qtbot, tmp_path, target):
     opened = []
     monkeypatch.setattr("kira.ui.controller.QDesktopServices.openUrl", lambda url: opened.append(url) or True)
-    for name in ("launch.desktop", "script.sh", "app.AppImage", "executable.txt"):
+    for name in ("launch.desktop", "script.sh", "app.AppImage", "report.hta", "Shortcut.LNK", "site.url",
+                 "executable.txt"):
         (tmp_path / name).write_text("synthetic")
     (tmp_path / "executable.txt").chmod(0o700)
     (tmp_path / "binary").write_bytes(b"\x7fELFsynthetic")

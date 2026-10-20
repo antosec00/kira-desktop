@@ -203,3 +203,14 @@ async def test_recovery_keeps_saved_queue_images_but_requires_resume(runtime):
         assert contexts[0].image_inputs
     finally:
         await restored.close()
+
+
+async def test_claude_code_accepts_image_queue_like_the_direct_providers(runtime):
+    service, _, project, _, _ = runtime
+    session = (await service.dispatch("session.create", {"project_id": project["id"],
+                "backend": "claude_code", "model": "sonnet"}))["session"]
+    added = await service.dispatch("queue.add", {**params(runtime), "session_id": session["id"]})
+    rows = service.store.all("SELECT * FROM prompt_queue")
+    assert len(rows) == 1 and rows[0]["session_id"] == session["id"]
+    assert service.image_inputs.linked("queue", rows[0]["id"]) == params(runtime)["attachments"]
+    assert added

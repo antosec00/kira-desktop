@@ -16,8 +16,9 @@ evidence semantics are unchanged.
 [Autonomous goals](AUTONOMOUS_GOALS.md) governs explicitly armed multi-cycle
 objectives, durable checkpoints, service provenance and recovery. The migration
 is additive and never starts an existing manual goal.
-[Direct context](DIRECT_CONTEXT.md) defines the narrow no-tool compaction
-recovery path; ordinary inference validation and replay policy remain strict.
+[Direct context](DIRECT_CONTEXT.md) defines provider-specific automatic and
+explicit Kira-managed context compaction; ordinary inference validation and
+replay policy remain strict.
 [Chat layout](CHAT_LAYOUT.md) defines the visual status mappings and motion
 boundaries; those retained visual refinements do not change execution permissions.
 [Full access](FULL_ACCESS.md) defines the fourth permission and the targeted
@@ -83,9 +84,10 @@ Methods and params:
   expose persistent information questions separately from permissions. See
   [question contracts](INPUT_QUESTIONS.md#ipc-and-events) for full forms,
   pagination, delivery evidence, bounds and recovery.
-- `backend.discover {backend:ollama|codex|openai_chatgpt,account_id?}` -> provider catalog.
+- `backend.discover {backend:ollama|codex|openai_chatgpt|deepseek_account,account_id?}` -> provider catalog.
 - `backend.usage {backend:codex|openai_chatgpt|ollama,account_id?}` reads reported account limits or attributed local measurements. It does not run a model or change billing. See [Account usage](ACCOUNT_USAGE.md).
-- `backend.login {backend:codex|openai_chatgpt,account_id?}` -> official login information. Direct account operations and private credential storage are defined in [OpenAI direct](OPENAI_DIRECT.md); auth payloads never enter application events or SQLite.
+- `backend.login {backend:codex|openai_chatgpt|deepseek_account,account_id?}` -> provider login information. Direct account operations and private credential storage are defined in [OpenAI direct](OPENAI_DIRECT.md) and the experimental DeepSeek account provider; auth payloads never enter application events or SQLite.
+- `backend.account {backend:deepseek_account,action:status|login|cancel|logout}` manages the experimental DeepSeek Harness account grant; credentials remain in the private profile, outside SQLite.
 - `settings.get {}` / `settings.update {ollama_url?,codex_binary?,tool_timeout?,max_output_bytes?,max_tool_rounds?}` -> `{settings}`; no automatic endpoint/model changes or weight downloads.
 - `system.resources {}` -> `{memory:object,gpus:[],platform:object}`; unknown values are null.
 - `project.export {project_id}` -> `{text:string}` for small exports, otherwise `{path,format:'json',bytes}` pointing to a complete private export under the service data directory. Client copies it asynchronously to the chosen file-dialog destination; no transcript truncation.
@@ -110,9 +112,19 @@ and interrupted partial content can be reconstructed independently.
 
 ## Providers
 
-Shared executable definitions: `src/kira/domain/contracts.py`. Implement `OllamaBackend` in `backends/ollama.py`, constructor `(endpoint: str = 'http://127.0.0.1:11434')`; `CodexBackend` in `backends/codex.py`, constructor `(binary: str = 'codex')`. Each implements `discover()->dict`, `run(RunContext)->dict`, `close()`. Optional Codex `login()->dict`. Run returns `{state:'completed'|'cancelled'|'failed'|'interrupted',outcome?:object,error?:string}`; exceptions are failures, loss of confirmation is interrupted. Cancellation uses `ctx.cancel`; runtime also cancels task after a bounded grace period.
+Shared executable definitions: `src/kira/domain/contracts.py`. Implement `OllamaBackend` in `backends/ollama.py`, constructor `(endpoint: str = 'http://127.0.0.1:11434')`; `CodexBackend` in `backends/codex.py`, constructor `(binary: str = 'codex')`. The experimental `deepseek_account` backend uses `DeepSeekAccountBackend` and service-owned `DeepSeekAccounts`. Each implements `discover()->dict`, `run(RunContext)->dict`, `close()`. Optional Codex `login()->dict`. Run returns `{state:'completed'|'cancelled'|'failed'|'interrupted',outcome?:object,error?:string}`; exceptions are failures, loss of confirmation is interrupted. Cancellation uses `ctx.cancel`; runtime also cancels task after a bounded grace period.
 
 Discovery `{available:bool,models:[{id,name,capabilities:object,...}],capabilities:object,account?:object,error?:string}`. Capability keys: `streaming,tools,cancellation,resume,usage,images,context_controls`; unverified tools are false or clearly marked metadata-only. No automatic model switch. `ctx.session.settings` contains explicit `reasoning_effort`, `num_ctx`, `tools` etc.; `ctx.session.backend_ref` belongs ONLY to its provider. Providers emit `session.updated` when a ref is obtained. `ctx.history` is portable messages with roles/content; Ollama provider may persist full message/tool fields in completed event payload. `ctx.supplied_context` is inspectable memory/instructions; Codex should append this to each turn as Kira-supplied context.
+
+The experimental DeepSeek account provider follows the first-party Harness PKCE
+account exchange and uses the DeepSeek Messages wire format. It receives the
+same `RunContext` service callbacks as Ollama. Internal thinking blocks are
+discarded; no raw provider reasoning enters Kira events.
+DeepSeek context compaction is Kira-managed: the durable archive/checkpoint
+callbacks are provider/account/model-generation scoped, summaries use the
+selected Messages model without tools or thinking, and the original event archive
+is unchanged. Provider `context_controls` advertises this Kira interface; it
+does not claim native server compaction.
 
 Runtime supplies `ctx.execute_tool(name,args)` (handles event persistence, IDs, permissions and artifacts), `ctx.emit(type,payload)`, and `ctx.approve(request)` (persists request and waits for a correlated GUI decision). Tool names: `list_files {path?:'.'}`, `search_files {query,path?:'.'}`, `read_file {path}`, `write_file {path,content,expected_sha256?:string|null}` (null means create-only), `run_command {argv:string[],timeout?:number}`. Results `{ok:bool,...}`; structured `{ok:false,error:{code,message}}` on rejected input. Reading provides sha256; writes require expected hash for existing content; exec has explicit argv, cwd=root, no implicit shell. Process groups belong to Kira; timeout/cancel terminate descendants with bounded escalation.
 
@@ -189,6 +201,18 @@ model/session controls remain instantiated, and no IPC request or run change is
 triggered. [DESIGN_033.md](DESIGN_033.md) records appearance and icon packaging.
 Database schema3, IPC1 and provider execution contracts remain unchanged.
 
+## Workspace chrome (Desktop 0.18)
+
+`sidebar_mode` (`full`, `rail`, `hidden`; default `full`) and `tool_labels`
+(boolean, default false) are GUI-only preferences persisted privately in ui.json
+with the same validation, atomic write and size/symlink safeguards as the other
+preferences. Changing them alters presentation only. `model_controls_visible`
+keeps its storage; it now opens the composer's model popover when a chat is
+shown. The Models page exposes `providerState` (`pending`, `error`, `warning`,
+`ok`) derived from the same catalog and account data as `providerText`.
+[DESIGN_018.md](DESIGN_018.md) records the layout. IPC, schema and provider
+execution contracts remain unchanged.
+
 ## Compact tool output (Desktop 0.3.4)
 
 Preview and expansion are transient GUI model roles, never persisted events.
@@ -257,11 +281,14 @@ the existing matching-version handshake applies to 0.3.10.
 
 ## In-place model selection and batched history (Desktop 0.4.1)
 
-`session.configure {project_id, session_id, model, reasoning_effort?}` returns
+`session.configure {project_id, session_id, model, reasoning_effort?, num_ctx?, think?}` returns
 `{session}` for an owned, ordinary, non-archived chat. It preserves the session
 ID, backend, native thread reference, recorded events, title and unrelated
 settings. Omitted effort preserves its value; an empty string selects the provider
-default. Backend changes still create a separate session.
+default. For Ollama, `num_ctx` updates the requested context in place; zero
+removes the override and restores the model's provider default. `think` accepts
+the Ollama boolean/string values or null to restore its model default. Backend
+changes still create a separate session.
 
 Configuration requires idle state, including overlapping project reservations,
 owned native operations and unfinished queued prompts (even a paused queue).
@@ -360,9 +387,11 @@ readable Team summaries plus the retained canonical event evidence.
 
 [OpenAI direct](OPENAI_DIRECT.md) defines the official subscription OAuth flow,
 account-bound sessions, additional account IPC, Responses transport and local
-tool execution. `openai_chatgpt` is accepted alongside existing backend IDs;
-Team accepts Codex and OpenAI direct. Schema 5 and IPC/event envelopes 1 remain
-unchanged. The matching-version handshake applies to 0.6.
+tool execution. `openai_chatgpt` is accepted alongside existing backend IDs.
+At Desktop 0.6, Team accepted Codex and OpenAI direct. The current experimental
+source also accepts Ollama and DeepSeek Account for coordinator and member runs,
+subject to each model's verified tool capability. Schema 5 and IPC/event
+envelopes 1 remain unchanged in that historical release section.
 
 ## Provider continuity and images
 

@@ -163,7 +163,7 @@ def test_integrated_usage_human_and_raw_views(view, qtbot):
     workspace._usage = {"source": "codex", "scope": "last_request", "input_tokens": 1200,
                         "output_tokens": 200, "total_tokens": 1400}
     workspace.changed.emit()
-    click(window, button(window, "Uso"))
+    click(window, named(window, "chatUsageButton"))
     qtbot.wait(60)
     assert not named(window, "usageRawText").isVisible()
     assert evaluate(window, "metricsDialog.summary.cards[0].rows[3].value") == "1.400"

@@ -59,12 +59,12 @@ def test_destroyed_appearance_cancels_queued_portal_start(
 
 
 def test_defaults_and_real_font_catalog_preserve_original_theme(appearance):
-    assert appearance.dark and appearance.fullWidth and appearance.pointerCursors
+    assert appearance.dark and not appearance.fullWidth and appearance.pointerCursors
     assert not appearance.reduceMotion
     assert appearance.values["motion"] == "off"
-    assert appearance.colors["background"] == "#161a1d"
-    assert appearance.colors["text"] == "#e7ece9"
-    assert appearance.colors["accent"] == "#8ab4f8"
+    assert appearance.colors["background"] == "#15181b"
+    assert appearance.colors["text"] == "#e9ecef"
+    assert appearance.colors["accent"] == "#e0a06a"
     assert [font.pixelSize() for font in (appearance.uiFont, appearance.contentFont, appearance.codeFont)] == [13, 14, 12]
     assert appearance.uiFont.family() == "Noto Sans"
     assert appearance.contentFont.family() == appearance.uiFont.family()
@@ -74,7 +74,7 @@ def test_defaults_and_real_font_catalog_preserve_original_theme(appearance):
     values, style, colors = appearance.values, appearance.style, appearance.colors
     values["ui_size"], style["accent"], colors["text"] = 99, "unsafe", "unsafe"
     assert appearance.values["ui_size"] == 13 and appearance.style["accent"] == ""
-    assert appearance.colors["text"] == "#e7ece9"
+    assert appearance.colors["text"] == "#e9ecef"
 
 
 @pytest.mark.parametrize("key,value", [
@@ -141,7 +141,7 @@ def test_changes_are_live_signalled_and_repeated_values_do_not_write(appearance)
     appearance.changed.connect(lambda: notifications.append(appearance.revision))
     before = appearance.revision
     appearance.setOption("mode", "light")
-    assert not appearance.dark and appearance.colors["background"] == "#f5f7f8"
+    assert not appearance.dark and appearance.colors["background"] == "#f6f5f2"
     assert notifications == [before + 1]
     appearance.setOption("mode", "light")
     assert notifications == [before + 1]

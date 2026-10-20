@@ -20,7 +20,7 @@ APPEARANCE_DEFAULTS: dict[str, Any] = {
     "mode": "dark", "separate": False,
     "ui_size": 13, "content_size": 14, "code_size": 12,
     "motion": "legacy", "sidebar_translucent": False, "contrast": 45,
-    "smart_punctuation": False, "full_width": True,
+    "smart_punctuation": False, "full_width": False,
     "diff_indicators": "color", "pointer_cursors": True,
     "shared": deepcopy(STYLE_DEFAULTS), "light": deepcopy(STYLE_DEFAULTS),
     "dark": deepcopy(STYLE_DEFAULTS),
@@ -78,6 +78,8 @@ DEFAULTS = {
     "density": "comfortable",
     "model_controls_visible": False,
     "resume_hint_visible": True,
+    "sidebar_mode": "full",
+    "tool_labels": False,
     "show_reasoning_summaries": True,
     "details_visible": False,
     "chat_font_size": 14,
@@ -92,7 +94,7 @@ DEFAULTS = {
 
 def valid_preference(key: str, value: object) -> bool:
     """Accept typed presentation values; bool is never a numeric font size."""
-    if key in {"onboarding_complete", "chatgpt_plan_welcome_seen", "model_controls_visible", "resume_hint_visible", "details_visible", "reduce_motion", "show_reasoning_summaries"}:
+    if key in {"onboarding_complete", "chatgpt_plan_welcome_seen", "model_controls_visible", "resume_hint_visible", "details_visible", "reduce_motion", "show_reasoning_summaries", "tool_labels"}:
         return type(value) is bool
     if key == "language":
         return supported_language(value)
@@ -107,6 +109,7 @@ def valid_preference(key: str, value: object) -> bool:
         return type(value) is int and 12 <= value <= 20
     enums = {
         "density": {"comfortable", "compact"},
+        "sidebar_mode": {"full", "rail", "hidden"},
         "confirm_close": {"active", "always", "never"},
         "file_opener": {"system", "vscode"},
         "default_permission": {"read_only", "project_write", "trusted_host", "full_access"},

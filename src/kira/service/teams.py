@@ -144,8 +144,8 @@ class Teams:
                         "goal": text(params.get("goal"), "goal", MAX_TEAM_GOAL_BYTES),
                         "mode": params.get("mode"), "backend": params.get("backend"),
                         "model": text(params.get("model"), "model", 200)}
-        if config["mode"] not in ("manual", "automatic") or config["backend"] not in {"codex", "openai_chatgpt"}:
-            raise KiraError("INVALID_ARGUMENT", "Teams require manual/automatic mode and Codex or OpenAI direct")
+        if config["mode"] not in ("manual", "automatic") or config["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}:
+            raise KiraError("INVALID_ARGUMENT", "Teams require manual/automatic mode and a supported Kira provider")
         settings = params.get("settings", {})
         if not isinstance(settings, dict) or len(encode(settings).encode()) > 32_000:
             raise KiraError("INVALID_ARGUMENT", "settings must be a bounded object")
@@ -212,6 +212,8 @@ class Teams:
             origin, origin_signature = self._origin_session(params, project)
             if config["backend"] == "openai_chatgpt":
                 config["settings"] = await self.service.direct_accounts.prepare(config["settings"])
+            elif config["backend"] == "deepseek_account":
+                await self.service.deepseek_accounts.prepare()
             previous = self.store.db.execute("SELECT id,fingerprint FROM team_runs WHERE request_id=?", (request,)).fetchone()
             if previous:
                 if previous["fingerprint"] != digest:
@@ -313,6 +315,8 @@ class Teams:
             config.update(round_override)
             if config["backend"] == "openai_chatgpt":
                 config["settings"] = await self.service.direct_accounts.prepare(config["settings"])
+            elif config["backend"] == "deepseek_account":
+                await self.service.deepseek_accounts.prepare()
             # Cleanup/account preparation yielded: revalidate idempotency and admission at
             # the final synchronous boundary before creating a new reserved execution.
             previous = self.store.db.execute("SELECT id,fingerprint FROM team_runs WHERE request_id=?",

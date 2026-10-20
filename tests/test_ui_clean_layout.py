@@ -281,31 +281,35 @@ def test_expanded_model_controls_use_chat_column_width_and_keep_selection(clean_
     window.resize(1380, 900)
     engine.rootContext().contextProperty("appearance").setOption("ui_size", font_size)
     workspace.setUiPreference("resume_hint_visible", False)
-    workspace.setModelControlsVisible(True)
     workspace.web._pane_visible = True
     workspace.web.changed.emit()
     qtbot.wait(70)
     root = window.contentItem()
     prompt = visual_item(root, "prompt")
     prompt.setProperty("text", "Preserve this synthetic draft")
+    popover = window.findChild(QObject, "modelPopover")
+    toggle = visual_item(root, "modelControlsToggle")
+    assert bounds(visual_item(root, "composerCard")).contains(bounds(toggle))
+    evaluate(window, "modelPopover.open()")
+    qtbot.wait(50)
+    assert popover.property("visible")
     selectors = [visual_item(root, name) for name in ("backendBox", "modelBox", "effortBox", "sessionBox")]
     selection = tuple(selector.property("currentIndex") for selector in selectors)
-    card = bounds(visual_item(root, "modelControlsCard"))
+    card = bounds(visual_item(root, "modelControlsExpanded"))
     assert visual_item(root, "chatColumn").width() < 650
-    assert selectors[0].width() == 150 and selectors[2].width() == 122
-    assert selectors[1].width() >= 140
+    assert selectors[0].width() == 160 and selectors[2].width() == 122
+    assert selectors[1].width() >= 120
     for selector in selectors:
         assert selector.isVisible() and selector.isEnabled()
         assert card.contains(bounds(selector))
-    toggle = visual_item(root, "modelControlsToggle")
     calls.clear()
     toggle.forceActiveFocus()
     QTest.keyClick(window, Qt.Key.Key_Space)
     qtbot.wait(30)
-    assert not workspace.modelControlsVisible
+    assert not popover.property("visible")
     QTest.keyClick(window, Qt.Key.Key_Space)
     qtbot.wait(30)
-    assert workspace.modelControlsVisible
+    assert popover.property("visible")
     assert tuple(selector.property("currentIndex") for selector in selectors) == selection
     assert (workspace.backend, workspace.selectedModel, workspace.selectedEffort) == ("openai_chatgpt", "chosen-model", "xhigh")
     assert prompt.property("text") == workspace.draftText == "Preserve this synthetic draft"

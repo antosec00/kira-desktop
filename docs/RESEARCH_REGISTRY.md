@@ -144,7 +144,13 @@ creation to retrieve unrelated chat material from the same project.
 The optional project Research dialog presents knowledge, evidence/attempts and
 next steps, with a separate proposal filter. It supports record editing,
 explicit acceptance/assessment, source selection from actual executions,
-paginated originals, revision history and declared-file rechecking. Research
+paginated originals, revision history and declared-file rechecking. The header's
+Research button counts unaccepted proposals from one bounded `proposals` listing
+(a `+` marks further pages), is highlighted while any remain, and refreshes on
+project opening, reconnection, recorded `kira.research_propose` completions and
+the user's own saves. The proposals view offers **Accetta**: it reads the current
+revision and saves it unchanged with `accepted:true` and a fixed revision reason,
+using the ordinary mutation receipt; origin and content are not rewritten. Research
 drafts and uncertain request identities persist separately from chat drafts.
 Project switches discard stale callbacks without losing a draft; changing chat
 inside a project does not discard the project registry editor.

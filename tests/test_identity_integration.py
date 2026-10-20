@@ -51,7 +51,7 @@ async def test_identity_pins_and_lazy_project_memory_reach_each_provider(tmp_pat
                 "request_id": "pin-fixture", "content": "Binding pinned fixture constraint"})
             # Pin support is common; provider-specific compaction remains explicit.
             if provider != "openai_chatgpt":
-                with pytest.raises(KiraError, match="requires OpenAI direct"):
+                with pytest.raises(KiraError, match="requires OpenAI direct|unavailable for this provider"):
                     await service.dispatch("session.context.compact", {"project_id": project["id"],
                         "session_id": session["id"], "request_id": "compact-fixture"})
             started = (await service.dispatch("run.start", {"session_id": session["id"],
@@ -74,6 +74,9 @@ async def test_identity_pins_and_lazy_project_memory_reach_each_provider(tmp_pat
                 assert results[0]["truncated"] and results[0]["next_offset"] > 0
                 expired = await ctx.client_tool_call("late-read", "kira.help_read", {"ref": "project:memory"})
                 assert not expired["ok"]
+            elif provider == "ollama":
+                # Ollama keeps its browser-only namespaces when project tools are off.
+                assert {namespace["name"] for namespace in ctx.client_tools} <= {"browser", "computer", "kira_history"}
             else:
                 assert not ctx.client_tools and ctx.client_tool_call is None
             supplied = [event["payload"]["content"] for event in service.store.events(run["id"])["events"]

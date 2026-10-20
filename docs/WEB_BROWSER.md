@@ -1,8 +1,10 @@
 # Web research and isolated browser
 
-Desktop 0.9.2 provides these capabilities to **OpenAI direct · ChatGPT**.
-See [STATUS](STATUS.md) for source, browser, authenticator and provider
-qualification; a successful browser check does not establish a website login.
+Desktop 0.9.2 introduced these capabilities for **OpenAI direct · ChatGPT**.
+The 0.16.0.dev1 experimental source also enables the Kira-owned browser for
+ordinary Ollama chats. See [STATUS](STATUS.md) for source, browser, authenticator
+and provider qualification; a successful browser check does not establish a
+website login.
 
 ## Research and reading
 
@@ -19,7 +21,9 @@ answers include clickable HTTP(S) citation links. Structured Team output retains
 its JSON contract. Only a successful response terminal confirms completed hosted
 calls. Original native items remain in private context; public events do not
 contain opaque reasoning. Disabling hosted search does not disable the separate
-browser option, and neither tool is enabled when the chat's tools are disabled.
+browser option. OpenAI direct requires the chat's tools to be enabled. Ollama's
+browser uses its own browser/computer tool set and does not enable project file,
+command or other Kira tools when the general tools setting is off.
 
 Hosted web metadata follows the [Responses WebSearchCall contract](https://developers.openai.com/api/reference/resources/responses/methods/retrieve).
 The action description is optional; an `open_page` URL may be absent or null.
@@ -48,11 +52,22 @@ personalized browser view.
 Kira owns a headed Chromium browser through pinned Playwright, in a separate
 worker process and private profile. A private Xvfb display contains its native
 windows; their interactive view appears beside the chat inside Kira. This display
-does not expose the user's desktop or other applications. It is available
-to ordinary direct chats; Codex keeps its existing native tool environment and
-Ollama is unchanged. The agent opens it on demand. The same browser, page and tabs
-remain available after a successful turn, until the user closes the browser,
-changes its provider configuration or stops the service.
+does not expose the user's desktop or other applications. It is available to
+ordinary OpenAI direct and Ollama chats; Codex keeps its existing native tool
+environment. The agent opens it on demand. The same browser, page and tabs remain
+available after a successful turn, until the user closes the browser, changes its
+provider configuration or stops the service.
+
+Ollama receives Kira's browser and visual-computer tools through its local tool
+calling API, including `browser.search` for local public-web retrieval. Browser
+text tools require the selected model to pass Kira's
+side-effect-free tool probe. They remain separate from project tools when the
+general `tools` setting is off. Screenshot and visual-computer tools are offered
+only when `/api/show` declares image input support; Kira sends their bounded,
+owned PNGs as Ollama chat message images and keeps them out of durable events.
+OpenAI-hosted `web_search` remains specific to OpenAI direct. Ollama can search
+and retrieve web pages through Kira's isolated browser. Tool-call and image support depend on
+the selected model and its Ollama server.
 
 The Browser pane provides tabs, address entry, back/forward/reload, a draggable
 chat/browser split and an expanded view for small windows. **Prendi il controllo /
@@ -78,20 +93,25 @@ the address bar adds HTTPS; complete HTTP(S) addresses retain their scheme.
 This GUI convenience does not bypass service URL or network validation. Viewport
 maintenance does not clear a failed navigation/input message.
 
-Hiding or minimizing the pane suspends viewport transmission without closing its
-page. Closing the browser is a separate action, invalidates pending references
-and prevents the current run from reopening it automatically. Completed turns do
-not tear down the browser. Uncertain interrupted engine operations still require
-verified cleanup; cancellation while merely waiting for manual control does not
-discard the user's independently owned browser.
+Minimizing the pane suspends viewport transmission without closing its page. The
+pane's **×** and **Chiudi browser** controls close the actor in the service and
+wait for identity-verified process cleanup; they no longer mean hide-only. A
+separate panel handoff can still hide the view. The model also has a no-argument
+`browser.close` tool, scoped to the current chat; it does not need website-write
+permission and prevents that run from reopening the browser. Completed turns
+keep the browser open while the Kira desktop remains connected. If the last
+desktop connection closes, Kira closes idle browsers immediately or after their
+active run finishes. Uncertain cleanup remains visible and blocks replacement
+browsers.
 
 `browser.navigate`, `snapshot`, `find`, `click`, `type`, `press`, `scroll`,
 `screenshot`, `tabs`, `select_tab`, `close_tab` and `back` operate only this run's
-browser actor. These service/event identifiers use `browser.*`; the OpenAI wire API
-exposes them as `kira_browser.*` because `browser` is a reserved provider
-namespace. Only typed tool definitions and native call identity fields are
-translated, including historical calls used for context maintenance. User text,
-tool results and opaque provider state remain unchanged.
+browser actor. `browser.close` closes the chat's actor. These service/event identifiers use `browser.*`; the OpenAI wire
+API exposes them as `kira_browser.*` because `browser` is a reserved provider
+namespace. Ollama receives `browser__*` function names. Only typed tool definitions
+and native call identity fields are translated, including historical calls used
+for context maintenance. User text, tool results and opaque provider state remain
+unchanged.
 A fresh snapshot returns bounded page text and references to actual
 visible elements. Old references expire; the model cannot supply arbitrary
 JavaScript or selectors. Search and text snapshots are preferred over screenshots.
@@ -111,7 +131,9 @@ There is no promise of access to every website.
 Desktop 0.8.2 adds a Kira-owned visual controller to the same isolated browser.
 Ordinary OpenAI direct chats receive `computer.observe` and `computer.act` when
 browser tools are enabled. The wire namespace is `kira_computer`, while durable
-tool activity uses `computer.*`. It uses supported custom function/image exchange;
+tool activity uses `computer.*`. Ollama receives the same service-owned tools
+using provider-compatible `computer__observe` and `computer__act` function names.
+It uses a supported Kira function/image exchange;
 it does not register the provider-native `computer` tool, change the selected
 model/account or require a different billing route.
 
@@ -151,7 +173,7 @@ from manual browsing and does not guarantee that website challenges disappear.
 
 ## Browser action consent
 
-Each ordinary direct chat has `browser_action_approval:ask|always`, defaulting to
+Each ordinary supported browser chat has `browser_action_approval:ask|always`, defaulting to
 `ask`. **Consenti sempre le azioni dell’agente in questa chat / Always allow the
 agent’s actions in this chat** saves `always` immediately from Web settings, even
 while a turn is active. A locally issued browser-action decision also offers
@@ -289,7 +311,9 @@ synthetic protocol and native-dialog checks.
 `session.web.get {project_id,session_id}` returns settings and a bounded browser
 status/preview. `session.web.update` accepts the same identity plus any of
 `web_search`, `browser_enabled`, `browser_persistent`; it requires an idle ordinary
-direct chat with no pending queue or overlapping reservations. Settings are
+OpenAI direct or Ollama chat with no pending queue or overlapping reservations.
+The `web_search` mode applies to OpenAI direct; Ollama browser settings control
+the Kira-owned browser. Settings are
 stored with the active provider generation. Changing them preserves chat history,
 draft, selected model and reasoning effort.
 

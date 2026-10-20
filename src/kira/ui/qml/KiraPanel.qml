@@ -11,6 +11,12 @@ Dialog {
     property bool expanded: false
     property real fallbackWidth: 800
     property real fallbackHeight: 780
+    // Panels with a key share the window's inspector tab strip.
+    property string inspectorKey: ""
+    readonly property var inspectorTabs: {
+        let owner = ApplicationWindow.window
+        return inspectorKey.length > 0 && owner && typeof owner.inspectorTabs !== "undefined" ? owner.inspectorTabs : []
+    }
     readonly property bool sidePanel: !!panelHost
     readonly property bool compactPanel: availableWidth < 560
     readonly property point hostOrigin: {
@@ -47,11 +53,32 @@ Dialog {
         border.color: appearance.colors.border
     }
     header: Item {
-        implicitHeight: panelHeader.implicitHeight + 20
+        implicitHeight: panelHeader.implicitHeight + 20 + (inspectorStrip.visible ? inspectorStrip.implicitHeight + 6 : 0)
+        Flow {
+            id: inspectorStrip
+            objectName: "inspectorTabs"
+            visible: panel.sidePanel && panel.inspectorTabs.length > 0
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.leftMargin: 10; anchors.rightMargin: 10; anchors.topMargin: 8
+            spacing: 2
+            Repeater {
+                model: panel.inspectorTabs
+                delegate: KButton {
+                    required property var modelData
+                    objectName: "inspectorTab_" + modelData.key
+                    iconName: modelData.icon; subtle: true; quietSelection: true
+                    implicitWidth: 34; implicitHeight: 30
+                    checked: modelData.key === panel.inspectorKey
+                    toolTipText: modelData.label
+                    Accessible.name: modelData.label
+                    onClicked: { let owner = ApplicationWindow.window; if (owner && modelData.key !== panel.inspectorKey) owner.openInspector(modelData.key) }
+                }
+            }
+        }
         RowLayout {
             id: panelHeader
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-            anchors.leftMargin: 16; anchors.rightMargin: 10; anchors.topMargin: 10
+            anchors.leftMargin: 16; anchors.rightMargin: 10; anchors.topMargin: 10 + (inspectorStrip.visible ? inspectorStrip.implicitHeight + 6 : 0)
             spacing: 8
             Label {
                 text: panel.title
@@ -66,15 +93,15 @@ Dialog {
             KButton {
                 objectName: panel.objectName + "Expand"
                 visible: panel.sidePanel
-                text: panel.expanded ? "↙" : "↗"
-                subtle: true; implicitWidth: 36
+                iconName: panel.expanded ? "chevron-right" : "external"
+                subtle: true; implicitWidth: 34; implicitHeight: 34
                 toolTipText: panel.expanded ? qsTr("Affianca alla chat") : qsTr("Espandi pannello")
                 Accessible.name: toolTipText
                 onClicked: panel.expanded = !panel.expanded
             }
             KButton {
                 objectName: panel.objectName + "Close"
-                text: "×"; subtle: true; implicitWidth: 36
+                iconName: "close"; subtle: true; implicitWidth: 34; implicitHeight: 34
                 toolTipText: qsTr("Chiudi pannello")
                 Accessible.name: toolTipText
                 onClicked: panel.close()

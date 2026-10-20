@@ -21,6 +21,7 @@ from kira.domain.knowledge import (
 )
 from kira.service.history_tools import HistoryTools
 from kira.service.storage import encode
+from kira.service.tool_policy import kira_tools_enabled
 
 METHODS = frozenset({"knowledge.snapshot", "knowledge.search", "knowledge.read"})
 _RESOURCE_ROOT = Path(__file__).resolve().parent.parent / "resources" / "knowledge"
@@ -163,7 +164,7 @@ class Knowledge:
         names = registration["names"] if registration else set()
         observed = registration["observed"] if registration else set()
         mode = registration["mode"] if registration else "execute"
-        enabled = session["settings"].get("tools", True) is not False
+        enabled = kira_tools_enabled(session)
         result = []
         for identity, label, candidates in _CAPABILITIES:
             registered = sorted(names & candidates)
@@ -644,8 +645,9 @@ class Knowledge:
         if self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?", (session["id"],)).fetchone():
             return options
         self._scope(project["id"], session["id"])
-        if session["settings"].get("tools", True) is False or session["backend"] not in {
-                "codex", "openai_chatgpt", "ollama"}:
+        if not kira_tools_enabled(session) or session["backend"] not in {
+                "codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
+                "claude_code"}:
             return options
         result = dict(options)
         namespaces = [{**namespace, "tools": list(namespace["tools"])}
@@ -671,7 +673,7 @@ class Knowledge:
             if (getattr(self.service, "_closing", False) or cancel.is_set()
                     or run_id not in self.service.tasks or run["session_id"] != session["id"]
                     or run["state"] not in {"running", "awaiting_input"}
-                    or actual_session["settings"].get("tools", True) is False):
+                    or not kira_tools_enabled(actual_session)):
                 raise KiraError("CANCELLED", "The origin turn no longer accepts knowledge callbacks")
 
         async def call(call_id: str, name: str, arguments: Json) -> Json:

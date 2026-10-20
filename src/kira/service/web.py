@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 from uuid import UUID
 
 from kira.domain.contracts import MAX_FRAME_BYTES, Json, KiraError
@@ -24,6 +25,7 @@ from kira.domain.web import BROWSER_ACTIONS, INTERACTIONS, WEB_DEFAULTS, WEB_SET
 from kira.service.project_context import ProjectChats
 from kira.service.processes import ProcessRegistry
 from kira.service.storage import encode, new_id, now
+from kira.service.tool_policy import kira_tools_enabled
 
 if TYPE_CHECKING:
     from kira.service.server import Client, Service
@@ -40,6 +42,7 @@ MAX_REQUESTS = 2048
 MAX_STREAM_RECEIPTS = 128
 MAX_INPUT_STREAMS = 32
 MAX_COMPUTER_CALLS = 128
+WEB_BACKENDS = frozenset({"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web", "claude_code"})
 
 
 @dataclass
@@ -66,6 +69,7 @@ class BrowserActor:
     automation_ready: asyncio.Event = field(default_factory=asyncio.Event)
     uncertain_runs: set[str] = field(default_factory=set)
     waiting_runs: set[str] = field(default_factory=set)
+    close_when_idle: bool = False
 
     def __post_init__(self) -> None:
         self.automation_ready.set()
@@ -85,6 +89,8 @@ def validate_arguments(action: str, arguments: Json) -> None:
             raise KiraError("INVALID_ARGUMENT", "Browser argument requires an integer")
         if "enum" in field and value not in field["enum"]:
             raise KiraError("INVALID_ARGUMENT", "Unsupported browser argument value")
+        if "maxLength" in field and len(value.encode("utf-8")) > field["maxLength"]:
+            raise KiraError("INVALID_ARGUMENT", "Browser text exceeds its size limit")
 
 
 def private_directory(path: Path) -> Path:
@@ -127,7 +133,8 @@ class Web:
 
     def _current(self, actor: BrowserActor) -> bool:
         session = self.store.one("sessions", actor.session["id"])
-        return (not actor.closed and session["backend"] == "openai_chatgpt"
+        return (not actor.closed and session["backend"] in WEB_BACKENDS
+                and session["backend"] == actor.session["backend"]
                 and session["model"] == actor.session["model"]
                 and session["settings"].get("openai_account_id", "") == actor.session["settings"].get("openai_account_id", "")
                 and self.service.provider_routing.current_generation(session["id"]) == actor.generation)
@@ -157,8 +164,8 @@ class Web:
             if not isinstance(params.get(key), str) or not 0 < len(params[key]) <= 128:
                 raise KiraError("INVALID_ARGUMENT", "An owned project and chat are required")
         session = ProjectChats(self.store).owned_session(params["project_id"], params["session_id"])
-        if session["backend"] != "openai_chatgpt":
-            raise KiraError("UNSUPPORTED", "Kira web preferences require OpenAI direct")
+        if session["backend"] not in WEB_BACKENDS:
+            raise KiraError("UNSUPPORTED", "Kira web preferences require a supported browser provider")
         return session
 
     async def dispatch(self, method: str, params: Json, subscriber: Client | None = None) -> Json:
@@ -212,10 +219,10 @@ class Web:
         if (self.service._closing or self.service.stopping.is_set() or self.service._settings_changing
                 or self.service.direct_accounts.changing or session["id"] in self.configuring):
             raise KiraError("BUSY", "Browser settings are changing")
-        if (session["backend"] != "openai_chatgpt"
+        if (session["backend"] not in WEB_BACKENDS
                 or self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?",
                                          (session["id"],)).fetchone()):
-            raise KiraError("UNSUPPORTED", "Browser action policy requires an ordinary direct chat")
+            raise KiraError("UNSUPPORTED", "Browser action policy requires an ordinary supported chat")
         if ProjectChats(self.store).enrich(session)["archived"]:
             raise KiraError("ARCHIVED", "Restore this chat before changing browser action policy")
         updated = {**session, "settings": {**session["settings"], "browser_action_approval": value}}
@@ -432,6 +439,7 @@ class Web:
             if "url" in params:
                 stream_id = self._stream(actor, client)
                 actor.viewers.add(client)
+                actor.close_when_idle = False
                 client.browser_ids.add(actor.id)
                 viewing = await actor.engine.call("viewer", {"enabled": True})
                 await self._retire_failed_engine(actor, viewing)
@@ -458,6 +466,7 @@ class Web:
             if operation == "watch":
                 stream_id = self._stream(actor, client)
                 actor.viewers.add(client)
+                actor.close_when_idle = False
                 client.browser_ids.add(actor.id)
                 response = await actor.engine.call("viewer", {"enabled": True})
                 await self._retire_failed_engine(actor, response)
@@ -522,28 +531,48 @@ class Web:
             await actor.engine.call("viewer", {"enabled": False})
 
     async def disconnect(self, client: Client) -> None:
+        last_client = len(self.service.clients) <= 1
         for actor in tuple(self.actors.values()):
             for stream in actor.streams.values():
                 if stream.client is client:
                     stream.client = None
                     stream.receipts.clear()
-            if client in actor.viewers:
-                try:
-                    await self._unwatch(actor, client)
-                except (OSError, RuntimeError, KiraError):
-                    pass
+            if client in actor.viewers or last_client:
+                if client in actor.viewers:
+                    try:
+                        await self._unwatch(actor, client)
+                    except (OSError, RuntimeError, KiraError):
+                        pass
+                if not actor.viewers:
+                    actor.close_when_idle = True
+                    if (actor.state.get("manual")
+                            or not self._session_has_active_run(actor.session["id"])):
+                        try:
+                            await self._close_actor(actor, user_closed=True)
+                        except KiraError:
+                            pass
         client.browser_requests.clear()
+
+    def _session_has_active_run(self, session_id: str) -> bool:
+        return self.store.db.execute("SELECT 1 FROM runs WHERE session_id=? AND state NOT IN "
+            "('completed','failed','cancelled','interrupted') LIMIT 1", (session_id,)).fetchone() is not None
 
     def attach(self, session: Json, project: Json, run_id: str, cancel: asyncio.Event,
                mode: str, options: Json) -> Json:
-        if session["backend"] != "openai_chatgpt" or not session["settings"].get("tools", True) \
-                or not session["settings"].get("browser_enabled", True):
+        tools_enabled = kira_tools_enabled(session)
+        browser_only = session["backend"] == "ollama" and not tools_enabled
+        if (session["backend"] not in WEB_BACKENDS
+                or not session["settings"].get("browser_enabled", True)
+                or not tools_enabled and not browser_only):
             return options
         if self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?", (session["id"],)).fetchone():
             return options
         options = dict(options)
         existing = options.get("client_tool_call")
-        options["client_tools"] = [*options.get("client_tools", []), *browser_tool_specs(), *computer_tool_specs()]
+        base_tools = ([namespace for namespace in options.get("client_tools", [])
+                       if namespace.get("name") == "kira_history"]
+                      if browser_only else options.get("client_tools", []))
+        options["client_tools"] = [*base_tools, *browser_tool_specs(), *computer_tool_specs()]
 
         async def tool(call_id: str, name: str, arguments: Json) -> Json:
             if name.startswith("browser."):
@@ -565,6 +594,7 @@ class Web:
         options["tool_image"] = image
         options["assistant_instructions"] = options.get("assistant_instructions", "") + (
             "\nBrowser tabs persist across turns until closed or Kira stops; temporary profiles end at close. "
+            "When the user asks to close this chat's browser, use browser.close and do not reopen it during the same turn. "
             "Persistent profiles require explicit opt-in. Click/type/press require Execute. Honor the chat's "
             "browser consent policy, including always-allow, without redundant per-click questions. "
             "Manual login requires the user's explicit request and control; never request credentials in chat. "
@@ -572,6 +602,15 @@ class Web:
             "Never bypass permission or manual/credential restrictions through host commands or files. "
             "Independently authorized API work may use project tools within their permissions; "
             "browser cookies/authentication are not inherited or implicitly exported.")
+        if session["backend"] == "ollama":
+            options["assistant_instructions"] += (
+                "\nWith Ollama, use the registered browser__* and computer__* tool names. "
+                "Call computer__observe before visual actions, then use its current observation_id "
+                "for one computer__act action and inspect the returned image before continuing. "
+                "Do not repeat an action when its result is uncertain. "
+                "Use browser__search for public web search, then inspect pages with browser__navigate "
+                "and browser__snapshot. Visual browser tools are offered only when "
+                "the selected model declares image input support.")
         return options
 
     async def _engine(self, session: Json, run_id: str | None) -> Any:
@@ -583,7 +622,8 @@ class Web:
             current = self.store.one("sessions", session["id"])
             ProjectChats(self.store).owned_session(session["project_id"], session["id"])
             generation = self.service.provider_routing.current_generation(session["id"])
-            if (current["backend"] != "openai_chatgpt" or current["model"] != session["model"]
+            if (current["backend"] not in WEB_BACKENDS or current["backend"] != session["backend"]
+                    or current["model"] != session["model"]
                     or current["settings"].get("openai_account_id") != session["settings"].get("openai_account_id")
                     or session.get("provider_generation", generation) != generation):
                 raise KiraError("STALE_BROWSER", "The browser request belongs to an older chat provider selection")
@@ -605,7 +645,8 @@ class Web:
                 generation = self.service.provider_routing.current_generation(session["id"])
                 browser_id = new_id()
                 root = private_directory(self.service.paths.data / ("browser-profiles" if persistent else "browser-temporary"))
-                identity = encode([session["id"], session["settings"].get("openai_account_id"), generation])
+                identity = encode([session["id"], session["backend"],
+                                   session["settings"].get("openai_account_id"), generation])
                 key = hashlib.sha256(identity.encode()).hexdigest() if persistent else browser_id
                 profile = private_directory(root / key)
                 artifacts = private_directory(private_directory(self.service.paths.artifacts / "browser") / (run_id or browser_id))
@@ -758,10 +799,58 @@ class Web:
         # literal user/model content; passwords are rejected by the engine.
         await self.service.emit(run_id, "tool.started", {"tool_id": call_id, "name": name, "arguments": arguments})
         result: Json
+        if action == "close":
+            try:
+                validate_arguments(action, arguments)
+                if cancel.is_set():
+                    raise KiraError("CANCELLED", "Browser request was cancelled")
+                actor = self.actors.get(session["id"])
+                if actor is None:
+                    unknown = self.store.db.execute(
+                        "SELECT 1 FROM browser_sessions WHERE session_id=? AND state='unknown' LIMIT 1",
+                        (session["id"],)).fetchone()
+                    if unknown:
+                        raise KiraError("BROWSER_CLEANUP", "Browser cleanup is not confirmed")
+                    result = {"ok": True, "closed": True, "already_closed": True}
+                else:
+                    if not self._current(actor):
+                        raise KiraError("STALE_BROWSER", "The browser belongs to an older chat configuration")
+                    await self._close_actor(actor, user_closed=True)
+                    result = {"ok": True, "closed": True, "already_closed": False}
+            except KiraError as exc:
+                result = {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+            result = self.service.redactor.clean(result)
+            await self.service.emit(run_id, "tool.completed", {"tool_id": call_id, "name": name,
+                                                                   "result": result})
+            return result
         try:
             if action not in BROWSER_ACTIONS:
                 raise KiraError("UNSUPPORTED", "Unsupported browser action")
             validate_arguments(action, arguments)
+            if action == "close":
+                if cancel.is_set():
+                    raise KiraError("CANCELLED", "Browser request was cancelled")
+                actor = self.actors.get(session["id"])
+                if actor is None:
+                    unknown = self.store.db.execute(
+                        "SELECT 1 FROM browser_sessions WHERE session_id=? AND state='unknown' LIMIT 1",
+                        (session["id"],)).fetchone()
+                    if unknown:
+                        raise KiraError("BROWSER_CLEANUP", "Browser cleanup is not confirmed")
+                    result = {"ok": True, "closed": True, "already_closed": True}
+                else:
+                    if not self._current(actor):
+                        raise KiraError("STALE_BROWSER", "The browser belongs to an older chat configuration")
+                    await self._close_actor(actor, user_closed=True)
+                    result = {"ok": True, "closed": True, "already_closed": False}
+                result = self.service.redactor.clean(result)
+                await self.service.emit(run_id, "tool.completed", {"tool_id": call_id, "name": name,
+                                                                       "result": result})
+                return result
+            if action == "search":
+                action = "navigate"
+                arguments = {"url": "https://www.google.com/search?q=" +
+                             quote(arguments["query"].strip(), safe="")}
             if cancel.is_set():
                 raise KiraError("CANCELLED", "Browser request was cancelled")
             if action in INTERACTIONS | {"manual_login"} and (mode != "execute" or project["permission"] == "read_only"):
@@ -1123,11 +1212,18 @@ class Web:
             self.store.db.execute("SELECT 1 FROM browser_sessions WHERE state='unknown'").fetchone())
 
     async def close_run(self, run_id: str) -> None:
-        # A successful model turn relinquishes its image callbacks, not its chat's
-        # browser. Failed/cancelled actions close rather than guessing their state.
+        # Keep a chat browser across successful turns while its desktop is
+        # connected. If the last desktop disconnected, close it once the run ends.
         state = self.store.one("runs", run_id)["state"]
-        if state != "completed":
-            for actor in tuple(self.actors.values()):
+        for actor in tuple(self.actors.values()):
+            if actor.close_when_idle and not actor.viewers \
+                    and not self._session_has_active_run(actor.session["id"]):
+                try:
+                    await self._close_actor(actor, user_closed=True)
+                except KiraError:
+                    pass
+                continue
+            if state != "completed":
                 if actor.last_run_id == run_id:
                     if actor.state.get("manual") and run_id not in actor.uncertain_runs:
                         # User-owned manual work has no dependency on a model

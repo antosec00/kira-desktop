@@ -260,7 +260,7 @@ Item {
         }
     }
     KiraKnowledgeDialog {
-        id: environmentDialog; objectName: "assistantEnvironmentDialog"
+        id: environmentDialog; objectName: "assistantEnvironmentDialog"; inspectorKey: "conoscenza"
         parent: Overlay.overlay
         onMemoryRequested: panel.memoryRequested()
         onResearchRequested: panel.researchRequested()

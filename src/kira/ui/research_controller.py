@@ -104,12 +104,23 @@ class ResearchController(QObject):
         self._link_page: Json = {"records": [], "has_more": False}
         self._link_cursors: list[Any] = []
         self._context: Json = {}
+        self._pending_proposals = 0
+        self._pending_more = False
+        self._count_generation = 0
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(200)
         self._timer.timeout.connect(self.flushDrafts)
+        # Proposal counting coalesces events and never blocks the editor requests.
+        self._count_timer = QTimer(self)
+        self._count_timer.setSingleShot(True)
+        self._count_timer.setInterval(300)
+        self._count_timer.timeout.connect(self.refreshProposals)
         workspace.changed.connect(self._selection_changed)
         workspace.preferencesChanged.connect(self.changed)
+        workspace.projectOpened.connect(self._schedule_count)
+        workspace.client.ready.connect(self._schedule_count)
+        workspace.client.eventReceived.connect(self._event)
         app = QCoreApplication.instance()
         if app:
             app.aboutToQuit.connect(self.flushDrafts)
@@ -186,6 +197,9 @@ class ResearchController(QObject):
         self._history_record = ""
         self._link_page = {"records": [], "has_more": False}
         self._source_offsets, self._picker_cursors, self._link_cursors = [], [], []
+        self._pending_proposals, self._pending_more = 0, False
+        self._count_generation += 1
+        self._schedule_count()
         if not self._store.blocked:
             self._error = ""
         self.dismissed.emit()
@@ -207,6 +221,16 @@ class ResearchController(QObject):
     @qt_property(str, notify=changed)
     def error(self) -> str:
         return str(refresh_ui(self._error))
+
+    @qt_property(int, notify=changed)
+    def pendingProposals(self) -> int:
+        return self._pending_proposals
+
+    @qt_property(str, notify=changed)
+    def pendingProposalsText(self) -> str:
+        if not self._pending_proposals:
+            return ""
+        return f"{self._pending_proposals}+" if self._pending_more else str(self._pending_proposals)
 
     @qt_property("QVariantMap", notify=changed)
     def labels(self) -> Json:
@@ -390,10 +414,70 @@ class ResearchController(QObject):
                 self._busy = False
                 if method == "research.save":
                     self.editorChanged.emit()
+                    self._schedule_count()
                 done(result)
                 self.changed.emit()
 
         self.workspace.client.request(method, params, received, failed)
+
+    def _schedule_count(self) -> None:
+        self._count_timer.start()
+
+    @Slot(dict)
+    def _event(self, event: Json) -> None:
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        # Claude Code reports Kira's tool as "claude_code.kira.research_propose".
+        name = payload.get("name")
+        if (event.get("type") == "tool.completed" and isinstance(name, str)
+                and name.endswith("kira.research_propose")):
+            self._schedule_count()
+
+    @Slot()
+    def refreshProposals(self) -> None:
+        """Count unaccepted proposals; a failed count changes nothing and shows no error."""
+        if not self.available:
+            return
+        identity, generation = self._stamp(), self._count_generation
+        project = identity[0]
+
+        def received(result: Json) -> None:
+            if (identity != self._stamp() or generation != self._count_generation
+                    or result.get("project_id", project) != project):
+                return
+            rows = [row for row in result.get("records", []) if isinstance(row, dict)]
+            self._pending_proposals = sum(1 for row in rows if row.get("accepted") is False)
+            self._pending_more = bool(result.get("has_more"))
+            self.changed.emit()
+
+        self.workspace.client.request("research.list", {"project_id": project, "view": "proposals",
+                                                        "limit": 30}, received, lambda error: None)
+
+    @Slot(str)
+    def acceptProposal(self, record_id: str) -> None:
+        """Accept a listed proposal as it stands; it keeps its assistant origin."""
+        row = next((item for item in self._rows if item.get("id") == record_id), None)
+        if row is None or row.get("accepted") is not False or not self.canEdit:
+            return
+
+        def fetched(result: Json) -> None:
+            record = result.get("record", {})
+            if record.get("id") != record_id or type(record.get("revision")) is not int:
+                self._error = tr("La risposta non contiene la scheda richiesta.")
+                self.changed.emit()
+                return
+            if record.get("accepted") is not False:
+                self.refresh()
+                return
+            editable = {key: _copy(record.get(key, value)) for key, value in empty_record().items()}
+            editable["accepted"] = True
+            self._request("research.save", {"record": editable, "record_id": record_id,
+                                            "expected_revision": record["revision"],
+                                            "reason": str(tr("Accettata dall’elenco delle proposte"))},
+                          lambda result: self.refresh(), mutation=True)
+
+        self._request("research.get", {"record_id": record_id}, fetched)
 
     def _adopt_saved(self, project: str, submitted: Json, saved: Json) -> None:
         """Settle the original project's draft even after navigation or a retry."""

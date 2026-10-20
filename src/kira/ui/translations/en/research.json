@@ -134,5 +134,10 @@
   "Esecuzione": "Run",
   "Artefatto": "Artifact",
   "Anteprima: apri la scheda per leggere il testo completo.": "Preview: open the record to read its full text.",
-  "Chat": "Chat"
+  "Chat": "Chat",
+  "Ricerca (%1)": "Research (%1)",
+  "Proposte dell’assistente da esaminare: %1": "Assistant proposals awaiting review: %1",
+  "Accetta": "Accept",
+  "Accetta la scheda nel registro condivisibile senza aprirla": "Accept this record for project sharing without opening it",
+  "Accettata dall’elenco delle proposte": "Accepted from the proposals list"
 }

@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 from typing import Any
+from collections.abc import Callable
 
 from kira.domain.contracts import Json, KiraError
 from kira.service.history_tools import HistoryTools
@@ -45,18 +46,25 @@ def _without_private(value: Any) -> Any:
 
 
 class DirectContextStore:
-    def __init__(self, store: Store, images: ImageAttachments | None = None):
+    def __init__(self, store: Store, images: ImageAttachments | None = None,
+                 account_identity: Callable[[Json], str] | None = None):
         self.store = store
         self.images = images
         self.history = HistoryTools(store)
+        self.account_identity = account_identity
 
     def identity(self, session: Json) -> Json:
         row = self.store.db.execute("SELECT MAX(generation) FROM session_provider_generations "
                                     "WHERE session_id=?", (session["id"],)).fetchone()
         generation = int(row[0]) if row and row[0] is not None else 0
+        backend = str(session.get("backend", ""))
+        account_id = (str(session.get("settings", {}).get("openai_account_id", ""))
+                      if backend == "openai_chatgpt" else
+                      self.account_identity(session) if backend == "deepseek_account"
+                      and self.account_identity is not None else
+                      "deepseek_account" if backend == "deepseek_account" else "")
         return {"session_id": session["id"], "generation": generation,
-                "account_id": str(session.get("settings", {}).get("openai_account_id", "")),
-                "model": session["model"]}
+                "account_id": account_id, "model": session["model"]}
 
     @staticmethod
     def _key(identity: Json) -> tuple[Any, ...]:
@@ -76,8 +84,8 @@ class DirectContextStore:
     def _current(self, session: Json) -> Json:
         actual = self.store.one("sessions", session["id"])
         expected, current = self.identity(session), self.identity(actual)
-        if actual["backend"] != "openai_chatgpt" or expected != current:
-            raise KiraError("CONTEXT_STALE", "The direct context belongs to a different provider, account or model")
+        if actual["backend"] not in {"openai_chatgpt", "deepseek_account"} or expected != current:
+            raise KiraError("CONTEXT_STALE", "The saved context belongs to a different provider, account or model")
         supplied_generation = session.get("provider_generation", session.get("generation"))
         if supplied_generation is not None and supplied_generation != current["generation"]:
             raise KiraError("CONTEXT_STALE", "The provider generation changed")
@@ -156,7 +164,7 @@ class DirectContextStore:
             if isinstance(payload.get(name), dict):
                 metrics.update(payload[name])
         extras: Json = {key: copy.deepcopy(payload.get(key, old.get(key) if old else None)) for key in
-                  ("source_ids", "source_map", "capabilities", "bytes_per_token", "measurement", "policy", "compactions")
+                  ("source_ids", "source_map", "capabilities", "bytes_per_token", "measurement", "policy", "compactions", "wire_format")
                   if key in payload or old is not None and key in old}
         if "compactions" in payload:
             metrics["compactions"] = payload["compactions"]
@@ -217,7 +225,7 @@ class DirectContextStore:
 
     def snapshot(self, session: Json) -> Json:
         identity = self.identity(session)
-        state = self._raw_load(identity) if session["backend"] == "openai_chatgpt" else None
+        state = self._raw_load(identity) if session["backend"] in {"openai_chatgpt", "deepseek_account"} else None
         return {**identity, "revision": state["revision"] if state else 0,
                 "has_state": state is not None, "updated_at": state["updated_at"] if state else None,
                 "boundary": state["boundary"] if state else None,

@@ -7,6 +7,8 @@ returned to Ollama in memory when required, but never published as UI events.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import contextlib
 import hashlib
 import json
@@ -18,20 +20,28 @@ from urllib.parse import urlparse
 
 import httpx
 
-from kira.backends.client_tools import ClientToolBridge, ClientToolError, validate_tools
-from kira.domain.contracts import HOST_PERMISSIONS, WRITE_PERMISSIONS, Json, RunContext
+from kira.backends.client_tools import (
+    MAX_CLIENT_TOOL_BYTES,
+    ClientToolBridge,
+    ClientToolError,
+    validate_tools,
+)
 from kira.backends.guidance import BoundaryGuidance, deferred_tool_result
+from kira.domain.contracts import HOST_PERMISSIONS, WRITE_PERMISSIONS, Json, KiraError, RunContext
+from kira.domain.questions import question_tool_specs, validate_request
 
 T = TypeVar("T")
 MAX_RECORD_BYTES = 1_048_576
 MAX_METADATA_BYTES = 262_144
 METADATA_TIMEOUT = 10.0
 DISCOVERY_TIMEOUT = 20.0
+OLLAMA_CHAT_READ_TIMEOUT = 600.0
 MAX_MODELS = 64
 MAX_MODEL_NAME_BYTES = 512
 MAX_DETAIL_BYTES = 32_768
 MAX_DISCOVERY_BYTES = 512_000
 MAX_CACHE_BYTES = 512_000
+MAX_BROWSER_IMAGE_BYTES = 2 * 1024 * 1024
 CAPABILITIES = {
     "streaming": True, "tools": False, "cancellation": True, "resume": True,
     "usage": True, "images": False, "context_controls": True,
@@ -87,8 +97,81 @@ def local_tool_schemas(permission: str) -> list[Json]:
     return result
 
 
+def _browser_image_tool(name: str) -> bool:
+    return (name == "browser.screenshot"
+            or name in {"computer.observe", "computer.act"})
+
+
+def _browser_tool_images(messages: list[Json]) -> None:
+    """Keep only the two latest typed browser/computer images in model context."""
+    images = [(index, len(message["images"])) for index, message in enumerate(messages)
+              if message.get("role") == "tool" and isinstance(message.get("tool_name"), str)
+              and message["tool_name"] in {"browser__screenshot", "computer__observe", "computer__act"}
+              and isinstance(message.get("images"), list)]
+    total = sum(count for _, count in images)
+    for index, count in images:
+        if total <= 2:
+            break
+        messages[index].pop("images", None)
+        total -= count
+
+
+def _ollama_image(image: Any) -> str:
+    """Validate Kira's owned PNG data URL and return Ollama's base64 image value."""
+    prefix = "data:image/png;base64,"
+    if not isinstance(image, dict) or image.get("type") != "input_image" \
+            or not isinstance(image.get("image_url"), str) or not image["image_url"].startswith(prefix):
+        raise StreamError("Browser screenshot image delivery returned invalid pixels")
+    value = image["image_url"][len(prefix):]
+    if len(value) > ((MAX_BROWSER_IMAGE_BYTES + 2) // 3) * 4:
+        raise StreamError("Browser screenshot exceeds the 2 MiB image limit")
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise StreamError("Browser screenshot image delivery returned invalid pixels") from exc
+    if not raw or len(raw) > MAX_BROWSER_IMAGE_BYTES:
+        raise StreamError("Browser screenshot exceeds the 2 MiB image limit")
+    return value
+
+
 class StreamError(Exception):
     """A malformed or incomplete native NDJSON response."""
+
+
+class OllamaMissingUserQuery(StreamError):
+    """The model's chat template rejected a tool continuation without a user query."""
+
+
+# Appended to the system instructions of Ollama turns that carry verified tools.
+TOOL_CALL_GUIDANCE = (
+    "\nWhen a request requires inspection or an action, call the relevant registered "
+    "Kira tool instead of only announcing what you plan to do. After each tool result, "
+    "continue with the next useful tool call while work remains. Finish with a result "
+    "only when the requested work is complete, or state the concrete blocker. Never "
+    "claim an action or progress without a corresponding tool result.")
+# Appended when the chat has no callable tools at all.
+NO_TOOLS_GUIDANCE = (
+    "\nNo callable tools are enabled for this chat. Do not emit XML-like tool-call "
+    "text, shell commands or simulated tool results, and never claim that you opened "
+    "a page or changed anything. If the user asks you to act, explain that tools are "
+    "disabled in the chat settings.")
+
+
+def _is_missing_user_query_error(body: bytes) -> bool:
+    try:
+        payload = json.loads(body)
+    except (ValueError, UnicodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    error = payload.get("error")
+    if isinstance(error, str):
+        detail = error
+    elif isinstance(error, dict) and isinstance(error.get("message"), str):
+        detail = error["message"]
+    else:
+        return False
+    return "no user query found in messages" in " ".join(detail.split()).casefold()
 
 
 def _json_size(value: Any) -> int:
@@ -391,7 +474,8 @@ class OllamaBackend:
                 self._probed.pop(model, None)
             verified = self._probed.get(model, False)
             entry = {"id": model, "name": model,
-                     "capabilities": {**CAPABILITIES, "tools": verified},
+                     "capabilities": {**CAPABILITIES, "tools": verified,
+                                      "images": "vision" in detail.get("capabilities", [])},
                      "tools_metadata": "tools" in detail.get("capabilities", []),
                      "tools_verified": verified, "tool_probe": "passed" if verified else "not_run",
                      "size_bytes": item.get("size"), "digest": item.get("digest"),
@@ -415,7 +499,18 @@ class OllamaBackend:
         fragmented: dict[int, Json] = {}
         total_bytes = 0
         limit = int(ctx.settings.get("max_output_bytes", 4 * 1024 * 1024)) if ctx else 65536
-        async with self.client.stream("POST", "/api/chat", json=body) as response:
+        timeout = httpx.Timeout(OLLAMA_CHAT_READ_TIMEOUT, connect=5.0, write=180.0, pool=5.0)
+        async with self.client.stream("POST", "/api/chat", json=body,
+                                      timeout=timeout) as response:
+            if response.status_code >= 400:
+                error_body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    error_body.extend(chunk[:max(0, 65_537 - len(error_body))])
+                    if len(error_body) > 65_536:
+                        break
+                if _is_missing_user_query_error(bytes(error_body[:65_536])):
+                    raise OllamaMissingUserQuery(
+                        "The Ollama model template rejected a tool continuation because it found no user query")
             response.raise_for_status()
             async for record in ndjson(response.aiter_bytes()):
                 if "error" in record:
@@ -486,6 +581,12 @@ class OllamaBackend:
             calls = message.get("tool_calls", [])
             passed = len(calls) == 1 and calls[0].get("function", {}).get("name") == "kira_probe"
             passed = passed and calls[0]["function"].get("arguments") == {"value": token}
+        except httpx.HTTPStatusError as exc:
+            # These failures are not evidence that the model lacks tool
+            # support. Do not send the user's prompt after quota/auth errors.
+            if exc.response.status_code in {401, 402, 403, 429} or exc.response.status_code >= 500:
+                raise
+            passed = False
         except (httpx.HTTPError, ValueError, StreamError):
             passed = False
         if len(self._probed) >= MAX_MODELS:
@@ -494,71 +595,141 @@ class OllamaBackend:
         return passed
 
     async def run(self, ctx: RunContext) -> Json:
+        provider = str(ctx.session.get("backend", "ollama"))
+        pending_question_answers: set[str] = set()
         try:
-            return await cancellable(self._run(ctx), ctx.cancel)
+            return await cancellable(self._run(ctx, pending_question_answers), ctx.cancel)
         except asyncio.CancelledError:
             if not ctx.cancel.is_set():
                 raise
             return {"state": "cancelled", "outcome": {"scope": "client_stream_closed",
                     "remote_generation_termination_confirmed": False}}
         except httpx.HTTPStatusError as exc:
-            return {"state": "failed", "error": f"Ollama HTTP {exc.response.status_code}"}
+            detail = getattr(exc, "safe_detail", "")
+            suffix = f" — {detail}" if isinstance(detail, str) and detail else ""
+            return {"state": "failed", "error": f"{provider} HTTP {exc.response.status_code}{suffix}"}
         except (httpx.HTTPError, ValueError, StreamError, ClientToolError) as exc:
             return {"state": "interrupted", "error": f"{type(exc).__name__}: {str(exc)[:1000]}"}
+        finally:
+            for identity in tuple(pending_question_answers):
+                await ctx.emit("input.delivery_failed", {"request_id": identity,
+                    "reason": f"{provider} did not confirm receipt of the saved answer; no automatic retry."})
+                pending_question_answers.discard(identity)
 
-    async def _run(self, ctx: RunContext) -> Json:
-        client_names = validate_tools(ctx)
+    async def _run(self, ctx: RunContext, pending_question_answers: set[str]) -> Json:
+        provider = str(ctx.session.get("backend", "ollama"))
+        validate_tools(ctx)
         detail = await self._show(ctx.model)
-        enabled = bool(ctx.settings.get("tools", True)) and "tools" in detail.get("capabilities", [])
+        vision = "vision" in detail.get("capabilities", [])
+        project_tools_enabled = bool(ctx.settings.get("tools", True))
+        client_namespaces = ctx.client_tools
+        if not project_tools_enabled:
+            # Keep the direct provider's safe browser/history/questions tools
+            # available without enabling project/file/host tools.
+            client_namespaces = [namespace for namespace in ctx.client_tools
+                                 if namespace.get("name") in {"browser", "computer", "kira_history"}]
+        questions_available = ctx.request_input is not None and ctx.read_input is not None
+        tools_requested = project_tools_enabled or bool(client_namespaces) or questions_available
+        enabled = (tools_requested
+                   and "tools" in detail.get("capabilities", []))
         if enabled:
-            await ctx.emit("backend.notice", {"message": "Verifying Ollama tool calling with a "
+            await ctx.emit("backend.notice", {"message": f"Verifying {provider} tool calling with a "
                             "side-effect-free probe", "model": ctx.model})
             enabled = await self._probe_tools(ctx.model, ctx.cancel)
-        if not enabled and ctx.settings.get("tools", True):
+        if not enabled and tools_requested:
             await ctx.emit("backend.notice", {"message": "Chat-only mode: tool capability was "
                             "not verified", "model": ctx.model, "tools_verified": False})
         elif enabled:
-            await ctx.emit("backend.notice", {"message": "Ollama tool probe passed",
+            await ctx.emit("backend.notice", {"message": f"{provider} tool probe passed",
                                                "model": ctx.model, "tools_verified": True})
-        schemas = local_tool_schemas(ctx.permission) if enabled else []
+        schemas = local_tool_schemas(ctx.permission) if enabled and project_tools_enabled else []
+        client_names: set[str] = set()
         client_aliases: dict[str, str] = {}
+        question_aliases: dict[str, str] = {}
         if enabled:
-            for namespace in ctx.client_tools:
-                for tool in namespace["tools"]:
+            for namespace in client_namespaces:
+                functions = namespace["tools"]
+                if not vision and namespace["name"] == "computer":
+                    continue
+                if not vision and namespace["name"] == "browser":
+                    functions = [tool for tool in functions if tool["name"] != "screenshot"]
+                for tool in functions:
                     canonical = namespace["name"] + "." + tool["name"]
                     alias = canonical.replace(".", "__")
                     if alias in client_aliases or any(item["function"]["name"] == alias for item in schemas):
                         raise StreamError("Kira tool names collide with native tools")
                     client_aliases[alias] = canonical
+                    client_names.add(canonical)
+                    description = tool["description"]
+                    if ctx.session.get("backend") == "ollama":
+                        description = description.replace("browser.", "browser__").replace(
+                            "computer.", "computer__")
+                    schemas.append({"type": "function", "function": {
+                        "name": alias, "description": description,
+                        "parameters": tool["inputSchema"]}})
+            if questions_available:
+                for tool in question_tool_specs()["tools"]:
+                    alias = "questions__" + tool["name"]
+                    question_aliases[alias] = tool["name"]
                     schemas.append({"type": "function", "function": {
                         "name": alias, "description": tool["description"],
                         "parameters": tool["inputSchema"]}})
         bridge = ClientToolBridge(ctx, client_names, ctx.run_id, ctx.run_id) if client_names else None
         messages: list[Json] = []
-        if ctx.assistant_instructions:
-            messages.append({"role": "system", "content": ctx.assistant_instructions})
+        assistant_instructions = ctx.assistant_instructions
+        if ctx.output_schema is not None and schemas:
+            assistant_instructions += (
+                "\nWhen this turn is complete, return exactly one JSON object matching this "
+                "schema. Registered tool calls remain separate function calls. Schema: "
+                + json.dumps(ctx.output_schema, ensure_ascii=False, separators=(",", ":")))
+        if provider == "ollama" and schemas:
+            assistant_instructions += TOOL_CALL_GUIDANCE
+        if not schemas:
+            assistant_instructions += NO_TOOLS_GUIDANCE
+        elif question_aliases:
+            assistant_instructions += (
+                "\nUse questions__request_input for missing information or choices. "
+                "Never ask for passwords, tokens or permission through a question. "
+                "Use questions__read_input with the returned request_id; a pending result "
+                "is not an answer or approval.")
+        if assistant_instructions:
+            messages.append({"role": "system", "content": assistant_instructions})
         if ctx.supplied_context:
             messages.append({"role": "user", "content": "Kira-supplied project context:\n" + ctx.supplied_context})
-        history, missing_results = repair_interrupted_history(ctx.history)
-        if missing_results:
-            await ctx.emit("backend.notice", {"message": "Historical tool outcomes are unknown. "
-                           "Continuation must inspect verified state before further side effects.",
-                           "unknown_tool_outcomes": missing_results})
-        for item in history:
-            if item.get("role") in {"user", "assistant", "tool"}:
-                messages.append({k: v for k, v in item.items()
-                                 if k in {"role", "content", "tool_calls", "tool_name"}})
-        messages.append({"role": "user", "content": ctx.prompt})
+        durable_context = self._deepseek_context(ctx)
+        active_turn: list[Json] = [{"role": "user", "content": ctx.prompt}]
+        if durable_context is not None:
+            await durable_context.prepare(messages, schemas)
+            messages = await durable_context.before_request(active_turn)
+        else:
+            history, missing_results = repair_interrupted_history(ctx.history)
+            if missing_results:
+                await ctx.emit("backend.notice", {"message": "Historical tool outcomes are unknown. "
+                               "Continuation must inspect verified state before further side effects.",
+                               "unknown_tool_outcomes": missing_results})
+            for item in history:
+                if item.get("role") in {"user", "assistant", "tool"}:
+                    messages.append({k: v for k, v in item.items()
+                                     if k in {"role", "content", "tool_calls", "tool_name"}})
+            messages.append(active_turn[0])
         rounds = 0
         recent_results: list[str] = []
         max_rounds = int(ctx.settings.get("max_tool_rounds", 0))
         guidance = BoundaryGuidance(ctx)
         request_index = 0
+        overflow_recovered = False
+        missing_query_recovered = False
+
         while True:
             extra = await guidance.take()
             if extra:
                 recent_results.clear()
-                messages.extend(extra)
+                if durable_context is not None:
+                    active_turn.extend(extra)
+                else:
+                    messages.extend(extra)
+            if durable_context is not None:
+                messages = await durable_context.before_request(active_turn)
             body: Json = {"model": ctx.model, "messages": messages, "stream": True}
             if schemas:
                 body["tools"] = schemas
@@ -566,12 +737,55 @@ class OllamaBackend:
                        if k in ctx.settings}
             if options:
                 body["options"] = options
+            if ctx.output_schema is not None and not schemas:
+                body["format"] = ctx.output_schema
             if "think" in ctx.settings:
                 body["think"] = ctx.settings["think"]
-            item_id = f"{ctx.run_id}:ollama:{request_index}"
-            message, terminal = await self._stream(body, ctx, item_id)
+            item_id = f"{ctx.run_id}:{provider}:{request_index}"
+            try:
+                message, terminal = await self._stream(body, ctx, item_id)
+            except OllamaMissingUserQuery:
+                if provider != "ollama" or missing_query_recovered:
+                    raise
+                # Some Qwen-family Ollama templates require an explicit user
+                # turn after tool-only history. The preceding tool effects are
+                # already recorded in `messages`; preserve them and restate the
+                # original request once so the template can continue.
+                messages.append({"role": "user", "content": (
+                    "Kira is continuing the original user request after the local model template "
+                    "rejected a tool continuation. Original request:\n" + ctx.prompt + "\n\n"
+                    "The preceding tool calls and results are already part of the conversation. "
+                    "Do not repeat completed operations. Continue from their recorded results; "
+                    "inspect current state before any new side effect. If the available evidence "
+                    "is sufficient, answer the user now.")})
+                missing_query_recovered = True
+                recent_results.clear()
+                await ctx.emit("backend.notice", {"message": "Ollama's model template rejected the tool continuation; Kira is retrying once with the original request and completed tool results."})
+                continue
+            except httpx.ReadTimeout as exc:
+                if provider != "ollama":
+                    raise
+                raise StreamError(
+                    f"Ollama sent no stream data for {OLLAMA_CHAT_READ_TIMEOUT:.0f} seconds; "
+                    "a long prompt evaluation may have exceeded the read timeout"
+                ) from exc
+            except StreamError as exc:
+                if (durable_context is not None and provider == "deepseek_account"
+                        and getattr(exc, "context_overflow", False) and not overflow_recovered):
+                    await durable_context.compact_for_overflow(active_turn)
+                    overflow_recovered = True
+                    continue
+                raise
+            overflow_recovered = False
+            if durable_context is not None:
+                durable_context.observe(messages, terminal)
+            for identity in tuple(pending_question_answers):
+                await ctx.emit("input.delivered", {"request_id": identity,
+                                                    "transport": "ollama-chat" if provider == "ollama"
+                                                    else f"{provider}-messages"})
+                pending_question_answers.discard(identity)
             await guidance.accepted()
-            usage = {"source": "ollama", "measurement": "provider", "round": request_index}
+            usage = {"source": provider, "measurement": "provider", "round": request_index}
             request_index += 1
             for source, target in [("prompt_eval_count", "input_tokens"),
                                    ("eval_count", "output_tokens"),
@@ -581,20 +795,62 @@ class OllamaBackend:
                 if terminal.get(source) is not None:
                     usage[target] = terminal[source]
             await ctx.emit("usage", usage)
-            messages.append(message)
+            if durable_context is not None:
+                active_turn.append(message)
+            else:
+                messages.append(message)
             public_message = {k: v for k, v in message.items() if k != "thinking"}
             calls = message.get("tool_calls", [])
             await ctx.emit("message.completed", {"content": message.get("content", ""),
                             "item_id": item_id,
                             "provider_messages": [public_message]})
+            if terminal.get("tool_input_incomplete") is True:
+                return {"state": "interrupted", "error": f"{provider} returned incomplete tool arguments; no tool from that response was executed. Continue explicitly.",
+                        "outcome": {"done_reason": "tool_input_incomplete",
+                                    "tool_execution": "not_started",
+                                    "prompt_tokens": terminal.get("prompt_eval_count"),
+                                    "output_tokens": terminal.get("eval_count")}}
             if not calls:
                 if terminal.get("done_reason") == "length":
-                    return {"state": "interrupted", "error": "Ollama generation reached its "
-                            "configured context/output limit; response may be incomplete"}
+                    prompt_tokens = terminal.get("prompt_eval_count")
+                    output_tokens = terminal.get("eval_count")
+                    counts = (f" after {prompt_tokens} prompt and {output_tokens} generated tokens"
+                              if type(prompt_tokens) is int and type(output_tokens) is int else "")
+                    if (provider == "deepseek_account"
+                            and type(terminal.get("max_output_tokens")) is int
+                            and type(output_tokens) is int
+                            and output_tokens >= terminal["max_output_tokens"]):
+                        limit = terminal["max_output_tokens"]
+                        return {"state": "interrupted", "error": f"{provider} reached the request output cap of {limit} tokens{counts}; response may be incomplete",
+                                "outcome": {"done_reason": "length", "prompt_tokens": prompt_tokens,
+                                            "output_tokens": output_tokens, "max_output_tokens": limit}}
+                    requested = ctx.settings.get("num_ctx")
+                    context = (f" (requested num_ctx={requested})" if requested else
+                               " (provider-default num_ctx)" if provider == "ollama" else "")
+                    return {"state": "interrupted", "error": f"{provider} stopped generation at its "
+                            f"token/context limit{counts}{context}; response may be incomplete",
+                            "outcome": {"done_reason": "length", "prompt_tokens": prompt_tokens,
+                                        "output_tokens": output_tokens, "requested_num_ctx": requested}}
                 if not await guidance.seal():
                     continue
+                if ctx.output_schema is not None:
+                    if len(message.get("content", "").encode("utf-8")) > MAX_CLIENT_TOOL_BYTES:
+                        return {"state": "failed", "error": f"Structured {provider} output exceeds 64 KiB"}
+                    try:
+                        structured = json.loads(message.get("content", ""),
+                                                parse_constant=_invalid_constant)
+                    except (ValueError, TypeError, RecursionError):
+                        return {"state": "failed", "error": f"{provider} did not return valid structured JSON"}
+                    if not isinstance(structured, dict):
+                        return {"state": "failed", "error": f"{provider} structured output must be an object"}
+                if durable_context is not None:
+                    await durable_context.complete(active_turn)
                 return {"state": "completed", "outcome": {"model": ctx.model,
-                        "tool_rounds": rounds, "tools_verified": enabled}}
+                        "tool_rounds": rounds, "tools_verified": enabled,
+                        **({"history_mode": "durable_compacted_context"}
+                           if durable_context is not None else {}),
+                        **({"final_text": message.get("content", "")}
+                           if ctx.output_schema is not None else {})}}
             if not schemas:
                 return {"state": "failed", "error": "Unverified model requested tools in chat-only mode"}
             if max_rounds and rounds >= max_rounds:
@@ -608,29 +864,71 @@ class OllamaBackend:
                 name = function.get("name", "")
                 arguments = function.get("arguments")
                 is_client = isinstance(name, str) and name in client_aliases
+                is_question = isinstance(name, str) and name in question_aliases
                 # Kira callbacks validate their own exact contracts. Native file
                 # tools retain their smaller argument vocabulary.
-                result = None if is_client else validate_call(name, arguments, schemas)
+                result = None if is_client or is_question else validate_call(name, arguments, schemas)
                 if result is None and await guidance.pending():
                     result = deferred_tool_result()
                     await ctx.emit("tool.completed", {
-                        "tool_id": f"{ctx.run_id}:ollama-deferred:{rounds}:{position}",
+                        "tool_id": f"{ctx.run_id}:{provider}-deferred:{rounds}:{position}",
                         "name": client_aliases.get(name, name), "result": result, "execution": "not_started"})
                 if result is None:
                     if is_client:
                         assert bridge is not None
                         namespace_name, tool_name = client_aliases[name].split(".", 1)
                         reply = await bridge.call({"threadId": ctx.run_id, "turnId": ctx.run_id,
-                            "callId": f"{ctx.run_id}:ollama-client:{rounds}:{position}",
+                            "callId": f"{ctx.run_id}:{provider}-client:{rounds}:{position}",
                             "namespace": namespace_name, "tool": tool_name, "arguments": arguments})
                         result = json.loads(reply["contentItems"][0]["text"])
+                    elif is_question:
+                        question_id = f"{ctx.run_id}:{provider}-question:{rounds}:{position}"
+                        operation = question_aliases[name]
+                        try:
+                            if operation == "request_input":
+                                if not isinstance(arguments, dict) or set(arguments) != {"blocking", "questions"}:
+                                    raise KiraError("INVALID_ARGUMENT", "Invalid question fields")
+                                request = validate_request({**arguments, "request_id": question_id})
+                                assert ctx.request_input is not None
+                                result = await ctx.request_input(request)
+                            elif operation == "read_input":
+                                if (not isinstance(arguments, dict)
+                                        or set(arguments) != {"request_id", "wait"}
+                                        or not isinstance(arguments.get("request_id"), str)
+                                        or type(arguments.get("wait")) is not bool):
+                                    raise KiraError("INVALID_ARGUMENT", "Invalid question lookup")
+                                assert ctx.read_input is not None
+                                result = await ctx.read_input(arguments["request_id"], arguments["wait"])
+                            else:
+                                raise StreamError(f"Unknown registered {provider} question tool")
+                        except KiraError as exc:
+                            result = {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+                        if (result.get("ok") is True and result.get("status") == "answered"
+                                and isinstance(result.get("request_id"), str)):
+                            pending_question_answers.add(result["request_id"])
                     else:
                         result = await ctx.execute_tool(name, arguments)
                 tool_message = {"role": "tool", "tool_name": name,
                                 "content": json.dumps(result, ensure_ascii=False)}
-                messages.append(tool_message)
-                tool_messages.append(tool_message)
-            await ctx.emit("backend.notice", {"message": "Ollama tool results returned to model",
+                if isinstance(call.get("id"), str):
+                    tool_message["tool_call_id"] = call["id"]
+                canonical = client_aliases.get(name, "") if isinstance(name, str) else ""
+                if (vision and canonical and _browser_image_tool(canonical)
+                        and result.get("ok") is True):
+                    image_id = result.get("browser_image_id")
+                    if not isinstance(image_id, str) or not 1 <= len(image_id) <= 256:
+                        raise StreamError("Browser screenshot omitted its owned image identity")
+                    if ctx.tool_image is None:
+                        raise StreamError("Browser screenshot image delivery is unavailable")
+                    tool_message["images"] = [_ollama_image(await ctx.tool_image(image_id))]
+                if durable_context is not None:
+                    active_turn.append(tool_message)
+                else:
+                    messages.append(tool_message)
+                _browser_tool_images(messages)
+                tool_messages.append({key: value for key, value in tool_message.items()
+                                      if key != "images"})
+            await ctx.emit("backend.notice", {"message": f"{provider} tool results returned to model",
                                                "provider_messages": tool_messages})
             signature = hashlib.sha256(json.dumps([calls, tool_messages],
                                                   sort_keys=True).encode()).hexdigest()
@@ -639,6 +937,12 @@ class OllamaBackend:
             if len(recent_results) == 3 and len(set(recent_results)) == 1:
                 return {"state": "failed", "error": "No progress: the same tool requests and "
                         "results repeated three consecutive times. Continue explicitly."}
+
+    def _deepseek_context(self, ctx: RunContext) -> Any | None:
+        if (ctx.session.get("backend") != "deepseek_account" or ctx.context_save is None):
+            return None
+        from kira.backends.deepseek_context import DeepSeekContext
+        return DeepSeekContext(self, ctx)
 
     async def close(self) -> None:
         await self.client.aclose()

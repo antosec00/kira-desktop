@@ -48,7 +48,10 @@ GUI permissions implicitly through these callbacks.
   response; `input.received` means the provider adapter retrieved that response.
 - `input.delivered` records `transport:'turn/steer'` after a matching native turn
   acknowledgment, or `transport:'json-rpc-response'` after successfully writing a
-  native request reply. Neither event proves the model used the answer.
+  native request reply. OpenAI direct and Ollama record their accepted HTTP chat
+  request as `responses-http` or `ollama-chat`. Claude Code records `claude-code-mcp`
+  when its next model response follows the MCP tool result carrying the answer.
+  Neither event proves the model used the answer.
 - `input.closed` and `input.delivery_failed` leave the question and any saved
   answer inspectable and copyable. Terminal runs, cancellation, provider request
   invalidation and service recovery close undelivered requests. No automatic

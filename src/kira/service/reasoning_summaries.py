@@ -72,7 +72,8 @@ class ReasoningSummaries:
         if not isinstance(payload, dict) or payload.get("source") != "provider_summary":
             return
         provider = payload.get("provider")
-        if not isinstance(provider, str) or provider not in {"codex", "openai_chatgpt", "ollama"}:
+        if not isinstance(provider, str) or provider not in {"codex", "openai_chatgpt", "ollama",
+                                                          "deepseek_account", "claude_code"}:
             return
         binding = self.service.store.db.execute("SELECT b.backend,r.state FROM run_provider_bindings b "
             "JOIN runs r ON r.id=b.run_id WHERE b.run_id=?", (run_id,)).fetchone()
@@ -86,12 +87,12 @@ class ReasoningSummaries:
                 return
             if self.service.redactor.text(reason) != reason:
                 return
-            if provider == "ollama" and status != "unavailable":
+            if provider in {"ollama", "deepseek_account", "claude_code"} and status != "unavailable":
                 return
             data = self.runs.setdefault(run_id, Summary(provider))
             self._status(run_id, data, status, reason)
             return
-        if provider == "ollama":
+        if provider in {"ollama", "deepseek_account", "claude_code"}:
             return
         item_id, content = payload.get("item_id"), payload.get("content")
         if (not isinstance(item_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,256}", item_id)

@@ -373,6 +373,23 @@ def test_artifact_open_uses_explicit_registered_local_target(workspace, monkeypa
     assert "non è un artefatto registrato" in workspace.notice
 
 
+@pytest.mark.parametrize("name,content", [("report.hta", b"<script>synthetic</script>"),
+                                          ("notes.txt", b"#!/bin/sh\necho synthetic\n"),
+                                          ("launcher.desktop", b"[Desktop Entry]\n")])
+def test_artifact_open_refuses_scripts_and_launchers(workspace, monkeypatch, qtbot, tmp_path,
+                                                     name, content):
+    artifact = tmp_path / name
+    artifact.write_bytes(content)
+    workspace._project = {"root": str(tmp_path)}
+    workspace._artifacts = [{"path": str(artifact)}]
+    opened = []
+    monkeypatch.setattr("kira.ui.controller.QDesktopServices.openUrl",
+                        lambda url: opened.append(url.toLocalFile()) or True)
+    workspace.openArtifact(str(artifact))
+    qtbot.waitUntil(lambda: not workspace._jobs)
+    assert opened == [] and "script ed eseguibili" in workspace.notice
+
+
 def test_qt_local_transport_split_utf8_and_reconnect(qapp, qtbot, tmp_path):
     server = QLocalServer()
     socket_path = str(tmp_path / "fixture.sock")

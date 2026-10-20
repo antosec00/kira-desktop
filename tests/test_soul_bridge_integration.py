@@ -182,7 +182,10 @@ async def test_service_tools_disabled_keeps_profile_without_proposal_registratio
         # tools are disabled; profile learning must not be offered in that mode.
         assert not any(name.startswith("kira.") for name in script.names())
         assert CORE in json.dumps(script.requests[0])
-        assert not script.probes and not service.store.all("SELECT * FROM soul_proposals")
+        # Ollama keeps its browser-only tools when project tools are off, so the
+        # transport probe still runs once; no profile learning is offered.
+        assert script.probes == (1 if provider == "ollama" else 0)
+        assert not service.store.all("SELECT * FROM soul_proposals")
 
 
 @pytest.mark.parametrize("provider", ["openai_chatgpt", "ollama"])

@@ -41,9 +41,10 @@ Dialog {
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ColumnLayout {
                 width: scroll.availableWidth; spacing: 12
-                ReadText { text: qsTr("Ricerca e lettura web"); font.bold: true; Layout.fillWidth: true }
+                ReadText { text: qsTr("Ricerca e lettura web"); font.bold: true; Layout.fillWidth: true; visible: workspace.backend === "openai_chatgpt" }
                 KComboBox {
                     objectName: "webSearchMode"; Layout.fillWidth: true
+                    visible: workspace.backend === "openai_chatgpt"
                     Accessible.name: qsTr("Modalità della ricerca web")
                     model: [
                         {value: "disabled", label: qsTr("Ricerca disattivata")},
@@ -55,7 +56,10 @@ Dialog {
                     enabled: dialog.web.canEdit
                     onActivated: dialog.web.setSearchMode(currentValue)
                 }
-                ReadText { text: qsTr("La ricerca usa lo strumento OpenAI, se disponibile per il modello e l’account. Accesso live consente di recuperare pagine aggiornate; Contenuti indicizzati limita la ricerca ai contenuti già disponibili al servizio."); Layout.fillWidth: true; color: appearance.colors.muted }
+                ReadText { text: qsTr("La ricerca usa lo strumento OpenAI, se disponibile per il modello e l’account. Accesso live consente di recuperare pagine aggiornate; Contenuti indicizzati limita la ricerca ai contenuti già disponibili al servizio."); Layout.fillWidth: true; color: appearance.colors.muted; visible: workspace.backend === "openai_chatgpt" }
+                ReadText { text: qsTr("Con Ollama, il browser usa strumenti separati da file e comandi del progetto. Il primo uso verifica le chiamate agli strumenti del modello; screenshot e controllo visivo richiedono anche input immagini. La ricerca web ospitata da OpenAI non è disponibile."); Layout.fillWidth: true; color: appearance.colors.muted; visible: workspace.backend === "ollama" }
+                ReadText { text: qsTr("Con DeepSeek Account, Kira usa i propri strumenti Browser e Computer: le pagine sono aperte nel browser isolato di Kira e le azioni rispettano i permessi del progetto."); Layout.fillWidth: true; color: appearance.colors.muted; visible: workspace.backend === "deepseek_account" }
+                ReadText { objectName: "webClaudeCodeNote"; text: qsTr("Con Claude Code, Kira offre i propri strumenti Browser e Computer tramite il server MCP interno: le pagine si aprono nel browser isolato di Kira, le azioni rispettano i permessi del progetto e gli screenshot arrivano a Claude Code come immagini."); Layout.fillWidth: true; color: appearance.colors.muted; visible: workspace.backend === "claude_code" }
                 ReadText { text: qsTr("Browser visuale"); font.bold: true; Layout.fillWidth: true }
                 CheckBox {
                     objectName: "webBrowserEnabled"; text: qsTr("Consenti il browser per questa chat")
@@ -88,7 +92,8 @@ Dialog {
                 }
                 ReadText { text: qsTr("Per mantenere un accesso, abilita e salva il profilo prima della richiesta. Chiedi poi a Kira di aprire il sito per il login manuale: inserisci le credenziali nel browser integrato e premi Ho finito quando hai terminato. Cookie e sessioni restano nel profilo separato della chat."); Layout.fillWidth: true; color: appearance.colors.muted }
                 ReadText { text: qsTr("Senza conservazione, il profilo temporaneo viene eliminato quando chiudi il browser. Disattivare la conservazione non cancella un profilo già salvato."); Layout.fillWidth: true; color: appearance.colors.muted }
-                ReadText { objectName: "webToolsDisabled"; text: qsTr("Abilita Strumenti nei controlli del modello per usare ricerca e browser nelle richieste."); visible: !workspace.toolsEnabled; Layout.fillWidth: true; color: appearance.colors.warning }
+                ReadText { objectName: "webToolsDisabled"; text: qsTr("Abilita Strumenti nei controlli del modello per usare ricerca e browser nelle richieste."); visible: !workspace.toolsEnabled && workspace.backend === "openai_chatgpt"; Layout.fillWidth: true; color: appearance.colors.warning }
+                ReadText { objectName: "webOllamaBrowserTools"; text: qsTr("Con Ollama, il browser può funzionare anche con Strumenti disattivati. Questo non abilita strumenti per i file o i comandi del progetto."); visible: !workspace.toolsEnabled && workspace.backend === "ollama"; Layout.fillWidth: true; color: appearance.colors.muted }
                 ReadText { text: qsTr("Le altre impostazioni si possono modificare quando il progetto non ha attività in corso."); visible: dialog.web.loaded && !dialog.web.canEdit && !dialog.web.busy; Layout.fillWidth: true; color: appearance.colors.muted }
                 ColumnLayout {
                     visible: dialog.web.loaded && !dialog.web.browser.available

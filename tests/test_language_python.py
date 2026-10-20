@@ -72,6 +72,7 @@ def test_existing_python_labels_refresh_and_language_persists_without_rpc(transl
 def test_cached_app_catalog_error_refreshes_but_provider_error_stays_literal(translated_workspace):
     view, localization, _, calls = translated_workspace
     view._backend = "codex"
+    view.teams._draft["backend"] = "codex"
     original = tr("Errore")
     view._catalogs["codex"] = {"available": False, "error": original}
     localization.setLanguage("en")

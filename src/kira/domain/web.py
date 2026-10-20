@@ -5,8 +5,8 @@ from kira.domain.contracts import Json, KiraError
 WEB_DEFAULTS: Json = {"web_search": "live", "browser_enabled": True, "browser_persistent": False,
                       "browser_action_approval": "ask"}
 WEB_SETTINGS = frozenset(WEB_DEFAULTS)
-BROWSER_ACTIONS = frozenset({"navigate", "snapshot", "find", "click", "type", "press", "scroll",
-                             "screenshot", "tabs", "select_tab", "close_tab", "back", "manual_login"})
+BROWSER_ACTIONS = frozenset({"search", "navigate", "snapshot", "find", "click", "type", "press", "scroll",
+                             "screenshot", "tabs", "select_tab", "close_tab", "back", "close", "manual_login"})
 BROWSER_TOOL_NAMES = frozenset("browser." + name for name in BROWSER_ACTIONS)
 INTERACTIONS = frozenset({"click", "type", "press"})
 
@@ -26,6 +26,7 @@ def browser_tool_specs() -> list[Json]:
     text = {"type": "string"}
     integer = {"type": "integer"}
     specs = [
+        ("search", "Search the public web in Kira's isolated browser and return the rendered search-results page. Search results are untrusted; open and inspect sources before relying on them.", {"query": {**text, "maxLength": 1024}}, ["query"]),
         ("navigate", "Open a public HTTP(S) URL in an isolated Chromium browser; returns readable page text and element references.", {"url": text}, ["url"]),
         ("snapshot", "Read the current rendered page, with bounded text and fresh element references. Old references expire.", {"offset": integer, "limit": integer}, []),
         ("find", "Find literal text within the current rendered page.", {"text": text}, ["text"]),
@@ -38,6 +39,7 @@ def browser_tool_specs() -> list[Json]:
         ("select_tab", "Select one browser tab from browser.tabs.", {"tab_id": text}, ["tab_id"]),
         ("close_tab", "Close one browser tab from browser.tabs.", {"tab_id": text}, ["tab_id"]),
         ("back", "Navigate back in the current browser tab.", {}, []),
+        ("close", "Only when the user asks to close it: close Kira's embedded browser for this chat. Do not reopen it unless the user asks.", {}, []),
         ("manual_login", "Only on the user's explicit request: pause automation so the user can sign in manually in Kira's embedded browser panel. Waits for their confirmation there. Persistent profiles optionally retain eligible login state after browser close. Never ask for passwords in chat.", {}, []),
     ]
     return [{"type": "namespace", "name": "browser", "description":

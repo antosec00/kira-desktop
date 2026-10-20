@@ -3,8 +3,10 @@
 Appearance is GUI-owned, saved atomically in the existing private `config/ui.json`.
 It never changes provider settings, model/effort, project permissions, messages or
 database schema. Changes apply immediately, including while a run is active.
-Existing profiles keep their chat size and reduced-animation preference; the
-initial palette remains Kira dark, with the existing full-width conversation.
+Existing profiles keep their chat size and reduced-animation preference. The
+initial palette is Kira dark; since 0.18 the Kira preset is a warm graphite with
+an amber accent and the conversation uses a bounded reading column unless full
+width is enabled ([DESIGN_018.md](DESIGN_018.md)).
 
 ## Controls and storage
 
@@ -30,7 +32,8 @@ overrides, and font families/styles for interface, conversation and code.
 - Contrast adjusts secondary text and borders. Custom foreground/background pairs
   remain the user's choice; the preview helps inspect their readability.
 - Full width uses the available chat width; disabling it centers a bounded reading
-  column. Pointer mode changes cursors on interactive controls.
+  column. Since 0.18 the default is the reading column; profiles that saved an
+  explicit value keep it. Pointer mode changes cursors on interactive controls.
 
 Normal, medium, semibold, bold and italic styles are selectable independently for
 the three font roles. Fonts unavailable on another machine use Qt's fallback;

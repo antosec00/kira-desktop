@@ -16,7 +16,7 @@ import pytest
 
 from kira.backends import codex
 from kira.backends.direct_context import DirectContext
-from kira.backends.ollama import OllamaBackend
+from kira.backends.ollama import NO_TOOLS_GUIDANCE, OllamaBackend
 from kira.backends.openai_chatgpt import OpenAIChatGPTBackend
 from kira.domain.contracts import KiraError, RunContext
 from kira.domain.paths import Paths
@@ -262,7 +262,7 @@ async def test_ollama_user_persona_does_not_change_model_or_options(tmp_path, pe
         assert body["options"] == {"num_ctx": 8192, "temperature": 0.2}
         assert body["think"] is True
         assert "tools" not in body
-        assert body["messages"][0] == {"role": "system", "content": APP_INSTRUCTIONS}
+        assert body["messages"][0] == {"role": "system", "content": APP_INSTRUCTIONS + NO_TOOLS_GUIDANCE}
         assert body["messages"][1]["role"] == "user"
         assert persona in body["messages"][1]["content"]
         assert body["messages"][-1] == {"role": "user", "content": ctx.prompt}

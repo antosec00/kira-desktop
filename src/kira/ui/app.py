@@ -59,6 +59,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         engine.rootContext().setContextProperty("workbench", workspace.workbench)
         engine.rootContext().setContextProperty("assistant", workspace.assistant)
         engine.rootContext().setContextProperty("directAccount", workspace.directAccount)
+        engine.rootContext().setContextProperty("deepseekAccount", workspace.deepseekAccount)
         engine.rootContext().setContextProperty("accountUsage", workspace.accountUsage)
         engine.rootContext().setContextProperty("providerSwitch", workspace.providerSwitch)
         engine.rootContext().setContextProperty("chatContext", ContextController(workspace, engine))

@@ -116,6 +116,39 @@ def test_preferences_never_update_an_unavailable_or_busy_chat(web, blocked):
     assert len(requests) == 1 and not controller.canEdit
 
 
+def test_deepseek_web_enables_browser_panel_and_accepts_browser_events(web):
+    workspace, controller, _ = web
+    workspace._backend = "deepseek_web"
+    workspace._session["backend"] = "deepseek_web"
+    assert controller.available
+
+    controller._visible = False
+    workspace._runs = {"run": {"id": "run", "session_id": "chat", "state": "running",
+                                "backend": "deepseek_web", "model": "synthetic-model"}}
+    controller._event({"run_id": "run", "seq": 1, "type": "tool.completed",
+                       "payload": {"name": "browser.navigate", "result": {"ok": True}}})
+    assert len(web[2]) == 1 and web[2][0][0] == "session.web.get"
+    web[2][-1][2](snapshot(backend="deepseek_web", account_id="", browser={
+        "browser_id": "browser-deepseek", "active": True, "available": True,
+        "headed": True, "manual": False, "tabs": [], "tab_id": "tab", "url": "https://example.test/",
+    }))
+    assert controller.paneVisible
+
+
+def test_deepseek_web_vision_models_accept_image_input(web):
+    workspace, _, _ = web
+    workspace._backend = "deepseek_web"
+    workspace._session.update(backend="deepseek_web", model="deepseek-v4-flash")
+    workspace._model = "deepseek-v4-flash"
+    workspace._catalogs["deepseek_web"] = {"models": [
+        {"id": "deepseek-v4-flash", "capabilities": {"images": True}},
+        {"id": "deepseek-reasoner", "capabilities": {"images": True}},
+    ]}
+    assert workspace.imageInputsEnabled
+    workspace._model = "deepseek-reasoner"
+    assert workspace.imageInputsEnabled
+
+
 @pytest.mark.parametrize("change", ["chat", "generation", "account", "model", "offline"])
 def test_late_callbacks_cannot_change_the_selected_chat(web, change):
     workspace, controller, requests = web

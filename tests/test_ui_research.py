@@ -440,11 +440,12 @@ def test_research_and_compact_chat_header_actions_remain_reachable(research, qtb
             assert header_bounds.bottom() <= bounds(item("chatColumn")).top()
             empty = item("emptyConversationScroll")
             assert empty.isVisible() and empty.property("clip")
-            assert bounds(item("modelControlsCard")).bottom() <= bounds(empty).top()
+            # Model controls live in the composer: the chip stays inside its card.
+            assert bounds(item("composerCard")).contains(bounds(item("modelControlsToggle")))
             assert bounds(empty).bottom() <= bounds(item("composerCard")).top()
             assert bounds(empty).height() > 40
             if width == 880:
-                assert header_bounds.height() == 65
+                assert header_bounds.height() <= 65
                 assert item("conversation").height() > 160
                 for control in controls[2:]:
                     assert control.width() == 38
@@ -504,6 +505,124 @@ def test_research_and_compact_chat_header_actions_remain_reachable(research, qtb
                              workspace.selectedModel, workspace.selectedEffort)
         assert not any(call[0] in {"run.start", "session.configure", "session.switch", "project.create",
                                   "project.export"} for call in requests)
+        assert not any("binding loop" in entry.message.lower() or "ReferenceError" in entry.message
+                       or "TypeError" in entry.message for entry in qtlog.records)
+    finally:
+        window.setProperty("closeConfirmed", True)
+        window.close()
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_pending_proposal_count_tracks_events_without_blocking_the_dialog(research, qtbot):
+    workspace, controller, requests = research
+    controller.refreshProposals()
+    assert requests[-1][:2] == ("research.list", {"project_id": "project", "view": "proposals", "limit": 30})
+    count = requests[-1]
+    assert not controller.busy
+    controller.open()
+    assert requests[-1][:2] == ("research.list", {"project_id": "project", "view": "knowledge", "limit": 20})
+    count[2](listed(records=[record(accepted=False, origin="assistant"), record(id="b", accepted=False),
+                             record(id="c", accepted=True)]))
+    assert controller.pendingProposals == 2 and controller.pendingProposalsText == "2"
+    requests.clear()
+    workspace.client.eventReceived.emit({"type": "tool.completed", "payload": {"name": "kira.help_search"}})
+    qtbot.wait(400)
+    assert not requests
+    workspace.client.eventReceived.emit({"type": "tool.completed", "payload": {"name": "kira.research_propose"}})
+    qtbot.wait(400)
+    assert [call[:2] for call in requests] == [("research.list", {"project_id": "project", "view": "proposals", "limit": 30})]
+    requests[-1][2](listed(records=[]))
+    assert controller.pendingProposals == 0
+    requests.clear()
+    # Claude Code reports Kira's tool with its provider prefix.
+    workspace.client.eventReceived.emit({"type": "tool.completed", "payload": {"name": "claude_code.kira.research_propose"}})
+    qtbot.wait(400)
+    assert [call[:2] for call in requests] == [("research.list", {"project_id": "project", "view": "proposals", "limit": 30})]
+    requests[-1][2](listed(records=[record(accepted=False, origin="assistant")], has_more=True))
+    assert controller.pendingProposalsText == "1+"
+    stale = requests[-1][2]
+    workspace._project = {"id": "other", "name": "Other", "root": workspace.project["root"]}
+    workspace.changed.emit()
+    assert controller.pendingProposals == 0 and controller.pendingProposalsText == ""
+    stale(listed(records=[record(accepted=False)]))
+    assert controller.pendingProposals == 0
+    requests[-1][2]({"project_id": "foreign", "records": [record(accepted=False)]})
+    assert controller.pendingProposals == 0
+
+
+def test_accepting_a_proposal_from_the_list_sends_get_then_save_with_receipt(research):
+    _, controller, requests = research
+    controller.open()
+    requests[-1][2](listed(records=[record(accepted=False, origin="assistant", body="Preview"),
+                                    record(id="done", accepted=True)]))
+    before = len(requests)
+    controller.acceptProposal("done")
+    controller.acceptProposal("missing")
+    assert len(requests) == before
+    controller.acceptProposal("record-a")
+    assert requests[-1][:2] == ("research.get", {"project_id": "project", "record_id": "record-a"})
+    requests[-1][2]({"project_id": "project", "record": record(accepted=False, origin="assistant",
+                                                                body="Full <body> %1", scope="Literal <scope>")})
+    method, params = requests[-1][:2]
+    assert method == "research.save"
+    assert params["record_id"] == "record-a" and params["expected_revision"] == 1 and params["request_id"]
+    assert params["reason"] == "Accettata dall’elenco delle proposte"
+    assert params["record"]["accepted"] is True
+    assert params["record"]["body"] == "Full <body> %1" and params["record"]["scope"] == "Literal <scope>"
+    assert set(params["record"]) == set(empty_record())
+    assert controller.report["pending_count"] == 1
+    requests[-1][2]({"project_id": "project", "record": record(accepted=True, revision=2, origin="assistant"),
+                     "operation": {"request_id": params["request_id"], "status": "completed"}})
+    assert controller.report["pending_count"] == 0
+    assert requests[-1][:2] == ("research.list", {"project_id": "project", "view": "knowledge", "limit": 20})
+    assert controller.editor["record_id"] == "new"
+
+
+def test_header_counts_pending_proposals_and_list_accepts_without_editor(research, qtbot, qtlog):
+    workspace, _, requests = research
+    engine = create_engine(workspace)
+    assert engine.rootObjects()
+    window = engine.rootObjects()[0]
+    window.setWidth(1380)
+    window.setHeight(900)
+
+    def item(name):
+        found = window.findChild(QObject, name)
+        assert found is not None, name
+        return found
+
+    def visual(root, name):
+        # Repeater delegates are visual children without a QObject parent chain.
+        for child in root.childItems():
+            if child.objectName() == name:
+                return child
+            found = visual(child, name)
+            if found is not None:
+                return found
+        return None
+
+    try:
+        button = item("projectResearchButton")
+        assert button.property("text") == "Ricerca" and not button.property("primary")
+        evaluate(window, "projectResearch.refreshProposals()")
+        count = next(call for call in reversed(requests) if call[1].get("view") == "proposals")
+        count[2](listed(records=[record(accepted=False, origin="assistant"), record(id="b", accepted=False)]))
+        qtbot.wait(30)
+        assert button.property("text") == "Ricerca" and button.property("badge") == 2
+        assert button.property("toolTipText") == "Ricerca del progetto · proposte dell’assistente da esaminare: 2"
+        dialog = item("researchDialog")
+        evaluate(dialog, "open()")
+        listing = next(call for call in reversed(requests) if call[1].get("view") == "knowledge")
+        listing[2](listed(records=[record(accepted=False, origin="assistant"), record(id="b", accepted=True)]))
+        qtbot.wait(30)
+        assert evaluate(dialog, "projectResearch.report.records.length") == 2
+        accept = visual(window.contentItem(), "researchAcceptProposal")
+        assert accept is not None
+        assert accept.isVisible() and accept.isEnabled() and accept.property("text") == "Accetta"
+        evaluate(accept, "clicked()")
+        assert requests[-1][:2] == ("research.get", {"project_id": "project", "record_id": "record-a"})
+        assert dialog.property("page") == "list"
         assert not any("binding loop" in entry.message.lower() or "ReferenceError" in entry.message
                        or "TypeError" in entry.message for entry in qtlog.records)
     finally:

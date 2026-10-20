@@ -12,6 +12,7 @@ from kira.domain.contracts import Json, KiraError
 from kira.domain.research import dependency as validate_dependency, research_tool_specs
 from kira.service.research_store import ResearchStore
 from kira.service.storage import encode, now
+from kira.service.tool_policy import kira_tools_enabled
 from kira.tools.filesystem import FileTools
 
 if TYPE_CHECKING:
@@ -193,8 +194,9 @@ class Research:
 
     def attach(self, project: Json, session: Json, run_id: str, options: Json) -> Json:
         """The existing Kira namespace can expose bounded research callbacks."""
-        if (session["backend"] not in {"codex", "openai_chatgpt"}
-                or session["settings"].get("tools") is False
+        if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account",
+                                       "deepseek_web", "claude_code"}
+                or not kira_tools_enabled(session)
                 or not self.data.settings(project["id"])["enabled"]):
             return options
         options = dict(options)

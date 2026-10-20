@@ -263,7 +263,9 @@ def test_real_context_dialog_minimum_size_translations_and_plaintext(context, qt
         mode = window.findChild(QObject, "contextMode")
         assert mode.property("text") == ("Automatic — maximum available" if language == "en"
                                          else "Automatico — massimo disponibile")
-        assert dialog.property("height") <= 560
+        # The panel fills the workspace under the single 0.18 top bar.
+        header = window.findChild(QObject, "projectHeader")
+        assert dialog.property("height") <= 620 - header.property("height")
         scroll = window.findChild(QObject, "contextScroll")
         assert scroll.property("contentHeight") > scroll.property("height")
         assert window.findChild(QObject, "contextCompact").property("enabled")

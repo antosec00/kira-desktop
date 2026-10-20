@@ -70,7 +70,7 @@ def web_access_instructions(*, browser: bool, search: bool) -> str:
         return ""
     available = []
     if browser:
-        available.append("kira_browser.navigate/snapshot/find/screenshot for public pages in an isolated browser")
+        available.append("kira_browser.search/navigate/snapshot/find/screenshot for public pages in an isolated browser")
     if search:
         available.append("web_search for web research and supported page retrieval")
     return (

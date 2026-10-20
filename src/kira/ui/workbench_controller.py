@@ -265,7 +265,7 @@ class WorkbenchController(QObject):
 
     @qt_property(bool, notify=changed)
     def steeringAvailable(self) -> bool:
-        return (self.workspace.backend in {"openai_chatgpt", "ollama"}
+        return (self.workspace.backend in {"openai_chatgpt", "ollama", "deepseek_account"}
                 or self.workspace.backend == "codex" and self._capability("steering"))
 
     @qt_property(bool, notify=changed)
@@ -633,8 +633,8 @@ class WorkbenchController(QObject):
             self._error = tr("Ripristina la chat archiviata prima di inviare.")
             self.changed.emit()
             return
-        if self.workspace.draft_image_ids() and self.workspace.backend != "openai_chatgpt":
-            self._error = tr("Le immagini allegate richiedono OpenAI diretto. Cambia provider o rimuovi le immagini prima di inviare.")
+        if self.workspace.draft_image_ids() and not self.workspace.imageInputsEnabled:
+            self._error = tr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare.")
             self.changed.emit()
             return
         if not self.workspace.sessionId:

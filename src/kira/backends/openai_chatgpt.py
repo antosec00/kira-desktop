@@ -52,7 +52,7 @@ from kira.backends.openai_web import (
     with_citations,
 )
 from kira.domain.contracts import Json, KiraError, RunContext
-from kira.domain.questions import validate_request
+from kira.domain.questions import question_tool_specs, validate_request
 
 if TYPE_CHECKING:
     from kira.backends.openai_auth import ChatGPTAuth
@@ -126,26 +126,10 @@ def _input_messages(ctx: RunContext) -> list[Json]:
 
 
 def question_tools() -> Json:
-    question = {"type": "object", "properties": {
-        "id": {"type": "string"}, "header": {"type": "string"},
-        "question": {"type": "string"}, "isOther": {"type": "boolean"},
-        "options": {"type": "array", "maxItems": 6, "items": {
-            "type": "object", "properties": {"label": {"type": "string"},
-                "description": {"type": "string"}}, "required": ["label"],
-            "additionalProperties": False}}},
-        "required": ["id", "question"], "additionalProperties": False}
-    return {"type": "namespace", "name": "questions",
-            "description": "Persistent user questions; never permission or credential requests.",
-            "tools": [
-                _function("request_input", "Ask one to three questions. Kira provides the durable "
-                          "ID. blocking=false allows independent work while the user answers.",
-                          {"blocking": {"type": "boolean"}, "questions": {"type": "array",
-                            "items": question, "minItems": 1, "maxItems": 3}},
-                          ["blocking", "questions"]),
-                _function("read_input", "Read this run's question. wait=true waits for an answer; "
-                          "a pending result is never an answer or approval.",
-                          {"request_id": {"type": "string"}, "wait": {"type": "boolean"}},
-                          ["request_id", "wait"])]}
+    namespace = question_tool_specs()
+    return {**namespace, "tools": [{"type": "function", "name": tool["name"],
+        "description": tool["description"], "parameters": tool["inputSchema"], "strict": False}
+        for tool in namespace["tools"]]}
 
 
 def _catalog(payload: Json) -> list[Json]:

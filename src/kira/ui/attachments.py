@@ -510,8 +510,8 @@ class AttachmentInputs(QObject):
         if paths and not workspace.connected:
             finish(tr("Attendi la connessione al servizio prima di allegare immagini."))
             return
-        if paths and workspace.backend != "openai_chatgpt":
-            finish(tr("Le immagini allegate richiedono OpenAI diretto. Cambia provider o rimuovi le immagini prima di inviare."))
+        if paths and not workspace.imageInputsEnabled:
+            finish(tr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare."))
             return
         remaining = list(paths)
 

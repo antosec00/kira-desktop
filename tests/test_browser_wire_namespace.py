@@ -70,7 +70,7 @@ async def test_registered_browser_alias_dispatches_logically_and_retains_native_
         bodies.append(body)
         assert all(tool.get("name") != "browser" for tool in body["tools"])
         browser = next(tool for tool in body["tools"] if tool.get("name") == "kira_browser")
-        assert len(browser["tools"]) == 13
+        assert len(browser["tools"]) == 15
         assert any(tool["type"] == "web_search" for tool in body["tools"])
         if len(bodies) == 1:
             return wire([terminal([call(name="navigate", namespace="kira_browser",

@@ -71,7 +71,7 @@ Rectangle {
             Item { visible: !pane.web.nativeSurface || !pane.web.controlling; Layout.fillWidth: true }
             KButton { objectName: "browserSettings"; subtle: true; text: "⚙"; toolTipText: qsTr("Impostazioni web"); Accessible.name: toolTipText; implicitWidth: 36; onClicked: pane.settingsRequested() }
             KButton { objectName: "browserExpand"; subtle: true; text: pane.web.expanded ? "↙" : "↗"; toolTipText: pane.web.expanded ? qsTr("Affianca alla chat") : qsTr("Espandi browser"); Accessible.name: toolTipText; implicitWidth: 36; onClicked: pane.web.toggleExpanded() }
-            KButton { objectName: "browserHide"; subtle: true; text: "×"; toolTipText: qsTr("Nascondi browser e torna alla chat"); Accessible.name: toolTipText; implicitWidth: 36; onClicked: pane.web.hideBrowser() }
+            KButton { objectName: "browserHide"; subtle: true; text: "×"; toolTipText: qsTr("Chiudi browser"); Accessible.name: toolTipText; implicitWidth: 36; enabled: !pane.web.lifecycleBusy && !pane.web.commandBusy; onClicked: pane.web.closeBrowser() }
         }
         RowLayout {
             Layout.fillWidth: true

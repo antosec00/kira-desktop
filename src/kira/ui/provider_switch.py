@@ -26,10 +26,30 @@ class ProviderSwitchController(QObject):
         self._backend = self._model = self._effort = self._account = self._error = ""
         self._loading = self._applying = False
         self._catalog: Json = {}
+        self._deepseek_connected = workspace.deepseekAccount.connected
+        self._deepseek_proxy_enabled = workspace.deepseekAccount.proxyEnabled
+        self._deepseek_web_connected = workspace.deepseekAccount.webConnected
         workspace.chatChanged.connect(self._chat_changed)
         workspace.changed.connect(self.changed.emit)
         workspace.directAccount.changed.connect(self.changed.emit)
+        workspace.deepseekAccount.changed.connect(self._deepseek_account_changed)
         workspace.client.disconnected.connect(self._disconnected)
+
+    def _deepseek_account_changed(self) -> None:
+        connected = self.workspace.deepseekAccount.connected
+        proxy_enabled = self.workspace.deepseekAccount.proxyEnabled
+        web_connected = self.workspace.deepseekAccount.webConnected
+        account_changed = connected != self._deepseek_connected or proxy_enabled != self._deepseek_proxy_enabled
+        web_changed = web_connected != self._deepseek_web_connected
+        if not account_changed and not web_changed:
+            return
+        self._deepseek_connected = connected
+        self._deepseek_proxy_enabled = proxy_enabled
+        self._deepseek_web_connected = web_connected
+        if (self._context is not None and
+                (self._backend == "deepseek_account" and account_changed
+                 or self._backend == "deepseek_web" and web_changed)):
+            self.refreshCatalog()
 
     def _stamp(self) -> tuple[str, str, int]:
         return str(self.workspace.project.get("id", "")), self.workspace.sessionId, self.workspace._chat_generation
@@ -99,7 +119,8 @@ class ProviderSwitchController(QObject):
 
     @Slot(str)
     def begin(self, backend: str) -> None:
-        if (backend not in {"codex", "openai_chatgpt", "ollama"} or not self.workspace.sessionId
+        if (backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
+                            "claude_code"} or not self.workspace.sessionId
                 or not self.workspace.connected or self.workspace.busy or self.workspace.teams.busy
                 or self.workspace.assistant.active or self.workspace._session.get("team_id")):
             return

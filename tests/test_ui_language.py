@@ -94,14 +94,14 @@ def choose_language(window, code, qtbot):
 def test_mouse_language_choice_retranslates_controls_and_dialogs_and_persists(language_ui, qtbot):
     workspace, window, localization, calls = language_ui
     assert localization.language == "it"
-    assert item(window.contentItem(), "modelControlsToggle").property("text") == "Modello"
+    assert evaluate(item(window.contentItem(), "modelControlsToggle"), "Accessible.name") == "Mostra opzioni del modello"
     original = (workspace.backend, workspace.selectedModel, workspace.selectedEffort,
                 workspace.sessionId, copy.deepcopy(workspace._project), copy.deepcopy(workspace._runs))
     choose_language(window, "en", qtbot)
     assert localization.language == "en"
     assert item(window.contentItem(), "languageLabel").property("text") == "Interface language"
     assert item(window.contentItem(), "diagnosticsButton").property("text") == "Local diagnostics"
-    assert item(window.contentItem(), "modelControlsToggle").property("text") == "Model"
+    assert evaluate(item(window.contentItem(), "modelControlsToggle"), "Accessible.name") == "Show model options"
     assert window.findChild(QObject, "workspaceDialog").property("title") == "Resume work"
     evaluate(window, "newProject.open()")
     qtbot.wait(30)
@@ -112,7 +112,7 @@ def test_mouse_language_choice_retranslates_controls_and_dialogs_and_persists(la
     assert read_preferences(workspace.paths.config)["language"] == "en"
     choose_language(window, "it", qtbot)
     assert item(window.contentItem(), "languageLabel").property("text") == "Lingua dell’interfaccia"
-    assert item(window.contentItem(), "modelControlsToggle").property("text") == "Modello"
+    assert evaluate(item(window.contentItem(), "modelControlsToggle"), "Accessible.name") == "Mostra opzioni del modello"
     assert window.findChild(QObject, "newProjectDialog").property("title") == "Un nuovo spazio di lavoro"
     assert read_preferences(workspace.paths.config)["language"] == "it"
     assert (workspace.backend, workspace.selectedModel, workspace.selectedEffort,

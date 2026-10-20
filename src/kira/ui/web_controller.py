@@ -116,10 +116,19 @@ class WebController(QObject):
                 bool(self.workspace._session.get("team_id")), self.workspace.workbench.sessionArchived)
 
     def _context_changed(self) -> None:
-        if self._stamp() != self._identity:
+        current = self._stamp()
+        if current != self._identity:
+            previous = self._identity
+            # Replaying the same chat after a short IPC reconnect changes the
+            # connection and replay generations, but must not dismiss the
+            # browser pane the user was already viewing.
+            same_target = (len(previous) == len(current)
+                           and previous[:6] == current[:6]
+                           and previous[8:] == current[8:])
+            keep_pane_visible = same_target and self._pane_visible
             self._unwatch()
             self._clear_frame()
-            self._pane_visible = False
+            self._pane_visible = keep_pane_visible
             self._browser_id = ""
             self._browser_cursor = 0
             self._seen_browsers.clear()
@@ -131,7 +140,7 @@ class WebController(QObject):
             self._mouse_timer.stop()
             self._mouse_move = None
             self._command_queue.clear()
-            self._identity = self._stamp()
+            self._identity = current
             self._generation += 1
             self._refresh_timer.stop()
             self._refresh_needed = False
@@ -141,6 +150,8 @@ class WebController(QObject):
             self._error = ""
             self._busy = self._visible = False
             self.dismissed.emit()
+            if keep_pane_visible and self.available:
+                QTimer.singleShot(0, self.refresh)
         if self.manualApproval and self.available and not self._pane_visible and not self._command_pending:
             self.showBrowser()
         self.changed.emit()
@@ -148,7 +159,8 @@ class WebController(QObject):
     @qt_property(bool, notify=changed)
     def available(self) -> bool:
         return bool(self.workspace.connected and self.workspace.project.get("id")
-                    and self.workspace.sessionId and self.workspace.backend == "openai_chatgpt"
+                    and self.workspace.sessionId
+                    and self.workspace.backend in {"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web"}
                     and not self.workspace._session.get("team_id")
                     and not self.workspace.workbench.sessionArchived)
 
@@ -330,7 +342,7 @@ class WebController(QObject):
 
     @Slot(dict)
     def _event(self, event: Json) -> None:
-        if not self._visible or not self.available:
+        if not self.available:
             return
         payload = event.get("payload")
         if not isinstance(payload, dict):
@@ -343,7 +355,7 @@ class WebController(QObject):
         run_id = str(event.get("run_id", ""))
         run = self.workspace._runs.get(run_id, {})
         if (run.get("session_id") != self.workspace.sessionId or run.get("team_id")
-                or run.get("backend", self.workspace.backend) != "openai_chatgpt"
+                or run.get("backend", self.workspace.backend) not in {"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web"}
                 or run.get("model", self.workspace.selectedModel) != self.workspace.selectedModel
                 or run.get("provider_generation", self.workspace._session.get("provider_generation", 0))
                    != self.workspace._session.get("provider_generation", 0)):
@@ -354,6 +366,16 @@ class WebController(QObject):
         self._event_cursors[run_id] = seq
         while len(self._event_cursors) > 64:
             self._event_cursors.pop(next(iter(self._event_cursors)))
+        tool_result = payload.get("result")
+        if (self.workspace.backend == "deepseek_web" and browser_completed
+                and isinstance(tool_result, dict) and tool_result.get("ok") is True):
+            # Direct DeepSeek Web requests are acted on through Kira's isolated
+            # browser, so show the embedded page after a successful browser call.
+            self._refresh_needed = False
+            self.refresh()
+            return
+        if not self._visible:
+            return
         self._refresh_needed = True
         self._schedule_refresh()
 
@@ -692,8 +714,14 @@ class WebController(QObject):
 
     @Slot()
     def closeBrowser(self) -> None:
-        if self.available and self.browser["active"] and not self.lifecycleBusy:
+        # A close requested while an input command is in flight is queued once
+        # behind it; the queue drains after the pending outcome arrives.
+        if not self.available or self.lifecycleBusy:
+            return
+        if self.browser["active"] and self.browser["browser_id"]:
             self._queue_lifecycle("close", {})
+        else:
+            self.hideBrowser()
 
     def _queue_lifecycle(self, action: str, arguments: Json) -> None:
         if self.lifecycleBusy:
@@ -804,6 +832,9 @@ class WebController(QObject):
             if not self._receive_browser_result(result):
                 failed({"message": tr("La risposta del browser non appartiene alla chat attuale.")})
                 return
+            if method == "session.browser.close" and not result.get("browser", {}).get("active", True):
+                self._pane_visible = False
+                self._clear_frame()
             if (method == "session.browser.command" and extra.get("action") == "ui_copy"
                     and input_scope == (self._browser_id, self._surface_revision)):
                 text = result.get("clipboard_text")

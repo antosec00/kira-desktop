@@ -138,7 +138,8 @@ class ContextController(QObject):
         return (self.workspace.project.get("id", ""), self.workspace.sessionId,
                 self.workspace.backend, self.workspace.selectedModel,
                 self.workspace._session.get("provider_generation", 0),
-                self.workspace.direct_account_id() if self.workspace.backend == "openai_chatgpt" else "",
+                self.workspace.direct_account_id() if self.workspace.backend == "openai_chatgpt" else
+                "deepseek_account" if self.workspace.backend == "deepseek_account" else "",
                 self.workspace.connected, self.workspace._chat_generation)
 
     def _context_changed(self) -> None:
@@ -170,7 +171,7 @@ class ContextController(QObject):
         run_id = _literal(event.get("run_id"), 128)
         run = self.workspace._runs.get(run_id, {})
         if (not run or run.get("session_id") != self.workspace.sessionId or run.get("team_id")
-                or run.get("backend", self.workspace.backend) != "openai_chatgpt"
+                or run.get("backend", self.workspace.backend) not in {"openai_chatgpt", "deepseek_account"}
                 or run.get("model", self.workspace.selectedModel) != self.workspace.selectedModel
                 or run.get("provider_generation", self.workspace._session.get("provider_generation", 0))
                    != self.workspace._session.get("provider_generation", 0)):
@@ -198,13 +199,14 @@ class ContextController(QObject):
         elif kind == "context.status":
             self._live_run = run_id
             self._live_metrics.update({key: payload[key] for key in (
-                "estimated_tokens", "preflight_input_tokens", "visible_estimated_tokens",
+                "estimated_tokens", "input_tokens", "preflight_input_tokens", "visible_estimated_tokens",
                 "opaque_context", "measurement") if key in payload})
             if "compactions" in payload:
                 self._live_metrics["compaction_count"] = payload["compactions"]
             self._live_policy.update({key: payload[key] for key in (
                 "context_window", "default_context_window", "max_context_window", "reserved_tokens",
-                "compact_threshold", "capacity_source", "maximum_verified") if key in payload})
+                "compact_threshold", "capacity_source", "maximum_verified", "reservation_source")
+                if key in payload})
         elif payload.get("phase") == "started":
             self._live_run, self._live_phase = run_id, "compacting"
             self._error = ""
@@ -242,7 +244,7 @@ class ContextController(QObject):
 
     @qt_property(bool, notify=changed)
     def directContext(self) -> bool:
-        return self.workspace.backend == "openai_chatgpt"
+        return self.workspace.backend in {"openai_chatgpt", "deepseek_account"}
 
     @qt_property(bool, notify=changed)
     def canEdit(self) -> bool:
@@ -258,9 +260,14 @@ class ContextController(QObject):
 
     @qt_property("QVariantMap", notify=changed)
     def metricsContext(self) -> Json:
-        if self.workspace.backend != "openai_chatgpt":
+        if self.workspace.backend not in {"openai_chatgpt", "deepseek_account"}:
             return {"backend": self.workspace.backend, "model": self.workspace.selectedModel,
                     **self._data, "policy": {}, "metrics": {}}
+        if self.workspace.backend == "deepseek_account":
+            return {"backend": self.workspace.backend, "model": self.workspace.selectedModel,
+                    **self._data, "policy": {**mapping(self._data.get("policy")), **self._live_policy},
+                    "metrics": {**mapping(self._data.get("metrics")), **self._live_metrics},
+                    "status": self._live_phase or self._data.get("status")}
         model = next((row for row in self.workspace.models if row.get("id") == self.workspace.selectedModel), {})
         fallback = {"context_window": model.get("context_window"),
                     "max_context_window": model.get("max_context_window"),

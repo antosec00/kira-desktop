@@ -13,7 +13,7 @@
   "Impossibile leggere le impostazioni dei provider della chat.": "The chat's provider settings could not be read.",
   "L'immagine non è stata aggiunta. Verifica formato, dimensione e spazio disponibile.": "The image was not added. Check its format, size and available storage.",
   "La chat, il titolo e la bozza restano qui. Il nuovo provider riceverà il contesto portabile disponibile con il prossimo messaggio.": "Your chat, title and draft stay here. The new provider will receive the available portable context with your next message.",
-  "Le immagini allegate richiedono OpenAI diretto. Cambia provider o rimuovi le immagini prima di inviare.": "Image attachments require OpenAI direct. Switch providers or remove the images before sending.",
+  "Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare.": "The selected model does not support images. Change the model or remove the images before sending.",
   "Le immagini saranno inviate solo con il messaggio. La disponibilità della visione dipende dal modello.": "Images will be sent only with the message. Vision availability depends on the model.",
   "Non è stato possibile preparare l'immagine.": "The image could not be prepared.",
   "Puoi allegare al massimo 4 immagini per messaggio.": "You can attach up to 4 images per message.",

@@ -152,7 +152,10 @@ async def test_smaller_window_service_rebuild_preserves_old_checkpoint_and_resto
                 "capabilities": {"input_tokens": False}})
 
             async def smaller_catalog(_session, provider=None):
-                return {"context_window": 12_000}
+                # Still far below the saved 100k window and the 80k-character
+                # old compaction, but above the fixed overhead of the current
+                # instructions and tool schemas (about 10k estimated tokens).
+                return {"context_window": 16_000}
 
             monkeypatch.setattr(service.contexts, "catalog", smaller_catalog)
             await run_direct(service, session, "Continue using the new smaller window", "smaller-window-turn")

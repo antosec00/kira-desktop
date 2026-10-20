@@ -2,7 +2,7 @@
 
 
 > **Nota per il ramo sperimentale `feature/kira-studio`:** la versione
-> 0.16.0.dev1 include un prototipo Studio con integrazione provider non ancora qualificata. Il pulsante
+> 0.18.0.dev1 include un prototipo Studio con integrazione provider non ancora qualificata. Il pulsante
 > **Studio** apre un pannello disattivato per ogni nuovo progetto, che può essere
 > abilitato esplicitamente per creare un poster 2D modificabile, conservare
 > revisioni ed esportare PNG. Dopo l'attivazione nel progetto, la chat può
@@ -72,6 +72,59 @@ Le **Impostazioni** sono divise in **Aspetto**, **Lavoro**, **Connessioni** e
 **Dati locali**. I campi non salvati restano presenti cambiando sezione.
 Il browser mantiene **Controllo tuo / Controllo di Kira**: cambiare pannello
 non chiude le pagine e non restituisce automaticamente il controllo.
+
+## L’interfaccia 0.18: barra laterale, chip e pannelli
+
+La 0.18 toglie cornici e scritte senza togliere comandi. In alto c’è una sola
+barra: a sinistra il pulsante della barra laterale, il nome del progetto e il
+titolo della chat; a destra **Ricerca**, **Riprendi**, **Azioni**, **Esporta**,
+**Dettagli**, **Progetto** e il passaggio fra tema chiaro e scuro. Quando la
+finestra è stretta i pulsanti mostrano solo l’icona: fermati sopra con il
+puntatore per leggere il nome. **Ricerca** porta il numero delle proposte da
+esaminare.
+
+La barra laterale ha tre stati: **Intera**, **Solo icone** e **Nascosta**. Il
+pulsante in alto a sinistra o **Ctrl+B** passano da uno all’altro e la scelta si
+salva in **Impostazioni → Lavoro → Barra laterale**. Con le sole icone restano
+Cerca, Progetti, Attività, Team, Conoscenza e strumenti, Modelli, Impostazioni
+e Guida iniziale, con il nome al passaggio del puntatore; l’elenco di progetti e
+chat torna con la barra intera. Il punto in basso indica il collegamento al
+servizio locale.
+
+Nel campo di scrittura i comandi sono chip: allegato, **File**, la modalità di
+lavoro e il **modello**. Il chip del modello riassume provider e modello scelti;
+premendolo si apre **Provider, modello e ragionamento** sopra il campo, con
+provider, modello, ragionamento, sessione, strumenti e **Aggiorna**: la
+conversazione non si sposta. **Esc** o un clic fuori lo richiudono. A destra
+trovi **Coda**, gli strumenti della chat, **Accoda** e **Invia** (Ctrl+Invio).
+In **Impostazioni → Lavoro**, **Apri le opzioni del modello con la chat** fa
+comparire la finestra da sola ogni volta che entri in una chat.
+
+Sotto il campo c’è il vassoio degli strumenti: File, Uso, Contesto, Conoscenza,
+Browser, Studio, Memoria, Anima, Team, Domande e Impostazioni web, solo icone.
+**Etichette** mostra i nomi accanto alle icone e ricorda la scelta (anche in
+**Impostazioni → Lavoro**). **Domande** porta il numero delle risposte attese;
+**Team** mostra il suo stato quando è in pausa o ha un incarico.
+
+I pannelli a destra hanno in cima una fila di schede: **Ricerca**, **Anima**,
+**Contesto**, **Memoria**, **Conoscenza**, **Uso**, **File** e **Riprendi**.
+Puoi passare da un pannello all’altro senza tornare alla chat; **Espandi
+pannello**, **Affianca alla chat** e **Chiudi pannello** restano nel titolo
+come icone ed **Esc** chiude.
+
+I colori del tema Kira sono una grafite calda con accento ambra; il tema chiaro
+ha un fondo avorio. La conversazione usa una colonna di lettura centrata: per
+occupare tutta la larghezza attiva la larghezza piena in **Impostazioni →
+Aspetto**. Temi personalizzati, caratteri e dimensioni restano quelli salvati.
+
+In **Modelli** i provider sono una fila di pulsanti; sotto, una riga riporta lo
+stato indicato dal provider con il colore del punto (verde collegato, ambra da
+collegare o senza modelli, rosso non disponibile) e, per Codex, **Accedi con
+Codex**. Ogni modello è una scheda con identificativo, strumenti, dimensione
+quando nota e livelli di ragionamento dichiarati; **Usa modello** lo seleziona.
+I dati grezzi del provider restano sotto **Dati del provider**, chiusi finché
+non li apri. Nessun valore viene inventato: ciò che il provider non dice resta
+sconosciuto.
 
 ## Le mie Kira: identità, filosofia e ricordi
 
@@ -157,6 +210,69 @@ contenuti omessi. Un modello con strumenti verificati può recuperare il resto.
 Se gli strumenti sono disattivati o non supportati, l'archivio rimane conservato
 ma il modello non può consultarlo autonomamente.
 
+Per Ollama, **Dettagli → Contesto richiesto** imposta la finestra per questa chat:
+puoi scegliere il valore predefinito del modello oppure **32K**, **128K** e **256K**.
+Finestre maggiori consumano più memoria e possono rallentare il modello; il modello
+e la memoria disponibili possono impedire di caricare i valori più alti. Controlla
+i dati del modello e il contesto caricato in Ollama. L'impostazione si salva nella
+stessa chat. In **Dettagli** puoi anche scegliere il pensiero interno predefinito,
+disattivato o attivato; Kira non mostra il testo interno del modello.
+Con il pensiero attivo e una cronologia lunga, Ollama può impiegare alcuni minuti
+prima di inviare nuovi dati. Kira attende fino a dieci minuti senza ricevere dati
+prima di interrompere la richiesta; il limite riguarda l'attesa tra aggiornamenti,
+non la durata totale. Quando gli strumenti Ollama sono verificati e disponibili,
+Kira istruisce il modello a eseguire il passo successivo con uno strumento invece
+di limitarsi ad annunciarlo; la chiamata resta una decisione del modello.
+
+Nel sorgente sperimentale **0.16.0.dev1** puoi scegliere **DeepSeek Account**
+oppure **DeepSeek Web · sperimentale**. Sono due integrazioni distinte.
+Apri **Modelli**, seleziona **DeepSeek Account** e scegli **Accedi con DeepSeek**: Kira
+apre il browser di sistema per l'accesso account e conserva il grant nel profilo
+locale. Dopo il collegamento aggiorna il catalogo e scegli il modello. Il provider
+usa gli strumenti Kira con le stesse verifiche di permessi e approvazione.
+Prima del login leggi l'avviso mostrato nel pannello: il flusso Harness può creare
+una chiave gestita da DSH sulla piattaforma, che il logout locale potrebbe non
+revocare. **Disconnetti da Kira** elimina il grant locale e richiede il logout
+account a DeepSeek; non equivale alla revoca di quella chiave.
+
+In alternativa, nel pannello DeepSeek attiva **Usa DeeperSeeker**. Inserisci
+l'indirizzo dell'istanza (per esempio `http://127.0.0.1:4000`) e la sua chiave
+API; Kira la salva nel profilo privato e non la mostra dopo il salvataggio. Il
+proxy deve essere già avviato e raggiungibile dal servizio Kira. Disattiva
+l'opzione e salva per tornare all'accesso account. Il provider usa il catalogo
+e il trasporto Anthropic Messages del proxy; le capacità effettive dipendono dal
+modello e dal proxy. Questa integrazione è sperimentale e non è stata qualificata
+con un'istanza live.
+
+Per l'accesso web diretto, apri **Modelli** e incolla `userToken` nel pannello
+**DeepSeek Web · accesso diretto**. Kira conserva il token nel profilo privato,
+verifica la sessione con `chat.deepseek.com` e mostra l'esito. Poi seleziona
+**DeepSeek Web · sperimentale** come backend e scegli uno dei modelli esposti:
+**DeepSeek V4 Flash (web)** o **DeepSeek Reasoner (web)**. Il catalogo web corrente
+è configurato in Kira e non viene scaricato da un endpoint di inventario. Questo
+backend usa il flusso web e il relativo PoW; non usa il grant PKCE, DeeperSeeker,
+né il trasporto account Anthropic Messages. Il servizio Kira media strumenti
+testuali per browser e ricerca web, progetto, file e comandi: ogni invocazione
+continua a rispettare modalità, permessi e approvazioni Kira. Questo protocollo
+sperimentale accetta chiamate testuali JSON e DSML, non il function calling nativo
+DeepSeek. DeepSeek V4 Flash e DeepSeek Reasoner possono ricevere immagini allegate
+e screenshot del Browser: Kira li normalizza e li carica su chat.deepseek.com nella
+modalità visione. Gli strumenti Computer non sono disponibili.
+Kira riutilizza la stessa sessione DeepSeek tra i messaggi della stessa chat
+Kira. Se riapri quella chat e il servizio Kira si era interrotto durante un
+turno, alla continuazione riparte
+dall'ultimo messaggio DeepSeek confermato e passa al modello un estratto della
+richiesta e dei risultati registrati, senza ripetere gli strumenti. Se il
+riferimento remoto manca o non corrisponde a modello/account selezionato, Kira
+apre una nuova sessione remota usando la cronologia locale disponibile. Le istruzioni
+Kira e il catalogo degli strumenti vengono inviati per intero all'avvio della
+sessione remota; nei turni successivi Kira invia una richiesta compatta e lo stato
+corrente dei permessi. Il contesto completo viene aggiornato se cambiano le
+istruzioni, la memoria o i permessi del progetto, la modalità o gli strumenti
+disponibili.
+Per scollegarlo,
+usa **Rimuovi token web**.
+
 Nella scheda **Strumenti** vedi le revisioni, i contratti e le prove registrate.
 Puoi disattivare uno strumento oppure aggiungere alla bozza una richiesta per
 usarlo o provarlo; il pulsante non invia il messaggio. Quando manca una capacità,
@@ -208,8 +324,9 @@ desiderato nell'interfaccia. Per installazione e percorsi dei dati consulta la
    cartella esistente con **Sfoglia…**. Puoi aggiungere istruzioni specifiche.
 2. Scegli i permessi dalla tabella qui sotto. Puoi modificarli in **Memoria**
    quando non c'è lavoro attivo nel progetto.
-3. Apri **Modelli**, seleziona **Codex**, **OpenAI diretto · ChatGPT** oppure
-   **Ollama** e premi **Aggiorna**.
+3. Apri **Modelli**, seleziona **Codex**, **OpenAI diretto · ChatGPT**,
+   **Ollama**, **DeepSeek Account** oppure **DeepSeek Web · sperimentale** e premi
+   **Aggiorna**.
    Completa la configurazione del provider descritta nella sezione successiva.
 4. Seleziona un modello con **Usa modello** e, quando disponibile, il livello di
    ragionamento. Kira non cambia autonomamente il modello scelto.
@@ -291,8 +408,8 @@ turno corrente; **Ferma** richiede invece la sua cancellazione. Chiudere soltant
 la finestra non ferma il servizio né cancella la coda.
 
 Le indicazioni sono solo testo, fino a 32.000 byte; gli allegati richiedono una
-richiesta separata. Con OpenAI diretto e Ollama vengono aggiunte alla prossima
-richiesta al modello, dopo la risposta o lo strumento già in corso. Con Codex
+richiesta separata. Con OpenAI diretto, DeepSeek Account e Ollama vengono aggiunte
+alla prossima richiesta al modello, dopo la risposta o lo strumento già in corso. Con Codex
 si usa il suo invio al turno attivo quando disponibile. Le operazioni di un
 gruppo non ancora iniziate possono essere rinviate per recepire la correzione.
 La chat distingue attesa, invio, ricezione confermata ed esito da verificare.
@@ -336,8 +453,9 @@ prepara una bozza in modalità Revisione: controllala e inviala.
 Per **Codex**, **Riduci il contesto**, in **Gestisci chat**, richiede una chat
 inattiva e una conferma. Kira attende l'esito del provider e conserva la propria
 cronologia. Per **OpenAI diretto**, la stessa area apre **Contesto e memoria**:
-la compattazione è automatica e puoi richiederla anche con **Compatta ora**,
-come descritto più avanti. **Riepiloga** produce una risposta leggibile e non
+la compattazione è automatica e puoi richiederla anche con **Compatta ora**.
+Anche **DeepSeek** compatta automaticamente con una sintesi gestita da Kira;
+la stessa schermata permette la compattazione manuale. **Riepiloga** produce una risposta leggibile e non
 sostituisce queste operazioni. Non viene promessa una quantità di token risparmiati.
 Se Codex segnala un proprio obiettivo nativo ancora aperto, Kira può rifiutare
 la ripresa o la compattazione per evitare continuazioni automatiche non gestite.
@@ -375,6 +493,8 @@ Apri **Azioni → Obiettivo della chat**, descrivi il risultato desiderato e pre
 **Salva obiettivo**. Finché è attivo, Kira lo include nel contesto dei nuovi
 turni. **Continua con un passo** avvia una sola nuova richiesta esplicita; salvare
 o riprendere un obiettivo non avvia automaticamente un ciclo di lavoro.
+Con DeepSeek, obiettivi e callback usano gli strumenti gestiti da Kira. Una vecchia
+preferenza degli strumenti di Ollama non li disattiva.
 
 **Pausa obiettivo** sospende i nuovi invii del suo testo, **Riprendi obiettivo**
 li riattiva e **Segna completato** registra la tua valutazione. Questi comandi non
@@ -395,7 +515,9 @@ organizzare il lavoro:
   progetto, propone gli incarichi e avvia il team automaticamente.
 
 Tutti i membri usano il modello e il livello di ragionamento selezionati per il
-team. Puoi usare Codex oppure OpenAI diretto con ChatGPT; la configurazione di Ollama resta separata.
+team. Nel sorgente sperimentale **0.16.0.dev1** puoi scegliere anche Ollama o
+DeepSeek per coordinatore e membri; la disponibilità dei tool dipende dal supporto
+del modello. Codex e OpenAI diretto con ChatGPT mantengono le proprie configurazioni.
 Ogni membro può leggere la propria casella messaggi e scrivere a un collega o al
 team. Puoi inviare anche tu indicazioni durante il lavoro.
 
@@ -459,15 +581,16 @@ densità compatta/comoda e diagnostica locale, visualizzabile prima dell'esporta
 Kira usa ora la mascotte del cane come simbolo dell'applicazione, con sfondo
 trasparente. Pannelli e campo di scrittura hanno angoli più morbidi e bordi sottili.
 
-Sopra la chat resta un riepilogo compatto del modello. **Modello** apre le opzioni
-Codex/Ollama, modello, ragionamento e sessione; **Nascondi** le nasconde e lascia più
-spazio alla conversazione. La scelta viene ricordata. Puoi usarli anche mentre
-l'agente lavora: modello, sessione e permessi restano quelli già selezionati.
-Al primo utilizzo le opzioni sono nascoste; premi Modello per cambiarle.
+Dalla **0.18** il riepilogo del modello è il chip nel campo di scrittura:
+premilo per aprire **Provider, modello e ragionamento** (provider, modello,
+ragionamento, sessione e strumenti) e richiudilo con **Esc** o un clic fuori.
+Puoi usarlo anche mentre l'agente lavora: modello, sessione e permessi restano
+quelli già selezionati. Con **Apri le opzioni del modello con la chat**
+(Impostazioni → Lavoro) la finestra compare da sola quando entri in una chat.
 
-Dalla **0.8.5**, la fascia del modello ha meno cornici e mantiene accessibili
-**Team**, **Domande** e **Modello**. **Conoscenza e strumenti** si trova
-nella barra laterale ed è disponibile anche sotto la chat. Il banner delle domande richiama l’attenzione
+**Team** e **Domande** sono nel vassoio degli strumenti sotto il campo di
+scrittura. **Conoscenza e strumenti** si trova nella barra laterale ed è
+disponibile anche nel vassoio. Il banner delle domande richiama l’attenzione
 quando ci sono risposte da fornire. Sotto la conversazione, sopra il campo di
 scrittura, trovi la mascotte, lo stato di lavoro, **Dettagli** e **Ferma**. Il
 tempo mostrato decorre dalla richiesta registrata: non è una stima del tempo
@@ -531,6 +654,31 @@ Kira; non identifica automaticamente un server su un altro sistema.
 Un endpoint remoto va scelto esplicitamente e riceverà il contesto inviato.
 Kira non scarica pesi automaticamente. Gli strumenti vengono verificati prima
 dell'uso; i modelli incompatibili restano disponibili per conversazione.
+
+**Claude Code · uso personale (sperimentale):** Kira usa il Claude Code
+installato con l'estensione opzionale (`uv sync --frozen --extra claude-code`) e
+l'accesso che hai già fatto in Claude Code: Kira non legge né conserva le
+credenziali e non ha un proprio pulsante di accesso. Se l'elenco dei modelli
+segnala che Claude Code non è collegato, apri un terminale, esegui `claude`, usa
+`/login` e poi **Aggiorna**. Usalo solo per il tuo lavoro: non distribuire Kira
+con questo provider attivo. I permessi del progetto decidono gli strumenti:
+sola lettura permette di leggere e cercare file, scrittura nel progetto permette
+anche di modificarli, host fidato e accesso completo aggiungono comandi e web.
+Kira blocca i percorsi fuori dal progetto (salvo accesso completo) e mostra le
+azioni di Claude Code come osservazioni: le righe delle operazioni usano le
+stesse etichette degli altri provider (**Lettura del file**, **Esecuzione del
+comando**, **Ricerca nel testo**…) con il percorso, il comando o il motivo di
+ricerca; il nome nativo dello strumento resta nei dati originali della riga.
+I comandi in background non sono
+disponibili: Claude Code si chiude alla fine di ogni esecuzione, quindi un
+comando deve finire entro il suo limite di tempo. La memoria automatica di
+Claude Code è disattivata dentro Kira: la memoria la gestisce Kira con la memoria
+del progetto, le note delle chat e il registro **Ricerca**, dove il modello può
+proporre schede che decidi tu se accettare. Il browser e il Computer di Kira
+funzionano come con gli altri provider: le pagine si aprono nel browser isolato
+di Kira e gli screenshot arrivano a Claude Code come immagini; puoi anche
+allegare fino a quattro immagini PNG alla richiesta. Un `uv sync` senza
+`--extra claude-code` rimuove di nuovo il supporto.
 
 Il modello usato per sviluppare Kira e quello selezionato dentro Kira sono scelte
 distinte. [BACKENDS.md](BACKENDS.md) descrive i collegamenti verificati. La prova
@@ -653,7 +801,7 @@ la cronologia, le schede ripartono compatte. Le risposte di Kira restano formatt
 
 ## Incollare immagini e allegare file
 
-Con **OpenAI diretto · ChatGPT**, nella casella della chat puoi:
+Con **OpenAI diretto · ChatGPT** e **DeepSeek Account**, nella casella della chat puoi:
 
 - premere **Allega** e scegliere le immagini;
 - incollare un'immagine dagli appunti con **Ctrl+V**, **Shift+Ins** o **Incolla**;
@@ -662,15 +810,17 @@ Con **OpenAI diretto · ChatGPT**, nella casella della chat puoi:
 Ogni immagine compare con anteprima, nome e dimensioni. Puoi rimuoverla dalla
 bozza prima di premere **Invia**. La preparazione è locale: il contenuto viene
 trasmesso al provider solo con il messaggio. Puoi anche inviare solo immagini,
-oppure accodarle insieme al testo. La disponibilità della visione dipende dal
-modello; un rifiuto del provider viene mostrato senza sostituire il modello.
+oppure accodarle insieme al testo. Per DeepSeek Account, la visione è disponibile
+solo nei modelli che nel catalogo indicano il supporto alle immagini; un rifiuto
+del provider viene mostrato senza sostituire il modello.
 
 Sono accettate fino a **4 immagini per messaggio**, nei formati PNG, JPEG, WebP
 e GIF statiche; le animazioni vengono rifiutate. Ogni file sorgente può contenere
 al massimo 32 MiB e 32 milioni di pixel. Dopo la conversione in PNG, il limite è
 8 MiB per immagine e 16 MiB per messaggio. Le immagini nella bozza vengono salvate
-per chat e ritrovate dopo un riavvio. Se passi a un altro provider mantenendo
-immagini nella bozza, torna al diretto o rimuovi quegli allegati prima dell'invio.
+per chat e ritrovate dopo un riavvio. Se passi a un provider o modello senza
+visione mantenendo immagini nella bozza, seleziona un modello compatibile o
+rimuovi quegli allegati prima dell'invio.
 
 **Scrivere o incollare soltanto un percorso resta testo:** non allega i byte
 né permette da solo al modello di vedere l'immagine. Usa Allega per selezionare
@@ -749,7 +899,8 @@ dimensione della chat e sulla riduzione delle animazioni.
 In **Impostazioni** trovi:
 
 - dimensione del testo della chat (12–20), densità e animazioni ridotte;
-- visibilità dei controlli del modello e del pannello Dettagli;
+- barra laterale (intera, solo icone, nascosta), etichette degli strumenti,
+  apertura delle opzioni del modello con la chat e pannello Dettagli;
 - conferma alla chiusura: durante il lavoro, sempre oppure mai;
 - apertura dei file con l’applicazione di sistema o **Visual Studio Code**;
 - permesso iniziale dei **nuovi** progetti; quelli esistenti non cambiano;
@@ -848,15 +999,15 @@ risparmio.
 
 ## Cambiare modello o provider nella stessa chat
 
-Dalla versione 0.5.0 puoi cambiare modello e livello di ragionamento nei controlli
-della chat senza crearne un'altra. La modifica vale dalla richiesta successiva;
+Dalla versione 0.5.0 puoi cambiare modello e livello di ragionamento dal chip
+del modello sotto il campo di scrittura senza creare un'altra chat. La modifica vale dalla richiesta successiva;
 cronologia, bozza e riferimento della conversazione del provider restano invariati.
 Il selettore si aggiorna dopo la conferma del servizio. Il ragionamento viene
 conservato se supportato dal nuovo modello; altrimenti torna al valore predefinito
 del provider.
 
 Per passare fra **Codex**, **OpenAI diretto · ChatGPT** e **Ollama**, scegli il
-provider nei controlli della chat. Una finestra permette di controllare modello,
+provider nella finestra del chip del modello. Una finestra permette di controllare modello,
 ragionamento e, per il diretto, account prima di premere **Continua in questa
 chat**. Kira ripropone le ultime scelte salvate per quel provider, quando presenti;
 la prima volta devi scegliere un modello. Nessun modello viene sostituito se
@@ -869,7 +1020,7 @@ portabile disponibile entro limiti dichiarati; non trasferisce lo stato interno
 del provider. Anche tornando a Codex prepara il passaggio aggiornato, senza
 riprendere in modo silenzioso una conversazione interna rimasta indietro. La
 cronologia registrata nell'app rimane conservata. Un cambio di provider con una
-bozza di immagini la mantiene, ma l'invio richiede il diretto.
+bozza di immagini la mantiene; puoi inviarla solo con un modello che supporta la visione.
 
 Attendi che il lavoro finisca e completa o rimuovi le richieste ancora in coda,
 anche se la coda è in pausa. Le autorizzazioni dell'account e le regole del
@@ -981,14 +1132,23 @@ Dettagli tecnici e prove effettivamente eseguite sono in
 ### Ricerca web e browser integrato
 
 Da **0.8.1**, il pulsante **Browser** sotto la chat **OpenAI diretto · ChatGPT**
-apre un browser dentro Kira, affiancato alla conversazione. L’agente può aprirlo
-quando serve. Puoi allargare il pannello trascinando il divisore oppure usare
+apre un browser dentro Kira, affiancato alla conversazione. Nel sorgente
+sperimentale **0.16.0.dev1**, il browser è disponibile anche nelle chat Ollama,
+anche quando **Strumenti** è disattivato. Kira verifica le chiamate agli
+strumenti del modello al primo uso; screenshot e controllo visivo richiedono
+anche input immagini. Gli strumenti browser restano separati da file e comandi
+del progetto. Quando **Strumenti** è attivo, Ollama riceve anche gli altri tool
+Kira disponibili e consentiti nel contesto: file, comandi secondo i permessi,
+domande, cronologia, conoscenza, ricerca di progetto, obiettivi, Studio e team.
+L’agente può aprirlo quando serve. Puoi allargare il pannello trascinando il divisore oppure usare
 **Espandi browser**; nelle finestre strette puoi alternare browser e chat senza
 perdere la bozza. L’icona delle impostazioni apre le opzioni web.
-Gli strumenti della chat devono essere attivi per l’uso da parte dell’agente.
-Puoi scegliere ricerca **Live**, **Indicizzata** o **Disattivata** e abilitare il
-browser. La ricerca OpenAI dipende dal modello e dalle autorizzazioni dell’account;
+Con OpenAI diretto gli strumenti della chat devono essere attivi per l’uso da
+parte dell’agente. Puoi scegliere ricerca **Live**, **Indicizzata** o
+**Disattivata** e abilitare il browser. La ricerca web ospitata da OpenAI dipende
+dal modello e dalle autorizzazioni dell’account ed è disponibile con OpenAI diretto;
 un eventuale rifiuto viene mostrato senza cambiare modello o modalità di pagamento.
+Con Ollama, la ricerca web usa `browser.search` nel browser isolato di Kira.
 Le fonti compaiono come collegamenti nelle risposte e le operazioni in Attività.
 Se il provider conferma un’operazione web ma non ne riporta alcuni dettagli,
 come l’indirizzo di una pagina aperta, Kira li lascia non disponibili e conserva
@@ -999,8 +1159,8 @@ Non serve conoscere i nomi degli strumenti: una richiesta come «leggi questo
 link» è sufficiente. Controlla anche le istruzioni del progetto: un divieto di
 rete continua a valere finché non lo modifichi. Se una pagina richiede consenso,
 accesso o verifica anti-bot, Kira deve indicare l’ostacolo osservato. Può svolgere
-una ricerca web alternativa, distinguendola dai risultati personalizzati del
-tuo browser.
+una ricerca web alternativa tramite il browser isolato di Kira, distinguendola
+dai risultati personalizzati del tuo browser.
 
 Per il browser, esegui una volta `kira-desktop browser-install` con lo stesso
 profilo dell’app; dal sorgente usa `uv run kira-desktop browser-install`.
@@ -1082,7 +1242,13 @@ vengono rifiutate. Anche con la nuova vista, l’esito dell’accesso a uno spec
 sito va verificato con la tua prova. I dettagli tecnici e i limiti sono nella
 [guida al browser](WEB_BROWSER.md#passkeys-and-the-windows-authentication-bridge).
 
-La fine di un turno completato lascia il browser aperto. Le pagine devono essere pubblicamente
+La fine di un turno completato lascia il browser aperto mentre Kira resta
+collegata. Il pulsante **×** e **Chiudi browser** chiudono davvero la sessione
+Chromium del servizio; nascondere il pannello con un cambio di area lo lascia
+aperto. Puoi anche chiedere a Kira di chiuderlo: l’agente dispone dello
+strumento `browser.close`, limitato al browser di questa chat. Quando l’ultima
+finestra desktop si scollega, Kira chiude i browser inattivi e chiude quelli
+associati a un turno appena termina. Le pagine devono essere pubblicamente
 raggiungibili via HTTP/HTTPS; indirizzi locali, caricamento file e download
 automatici non sono disponibili. Alcuni siti richiedono intervento manuale o
 bloccano l’automazione. I campi dei moduli vengono esclusi dalle letture e
@@ -1120,11 +1286,11 @@ mascherati nelle immagini del modello. Ogni richiesta dispone di un massimo di
 32 cicli visuali; al raggiungimento del limite Kira lo segnala. Le immagini originali
 restano negli artefatti privati, mentre il modello mantiene le due più recenti.
 
-### Contesto automatico e compattazione nel diretto
+### Contesto automatico e compattazione
 
 Apri **Contesto e memoria** sotto la chat, da **Gestisci chat** oppure dal
-pannello **Uso**. L'impostazione è **Automatico — massimo disponibile**: Kira
-pianifica il contesto usando il massimo dichiarato dal catalogo del modello e
+pannello **Uso**. Per OpenAI diretto, l'impostazione è **Automatico — massimo
+disponibile**: Kira pianifica il contesto usando il massimo dichiarato dal catalogo e
 riserva spazio per risposta e strumenti. Una capacità assente rimane sconosciuta;
 la sola dichiarazione del catalogo non dimostra che una richiesta grande quanto
 l'intera finestra sia stata verificata su quella connessione.
@@ -1140,6 +1306,13 @@ Il riquadro distingue:
   conteggio preliminare, compare come **Ultimo conteggio preliminare del provider**.
   Stima e conteggio descrivono l'ultimo calcolo disponibile, che può precedere
   la risposta più recente: non sono una previsione esatta del prossimo invio.
+
+Per **DeepSeek**, la modalità indica **Automatico — compattazione Kira**. Kira
+stima la pressione prima dell'invio e calibra la stima con i token d'ingresso
+riportati dal provider nelle risposte. Mantiene gli scambi più recenti e usa il
+modello DeepSeek selezionato per sintetizzare quelli precedenti, senza strumenti.
+La chiamata di sintesi usa quota dell'account. Se il catalogo è di ripiego, Kira
+usa una finestra prudenziale non verificata.
 
 I token in cache occupano comunque contesto; i totali cumulativi della chat
 non indicano lo spazio libero. Le stime delle immagini possono essere meno
@@ -1197,9 +1370,11 @@ configurazione compatibile. Non vengono mostrati come testo della memoria né
 inclusi nell'esportazione leggibile della chat; il ragionamento interno nascosto
 non è una fonte consultabile.
 
-Questa gestione riguarda **OpenAI diretto**. I limiti del contesto portabile
-verso gli altri provider, della vista della cronologia e degli estratti condivisi
-tra chat restano distinti; la compattazione non cancella l'archivio originale.
+Questa compattazione automatica è disponibile per **OpenAI diretto** e
+**DeepSeek**; DeepSeek usa una sintesi gestita da Kira, non una funzione nativa
+del server. Gli altri limiti del contesto portabile, della vista della cronologia
+e degli estratti condivisi tra chat restano distinti. La compattazione non
+cancella l'archivio originale.
 
 
 ### Dettagli delle esecuzioni del team
@@ -1243,6 +1418,13 @@ tentativi** e **Prossimo passo** organizzano le schede; **Proposte** raccoglie
 quelle dell’assistente ancora da esaminare. Le liste e le fonti lunghe sono
 paginate. Puoi cercare una parola nel registro senza avviare un modello.
 
+Il pulsante **Ricerca** nell’intestazione porta un contatore con quante proposte
+attendono il tuo esame e resta evidenziato finché ce ne sono; il conteggio si
+aggiorna quando l’assistente propone una scheda e quando salvi. Nella vista
+**Proposte**, **Accetta** accetta una scheda così com’è senza aprirla: la scheda
+conserva l’autore e il contenuto, e la revisione registra il motivo «Accettata
+dall’elenco delle proposte». Per modificarla prima di accettarla usa **Apri scheda**.
+
 1. Premi **Nuova scheda**, scegli il tipo e scrivi titolo e contenuto.
 2. Con **Collega una fonte**, scegli un’esecuzione del progetto e un evento,
    risultato o artefatto registrato. **Leggi originale** mostra il contenuto
@@ -1274,8 +1456,8 @@ La condivisione con le chat è **disattivata inizialmente**. Attivando
 **Condividi il registro con le chat del progetto**, autorizzi l’invio delle schede
 accettate e l’accesso alle fonti esplicitamente collegate. **Leggi il contesto
 condiviso** permette di ispezionare il testo preparato. Nelle chat ordinarie
-Codex e OpenAI diretto, con gli strumenti attivi, l’assistente può consultare il
-registro e proporre nuove schede; non può accettare le proprie proposte o avviare
+con gli strumenti attivi (Codex, OpenAI diretto e Claude Code), l’assistente può
+consultare il registro e proporre nuove schede; non può accettare le proprie proposte o avviare
 esperimenti attraverso il registro. Le chat dei team non ricevono
 automaticamente questo nuovo accesso. Disattivare la condivisione ferma i nuovi
 invii, ma non ritira quanto il provider ha già ricevuto.

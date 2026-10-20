@@ -67,7 +67,7 @@ class StudioController(QObject):
                 and self.workspace.toolsEnabled
                 and self.workspace.project.get("permission")
                 in {"project_write", "trusted_host", "full_access"}
-                and self.workspace.backend in {"codex", "openai_chatgpt", "ollama"})
+                and self.workspace.backend in {"codex", "openai_chatgpt", "ollama", "deepseek_account"})
 
     @qt_property(bool, notify=changed)
     def busy(self) -> bool:

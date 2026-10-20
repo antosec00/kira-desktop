@@ -162,12 +162,13 @@ class TeamController(QObject):
         self.evidenceChanged.emit()
 
     def _new_draft(self) -> Json:
-        supported = self.workspace.backend in {"codex", "openai_chatgpt"}
+        supported = self.workspace.backend in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}
         return {"mode": "automatic", "goal": "", "max_agents": DEFAULT_MAX_AGENTS,
                 "backend": self.workspace.backend if supported else "codex",
                 "concurrency": DEFAULT_CONCURRENCY, "round_limit": DEFAULT_ROUND_LIMIT,
                 "model": self.workspace.selectedModel if supported else "",
-                "reasoning_effort": self.workspace.selectedEffort if supported else "",
+                "reasoning_effort": self.workspace.selectedEffort
+                if supported and self.workspace.backend != "ollama" else "",
                 "service_tier": str(self.workspace._session.get("settings", {}).get("service_tier", ""))
                 if self.workspace.backend == "codex" else "", "members": default_roster(DEFAULT_MAX_AGENTS,
                     str(self.workspace.uiPreferences.get("language", "it")))}
@@ -225,6 +226,12 @@ class TeamController(QObject):
     def providerText(self) -> str:
         backend = self._draft["backend"]
         catalog = self.workspace.provider_catalog(backend, self.workspace.directAccount.activeAccountId)
+        if backend == "ollama":
+            if catalog is None:
+                return tr("Aggiorna il catalogo Ollama oppure inserisci il modello già installato.")
+            if not catalog.get("available"):
+                return str(refresh_ui(catalog.get("error", tr("Ollama non disponibile: controlla l’endpoint."))))
+            return tr("Scegli un modello Ollama installato o inserisci il suo identificatore.")
         if backend == "openai_chatgpt":
             if catalog is None:
                 return tr("Aggiorna il catalogo OpenAI diretto oppure inserisci il modello già configurato.")
@@ -233,6 +240,11 @@ class TeamController(QObject):
             if not (catalog.get("account") or {}).get("connected"):
                 return tr("Continua con ChatGPT per usare il tuo piano in Kira.")
             return tr("Scegli un modello dal catalogo o mantieni la tua scelta salvata.")
+        if backend == "deepseek_account":
+            if catalog is None or not catalog.get("available"):
+                return str(refresh_ui((catalog or {}).get("error",
+                                       tr("Accedi a DeepSeek dal pannello Modelli per caricare il catalogo."))))
+            return tr("Scegli un modello DeepSeek dal catalogo per il team.")
         if catalog is None:
             return tr("Aggiorna il catalogo Codex oppure inserisci il modello già configurato.")
         if not catalog.get("available"):
@@ -458,7 +470,7 @@ class TeamController(QObject):
     @Slot()
     def prepareDraft(self) -> None:
         """Inherit the current conversation choice until the user edits that team field."""
-        if self.workspace.backend not in {"codex", "openai_chatgpt"}:
+        if self.workspace.backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}:
             return
         defaults = self._new_draft()
         edited = self._config_edits.get(self._project_id, set())
@@ -477,7 +489,7 @@ class TeamController(QObject):
 
     @Slot(str)
     def setBackend(self, backend: str) -> None:
-        if backend not in {"codex", "openai_chatgpt"} or self.busy or self.workspace.busy:
+        if backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"} or self.busy or self.workspace.busy:
             return
         self._config_edits.setdefault(self._project_id, set()).add("backend")
         if self._draft["backend"] == backend:

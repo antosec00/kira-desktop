@@ -29,9 +29,10 @@ from kira.ui.qt_properties import qt_property
 
 _STYLE_KEYS = {"shared", "light", "dark"}
 _THEMES = {
+    # Kira: anthracite ground, warm off-white in light mode, amber accent after the mascot.
     "kira": {
-        True: ("#161a1d", "#e7ece9", "#8ab4f8"),
-        False: ("#f5f7f8", "#20272c", "#245fb3"),
+        True: ("#15181b", "#e9ecef", "#e0a06a"),
+        False: ("#f6f5f2", "#1f2428", "#9a5b1d"),
     },
     "neutral": {
         True: ("#1c1c1f", "#ededf0", "#aaa5ff"),
@@ -79,11 +80,14 @@ def palette(style: dict[str, str], dark: bool, contrast: int) -> dict[str, str]:
     accent_text = _readable_text(accent)
     accent_toward = "#ffffff" if accent_text == "#000000" else "#000000"
     colors = {
+        # Three surface levels and three text levels carry the hierarchy.
         "background": base, "surface": _mix(base, text, 0.035),
-        "surfaceAlt": _mix(base, text, 0.065), "sidebar": _mix(base, shade, 0.12),
-        "text": text, "muted": _mix(base, text, 0.55 + contrast * 0.003),
+        "surfaceAlt": _mix(base, text, 0.065), "surfaceRaised": _mix(base, text, 0.11),
+        "sidebar": _mix(base, shade, 0.12),
+        "text": text, "textSecondary": _mix(base, text, 0.72 + contrast * 0.002),
+        "muted": _mix(base, text, 0.55 + contrast * 0.003),
         "border": _mix(base, text, 0.12 + contrast * 0.0018),
-        "accent": accent, "accentText": accent_text,
+        "accent": accent, "accentText": accent_text, "accentSoft": _mix(base, accent, 0.16),
         "accentHover": _mix(accent, accent_toward, 0.10), "accentPressed": _mix(accent, accent_toward, 0.20),
         "selection": accent, "selectedText": accent_text,
         "hover": _mix(base, text, 0.08), "pressed": _mix(base, text, 0.14),

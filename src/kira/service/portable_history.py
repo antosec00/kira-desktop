@@ -74,7 +74,8 @@ def portable_history(store: Store, session_id: str, current_run_id: str, *,
     used = 0
     omitted = len(rows) > max_runs
     for run in rows[:max_runs]:
-        group = [{"role": "user", "content": store.historical_prompt(run), "run_id": run["id"]}]
+        group = [{"role": "user", "content": store.historical_prompt(run), "run_id": run["id"],
+                  "run_state": run["state"]}]
         if run["state"] != "completed":
             group[0]["content"] += (
                 "\n[Recorded run state: " + run["state"]

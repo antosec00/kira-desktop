@@ -14,9 +14,14 @@ Button {
     property string iconName: ""
     property bool leftAligned: false
     property string toolTipText: ""
+    // A count shown over the icon; 0 hides it. Width never depends on it.
+    property int badge: 0
+    property real cornerRadius: 10
+    readonly property bool iconOnly: iconName.length > 0 && text.length === 0
     readonly property color foreground: !enabled ? appearance.colors.disabledText : primary ? appearance.colors.accentText : destructive ? appearance.colors.danger : checked ? (quietSelection ? appearance.colors.accent : appearance.colors.selectedText) : appearance.colors.text
     implicitHeight: Math.max(38, appearance.uiFont.pixelSize + 25)
-    implicitWidth: Math.max(38, label.implicitWidth + 28 + (iconName ? 29 : 0))
+    // The label's implicit width already includes the icon padding.
+    implicitWidth: iconOnly ? Math.max(38, appearance.uiFont.pixelSize + 25) : Math.max(38, label.implicitWidth + 28)
     hoverEnabled: true
     HoverHandler { cursorShape: appearance.pointerCursors && control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
     padding: 0
@@ -28,18 +33,35 @@ Button {
     }
     contentItem: Item {
         KIcon {
+            id: icon
             visible: control.iconName.length > 0
             name: control.iconName
             ink: control.foreground
             width: 18; height: 18
-            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.left: parent.left; anchors.leftMargin: control.iconOnly ? (parent.width - width) / 2 : 10
             anchors.verticalCenter: parent.verticalCenter
+        }
+        Rectangle {
+            objectName: "buttonBadge"
+            visible: control.badge > 0
+            x: icon.x + icon.width - 7; y: icon.y - 6
+            width: Math.max(16, badgeLabel.implicitWidth + 8); height: 16; radius: 8
+            color: appearance.colors.accent
+            border.width: 1; border.color: control.primary ? appearance.colors.accentText : appearance.colors.background
+            Text {
+                id: badgeLabel
+                anchors.centerIn: parent
+                text: control.badge > 99 ? "99+" : String(control.badge)
+                textFormat: Text.PlainText
+                font.family: appearance.uiFont.family; font.pixelSize: 10; font.weight: Font.DemiBold
+                color: appearance.colors.accentText
+            }
         }
         Text {
             textFormat: Text.PlainText
             id: label
             anchors.fill: parent
-            leftPadding: control.iconName ? 39 : control.leftAligned ? 10 : 0
+            leftPadding: control.iconOnly ? 0 : control.iconName ? 39 : control.leftAligned ? 10 : 0
             rightPadding: control.leftAligned ? 10 : 0
             text: control.text
             font: control.font
@@ -52,7 +74,7 @@ Button {
         }
     }
     background: Rectangle {
-        radius: 10
+        radius: control.cornerRadius
         color: !control.enabled ? appearance.colors.disabled : control.primary ? (control.down ? appearance.colors.accentPressed : control.hovered ? appearance.colors.accentHover : appearance.colors.accent) : control.down ? appearance.colors.pressed : control.checked ? (control.quietSelection ? Qt.rgba(control.selectionInk.r, control.selectionInk.g, control.selectionInk.b, 0.13) : appearance.colors.selection) : control.hovered ? appearance.colors.hover : control.subtle ? "transparent" : appearance.colors.surfaceAlt
         border.width: control.activeFocus ? 2 : control.subtle ? 0 : 1
         border.color: control.activeFocus ? appearance.colors.accent : control.primary ? "transparent" : control.hovered ? appearance.colors.accent : appearance.colors.border

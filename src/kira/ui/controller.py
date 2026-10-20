@@ -25,6 +25,7 @@ from kira.ui.input_controller import InputController
 from kira.ui.assistant_controller import AssistantController, delegation_card, delegation_identity
 from kira.ui.drafts import DraftStore, MAX_HISTORY
 from kira.ui.direct_account import DirectAccountController
+from kira.ui.deepseek_account import DeepSeekAccountController
 from kira.ui.external_links import BrowserLauncher, BrowserOpenResult
 from kira.ui.account_usage import AccountUsageController
 from kira.ui.workbench_controller import WorkbenchController, guidance_label
@@ -50,6 +51,23 @@ STATE_LABELS = {
 }
 ACTIVE_RUN_STATES = RUN_STATES - TERMINAL_STATES
 MAX_ACTIVITY_DETAILS_CHARS = 65_536
+# Desktop handlers execute these types (natively or through WSL/Windows
+# associations); a chat link or an agent-written artifact must not launch them.
+LAUNCHER_SUFFIXES = frozenset({
+    ".desktop", ".kdelnk", ".exe", ".com", ".msi", ".msp", ".appimage", ".run", ".bin",
+    ".sh", ".bash", ".zsh", ".fish", ".command", ".bat", ".cmd", ".ps1", ".psm1", ".psd1",
+    ".vbs", ".vbe", ".js", ".jse", ".mjs", ".cjs", ".wsf", ".wsh", ".hta", ".scr", ".pif",
+    ".cpl", ".msc", ".lnk", ".url", ".reg", ".inf", ".chm", ".appref-ms", ".application",
+    ".settingcontent-ms", ".library-ms", ".search-ms", ".jar", ".py", ".pyw", ".pl", ".rb"})
+
+
+def launch_denied(path: Path) -> bool:
+    """True for scripts, executables and launchers that a document click must not run."""
+    if path.suffix.casefold() in LAUNCHER_SUFFIXES or os.access(path, os.X_OK):
+        return True
+    with path.open("rb") as stream:
+        header = stream.read(256)
+    return header.startswith((b"#!", b"\x7fELF", b"MZ")) or b"[Desktop Entry]" in header
 
 
 def draft_error_text(error: str) -> str:
@@ -211,6 +229,11 @@ class Workspace(QObject):
         self._diagnostics_error = ""
         self._diagnostics_loading = False
         self._diagnostics_export_path = ""
+        self._service_recovery_pending = False
+        self._service_recovery_timer = QTimer(self)
+        self._service_recovery_timer.setSingleShot(True)
+        self._service_recovery_timer.setInterval(5000)
+        self._service_recovery_timer.timeout.connect(self._recover_local_service)
         self._projects: list[Json] = []
         self._project: Json = {}
         self._requested_project_id = ""
@@ -250,6 +273,7 @@ class Workspace(QObject):
         self._effort = ""
         self._tools = False
         self._num_ctx = 0
+        self._think: bool | None = None
         self._settings: Json = {}
         self._resources: Json = {}
         self._usage: Json = {}
@@ -286,6 +310,8 @@ class Workspace(QObject):
         self.assistant.changed.connect(self.workbench.changed.emit)
         self.directAccount = DirectAccountController(self)
         self.directAccount.changed.connect(self.accountChanged.emit)
+        self.deepseekAccount = DeepSeekAccountController(self)
+        self.deepseekAccount.changed.connect(self.accountChanged.emit)
         self.providerSwitch = ProviderSwitchController(self)
         self.accountUsage = AccountUsageController(self)
         self._web = WebController(self)
@@ -319,6 +345,7 @@ class Workspace(QObject):
         self.workbench.retranslate()
         self.assistant.retranslate()
         self.directAccount.changed.emit()
+        self.deepseekAccount.changed.emit()
         # A language notification must not trigger project discovery through a
         # child controller's ordinary workspace-change connection.
         self.teams._retranslating = True
@@ -387,6 +414,30 @@ class Workspace(QObject):
     def setModelControlsVisible(self, visible: bool) -> None:
         if isinstance(visible, bool) and visible != self.modelControlsVisible:
             self._save_preferences({"model_controls_visible": visible})
+
+    @qt_property(str, notify=preferencesChanged)
+    def sidebarMode(self) -> str:
+        return str(self._preferences.get("sidebar_mode", "full"))
+
+    @Slot(str)
+    def setSidebarMode(self, mode: str) -> None:
+        if mode in {"full", "rail", "hidden"} and mode != self.sidebarMode:
+            self._save_preferences({"sidebar_mode": mode})
+
+    @Slot()
+    def cycleSidebarMode(self) -> None:
+        """Whole sidebar, icon rail, hidden: one shortcut walks the three states."""
+        order = ["full", "rail", "hidden"]
+        self.setSidebarMode(order[(order.index(self.sidebarMode) + 1) % len(order)])
+
+    @qt_property(bool, notify=preferencesChanged)
+    def toolLabels(self) -> bool:
+        return self._preferences.get("tool_labels") is True
+
+    @Slot(bool)
+    def setToolLabels(self, visible: bool) -> None:
+        if isinstance(visible, bool) and visible != self.toolLabels:
+            self._save_preferences({"tool_labels": visible})
 
     @qt_property("QVariantMap", notify=workspaceChanged)
     def projectWorkspace(self) -> Json:
@@ -836,7 +887,10 @@ class Workspace(QObject):
     @qt_property(str, notify=changed)
     def backendLabel(self) -> str:
         return {"codex": "Codex", "ollama": "Ollama",
-                "openai_chatgpt": tr("OpenAI diretto · ChatGPT")}.get(self._backend, self._backend)
+                "openai_chatgpt": tr("OpenAI diretto · ChatGPT"),
+                "deepseek_account": tr("DeepSeek Account"),
+                "deepseek_web": tr("DeepSeek Web · sperimentale"),
+                "claude_code": tr("Claude Code · uso personale")}.get(self._backend, self._backend)
 
     @qt_property(str, notify=accountChanged)
     def accountLabel(self) -> str:
@@ -860,6 +914,10 @@ class Workspace(QObject):
     def requestedContext(self) -> int:
         return self._num_ctx
 
+    @qt_property(int, notify=changed)
+    def requestedThink(self) -> int:
+        return 0 if self._think is None else 2 if self._think else 1
+
     @qt_property(bool, notify=changed)
     def toolsEnabled(self) -> bool:
         return self._tools
@@ -867,6 +925,15 @@ class Workspace(QObject):
     @qt_property("QVariantList", notify=changed)
     def models(self) -> list[Json]:
         return list((self.provider_catalog() or {}).get("models", []))
+
+    @qt_property(bool, notify=changed)
+    def imageInputsEnabled(self) -> bool:
+        if self._backend in {"openai_chatgpt", "claude_code"}:
+            return True
+        model = next((item for item in self.models if item.get("id") == self._model), {})
+        capabilities = model.get("capabilities", {})
+        return (self._backend in {"deepseek_account", "deepseek_web"}
+                and isinstance(capabilities, dict) and capabilities.get("images") is True)
 
     def direct_account_id(self) -> str:
         """Use the selected chat's binding; an empty chat uses the active account."""
@@ -886,9 +953,10 @@ class Workspace(QObject):
             self._discover_backend("openai_chatgpt", account_id)
 
     def ensure_direct_catalog(self) -> None:
-        if (self.connected and self._backend == "openai_chatgpt"
+        # Providers not probed at connection time are discovered once a chat selects them.
+        if (self.connected and self._backend in {"openai_chatgpt", "claude_code"}
                 and self.provider_catalog() is None):
-            self.discover("openai_chatgpt")
+            self.discover(self._backend)
 
     @qt_property("QVariantList", notify=changed)
     def efforts(self) -> list[str]:
@@ -905,19 +973,62 @@ class Workspace(QObject):
         if catalog is None:
             return tr("Rilevamento del backend…")
         if not catalog.get("available"):
-            return str(refresh_ui(catalog.get("error", tr("Backend non disponibile."))))
+            message = str(refresh_ui(catalog.get("error", tr("Backend non disponibile."))))
+            code = catalog.get("error_code")
+            return f"[{code}] {message}" if isinstance(code, str) and code else message
         account = catalog.get("account")
         if self._backend == "codex" and (not account or not account.get("connected")):
             return tr("Account non connesso. Apri Modelli per accedere con Codex.")
         if self._backend == "openai_chatgpt" and (not account or not account.get("connected")):
             return tr("Account non connesso. Apri Modelli per continuare con ChatGPT.")
+        if (self._backend == "deepseek_account" and not self.deepseekAccount.connected
+                and not self.deepseekAccount.proxyEnabled):
+            return tr("Account DeepSeek non connesso. Apri Modelli per accedere.")
+        if self._backend == "deepseek_web" and not self.deepseekAccount.webConnected:
+            return tr("Collega DeepSeek Web dal pannello Modelli per usare questo backend.")
+        if self._backend == "claude_code" and (not account or not account.get("connected")):
+            return tr("Claude Code non risulta collegato. Accedi da un terminale con claude e /login, poi aggiorna.")
         if not self.models:
+            if self._backend == "claude_code":
+                return tr("Nessun modello Claude Code disponibile. Aggiorna dopo l'accesso a Claude Code.")
             if self._backend == "openai_chatgpt":
                 return tr("Nessun modello disponibile per questo account ChatGPT. Aggiorna dopo l'accesso.")
+            if self._backend == "deepseek_web":
+                return tr("Nessun modello DeepSeek Web disponibile; aggiorna il catalogo dopo il collegamento.")
             return tr("Nessun modello disponibile. Installa un modello tramite Ollama, poi aggiorna.")
         if self._backend == "openai_chatgpt":
             return tr("{count} modelli disponibili · account: {account}", count=len(self.models), account=self.accountLabel)
+        if self._backend == "deepseek_account":
+            return tr("{count} modelli DeepSeek disponibili", count=len(self.models))
+        if self._backend == "deepseek_web":
+            return tr("{count} modelli DeepSeek Web configurati", count=len(self.models))
+        if self._backend == "claude_code":
+            return tr("{count} modelli · login di Claude Code · solo per uso personale", count=len(self.models))
         return tr("{count} modelli disponibili · nessun download automatico", count=len(self.models))
+
+    @qt_property(bool, notify=changed)
+    def providerUnavailable(self) -> bool:
+        catalog = self.provider_catalog()
+        return catalog is not None and catalog.get("available") is False
+
+    @qt_property(str, notify=changed)
+    def providerState(self) -> str:
+        """pending, error, warning or ok: the colour of the status line in Modelli."""
+        catalog = self.provider_catalog()
+        if catalog is None:
+            return "pending"
+        if not catalog.get("available"):
+            return "error"
+        account = catalog.get("account") or {}
+        if self._backend in {"codex", "openai_chatgpt", "claude_code"}:
+            disconnected = not account.get("connected")
+        elif self._backend == "deepseek_account":
+            disconnected = not self.deepseekAccount.connected and not self.deepseekAccount.proxyEnabled
+        elif self._backend == "deepseek_web":
+            disconnected = not self.deepseekAccount.webConnected
+        else:
+            disconnected = False
+        return "warning" if disconnected or not self.models else "ok"
 
     @qt_property(bool, notify=changed)
     def planQuotaLimited(self) -> bool:
@@ -948,7 +1059,7 @@ class Workspace(QObject):
 
     @qt_property(bool, notify=changed)
     def canUseTools(self) -> bool:
-        if self._backend in {"codex", "openai_chatgpt"}:
+        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code"}:
             return True
         model: Json = next((m for m in self.models if m.get("id") == self._model), {})
         caps = model.get("capabilities", {})
@@ -1296,6 +1407,8 @@ class Workspace(QObject):
                          lambda _: self.client.connect_service())
 
     def _connected(self) -> None:
+        self._service_recovery_pending = False
+        self._service_recovery_timer.stop()
         self._connected_value = True
         self._status = tr("Servizio connesso")
         self._notice = ""
@@ -1307,6 +1420,8 @@ class Workspace(QObject):
         self.discover("codex")
         self.discover("openai_chatgpt")
         self.directAccount.refresh()
+        self.discover("deepseek_account")
+        self.deepseekAccount.refresh()
         self.refreshResources()
         if self._project:
             self.openProject(self._project["id"])
@@ -1325,6 +1440,30 @@ class Workspace(QObject):
             self._chat_failed = True
             self._finish_replay()
         self.changed.emit()
+        self._recover_local_service()
+
+    def _recover_local_service(self) -> None:
+        if self._connected_value or self._service_recovery_pending or self.client.incompatible:
+            return
+        self._service_recovery_pending = True
+        job = BackgroundJob(lambda: asyncio.run(ensure_service(self.paths)), self)
+        self._jobs.append(job)
+        job.result.connect(self._service_recovered)
+        job.failed.connect(self._service_recovery_failed)
+        job.finished.connect(lambda: self._jobs.remove(job))
+        job.finished.connect(job.deleteLater)
+        job.start()
+
+    def _service_recovered(self, _result: Any) -> None:
+        self._service_recovery_pending = False
+        self.client.connect_service()
+        if not self._connected_value:
+            self._service_recovery_timer.start()
+
+    def _service_recovery_failed(self, message: str) -> None:
+        self._service_recovery_pending = False
+        self._problem(message)
+        self._service_recovery_timer.start()
 
     @Slot(object)
     def _problem(self, message: str) -> None:
@@ -1364,7 +1503,7 @@ class Workspace(QObject):
     def _is_selected_run(self, run: Json) -> bool:
         return str(run.get("session_id", "")) == self.sessionId
 
-    def _reset_chat(self) -> None:
+    def _reset_chat(self, *, preserve_transcript: bool = False) -> None:
         self.transcript.abort_batch()
         self._configuring_session = False
         self._configuration_generation += 1
@@ -1375,7 +1514,8 @@ class Workspace(QObject):
         self._set_chat_loading(False)
         self._chat_failed = False
         self._replay_queue.clear()
-        self.transcript.clear()
+        if not preserve_transcript:
+            self.transcript.clear()
         self._reasoning.reset()
         self._deltas.clear()
         self._waiting_browser_tools.clear()
@@ -1386,7 +1526,8 @@ class Workspace(QObject):
         self._buffered_events.clear()
         self._cursors.clear()
         self.chatChanged.emit()
-        self.transcriptChanged.emit()
+        if not preserve_transcript:
+            self.transcriptChanged.emit()
 
     @Slot(str)
     def openProject(self, project_id: str) -> None:
@@ -1401,12 +1542,14 @@ class Workspace(QObject):
         def loaded(result: Json) -> None:
             if self._requested_project_id != project_id or generation != self._message_link_generation:
                 return
-            previous = self.sessionId if self._project.get("id") == project_id else ""
+            same_project = self._project.get("id") == project_id
+            previous = self.sessionId if same_project else ""
             self._project = result["project"]
             self._sessions = [row for row in result.get("sessions", []) if not row.get("team_id")]
             self._runs = {run["id"]: run for run in result.get("runs", []) if not run.get("team_id")}
             self._artifacts = []
-            self._session = {}
+            if not same_project:
+                self._session = {}
             self._active_tools.clear()
             self._streaming_items.clear()
             self._approval = {}
@@ -1419,7 +1562,7 @@ class Workspace(QObject):
             if not selected and self._sessions:
                 selected = self._sessions[-1]["id"]
             if selected:
-                self._select_chat(selected)
+                self._select_chat(selected, force_reload=same_project)
             else:
                 self._reset_chat()
             self.refreshSessions()
@@ -1486,15 +1629,20 @@ class Workspace(QObject):
             return
         self._select_chat(session_id)
 
-    def _select_chat(self, session_id: str) -> None:
+    def _select_chat(self, session_id: str, *, force_reload: bool = False) -> None:
+        if (not force_reload and session_id == self.sessionId
+                and not self._chat_loading and not self._chat_failed):
+            return
         session = next((s for s in self._sessions if s["id"] == session_id), None)
         if session and session.get("project_id", self._project.get("id")) != self._project.get("id"):
             self._problem(tr("Questa chat non appartiene al progetto selezionato."))
             return
+        preserve_transcript = (session_id == self.sessionId and bool(self.transcript.rows)
+                               and not self._chat_failed)
         self._session = session or {"id": session_id}
         if session:
             self._adopt_session(session)
-        self._reset_chat()
+        self._reset_chat(preserve_transcript=preserve_transcript)
         project_id = self._project.get("id")
         if not project_id:
             self.changed.emit()
@@ -1520,6 +1668,8 @@ class Workspace(QObject):
             for run in runs:
                 self._runs[run["id"]] = run
             self._replay_queue = [r["id"] for r in runs]
+            if preserve_transcript:
+                self.transcript.clear()
             if result.get("history_truncated"):
                 self._notice = tr("Cronologia limitata alle ultime 60 esecuzioni; esporta per la cronologia completa.")
             self._replay_next()
@@ -1560,6 +1710,7 @@ class Workspace(QObject):
         self._effort = settings.get("reasoning_effort", "")
         self._tools = bool(settings.get("tools", False))
         self._num_ctx = settings.get("num_ctx", 0)
+        self._think = settings.get("think") if isinstance(settings.get("think"), bool) else None
         self.ensure_direct_catalog()
 
     def _replay_next(self) -> None:
@@ -1655,7 +1806,8 @@ class Workspace(QObject):
     def setBackend(self, backend: str) -> None:
         if self.busy:
             return
-        if backend not in {"ollama", "codex", "openai_chatgpt"}:
+        if backend not in {"ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
+                           "claude_code"}:
             return
         if backend == self._backend and (backend != "openai_chatgpt" or not self._session):
             return
@@ -1664,10 +1816,14 @@ class Workspace(QObject):
             self.changed.emit()
             return
         self._backend, self._model, self._effort = backend, "", ""
-        self._tools = backend in {"codex", "openai_chatgpt"}
+        self._tools = backend in {"codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
+                                  "claude_code"}
+        self._num_ctx = 0
+        self._think = None
         self._session = {}
         self._reset_chat()
         self.ensure_direct_catalog()
+        self.discover(backend)
         self.changed.emit()
 
     @Slot(str)
@@ -1697,7 +1853,8 @@ class Workspace(QObject):
             self._effort = effort
             self.changed.emit()
 
-    def _configure_session(self, model: str, effort: str) -> None:
+    def _configure_session(self, model: str, effort: str, *, num_ctx: int | None = None,
+                           think: bool | None = None, include_think: bool = False) -> None:
         # Configuration is durable service state; a failed request must not
         # change the selected chat, its transcript, draft or provider thread.
         if not self.connected or self._chat_failed or self._session.get("team_id"):
@@ -1735,8 +1892,13 @@ class Workspace(QObject):
             self.refreshSessions()
             self.changed.emit()
 
-        self.client.request("session.configure", {"project_id": project_id, "session_id": session_id,
-                            "model": model, "reasoning_effort": effort}, done, failed)
+        params: Json = {"project_id": project_id, "session_id": session_id,
+                        "model": model, "reasoning_effort": effort}
+        if num_ctx is not None:
+            params["num_ctx"] = num_ctx
+        if include_think:
+            params["think"] = think
+        self.client.request("session.configure", params, done, failed)
 
     @Slot(bool)
     def setTools(self, enabled: bool) -> None:
@@ -1752,12 +1914,26 @@ class Workspace(QObject):
 
     @Slot(int)
     def setContextSize(self, value: int) -> None:
-        if self.busy:
+        if self.busy or self._backend != "ollama" or value < 0 or value and value < 4096:
             return
         if value != self._num_ctx:
-            self._num_ctx = value
-            self._session = {}
-            self._reset_chat()
+            if self._session:
+                self._configure_session(self._model, self._effort, num_ctx=value)
+            else:
+                self._num_ctx = value
+                self.changed.emit()
+
+    @Slot(int)
+    def setThink(self, value: int) -> None:
+        if self.busy or self._backend != "ollama" or value not in {0, 1, 2}:
+            return
+        think = None if value == 0 else value == 2
+        if think == self._think:
+            return
+        if self._session:
+            self._configure_session(self._model, self._effort, think=think, include_think=True)
+        else:
+            self._think = think
             self.changed.emit()
 
     @Slot(str)
@@ -1797,7 +1973,8 @@ class Workspace(QObject):
             self.changed.emit()
 
         def failed(error: Json) -> None:
-            received({"available": False, "models": [], "error": error.get("message", tr("Errore"))})
+            received({"available": False, "models": [], "error_code": error.get("code", "REQUEST_FAILED"),
+                      "error": error.get("message", tr("Errore"))})
 
         params = {"backend": backend}
         if backend == "openai_chatgpt" and account_id:
@@ -1844,8 +2021,8 @@ class Workspace(QObject):
         if self._session.get("archived"):
             self._problem(tr("Ripristina la chat archiviata prima di inviare."))
             return
-        if self.draft_image_ids() and self._backend != "openai_chatgpt":
-            self._problem(tr("Le immagini allegate richiedono OpenAI diretto. Cambia provider o rimuovi le immagini prima di inviare."))
+        if self.draft_image_ids() and not self.imageInputsEnabled:
+            self._problem(tr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare."))
             return
         if self._session:
             self._pending_start = {"session_id": self._session["id"], "prompt": prompt,
@@ -1861,6 +2038,8 @@ class Workspace(QObject):
             settings["reasoning_effort"] = self._effort
         if self._num_ctx and self._backend == "ollama":
             settings["num_ctx"] = self._num_ctx
+        if self._think is not None and self._backend == "ollama":
+            settings["think"] = self._think
         self._creating_session = True
         self.changed.emit()
 
@@ -2320,6 +2499,8 @@ class Workspace(QObject):
             file = file.resolve(strict=True)
             if not file.is_file():
                 raise ValueError(tr("L'artefatto non è un file locale disponibile."))
+            if launch_denied(file):
+                raise ValueError(tr("Apri script ed eseguibili dal tuo editor, non dalla chat."))
             return str(file)
 
         def opened(file: str) -> None:
@@ -2394,15 +2575,8 @@ class Workspace(QObject):
                 path.relative_to(root)
                 if not path.is_file():
                     raise ValueError(tr("Il collegamento non indica un file regolare del progetto."))
-                blocked = {".desktop", ".exe", ".com", ".msi", ".appimage", ".sh", ".bash",
-                           ".zsh", ".fish", ".bat", ".cmd", ".ps1", ".vbs", ".jar",
-                           ".py", ".pyw", ".pl", ".rb", ".js", ".mjs", ".cjs"}
-                if path.suffix.casefold() in blocked or os.access(path, os.X_OK):
+                if launch_denied(path):
                     raise ValueError(tr("Apri script ed eseguibili dal tuo editor, non dalla chat."))
-                with path.open("rb") as stream:
-                    header = stream.read(256)
-                if header.startswith((b"#!", b"\x7fELF", b"MZ")) or b"[Desktop Entry]" in header:
-                    raise ValueError(tr("Il collegamento indica un file eseguibile o un launcher."))
                 return str(path), ""
             except (OSError, ValueError, RuntimeError):
                 return "", tr("File non disponibile o non consentito: usa un documento nel progetto.")
@@ -2459,6 +2633,7 @@ class Workspace(QObject):
         self._web.hide()
         self.accountUsage.close()
         self.directAccount.close()
+        self.deepseekAccount.close()
         self.browser.close()
         self.flushDrafts()
         self.assistant.close()

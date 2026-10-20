@@ -47,7 +47,9 @@ def test_qml_model_switch_preserves_chat_and_draft_over_real_ipc(qapp, qtbot, mo
                     'id': 'synthetic-next-model', 'name': 'Synthetic next model',
                     'supported_reasoning_efforts': ['high'], 'capabilities': {'tools': True}})
                 view.changed.emit()
+                # The stored preference now opens the composer's model popover by itself.
                 view.setModelControlsVisible(True)
+                qtbot.waitUntil(lambda: visual_item(window.contentItem(), 'modelBox') is not None)
                 model = visual_item(window.contentItem(), 'modelBox')
                 qtbot.waitUntil(lambda: model.property('count') == 2)
                 model.setProperty('currentIndex', 1)

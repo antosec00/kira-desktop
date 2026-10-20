@@ -245,3 +245,41 @@ def test_receipt_native_keyboard_pointer_and_literal_wrapping(workspace, qtbot, 
         engine.deleteLater()
         window.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_claude_code_native_receipts_use_operation_labels_and_literal_targets(qapp):
+    model = TranscriptModel()
+    observed = {"tool": "Read", "input": '{"file_path": "docs/overview.md"}', "source": "claude_code",
+                "path": "docs/overview.md"}
+    model.append(kind="tool", title="claude_code.Read", runId="run", toolId="read", body="", raw="{}",
+                 status="in esecuzione", toolArguments=observed)
+    model.append(kind="tool", title="claude_code.Bash", runId="run", toolId="bash", body="", raw="{}",
+                 status="in esecuzione", toolArguments={"tool": "Bash", "input": "{}", "source": "claude_code",
+                                                        "command": "ls -la\n" + "x" * 400})
+    model.append(kind="tool", title="claude_code.Grep", runId="run", toolId="grep", body="", raw="{}",
+                 status="confermato", toolArguments={"tool": "Grep", "input": "{}", "pattern": "TODO <draft>"})
+    model.append(kind="tool", title="claude_code.WebFetch", runId="run", toolId="fetch", body="", raw="{}",
+                 status="confermato", toolArguments={"tool": "WebFetch", "input": "{}", "url": "https://example.test/x"})
+    model.append(kind="tool", title="claude_code.kira.research_propose", runId="run", toolId="mcp", body="",
+                 raw="{}", status="confermato", toolArguments={"tool": "mcp__kira__kira__research_propose"})
+    model.append(kind="tool", title="claude_code.Mystery", runId="run", toolId="other", body="", raw="{}",
+                 status="confermato", toolArguments={"tool": "Mystery", "input": "{}"})
+    model.append(kind="tool", title="claude_code.browser.navigate", runId="run", toolId="nav", body="", raw="{}",
+                 status="confermato", toolArguments={"tool": "mcp__kira__browser__navigate", "input": "{}",
+                                                     "source": "claude_code", "url": "https://example.test/"})
+    rows = model.rows
+    assert [row["receiptLabel"] for row in rows] == [
+        "Lettura del file", "Esecuzione del comando", "Ricerca nel testo", "Lettura della pagina",
+        "kira.research_propose", "Claude Code · Mystery", "Apertura della pagina"]
+    assert rows[6]["receiptTarget"] == "https://example.test/"
+    assert rows[0]["receiptTarget"] == "docs/overview.md" and rows[0]["title"] == "claude_code.Read"
+    assert rows[1]["receiptTarget"].startswith("ls -la x") and len(rows[1]["receiptTarget"]) <= 161
+    assert rows[2]["receiptTarget"] == "TODO <draft>" and rows[3]["receiptTarget"] == "https://example.test/x"
+    assert rows[4]["receiptTarget"] == "" and rows[5]["receiptTarget"] == ""
+    # A result keeps the recorded target and adds only the literal error.
+    model.update(0, status="errore", toolResult={"ok": False, "source": "claude_code", "observed_only": True,
+                                                 "content": "", "error": "File not found"})
+    assert rows[0]["receiptTarget"] == "docs/overview.md" and rows[0]["receiptError"] == "File not found"
+    assert rows[0]["receiptState"] == "error" and rows[0]["receiptLabel"] == "Lettura del file"
+    assert observed == {"tool": "Read", "input": '{"file_path": "docs/overview.md"}', "source": "claude_code",
+                        "path": "docs/overview.md"}

@@ -7,10 +7,11 @@ Historical implementation records follow the
 [STATUS](STATUS.md).
 
 Desktop 0.6 also supports [OpenAI direct](OPENAI_DIRECT.md) with account-bound
-member sessions, HTTP cleanup and the same scheduler. Service tier applies only
-to Codex. Direct project-write members use Kira file tools; arbitrary commands
-require trusted-host permission. The Codex-specific details below describe its
-original process transport.
+member sessions, HTTP cleanup and the same scheduler. Experimental 0.16.0.dev1
+also supports Ollama for coordinators and members. Service tier applies only to
+Codex. Project-write members use Kira file tools; arbitrary commands require
+trusted-host permission. Provider-specific transport details below describe
+their original implementations.
 
 ## Scope and ownership
 
@@ -20,8 +21,8 @@ original process transport.
   a structured roster and assignments, then Kira starts the team automatically.
 - Actual member sessions, direct/broadcast mailbox tools, task dependencies,
   coordinated file changes, visible results, stop and explicit continuation.
-- Codex is the first supported team backend. Ollama setup remains deferred;
-  ordinary Ollama conversations retain their existing behavior.
+- Codex is the first supported team backend; OpenAI direct and Ollama are also
+  supported by the current experimental source.
 - Model/reasoning/service-tier choices are explicit at team level and inherited
   by every member, including the coordinator. No silent model/account switch.
 - Coordinator owns domain contracts, version/lock/CLI/client, integration tests,
@@ -38,8 +39,9 @@ that coordinator first and freezes the returned roster after the first plan.
 One service owns all state and project reservations. Separate service instances
 or external editors are outside this scheduler's write coordination.
 
-Each coordination round is a genuine read-only Codex turn with structured output.
-Its plan supplies dependency-ordered tasks. Independent read-only tasks can run
+Each coordination round is a read-only provider turn with structured output.
+Codex uses its App Server schema; Ollama uses its local JSON-schema response
+format and must return valid structured JSON. The plan supplies dependency-ordered tasks. Independent read-only tasks can run
 concurrently. A writer runs exclusively, with no other team reader or writer
 active, until its provider task and cleanup actually finish. Role descriptions
 and suggested file ownership are organizational context, not a sandbox.
@@ -77,7 +79,7 @@ sessions/runs. Ordinary run/event envelopes remain unchanged.
 `team.start` parameters:
 
 ```
-{project_id, request_id, origin_session_id?, goal, mode:"manual"|"automatic", backend:"codex",
+{project_id, request_id, origin_session_id?, goal, mode:"manual"|"automatic", backend:"codex"|"openai_chatgpt"|"ollama",
  model, settings:{reasoning_effort?,service_tier?,...existing validated settings},
  members?:[{id,name,role,instructions,access:"read"|"write"}],
  max_agents?:4, concurrency?:2, round_limit?:3}

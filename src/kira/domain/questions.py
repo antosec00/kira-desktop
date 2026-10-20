@@ -15,6 +15,42 @@ def _fail(message: str) -> NoReturn:
     raise KiraError("INVALID_ARGUMENT", message)
 
 
+def question_tool_specs() -> Json:
+    """Provider-neutral schema for durable, non-authorizing information questions."""
+    question = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "header": {"type": "string"},
+            "question": {"type": "string"},
+            "isOther": {"type": "boolean"},
+            "options": {"type": "array", "maxItems": 6, "items": {
+                "type": "object", "properties": {
+                    "label": {"type": "string"},
+                    "description": {"type": "string"},
+                }, "required": ["label"], "additionalProperties": False}},
+        },
+        "required": ["id", "question"], "additionalProperties": False,
+    }
+    return {"type": "namespace", "name": "questions",
+            "description": "Persistent user questions; never permission or credential requests.",
+            "tools": [
+                {"type": "function", "name": "request_input",
+                 "description": "Ask one to three questions. Kira provides the durable ID. "
+                                "blocking=false allows independent work while the user answers.",
+                 "inputSchema": {"type": "object", "properties": {
+                     "blocking": {"type": "boolean"}, "questions": {"type": "array",
+                         "items": question, "minItems": 1, "maxItems": 3}},
+                     "required": ["blocking", "questions"], "additionalProperties": False}},
+                {"type": "function", "name": "read_input",
+                 "description": "Read this run's question. wait=true waits for an answer; "
+                                "a pending result is never an answer or approval.",
+                 "inputSchema": {"type": "object", "properties": {
+                     "request_id": {"type": "string"}, "wait": {"type": "boolean"}},
+                     "required": ["request_id", "wait"], "additionalProperties": False}},
+            ]}
+
+
 def _bounded(value: Any, limit: int) -> None:
     try:
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")

@@ -140,10 +140,13 @@ async def test_takeover_is_required_and_stream_cannot_cross_clients(fixture):
     await service.web.disconnect(client)
     assert actor.streams[stream].client is None
     assert actor.streams[stream].high_water == 2
+    # A browser under manual control cannot continue without a desktop viewer:
+    # the disconnect closes it, so later input finds no current browser.
+    assert actor.closed
     with pytest.raises(KiraError) as stale:
         await command(service, client, params, stream, 3, "ui_resume")
-    assert stale.value.code == "STALE_INPUT"
-    assert actor.engine.calls[-1] == ("viewer", {"enabled": False})
+    assert stale.value.code == "STALE_BROWSER"
+    assert ("viewer", {"enabled": False}) in actor.engine.calls
 
 
 async def test_cancelled_input_has_unknown_receipt_and_is_not_replayed(fixture, monkeypatch):

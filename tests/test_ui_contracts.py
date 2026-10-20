@@ -213,7 +213,10 @@ def test_dynamic_qml_labels_and_tooltips_are_plain_text(workspace, qtbot, monkey
         workspace._project = {**project, "name": "Updated " + label}
         workspace.changed.emit()
         qtbot.wait(30)
-        assert "PROGETTO · Updated " + label in assert_labels()
+        assert "Esecuzioni di Updated " + label in assert_labels()
+        kicker = window.findChild(QObject, "projectHeaderKicker")
+        assert kicker.property("text") == "Updated " + label
+        assert evaluate(kicker, "Number(textFormat)", engine.rootContext()) == 0
     finally:
         window.setProperty("closeConfirmed", True)
         window.close()
@@ -260,16 +263,18 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
     try:
         combos = [item for item in window.findChildren(QQuickItem)
                   if item.inherits("QQuickComboBox") and item.property("count") > 0]
-        assert len(combos) == 34
+        assert len(combos) == 39
         for combo in combos:
             evaluate(window.findChild(QObject, "assistantEnvironmentDialog"), "close()")
             if combo.objectName() == "knowledgeScope":
                 evaluate(window.findChild(QObject, "assistantEnvironmentDialog"), "open()")
-            evaluate(window, "newProject.close(); memoryDialog.close(); workbenchDialog.close(); providerSwitchDialog.close(); metricsDialog.close(); webDialog.close(); researchDialog.close(); soulDialog.close()")
+            evaluate(window, "newProject.close(); memoryDialog.close(); workbenchDialog.close(); providerSwitchDialog.close(); metricsDialog.close(); webDialog.close(); researchDialog.close(); soulDialog.close(); modelPopover.close()")
             if combo.objectName() == "webSearchMode":
                 evaluate(window, "webDialog.open()")
             if combo.objectName() == "usageProviderChoice":
                 evaluate(window, "metricsDialog.open()")
+            if combo.objectName() in {"backendBox", "modelBox", "effortBox", "sessionBox"}:
+                evaluate(window, "modelPopover.open()")
             if combo.objectName().startswith("switchProvider"):
                 evaluate(window, "providerSwitchDialog.open()")
             section = {"workbenchSection": "queue", "forkRunChoice": "chat", "changedFileChoice": "changes"}.get(combo.objectName())
@@ -307,6 +312,20 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
                 offset = combo.mapToItem(pane, QPointF(0, 0)).y() - 80
                 evaluate(pane, "contentItem.contentY += " + str(offset))
                 assert combo.isVisible() and combo.isEnabled()
+            if combo.objectName() in {"ollamaContextPreset", "ollamaThinkMode"}:
+                # Ollama-only rows live in the details panel and in the narrow-window drawer.
+                workspace._backend = "ollama"
+                workspace.changed.emit()
+                host = combo.parentItem()
+                while host and host.objectName() != "detailsPanel":
+                    host = host.parentItem()
+                if host is not None:
+                    workspace.setUiPreference("details_visible", True)
+                else:
+                    evaluate(window, "detailsDrawer.open()")
+                    qtbot.waitUntil(lambda: evaluate(window, "detailsDrawer.position") >= 1)
+                qtbot.wait(40)
+                assert combo.isVisible() and combo.isEnabled()
             evaluate(combo, "popup.open()")
             qtbot.wait(30)
             values = []
@@ -328,6 +347,11 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
             assert values, combo.objectName()
             observed.add(tuple(values))
             evaluate(combo, "popup.close()")
+            if combo.objectName() in {"ollamaContextPreset", "ollamaThinkMode"}:
+                evaluate(window, "detailsDrawer.close()")
+                workspace.setUiPreference("details_visible", False)
+                workspace._backend = "codex"
+                workspace.changed.emit()
         appearance = engine.rootContext().contextProperty("appearance")
         font_lists = {
             ("Come l’interfaccia", *appearance.fontFamilies),
@@ -351,7 +375,11 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
             ("Segui il sistema", "Chiara", "Scura"), ("Kira", "Neutro", "Caldo"),
             ("Segui il sistema", "Sempre", "Mai"), ("Colore e segni", "Solo segni"),
             ("Normale", "Medio", "Semigrassetto", "Grassetto", "Corsivo"),
-            ("Ollama", "Codex", "OpenAI diretto · ChatGPT"), ("Codex", "OpenAI diretto · ChatGPT", "Ollama"),
+            ("ollama", "codex", "OpenAI diretto · ChatGPT", "DeepSeek Account", "DeepSeek Web · sperimentale", "Claude Code · uso personale"),
+            ("Codex", "OpenAI diretto · ChatGPT", "Ollama"),
+            ("Intera", "Solo icone", "Nascosta"),
+            ("Predefinito Ollama", "32K", "128K", "256K"),
+            ("Predefinito del modello", "Ragionamento interno disattivato", "Ragionamento interno attivato"),
             ("Chosen model", "Other model"),
             ("Predefinito del provider", "high", "ultra"), ("Predefinito del provider",), ("Nuova chat",),
             ("Ricerca disattivata", "Contenuti indicizzati", "Accesso live"),
@@ -423,16 +451,18 @@ def contrast(foreground, background):
 measurements = []
 try:
     combos = [item for item in window.findChildren(QQuickItem) if item.inherits("QQuickComboBox") and item.property("count") > 0]
-    assert len(combos) == 34
+    assert len(combos) == 39
     for number, combo in enumerate(combos):
         evaluate(window.findChild(QObject, "assistantEnvironmentDialog"), "close()")
         if combo.objectName() == "knowledgeScope":
             evaluate(window.findChild(QObject, "assistantEnvironmentDialog"), "open()")
-        evaluate(window, "newProject.close(); memoryDialog.close(); workbenchDialog.close(); providerSwitchDialog.close(); metricsDialog.close(); webDialog.close(); researchDialog.close(); soulDialog.close()")
+        evaluate(window, "newProject.close(); memoryDialog.close(); workbenchDialog.close(); providerSwitchDialog.close(); metricsDialog.close(); webDialog.close(); researchDialog.close(); soulDialog.close(); modelPopover.close()")
         if combo.objectName() == "webSearchMode":
             evaluate(window, "webDialog.open()")
         if combo.objectName() == "usageProviderChoice":
             evaluate(window, "metricsDialog.open()")
+        if combo.objectName() in {"backendBox", "modelBox", "effortBox", "sessionBox"}:
+            evaluate(window, "modelPopover.open()")
         if combo.objectName().startswith("switchProvider"):
             evaluate(window, "providerSwitchDialog.open()")
         section = {"workbenchSection": "queue", "forkRunChoice": "chat", "changedFileChoice": "changes"}.get(combo.objectName())
@@ -469,6 +499,23 @@ try:
             pane = window.findChild(QObject, "soulEditorScroll")
             offset = combo.mapToItem(pane, QPointF(0, 0)).y() - 80
             evaluate(pane, "contentItem.contentY += " + str(offset))
+            assert combo.isVisible() and combo.isEnabled()
+        if combo.objectName() in {"ollamaContextPreset", "ollamaThinkMode"}:
+            # Ollama-only rows live in the details panel and in the narrow-window drawer.
+            workspace._backend = "ollama"
+            workspace.changed.emit()
+            host = combo.parentItem()
+            while host and host.objectName() != "detailsPanel":
+                host = host.parentItem()
+            if host is not None:
+                workspace.setUiPreference("details_visible", True)
+            else:
+                evaluate(window, "detailsDrawer.open()")
+                for _ in range(30):
+                    if evaluate(window, "detailsDrawer.position") >= 1:
+                        break
+                    QTest.qWait(30)
+            QTest.qWait(40)
             assert combo.isVisible() and combo.isEnabled()
         evaluate(combo, "popup.open()")
         QTest.qWait(35)
@@ -524,6 +571,11 @@ try:
                 QTest.mouseMove(window, QPoint(1, 1))
                 QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=QPoint(1, 1))
         evaluate(combo, "popup.close()")
+        if combo.objectName() in {"ollamaContextPreset", "ollamaThinkMode"}:
+            evaluate(window, "detailsDrawer.close()")
+            workspace.setUiPreference("details_visible", False)
+            workspace._backend = "codex"
+            workspace.changed.emit()
     evaluate(window, "newProject.close(); memoryDialog.close(); workbenchDialog.close(); metricsDialog.close(); webDialog.close(); researchDialog.close(); soulDialog.close()")
     assert workspace.backend == "codex" and workspace.selectedModel == "chosen-model"
     assert workspace.selectedEffort == "ultra"
@@ -558,5 +610,5 @@ finally:
              "QT_QUICK_CONTROLS_STYLE": "Basic"}, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads(result.stdout)
-    assert len(report["measurements"]) == report["combo_count"] * 4 == 136
+    assert len(report["measurements"]) == report["combo_count"] * 4 == 156
     (tmp_path / "combo-contrast.json").write_text(json.dumps(report, indent=2) + "\n")

@@ -189,13 +189,13 @@ def test_read_only_and_missing_model_do_not_issue_start(team_workspace):
     assert not replies.calls("team.start") and "scegli esplicitamente un modello" in teams.error
 
 
-def test_drafts_per_project_and_ollama_model_never_used_for_team(team_workspace):
+def test_drafts_per_project_and_ollama_effort_stays_empty_for_team(team_workspace):
     workspace, teams, _ = team_workspace
     teams.setDraftText("goal", "Draft A")
     workspace._project = {"id": "project-b", "permission": "read_only"}
     workspace._backend, workspace._model, workspace._effort = "ollama", "local-model", ""
     workspace.changed.emit()
-    assert teams.draft["model"] == teams.draft["reasoning_effort"] == ""
+    assert teams.draft["model"] == "local-model" and teams.draft["reasoning_effort"] == ""
     teams.setDraftText("goal", "Draft B")
     workspace._project = {"id": "project-a", "permission": "project_write"}
     workspace.changed.emit()

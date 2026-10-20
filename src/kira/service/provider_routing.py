@@ -11,6 +11,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
+from kira.backends.claude_code import BACKEND as CLAUDE_CODE_BACKEND, require_sdk as require_claude_code
 from kira.domain.contracts import Json, KiraError
 from kira.domain.web import WEB_SETTINGS
 from kira.service.direct_accounts import BACKEND as DIRECT_BACKEND
@@ -21,12 +22,18 @@ if TYPE_CHECKING:
     from kira.service.server import Service
 
 METHODS = frozenset({"session.providers", "session.switch"})
-BACKENDS = ("ollama", "codex", DIRECT_BACKEND)
+DEEPSEEK_BACKEND = "deepseek_account"
+DEEPSEEK_WEB_BACKEND = "deepseek_web"
+BACKENDS = ("ollama", "codex", DIRECT_BACKEND, DEEPSEEK_BACKEND, DEEPSEEK_WEB_BACKEND,
+            CLAUDE_CODE_BACKEND)
 SHARED_SETTINGS = frozenset({"tools", "max_tool_rounds", "max_output_bytes"})
 PROVIDER_SETTINGS = {
     "ollama": SHARED_SETTINGS | {"num_ctx", "temperature", "seed", "think"},
     "codex": SHARED_SETTINGS | {"reasoning_effort", "service_tier"},
     DIRECT_BACKEND: SHARED_SETTINGS | {"reasoning_effort", "openai_account_id"} | WEB_SETTINGS,
+    DEEPSEEK_BACKEND: SHARED_SETTINGS | {"reasoning_effort"} | WEB_SETTINGS,
+    DEEPSEEK_WEB_BACKEND: SHARED_SETTINGS,
+    CLAUDE_CODE_BACKEND: SHARED_SETTINGS | {"reasoning_effort"},
 }
 CHAT_SETTINGS = frozenset({"chat_title", "handoff"})
 MAX_TRANSITIONS = 100
@@ -211,9 +218,16 @@ class ProviderRouting:
             raise KiraError("UNSUPPORTED_SETTING", "The saved provider configuration contains unsupported settings")
         config = {key: value for key, value in source.items() if key in allowed}
         config.update({key: value for key, value in session["settings"].items() if key in CHAT_SETTINGS})
+        if backend == DEEPSEEK_BACKEND:
+            # DeepSeek runs always install Kira's service-owned tool loop;
+            # do not inherit an Ollama-only tools-off preference.
+            config["tools"] = True
+        elif backend == DEEPSEEK_WEB_BACKEND:
+            # Kira wraps the text-only web transport in a validated tool loop.
+            config["tools"] = True
         if effort:
-            if backend == "ollama":
-                raise KiraError("UNSUPPORTED_SETTING", "Ollama does not use reasoning_effort")
+            if backend in {"ollama", DEEPSEEK_WEB_BACKEND}:
+                raise KiraError("UNSUPPORTED_SETTING", "This provider does not use reasoning_effort")
             config["reasoning_effort"] = effort
         else:
             config.pop("reasoning_effort", None)
@@ -255,6 +269,12 @@ class ProviderRouting:
         config = self._configuration(source, backend, effort, account_id)
         if backend == DIRECT_BACKEND:
             config = await self.service.direct_accounts.prepare(config)
+        elif backend == DEEPSEEK_BACKEND:
+            await self.service.deepseek_accounts.prepare()
+        elif backend == DEEPSEEK_WEB_BACKEND:
+            await self.service.deepseek_web_accounts.prepare()
+        elif backend == CLAUDE_CODE_BACKEND:
+            require_claude_code()
         if (backend != source["backend"] or model != source["model"] or
                 config.get("openai_account_id") != source["settings"].get("openai_account_id")):
             await self.service.web.before_configuration(project_id, session_id)

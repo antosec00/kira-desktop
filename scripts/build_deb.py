@@ -91,7 +91,7 @@ def build() -> None:
     }
     for filename in ("README.md", "docs/ARCHITECTURE.md", "docs/CONTRACTS.md", "docs/BACKENDS.md", "docs/OPENAI_DIRECT.md", "docs/WEB_BROWSER.md",
                      "docs/V03_TEAMS.md", "docs/INPUT_QUESTIONS.md", "docs/USER_GUIDE_IT.md",
-                     "docs/THIRD_PARTY_NOTICES.md", "docs/MARKDOWN_OUTPUT.md", "docs/DESIGN_033.md", "docs/TOOL_OUTPUT.md", "docs/ATTACHMENT_INPUT.md", "docs/CHAT_SETTINGS.md", "docs/APPEARANCE.md", "docs/LOCALIZATION.md", "docs/WORKBENCH.md", "docs/RUN_STATUS.md", "docs/PROJECT_CHATS.md"):
+                     "docs/THIRD_PARTY_NOTICES.md", "docs/MARKDOWN_OUTPUT.md", "docs/DESIGN_033.md", "docs/DESIGN_018.md", "docs/TOOL_OUTPUT.md", "docs/ATTACHMENT_INPUT.md", "docs/CHAT_SETTINGS.md", "docs/APPEARANCE.md", "docs/LOCALIZATION.md", "docs/WORKBENCH.md", "docs/RUN_STATUS.md", "docs/PROJECT_CHATS.md"):
         if (ROOT / filename).exists():
             placements[filename] = f"usr/share/doc/kira-desktop/{Path(filename).name}"
     for source, target in placements.items():

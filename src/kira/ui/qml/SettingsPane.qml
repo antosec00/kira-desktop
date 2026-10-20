@@ -153,12 +153,30 @@ Item {
                             onActivated: workspace.setDensity(currentIndex === 1 ? "compact" : "comfortable")
                             Accessible.name: qsTr("Densità dell'interfaccia")
                         }
-                        Label { text: qsTr("Mostra i controlli del modello") }
+                        Label { text: qsTr("Barra laterale") }
+                        KComboBox {
+                            palette.dark: pane.muted
+                            objectName: "sidebarModeChoice"
+                            Layout.preferredWidth: 230
+                            Layout.fillWidth: pane.availableWidth < 560
+                            model: [qsTr("Intera"), qsTr("Solo icone"), qsTr("Nascosta")]
+                            currentIndex: Math.max(0, ["full", "rail", "hidden"].indexOf(workspace.sidebarMode))
+                            onActivated: workspace.setSidebarMode(["full", "rail", "hidden"][currentIndex])
+                            Accessible.name: qsTr("Barra laterale")
+                        }
+                        Label { text: qsTr("Etichette accanto alle icone degli strumenti") }
+                        Toggle {
+                            objectName: "toolLabelsChoice"
+                            checked: workspace.toolLabels
+                            onToggled: workspace.setToolLabels(checked)
+                            Accessible.name: qsTr("Etichette accanto alle icone degli strumenti")
+                        }
+                        Label { text: qsTr("Apri le opzioni del modello con la chat") }
                         Toggle {
                             objectName: "modelControlsChoice"
                             checked: workspace.modelControlsVisible
                             onToggled: workspace.setModelControlsVisible(checked)
-                            Accessible.name: qsTr("Mostra i controlli del modello")
+                            Accessible.name: qsTr("Apri le opzioni del modello con la chat")
                         }
                         Label { text: qsTr("Mostra riepiloghi del ragionamento") }
                         Toggle {

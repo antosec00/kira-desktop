@@ -32,7 +32,7 @@ Dialog {
                 font: appearance.uiFont; color: appearance.colors.text
             }
             Text {
-                text: providerSwitch.backend === "codex" ? "Codex" : providerSwitch.backend === "ollama" ? "Ollama" : qsTr("OpenAI diretto · ChatGPT")
+                text: providerSwitch.backend === "codex" ? "Codex" : providerSwitch.backend === "ollama" ? "Ollama" : providerSwitch.backend === "deepseek_account" ? qsTr("DeepSeek Account") : providerSwitch.backend === "deepseek_web" ? qsTr("DeepSeek Web · sperimentale") : providerSwitch.backend === "claude_code" ? qsTr("Claude Code · uso personale") : qsTr("OpenAI diretto · ChatGPT")
                 Layout.fillWidth: true; textFormat: Text.PlainText; font: appearance.uiFont; color: appearance.colors.accent
             }
             Text { text: qsTr("Account per questa chat"); visible: providerSwitch.backend === "openai_chatgpt"; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
@@ -47,6 +47,10 @@ Dialog {
                 onActivated: providerSwitch.setAccount(currentValue)
                 Accessible.name: qsTr("Account per questa chat")
             }
+            DeepSeekAccountPane {
+                visible: providerSwitch.backend === "deepseek_account"
+                Layout.fillWidth: true
+            }
             Text { text: qsTr("Modello"); font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
             KComboBox {
                 objectName: "switchProviderModel"
@@ -58,10 +62,10 @@ Dialog {
                 onActivated: providerSwitch.setModel(currentValue)
                 Accessible.name: qsTr("Modello")
             }
-            Text { text: qsTr("Livello di ragionamento"); visible: providerSwitch.backend !== "ollama"; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
+            Text { text: qsTr("Livello di ragionamento"); visible: ["ollama", "deepseek_web"].indexOf(providerSwitch.backend) < 0; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
             KComboBox {
                 objectName: "switchProviderEffort"
-                visible: providerSwitch.backend !== "ollama"
+                visible: ["ollama", "deepseek_web"].indexOf(providerSwitch.backend) < 0
                 Layout.fillWidth: true
                 model: [qsTr("Predefinito del provider")].concat(providerSwitch.efforts)
                 currentIndex: Math.max(0, providerSwitch.efforts.indexOf(providerSwitch.effort) + 1)

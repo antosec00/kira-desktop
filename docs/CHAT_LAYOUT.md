@@ -1,9 +1,11 @@
 # Native conversation workspace
 
-Kira retains its configured anthracite/blue palette, mascot and appearance
-preferences. The sidebar separates project/chat navigation from knowledge,
-model and settings access. A quiet selection with a small marker identifies
-the current chat; project selection does not compete with it.
+Kira keeps its mascot and appearance preferences. Since 0.18 the Kira preset
+is a warm graphite with an amber accent and the workspace has one top bar; the
+sidebar is whole, an icon rail or hidden (Ctrl+B) and separates project/chat
+navigation from knowledge, model and settings access. A quiet selection with a
+small marker identifies the current chat; project selection does not compete
+with it. [DESIGN_018.md](DESIGN_018.md) records the 0.18 layout and state.
 
 ## Visual status refinement (0.13.1)
 
@@ -107,10 +109,15 @@ preference defaults to true, persists after dismissal and can be restored in
 Settings. Hiding the hint never erases the saved next step or changes project
 configuration.
 
-Provider/model controls remain expandable, with the selected identifiers shown
-literally. Team and question actions remain accessible; pending questions and
-errors retain visible attention states. Interface text follows the selected
-language without translating model identifiers or user content.
+Since 0.18 the header actions (Ricerca, Riprendi, Azioni, Esporta, Dettagli,
+Progetto) are icon buttons that show their labels on wide windows and keep
+tooltips and accessible names otherwise. Provider/model controls live behind
+the composer's model chip: the chip shows the selected identifiers literally
+and opens a popover with the same backend, model, effort, session and tool
+controls without moving the conversation. Team and question actions remain in
+the tool tray; pending questions and errors retain visible attention states.
+Interface text follows the selected language without translating model
+identifiers or user content.
 
 ## Activity and composer
 
@@ -128,9 +135,13 @@ explicit service request; requesting it is not evidence of completion. The
 persistent [run error panel](RUN_STATUS.md) continues to expose failed and
 interrupted outcomes above the composer.
 
-The composer retains attachments, run modes, queue and steering controls.
-File, usage, context, browser and project-memory entry points remain accessible
-with the browser beside the chat. Permission information remains visible.
+The composer retains attachments, run modes, queue and steering controls as
+chips; the two chip groups stack when the chat column is narrower than 700 px.
+File, usage, context, knowledge, browser, Studio, project-memory, Anima, Team,
+questions and web-settings entry points form an icon tray under the composer;
+**Etichette** restores their labels and persists the choice. They remain
+accessible with the browser beside the chat. Permission information remains
+visible.
 
 ## Tool activity
 

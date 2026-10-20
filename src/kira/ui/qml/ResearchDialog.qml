@@ -137,7 +137,11 @@ KiraPanel {
                                 ReadText { text: modelData.origin_label + " · " + modelData.acceptance_label; Layout.fillWidth: true; color: appearance.colors.muted }
                                 ReadText { text: modelData.preview; Layout.fillWidth: true }
                                 ReadText { visible: modelData.body_truncated; text: qsTr("Anteprima: apri la scheda per leggere il testo completo."); color: appearance.colors.muted; Layout.fillWidth: true }
-                                KButton { text: qsTr("Apri scheda"); enabled: !projectResearch.busy; onClicked: { projectResearch.editRecord(modelData.id); dialog.page = "editor" } }
+                                RowLayout {
+                                    Layout.fillWidth: true; spacing: 8
+                                    KButton { text: qsTr("Apri scheda"); enabled: !projectResearch.busy; onClicked: { projectResearch.editRecord(modelData.id); dialog.page = "editor" } }
+                                    KButton { objectName: "researchAcceptProposal"; text: qsTr("Accetta"); visible: modelData.accepted === false; primary: true; enabled: projectResearch.canEdit; toolTipText: qsTr("Accetta la scheda nel registro condivisibile senza aprirla"); onClicked: projectResearch.acceptProposal(modelData.id) }
+                                }
                             }
                         }
                     }

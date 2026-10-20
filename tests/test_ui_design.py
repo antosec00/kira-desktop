@@ -68,24 +68,27 @@ def test_model_panel_toggle_gains_chat_space_without_changing_session(design_ui,
     assert version_label.property("text").endswith(view.appVersion)
     assert version_label.property("contentWidth") <= version_label.width() + 0.5
     toggle = item(root, "modelControlsToggle")
-    expanded = item(root, "modelControlsExpanded")
+    popover = window.findChild(QObject, "modelPopover")
     conversation = item(root, "conversation")
-    selectors = [item(root, name) for name in ("backendBox", "modelBox", "effortBox", "sessionBox")]
-    selected = tuple(control.property("currentIndex") for control in selectors)
-    assert not view.modelControlsVisible and not expanded.isVisible()
-    assert toggle.isVisible() and toggle.isEnabled() and toggle.property("text") == "Modello"
+    assert not popover.property("visible")
+    assert toggle.isVisible() and toggle.isEnabled()
+    summary = item(root, "modelControlsSummary").property("text")
+    assert view.selectedModel in summary or "Scegli un modello" in summary
     collapsed_height = conversation.height()
     assert collapsed_height > 180
-    # The same always-available button works with a keyboard while work is active.
+    # The same always-available chip works with a keyboard while work is active.
     toggle.forceActiveFocus()
     QTest.keyClick(window, Qt.Key.Key_Space)
     qtbot.wait(40)
-    assert view.modelControlsVisible and expanded.isVisible()
-    assert toggle.property("text") == "Nascondi"
+    assert popover.property("visible")
+    expanded = item(root, "modelControlsExpanded")
+    assert expanded.isVisible()
+    selectors = [item(root, name) for name in ("backendBox", "modelBox", "effortBox", "sessionBox")]
+    selected = tuple(control.property("currentIndex") for control in selectors)
     assert all(control.isVisible() for control in selectors)
     assert all(control.isEnabled() is not busy for control in selectors)
-    assert collapsed_height - conversation.height() >= 80
-    assert conversation.height() > 90
+    # The options float over the conversation: no reading space is lost.
+    assert conversation.height() == pytest.approx(collapsed_height)
     for control in selectors:
         assert control.width() > 60 and control.height() > 20
         bounds = control.mapToScene(QPointF(control.width(), control.height()))
@@ -94,7 +97,7 @@ def test_model_panel_toggle_gains_chat_space_without_changing_session(design_ui,
     center = toggle.mapToScene(QPointF(toggle.width() / 2, toggle.height() / 2)).toPoint()
     QTest.mouseClick(window, Qt.MouseButton.LeftButton, pos=center)
     qtbot.wait(40)
-    assert not view.modelControlsVisible and not expanded.isVisible()
+    assert not popover.property("visible")
     assert conversation.height() == pytest.approx(collapsed_height)
     assert tuple(control.property("currentIndex") for control in selectors) == selected
     assert view.sessionId == "synthetic-session"

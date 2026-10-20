@@ -21,6 +21,7 @@ from kira.domain.contracts import Json, KiraError, WRITE_PERMISSIONS
 from kira.domain.studio import MAX_SCENE_BYTES, patch_scene, poster_scene, validate_scene
 from kira.service.project_context import ProjectChats
 from kira.service.storage import encode, now
+from kira.service.tool_policy import kira_tools_enabled
 
 if TYPE_CHECKING:
     from kira.service.server import Service
@@ -283,7 +284,7 @@ class Studio:
         if enabled and self.store.one("projects", project_id)["permission"] \
                 not in WRITE_PERMISSIONS:
             raise KiraError("PERMISSION_DENIED", "Model edits require project write access")
-        if enabled and self._session(project_id, session_id)["settings"].get("tools") is False:
+        if enabled and not kira_tools_enabled(self._session(project_id, session_id)):
             raise KiraError("PERMISSION_DENIED", "Enable chat tools before Studio AI editing")
         fingerprint = hashlib.sha256(encode({
             "method": "studio.grant", "session_id": session_id,

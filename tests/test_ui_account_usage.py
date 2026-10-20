@@ -175,7 +175,9 @@ def test_real_dialog_minimum_size_zero_unknown_and_error(usage, qtbot, qtlog, la
         expected = "0% remaining" if language == "en" else "0% disponibile"
         assert controller.report["groups"][0]["windows"][0]["value"] == expected
         assert controller.report["groups"][0]["windows"][1]["known"] is False
-        assert dialog.property("height") <= 560
+        # The panel fills the workspace under the single 0.18 top bar.
+        header = window.findChild(QObject, "projectHeader")
+        assert dialog.property("height") <= 620 - header.property("height")
         assert scroll.property("contentHeight") > scroll.property("height")
         for name in ("usageManageChatGPT", "accountUsageRefresh", "usageRawToggle"):
             control = window.findChild(QObject, name)

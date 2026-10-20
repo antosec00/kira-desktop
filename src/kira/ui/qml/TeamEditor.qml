@@ -106,9 +106,9 @@ Dialog {
                 KComboBox {
                     objectName: "teamBackendInput"
                     Layout.fillWidth: true
-                    model: ["Codex", qsTr("OpenAI diretto · ChatGPT")]
-                    currentIndex: teams.draft.backend === "openai_chatgpt" ? 1 : 0
-                    onActivated: teams.setBackend(currentIndex === 1 ? "openai_chatgpt" : "codex")
+                    model: ["Codex", "Ollama", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek")]
+                    currentIndex: teams.draft.backend === "ollama" ? 1 : teams.draft.backend === "openai_chatgpt" ? 2 : teams.draft.backend === "deepseek_account" ? 3 : 0
+                    onActivated: teams.setBackend(["codex", "ollama", "openai_chatgpt", "deepseek_account"][currentIndex])
                     enabled: !workspace.busy && !teams.busy
                     Accessible.name: qsTr("Provider condiviso dal team")
                 }
@@ -149,6 +149,7 @@ Dialog {
                     KButton { text: qsTr("Accedi a Codex"); visible: teams.draft.backend === "codex"; subtle: true; onClicked: workspace.login() }
                 }
                 DirectAccountPane { objectPrefix: "teamChatGPT"; visible: teams.draft.backend === "openai_chatgpt" }
+                DeepSeekAccountPane { visible: teams.draft.backend === "deepseek_account" }
                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: teams.providerText; textFormat: Text.PlainText; color: muted; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
                 GridLayout {
                     Layout.fillWidth: true; columns: form.availableWidth < 540 ? 1 : 2

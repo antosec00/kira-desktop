@@ -54,6 +54,12 @@ from kira.service.assistant import Assistant
 from kira.service.chat_lanes import ChatLanes
 from kira.service.autonomous_goals import AutonomousGoals, METHODS as GOAL_METHODS
 from kira.service.direct_accounts import BACKEND as DIRECT_BACKEND, DirectAccounts
+from kira.backends.deepseek_account import DeepSeekAccountBackend, DeepSeekAccounts
+# [DEEPSEEK WEB] nuovi import
+from kira.backends.deepseek_web import DeepSeekWebBackend
+from kira.service.deepseek_web_accounts import DeepSeekWebAccounts
+# [DEEPSEEK WEB] fine
+from kira.backends.claude_code import BACKEND as CLAUDE_CODE_BACKEND, require_sdk as require_claude_code
 from kira.service.workspace import METHODS as WORKSPACE_METHODS
 from kira.service.workspace import Workspaces
 from kira.service.workbench import METHODS as WORKBENCH_METHODS, Workbench
@@ -123,8 +129,6 @@ class Client:
     def send_browser_frame(self, browser_id: str, message: Json) -> None:
         if self.closed or browser_id not in self.browser_ids:
             return
-        # One latest frame per subscribed actor. Pixels never occupy the durable
-        # delivery queue or disconnect a client during a burst of browser frames.
         if len(encode(message).encode("utf-8")) + 1 <= MAX_FRAME_BYTES:
             self.browser_frames[browser_id] = message
             self.ready.set()
@@ -163,8 +167,6 @@ class Service:
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.cancellations: dict[str, asyncio.Event] = {}
         self.approvals: dict[tuple[str, str], asyncio.Future[Json]] = {}
-        # Only service-owned browser actions can grant a persistent chat policy.
-        # Provider-supplied approval JSON cannot populate this private registry.
         self.browser_action_approvals: dict[tuple[str, str], Json] = {}
         self.subscribers: dict[str, set[Client]] = defaultdict(set)
         self.clients: set[Client] = set()
@@ -181,6 +183,10 @@ class Service:
         self._run_controls: dict[str, RunControl] = {}
         self._settings_changing = False
         self.direct_accounts = DirectAccounts(self)
+        self.deepseek_accounts = DeepSeekAccounts(self)
+        # [DEEPSEEK WEB] account web
+        self.deepseek_web_accounts = DeepSeekWebAccounts(self)
+        # [DEEPSEEK WEB] fine
 
     async def start(self) -> None:
         self.paths.ensure()
@@ -195,9 +201,10 @@ class Service:
         try:
             credentials = self.paths.config / "openai-chatgpt" / "accounts.json"
             if credentials.exists() or credentials.is_symlink():
-                # Protect saved OAuth values before any backend can run. A fresh
-                # profile stays lazy; existing private storage must validate.
                 _ = self.direct_accounts.auth
+            deepseek_credentials = self.paths.config / "deepseek-account" / "account.json"
+            if deepseek_credentials.exists() or deepseek_credentials.is_symlink():
+                _ = self.deepseek_accounts.auth
             if self.paths.socket.exists() or self.paths.socket.is_symlink():
                 info = self.paths.socket.lstat()
                 if info.st_uid != os.getuid() or not stat.S_ISSOCK(info.st_mode):
@@ -264,6 +271,7 @@ class Service:
             self.goals.start()
         except BaseException:
             await self.direct_accounts.close()
+            await self.deepseek_accounts.close()
             if hasattr(self, "store"):
                 self.store.close()
             if self._lock_fd is not None:
@@ -308,6 +316,7 @@ class Service:
             task.cancel()
         await asyncio.gather(*self._client_tasks, return_exceptions=True)
         await self.direct_accounts.close()
+        await self.deepseek_accounts.close()
         if self.server:
             await self.server.wait_closed()
         self.assistant.close()
@@ -388,9 +397,18 @@ class Service:
         if backend == "ollama":
             from kira.backends.ollama import OllamaBackend
             return OllamaBackend(config["ollama_url"])
+        if backend == "deepseek_account":
+            return DeepSeekAccountBackend(self.deepseek_accounts.auth)
+        # [DEEPSEEK WEB] nuovo backend
+        if backend == "deepseek_web":
+            return DeepSeekWebBackend(self.deepseek_web_accounts)
+        # [DEEPSEEK WEB] fine
         if backend == DIRECT_BACKEND:
             from kira.backends.openai_chatgpt import OpenAIChatGPTBackend
             return OpenAIChatGPTBackend(self.direct_accounts.auth)
+        if backend == CLAUDE_CODE_BACKEND:
+            from kira.backends.claude_code import ClaudeCodeBackend
+            return ClaudeCodeBackend(self.paths.runtime)
         if backend != "codex":
             raise KiraError("INVALID_ARGUMENT", "Unknown backend")
         from kira.backends.codex import CodexBackend
@@ -400,9 +418,6 @@ class Service:
         try:
             return await self._dispatch(method, params, subscriber)
         finally:
-            # These operations can release a root/browser configuration after
-            # result admission yielded. Wake only after their complete mutation,
-            # so a pending result cannot outrun an explicit provider change.
             if (method in {"session.fork", "session.web.update", "session.configure",
                            "session.switch", "session.archive", "settings.update"}
                     and hasattr(self, "chat_lanes") and not self._closing):
@@ -515,9 +530,6 @@ class Service:
             if "share_session_summaries" in params:
                 if not isinstance(params["share_session_summaries"], bool):
                     raise KiraError("INVALID_ARGUMENT", "share_session_summaries must be a boolean")
-                # No await occurs from reading the current row to this write. A
-                # preference-only update must not overwrite newer project notes
-                # with the GUI's possibly stale copy of the entire memory object.
                 project["memory"]["share_session_summaries"] = params["share_session_summaries"]
                 if len(encode(project["memory"]).encode()) > 100_000:
                     raise KiraError("INVALID_ARGUMENT", "memory must be an object of at most 100000 encoded bytes")
@@ -537,7 +549,9 @@ class Service:
             fields(params, {"project_id", "backend", "model", "settings", "handoff", "title", "soul_id"})
             project = self.store.one("projects", string(params, "project_id", maximum=128))
             backend = string(params, "backend", maximum=32)
-            if backend not in {"ollama", "codex", DIRECT_BACKEND}:
+            # [DEEPSEEK WEB] aggiunto deepseek_web ai backend ammessi
+            if backend not in {"ollama", "codex", DIRECT_BACKEND, "deepseek_account", "deepseek_web",
+                               CLAUDE_CODE_BACKEND}:
                 raise KiraError("INVALID_ARGUMENT", "Unknown backend")
             model = string(params, "model", maximum=200)
             config = params.get("settings", {})
@@ -545,8 +559,25 @@ class Service:
                 raise KiraError("INVALID_ARGUMENT", "settings must be a bounded object")
             config = dict(config)
             self._validate_session_settings(config)
+            if backend == "deepseek_account" and set(config) & {"num_ctx", "seed", "service_tier"}:
+                raise KiraError("UNSUPPORTED_SETTING", "DeepSeek account does not support these Ollama/Codex settings")
+            # [DEEPSEEK WEB] settings non supportate
+            if backend == "deepseek_web" and set(config) & {"num_ctx", "seed", "service_tier"}:
+                raise KiraError("UNSUPPORTED_SETTING", "DeepSeek web does not support these settings")
+            # [DEEPSEEK WEB] fine
+            if backend == CLAUDE_CODE_BACKEND and set(config) & {"num_ctx", "seed", "service_tier",
+                                                               "temperature", "think"}:
+                raise KiraError("UNSUPPORTED_SETTING", "Claude Code does not support these settings")
             if backend == DIRECT_BACKEND:
                 config = await self.direct_accounts.prepare(config, bind_active=True)
+            elif backend == "deepseek_account":
+                await self.deepseek_accounts.prepare()
+            # [DEEPSEEK WEB] preparazione account
+            elif backend == "deepseek_web":
+                await self.deepseek_web_accounts.prepare()
+            # [DEEPSEEK WEB] fine
+            elif backend == CLAUDE_CODE_BACKEND:
+                require_claude_code()
             elif "openai_account_id" in config:
                 raise KiraError("INVALID_ARGUMENT", "ChatGPT account binding requires OpenAI direct")
             if "title" in params:
@@ -566,7 +597,7 @@ class Service:
                                           (identifier, project["id"], soul_id, now()))
             return {"session": ProjectChats(self.store).enrich(self.store.one("sessions", identifier))}
         if method == "session.configure":
-            fields(params, {"project_id", "session_id", "model", "reasoning_effort"})
+            fields(params, {"project_id", "session_id", "model", "reasoning_effort", "num_ctx", "think"})
             project_id = string(params, "project_id", maximum=128)
             configured_session_id = string(params, "session_id", maximum=128)
             chats = ProjectChats(self.store)
@@ -587,8 +618,24 @@ class Service:
                     config["reasoning_effort"] = effort
                 else:
                     config.pop("reasoning_effort", None)
-            # These two service-owned fields are not provider settings. Keep
-            # them verbatim while applying the same validation as session.create.
+            if "num_ctx" in params:
+                num_ctx = params["num_ctx"]
+                if type(num_ctx) is not int or num_ctx not in {0, 32_768, 131_072, 262_144}:
+                    raise KiraError("INVALID_ARGUMENT", "num_ctx must use the provider default, 32K, 128K or 256K")
+                if session["backend"] != "ollama":
+                    raise KiraError("INVALID_ARGUMENT", "num_ctx is supported only by Ollama chats")
+                if num_ctx:
+                    config["num_ctx"] = num_ctx
+                else:
+                    config.pop("num_ctx", None)
+            if "think" in params:
+                if session["backend"] != "ollama":
+                    raise KiraError("INVALID_ARGUMENT", "think is supported only by Ollama chats")
+                think = params["think"]
+                if think is None:
+                    config.pop("think", None)
+                else:
+                    config["think"] = think
             self._validate_session_settings({key: value for key, value in config.items()
                                              if key not in {"chat_title", "handoff"}})
             if model != session["model"]:
@@ -599,9 +646,6 @@ class Service:
                 if self.store.db.execute("SELECT 1 FROM prompt_queue WHERE project_id=? AND status IN "
                                          "('pending','starting','running')", (project_id,)).fetchone():
                     raise KiraError("BUSY", "Finish queued requests before changing the chat model")
-            # Admission and mutation have no await boundary. A run admitted
-            # before this RPC blocks the update; a later run captures this row.
-            # Backend identity and its native thread reference never change.
             self.provider_routing.refresh_generation(session)
             self.store.db.execute("UPDATE sessions SET model=?,settings=? WHERE id=? AND project_id=?",
                                   (model, encode(config), configured_session_id, project_id))
@@ -664,6 +708,14 @@ class Service:
             project = self.store.one("projects", session["project_id"])
             if session["backend"] == DIRECT_BACKEND:
                 await self.direct_accounts.prepare(session["settings"])
+            elif session["backend"] == "deepseek_account":
+                await self.deepseek_accounts.prepare()
+            # [DEEPSEEK WEB] preparazione account
+            elif session["backend"] == "deepseek_web":
+                await self.deepseek_web_accounts.prepare()
+            # [DEEPSEEK WEB] fine
+            elif session["backend"] == CLAUDE_CODE_BACKEND:
+                require_claude_code()
             if self.store.one("sessions", session["id"]) != session:
                 raise KiraError("CONFLICT", "The chat provider changed while preparing the request; send again")
             if ProjectChats(self.store).enrich(session)["archived"]:
@@ -715,7 +767,6 @@ class Service:
             after = integer(params, "after_seq", 0, 0, 2**63 - 1)
             limit = integer(params, "limit", 250, 1, 500)
             replay = self.store.events(run_id, after, limit)
-            # No await between snapshot and registration: one event loop gives an atomic boundary.
             if method == "run.subscribe" and subscriber is not None:
                 self.subscribers[run_id].add(subscriber)
                 subscriber.runs.add(run_id)
@@ -758,16 +809,43 @@ class Service:
             if method in {"backend.login", "backend.discover"}:
                 allowed.add("account_id")
             elif method == "backend.account":
-                allowed |= {"action", "account_id"}
+                # [DEEPSEEK WEB] aggiunto token
+                allowed |= {"action", "account_id", "url", "api_key", "enabled", "token"}
             fields(params, allowed)
             name = string(params, "backend", maximum=32)
-            if name not in {"ollama", "codex", DIRECT_BACKEND}:
+            # [DEEPSEEK WEB] aggiunto deepseek_web ai backend ammessi
+            if name not in {"ollama", "codex", DIRECT_BACKEND, "deepseek_account", "deepseek_web",
+                            CLAUDE_CODE_BACKEND}:
                 raise KiraError("INVALID_ARGUMENT", "Unsupported backend operation")
+            # [DEEPSEEK WEB] blocco per deepseek_web
+            if name == "deepseek_web":
+                if "account_id" in params:
+                    raise KiraError("INVALID_ARGUMENT", "DeepSeek web account selection is not supported")
+                if method == "backend.discover":
+                    provider = self._control_backends.get(name)
+                    if provider is None:
+                        provider = self._backend(name)
+                        self._control_backends[name] = provider
+                    return dict(self.redactor.clean(await provider.discover()))
+                action = "login" if method == "backend.login" else string(params, "action", maximum=30)
+                result = await self.deepseek_web_accounts.dispatch(action, params)
+                return dict(result)
+            # [DEEPSEEK WEB] fine
+            if name == "deepseek_account":
+                if "account_id" in params:
+                    raise KiraError("INVALID_ARGUMENT", "DeepSeek account selection is not supported")
+                if method == "backend.discover":
+                    provider = self._control_backends.get(name)
+                    if provider is None:
+                        provider = self._backend(name)
+                        self._control_backends[name] = provider
+                    return dict(self.redactor.clean(await provider.discover()))
+                action = "login" if method == "backend.login" else string(params, "action", maximum=30)
+                result = await self.deepseek_accounts.dispatch(action, params)
+                return dict(result)
             if name == DIRECT_BACKEND and method != "backend.discover":
                 action = "login" if method == "backend.login" else string(params, "action", maximum=30)
                 account_id = string(params, "account_id", maximum=128) if "account_id" in params else None
-                # Account results are a credential-free whitelist. Do not send
-                # browser authorization URLs through the event redactor/logs.
                 return await self.direct_accounts.dispatch(action, account_id)
             if method == "backend.account" or (method == "backend.login" and name != "codex") or ("account_id" in params and name != DIRECT_BACKEND):
                 raise KiraError("INVALID_ARGUMENT", "Unsupported backend operation")
@@ -786,7 +864,6 @@ class Service:
                 if login is None:
                     raise KiraError("UNAVAILABLE", "Provider does not support login")
                 result = await login()
-            # OAuth's App Server must live while the browser completes login.
             return dict(self.redactor.clean(result))
         if method == "settings.get":
             fields(params, set())
@@ -859,8 +936,6 @@ class Service:
             active = self.store.all("SELECT id FROM runs WHERE state NOT IN ('completed','failed','cancelled','interrupted')")
             if active or self.tasks or self.teams.tasks or self.chat_lanes.admissions or self.goals.admissions or self.store.all("SELECT owner_id FROM project_reservations") or self.store.all("SELECT request_id FROM direct_context_reservations") or self.store.all("SELECT request_id FROM session_forks WHERE status='pending' OR cleanup_blocked=1") or self.store.all("SELECT run_id FROM control_processes WHERE state!='stopped'"):
                 raise KiraError("BUSY", "Active runs must finish before service shutdown")
-            # Stop autonomous admission before the short IPC acknowledgement grace.
-            # No goal may claim a new cycle after shutdown has been accepted.
             await self.goals.close()
             asyncio.get_running_loop().call_later(0.1, self.stopping.set)
             return {"stopping": True}
@@ -970,7 +1045,7 @@ class Service:
         if "tools" in config and not isinstance(config["tools"], bool):
             raise KiraError("INVALID_ARGUMENT", "tools must be a boolean")
         if "num_ctx" in config:
-            integer(config, "num_ctx", 4096, 1, 2**31 - 1)
+            integer(config, "num_ctx", 4096, 1, 262144)
         if "seed" in config:
             integer(config, "seed", 0, -(2**31), 2**31 - 1)
         if "temperature" in config:
@@ -1035,8 +1110,6 @@ class Service:
                              **({"attachments": attachments} if attachments else {})})
             rows = self.store.db.execute("SELECT * FROM events WHERE run_id=? AND type IN ('message.delta','message.completed','message.user') ORDER BY seq",
                                          (run["id"],))
-            # Rows retain their first-event position while each item accumulates
-            # independently. None is the legacy stream for providers without IDs.
             pending: dict[str | None, Json] = {}
             for stored_row in rows:
                 row = self.store.record(stored_row)
@@ -1067,7 +1140,6 @@ class Service:
                     if row["type"] == "message.delta":
                         pending[item] = message
                 elif message is not None:
-                    # An explicit empty complete body replaces any earlier delta.
                     messages[:] = [entry for entry in messages if entry is not message]
                 if bounded and len(messages) > 200:
                     messages.pop(0)
@@ -1076,8 +1148,6 @@ class Service:
                         "artifacts": artifacts, "messages": messages, "history_truncated": display_truncated,
                         "totals": totals}
         if bounded:
-            # Summarize metadata too: dropping transcript rows alone does not bound
-            # duplicated prompts, backend outcomes, or portable session handoffs.
             for run in runs:
                 if run.get("prompt_truncated"):
                     result["history_truncated"] = True
@@ -1096,7 +1166,6 @@ class Service:
                     session["settings"]["handoff"] = handoff.encode()[:2000].decode("utf-8", "ignore")
                     session["handoff_truncated"] = True
                     result["history_truncated"] = True
-            # Preserve every run ID/cursor in ordinary histories, bounding displayed metadata.
             while len(encode(result).encode()) > 700_000:
                 if messages:
                     messages.pop(0)
@@ -1109,7 +1178,6 @@ class Service:
                     index = next((i for i, item in enumerate(sessions[:-1]) if item["id"] not in needed), 0)
                     sessions.pop(index)
                 else:
-                    # Validated project/context sizes leave ample space at this point.
                     raise KiraError("OUTPUT_LIMIT", "Project metadata exceeds snapshot limit; export the complete project")
                 result["history_truncated"] = True
             result["snapshot_limit_bytes"] = 700_000
@@ -1147,7 +1215,8 @@ class Service:
             allowed = {"phase", "reason", "kind", "before_tokens", "after_tokens", "measurement",
                        "history_mode", "strategy", "context_window", "default_context_window",
                        "max_context_window", "reserved_tokens", "compact_threshold", "capacity_source",
-                       "maximum_verified", "input_tokens", "estimated_tokens", "preflight_input_tokens", "compactions",
+                       "maximum_verified", "reservation_source", "input_tokens", "output_tokens",
+                       "estimated_tokens", "preflight_input_tokens", "compactions",
                        "visible_estimated_tokens", "opaque_context"}
             payload = {key: value for key, value in payload.items() if key in allowed
                        and (value is None or isinstance(value, (str, int, float, bool)))}
@@ -1206,7 +1275,6 @@ class Service:
         await self._emit_cleaned(run_id, event_type, cleaned)
 
     async def _emit_cleaned(self, run_id: str, event_type: str, cleaned: Json) -> None:
-        """Bound and commit only text already sanitized at the shared boundary."""
         if event_type == "message.delta":
             text = cleaned.get("content", "")
             if not isinstance(text, str):
@@ -1223,7 +1291,6 @@ class Service:
             cleaned["content"] = content
         if len(encode(cleaned).encode("utf-8")) > 180_000:
             artifact = self._save_artifact(run_id, f"{event_type}-{new_id()}", encode(cleaned))
-            # Keep the event independently replayable inside one frame.
             for key in ("content", "result", "arguments", "provider_messages"):
                 if key in cleaned:
                     value = cleaned[key]
@@ -1297,7 +1364,6 @@ class Service:
                 try:
                     result = await asyncio.shield(work)
                 except asyncio.CancelledError:
-                    # Finish a local atomic write and durably record its confirmed result.
                     result = await work
                     cancel.set()
                 if name == "write_file" and result.get("ok"):
@@ -1352,6 +1418,8 @@ class Service:
 
     async def _run(self, run_id: str, project: Json, session: Json, cancel: asyncio.Event, *,
                    context_options: Json | None = None, additional_context: str = "") -> None:
+        if session["backend"] in {"deepseek_account", "deepseek_web"}:
+            session = {**session, "settings": {**session["settings"], "tools": True}}
         backend: Backend | None = None
         selected_mode = self._mode(run_id)
         lane = self.run_lane(run_id)
@@ -1399,16 +1467,12 @@ class Service:
                 context_options = {**(context_options or {}), "assistant_instructions":
                     IDENTITY_INSTRUCTIONS + "\n" + str((context_options or {}).get("assistant_instructions", ""))}
                 supplied += "\nProject memory (user-maintained evidence and open questions):\n" + encode(project["memory"])
-            # Team context is coordinated separately; never mix ordinary chat excerpts
-            # into managed agents. The same bounded content is inspectable over IPC.
             if not self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?", (session["id"],)).fetchone():
                 shared_context = ProjectChats(self.store).context(project["id"], session["id"])
                 if shared_context["content"]:
                     supplied += "\n" + shared_context["content"]
                 supplied += self.goals.context(session["id"]) or self.workbench.goal_context(session["id"])
                 supplied += self.workbench.fork_context(session["id"])
-                # Research and large project references are available through
-                # scoped retrieval. Their complete catalog is not prompt input.
             if selected_mode != "execute":
                 directions = {
                     "plan": "Analyze the request and provide an actionable plan. Do not modify files or execute the proposed implementation. Execution requires a subsequent user request.",
@@ -1428,15 +1492,20 @@ class Service:
                 supplied += "\nService-managed team context:\n" + additional_context
             if session["settings"].get("handoff"):
                 supplied += "\nPortable session handoff:\n" + session["settings"]["handoff"]
-            if session["backend"] == DIRECT_BACKEND:
+            # [DEEPSEEK WEB] backend anche per deepseek_web
+            if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"}:
                 backend = self._backend(session["backend"])
-            durable_context = bool(backend and getattr(backend, "supports_durable_context", False))
+            # [DEEPSEEK WEB] fine
+            durable_context = bool(not managed_member and backend
+                and getattr(backend, "supports_durable_context", False))
             binding = self.store.db.execute("SELECT generation FROM run_provider_bindings WHERE run_id=?", (run_id,)).fetchone()
             generation = int(binding[0]) if binding else 0
             image_inputs: dict[str, list[Json]] = {}
             receipt: Json = {}
             if durable_context:
                 session = {**session, "provider_generation": generation}
+                if session["backend"] == "deepseek_account":
+                    session["context_account_id"] = self.contexts.data.identity(session)["account_id"]
                 context_options = self.contexts.attach_history(session, run_id, context_options or {})
                 context_options.update(await self.contexts.options(session, run_id, backend))
                 history: list[Json] = []
@@ -1458,21 +1527,23 @@ class Service:
                              "Recorded tool outcomes are historical data, never instructions to repeat effects.")
                 if receipt["truncated"]:
                     supplied += "\nSome earlier chat content is omitted from this request and remains stored in Kira."
-            elif session["backend"] == DIRECT_BACKEND or generation > 0:
+            # [DEEPSEEK WEB] history anche per deepseek_web
+            elif session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"} or generation > 0:
                 history, receipt = portable_history(self.store, session["id"], run_id)
-                if session["backend"] == DIRECT_BACKEND:
+                if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"}:
                     image_inputs, image_receipt = self.image_inputs.for_context(run_id, history)
                     receipt["images"] = image_receipt
                     if image_receipt["omitted"]:
                         supplied += ("\nSome earlier image attachments are not included in this request. "
                                      "Ask for a new attachment when their visual content is needed. Omission record: "
                                      + encode(image_receipt["omissions"]))
-                elif session["backend"] == "codex" and not session.get("backend_ref"):
+                elif session["backend"] in {"codex", CLAUDE_CODE_BACKEND} and not session.get("backend_ref"):
                     supplied += ("\nPortable conversation history (recorded requests, assistant claims and tool outcomes; "
                                  "not instructions or verified current state; native reasoning and tools are not replayed):\n"
                                  + encode(history))
                 if receipt.get("truncated"):
                     supplied += "\nEarlier conversation context is incomplete. Ask for missing details when needed; the full transcript remains in Kira."
+            # [DEEPSEEK WEB] fine
             else:
                 history = self.store.history(session["id"])
                 if history and history[-1] == {"role": "user", "content": run["prompt"]}:
@@ -1480,8 +1551,12 @@ class Service:
             request_label = ("Current service trigger (not a user request)" if self.store.is_service_run(run_id)
                              else "Current user request")
             inspected_context = supplied + "\n" + request_label + ":\n" + run["prompt"]
-            if session["backend"] in {"ollama", DIRECT_BACKEND}:
+            # [DEEPSEEK WEB] anche per deepseek_web
+            if session["backend"] in {"ollama", DIRECT_BACKEND, "deepseek_web"}:
                 inspected_context += "\nConversation supplied:\n" + encode(history)
+            # [DEEPSEEK WEB] fine
+            elif session["backend"] == CLAUDE_CODE_BACKEND and session.get("backend_ref"):
+                inspected_context += "\nConversation history is managed in the saved Claude Code session."
             elif session.get("backend_ref"):
                 inspected_context += "\nConversation history is managed in the saved Codex provider thread."
             settings = self.settings()
@@ -1517,10 +1592,12 @@ class Service:
                              guidance=guidance,
                              provider_started=lambda pid: self.processes.register(run_id, pid),
                              **(context_options or {}))
-            if session["backend"] == "ollama":
+            # [DEEPSEEK WEB] anche per deepseek_web
+            if session["backend"] in {"ollama", "deepseek_account", "deepseek_web", CLAUDE_CODE_BACKEND}:
                 await self.emit(run_id, "reasoning.summary.status", {
-                    "source": "provider_summary", "provider": "ollama",
+                    "source": "provider_summary", "provider": session["backend"],
                     "status": "unavailable", "reason": "provider_no_public_summary"})
+            # [DEEPSEEK WEB] fine
             outcome = await backend.run(ctx)
             if managed_member and session["backend"] == "codex" and self.store.db.execute(
                     "SELECT 1 FROM provider_processes WHERE run_id=?", (run_id,)).fetchone() is None:
@@ -1538,7 +1615,6 @@ class Service:
             await self.emit(run_id, "run.state", {"state": "failed", "error": self.redactor.text(str(exc))})
         finally:
             self._run_controls.pop(run_id, None)
-            # Cancellation must not abandon ownership checks or task bookkeeping.
             finalizer = asyncio.create_task(self._finalize_run(run_id, backend))
             while not finalizer.done():
                 try:
@@ -1612,15 +1688,15 @@ class Service:
         cleaned = row["boot_id"] != boot_id() or (provider is not None and await self.processes.cleanup(run_id))
         if provider is None and not cleaned:
             session = self.store.one("sessions", self.store.one("runs", run_id)["session_id"])
-            if session["backend"] in {"ollama", DIRECT_BACKEND}:
-                # HTTP inference and in-process file threads die with the service.
-                # A command without confirmed group cleanup remains uncertain.
+            # [DEEPSEEK WEB] anche deepseek_web è HTTP e muore col servizio
+            if session["backend"] in {"ollama", DIRECT_BACKEND, "deepseek_web"}:
                 pending_command = self.store.db.execute("SELECT 1 FROM events started WHERE started.run_id=? "
                     "AND started.type='tool.started' AND json_extract(started.payload,'$.name')='run_command' "
                     "AND NOT EXISTS (SELECT 1 FROM events finished WHERE finished.run_id=started.run_id "
                     "AND finished.type='tool.completed' AND json_extract(finished.payload,'$.tool_id')="
                     "json_extract(started.payload,'$.tool_id')) LIMIT 1", (run_id,)).fetchone()
                 cleaned = pending_command is None
+            # [DEEPSEEK WEB] fine
         if cleaned:
             self.store.db.execute("UPDATE run_cleanup SET state='stopped',error=NULL WHERE run_id=?", (run_id,))
             if hasattr(self, "web"):
@@ -1657,7 +1733,6 @@ class Service:
         except (OSError, ValueError):
             pass
         gpus: list[Json] = []
-        # Driver-independent metrics are optional and never inferred from historical hardware.
         import shutil
         import subprocess
         binary = shutil.which("nvidia-smi")

@@ -22,6 +22,10 @@ ceilings, not a promise of completion within that number. There is no implicit
 time budget. User-selected provider, account, model, reasoning effort and project
 permission are preserved. This mode grants no additional filesystem or browser
 permissions and cannot dismiss approval or authentication requirements.
+The DeepSeek account provider uses Kira-managed tools for goal checkpoints and
+other service callbacks. A persisted Ollama-only `tools=false` preference does
+not disable those DeepSeek tools; service admission and callback checks use the
+same effective provider policy.
 
 `goal.pause/resume {project_id,session_id,request_id}` operate on the same chat.
 Command identities are durable: a retry cannot create another goal or dispatch a

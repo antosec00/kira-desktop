@@ -20,6 +20,7 @@ from kira.service.processes import ProcessRegistry
 from kira.service.project_context import ProjectChats
 from kira.service.project_tool_store import ProjectToolStore, runtime_identity
 from kira.service.storage import now
+from kira.service.tool_policy import kira_tools_enabled
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import command_environment
 
@@ -77,8 +78,9 @@ class ProjectTools:
 
     def attach(self, session: Json, project: Json, run_id: str, cancel: asyncio.Event,
                mode: str, options: Json) -> Json:
-        if (session["backend"] not in {"codex", "openai_chatgpt", "ollama"}
-                or session["settings"].get("tools") is False
+        if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account",
+                                       "deepseek_web", "claude_code"}
+                or not kira_tools_enabled(session)
                 or self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?", (session["id"],)).fetchone()):
             return options
         result = dict(options)
@@ -99,7 +101,7 @@ class ProjectTools:
                     or run["session_id"] != session["id"] or run["state"] not in {"running", "awaiting_input"}
                     or any(actual_session[key] != session[key] for key in ("backend", "model"))
                     or actual_session["settings"].get("openai_account_id") != session["settings"].get("openai_account_id")
-                    or actual_session["settings"].get("tools") is False
+                    or not kira_tools_enabled(actual_session)
                     or self.service.provider_routing.current_generation(session["id"]) != generation):
                 raise KiraError("CANCELLED", "The originating run no longer permits project tool calls")
             return actual_project

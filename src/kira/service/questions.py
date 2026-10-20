@@ -15,6 +15,9 @@ if TYPE_CHECKING:
     from kira.service.server import Service
 
 METHODS = {"input.list", "input.answer"}
+# How an adapter handed a retrieved answer to its provider; never proof of model use.
+DELIVERY_TRANSPORTS = frozenset({"json-rpc-response", "turn/steer", "responses-http",
+                                 "ollama-chat", "claude-code-mcp"})
 EVENTS = {"input.requested", "input.answered", "input.received", "input.closed", "input.delivery_failed", "input.delivered"}
 
 
@@ -160,7 +163,7 @@ class Questions:
         request_id = string(payload, "request_id", maximum=128)
         transport = payload.get("transport")
         if transport is not None and (not isinstance(transport, str)
-                                      or transport not in {"json-rpc-response", "turn/steer", "responses-http"}):
+                                      or transport not in DELIVERY_TRANSPORTS):
             raise KiraError("INVALID_ARGUMENT", "Unsupported answer delivery transport")
         async with self.lock:
             state = self._state(run_id, request_id)

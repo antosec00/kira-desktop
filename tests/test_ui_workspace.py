@@ -505,7 +505,7 @@ for tab in tabs:
 combos = [item for item in window.findChildren(QQuickItem)
           if item.property("indicator") is not None
           and isinstance(item.property("currentIndex"), int)]
-assert len(combos) == 40, len(combos)
+assert len(combos) == 45, len(combos)
 assert {combo.objectName() for combo in combos} >= {"soulPicker", "soulMode", "reasoningSummaryHistory"}
 for combo in combos:
     foreground = combo.property("indicator").property("color")

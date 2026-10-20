@@ -1,7 +1,7 @@
 # Desktop platform targets
 
-> On the private experimental `feature/kira-studio` branch, source version
-> **0.16.0.dev1** uses database schema **16**. The package paths and qualification
+> On the development branch `dev/0.18`, source version
+> **0.18.0.dev1** uses database schema **16**. The package paths and qualification
 > records below describe the stable **0.15.1** release, not this branch.
 
 | Target | Native runtime | Application artifact |

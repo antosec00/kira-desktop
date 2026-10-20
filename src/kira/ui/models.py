@@ -27,6 +27,13 @@ class TranscriptModel(QAbstractListModel):
         "toolGroupAttention": False,
         "toolGroupStatus": "",
     }
+    # Claude Code reports its native tools as "claude_code.<Tool>"; the backend
+    # records these literal summary keys beside the provider input.
+    CLAUDE_CODE_PREFIX = "claude_code."
+    CLAUDE_CODE_TARGETS = {"Read": "path", "Write": "path", "Edit": "path", "MultiEdit": "path",
+                           "NotebookEdit": "path", "NotebookRead": "path", "LS": "path",
+                           "Bash": "command", "Glob": "pattern", "Grep": "pattern",
+                           "WebFetch": "url", "WebSearch": "query"}
     FIELDS: tuple[str, ...] = ("kind", "title", "body", "status", "runId", "toolId", "command", "raw",
               "previewBody", "previewTruncated", "outputExpanded", "attachments", *GROUP_DEFAULTS,
               *RECEIPT_DEFAULTS, "receiptExpanded")
@@ -166,6 +173,17 @@ class TranscriptModel(QAbstractListModel):
             target = values.get("action")
         elif name == "web_search":
             target = values.get("query")
+        elif name.startswith(cls.CLAUDE_CODE_PREFIX):
+            tool = name[len(cls.CLAUDE_CODE_PREFIX):]
+            if "." in tool:
+                # A Kira tool mediated by Claude Code keeps the evidence of the direct call.
+                return cls._receipt_evidence(tool, values, result=result)
+            # The backend already records the literal path, command, pattern,
+            # URL or query beside the provider input; commands stay bounded.
+            key = cls.CLAUDE_CODE_TARGETS.get(tool)
+            target = values.get(key) if key else None
+            if key == "command":
+                target = cls._receipt_literal(target, 160)
         evidence = {}
         if literal := cls._receipt_literal(target):
             evidence["target"] = literal
@@ -201,7 +219,49 @@ class TranscriptModel(QAbstractListModel):
             "computer.observe": lambda: tr("Osservazione del browser"),
             "computer.act": lambda: tr("Interazione con il browser"),
         }
-        label = labels[name]() if name in labels else cls._receipt_literal(name, 160)
+        # Claude Code's native tools keep their recorded identity in the row
+        # title and original data; the receipt shows the same operation labels
+        # as Kira's own tools. Kira tools mediated by Claude Code keep their
+        # Kira names; any other native tool stays literal with its source.
+        native = {
+            "Read": lambda: tr("Lettura del file"),
+            "Write": lambda: tr("Scrittura del file"),
+            "Edit": lambda: tr("Modifica del file"),
+            "MultiEdit": lambda: tr("Modifiche al file"),
+            "NotebookEdit": lambda: tr("Modifica del notebook"),
+            "NotebookRead": lambda: tr("Lettura del notebook"),
+            "Bash": lambda: tr("Esecuzione del comando"),
+            "BashOutput": lambda: tr("Output del comando"),
+            "KillShell": lambda: tr("Arresto del comando"),
+            "Glob": lambda: tr("Ricerca dei file"),
+            "Grep": lambda: tr("Ricerca nel testo"),
+            "LS": lambda: tr("Elenco dei file"),
+            "WebSearch": lambda: tr("Ricerca web"),
+            "WebFetch": lambda: tr("Lettura della pagina"),
+            "Task": lambda: tr("Sottoagente"),
+            "Agent": lambda: tr("Sottoagente"),
+            "TodoWrite": lambda: tr("Elenco delle attività"),
+            "AskUserQuestion": lambda: tr("Domanda all’utente"),
+            "Skill": lambda: tr("Competenza"),
+            "ToolSearch": lambda: tr("Ricerca degli strumenti"),
+            "EnterPlanMode": lambda: tr("Inizio della pianificazione"),
+            "ExitPlanMode": lambda: tr("Fine della pianificazione"),
+        }
+        label: Any
+        if name in labels:
+            label = labels[name]()
+        elif name.startswith(cls.CLAUDE_CODE_PREFIX):
+            tool = name[len(cls.CLAUDE_CODE_PREFIX):]
+            if tool in native:
+                label = native[tool]()
+            elif tool in labels:
+                label = labels[tool]()
+            elif "." in tool:
+                label = cls._receipt_literal(tool, 160)
+            else:
+                label = tr("Claude Code · {tool}", tool=cls._receipt_literal(tool, 120))
+        else:
+            label = cls._receipt_literal(name, 160)
         evidence = row.get("_receiptEvidence", {})
         state = cls._tool_group_status(row["status"])
         return {"receiptLabel": label, "receiptTarget": evidence.get("target", ""),

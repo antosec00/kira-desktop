@@ -4,16 +4,18 @@ import QtQuick.Controls
 ComboBox {
     font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
     id: control
+    // A chip is a compact pill for the composer; the popup keeps the full width.
+    property bool chip: false
     palette.dark: appearance.colors.muted
     hoverEnabled: true
     HoverHandler { cursorShape: appearance.pointerCursors && control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
     background: Rectangle {
-        implicitWidth: 140
-        implicitHeight: Math.max(40, appearance.uiFont.pixelSize + 27)
-        radius: 8
-        color: !control.enabled ? appearance.colors.disabled : control.down ? appearance.colors.pressed : appearance.colors.surfaceAlt
+        implicitWidth: control.chip ? 100 : 140
+        implicitHeight: control.chip ? Math.max(30, appearance.uiFont.pixelSize + 17) : Math.max(40, appearance.uiFont.pixelSize + 27)
+        radius: control.chip ? height / 2 : 8
+        color: !control.enabled ? appearance.colors.disabled : control.down ? appearance.colors.pressed : control.chip ? (control.hovered ? appearance.colors.hover : "transparent") : appearance.colors.surfaceAlt
         border.width: control.activeFocus ? 2 : 1
-        border.color: control.activeFocus ? appearance.colors.accent : control.hovered ? appearance.colors.accent : appearance.colors.border
+        border.color: control.activeFocus ? appearance.colors.accent : control.hovered && !control.chip ? appearance.colors.accent : appearance.colors.border
     }
     // The built-in TextField display is literal; dropdown delegates also need
     // an explicit format for provider model, effort and session labels.

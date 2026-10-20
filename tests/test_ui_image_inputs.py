@@ -222,7 +222,7 @@ def test_real_composer_previews_and_removes_images_with_literal_names(view, qtbo
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-@pytest.mark.parametrize("backend", ["codex", "ollama", "openai_chatgpt"])
+@pytest.mark.parametrize("backend", ["codex", "ollama", "openai_chatgpt", "claude_code"])
 def test_real_clipboard_routes_direct_images_and_preserves_other_provider_paths(view, qtbot, monkeypatch, backend):
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QGuiApplication
@@ -258,7 +258,7 @@ def test_real_clipboard_routes_direct_images_and_preserves_other_provider_paths(
     QGuiApplication.clipboard().setMimeData(mime)
     QTest.keyClick(window, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
     qtbot.waitUntil(lambda: not prompt.property("attachmentBusy"))
-    if backend == "openai_chatgpt":
+    if backend in {"openai_chatgpt", "claude_code"}:
         assert prompt.property("text") == "Literal draft"
         assert len(workspace.draftImages) == 1
         assert any(call[0] == "attachment.import" for call in calls)

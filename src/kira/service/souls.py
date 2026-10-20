@@ -17,6 +17,7 @@ from kira.domain.souls import (
 from kira.service.soul_store import SoulStore
 from kira.service.project_context import ProjectChats
 from kira.service.storage import new_id, now
+from kira.service.tool_policy import kira_tools_enabled
 
 _MUTATIONS = {
     "soul.create": ({"request_id", "name", "core", "mode"}, {"request_id", "name", "core"}),
@@ -247,7 +248,7 @@ class Souls:
         selected = binding is not None
         enabled = soul is not None and not soul["archived"]
         memories = self.data.memories(soul["id"], soul["revision"], project_id, session_id) if enabled and soul else []
-        preview = capsule(soul, selected=selected, tools=session["settings"].get("tools") is not False,
+        preview = capsule(soul, selected=selected, tools=kira_tools_enabled(session),
                           memory_count=len(memories))
         return {"project_id": project_id, "session_id": session_id, "soul": soul,
             "epoch": binding["epoch"] if binding else 0, "selected": selected, "disabled": selected and not enabled,

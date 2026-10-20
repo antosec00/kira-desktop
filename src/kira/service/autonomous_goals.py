@@ -14,6 +14,7 @@ from kira.domain.autonomous_goals import GOAL_INSTRUCTIONS, GOAL_TOOL_NAMES, goa
 from kira.domain.contracts import Json, KiraError
 from kira.service.storage import encode, new_id, now
 from kira.service.teams import fields, fingerprint, integer, text
+from kira.service.tool_policy import kira_tools_enabled
 
 if TYPE_CHECKING:
     from kira.service.server import Service
@@ -86,9 +87,10 @@ class AutonomousGoals:
         return self.service.assistant._scope(project_id, session_id)
 
     def _binding(self, project: Json, session: Json) -> Json:
-        if session["settings"].get("tools", True) is False:
+        if not kira_tools_enabled(session):
             raise KiraError("UNSUPPORTED", "Autonomous goals require the selected model's Kira tools")
-        if session["backend"] not in {"codex", "openai_chatgpt", "ollama"}:
+        if session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account",
+                                      "claude_code"}:
             raise KiraError("UNSUPPORTED", "This provider does not expose Kira goal tools")
         if self.store.db.execute("SELECT 1 FROM session_workbench WHERE session_id=? AND archived=1",
                                  (session["id"],)).fetchone():
@@ -103,7 +105,7 @@ class AutonomousGoals:
         # frozen so changes require an explicit resume using the new selection.
         policy = current["settings"].get("browser_action_approval", "ask")
         frozen_policy = row["binding"]["settings"].get("browser_action_approval", "ask")
-        allow_live_browser_policy = (session["backend"] == "openai_chatgpt"
+        allow_live_browser_policy = (session["backend"] in {"openai_chatgpt", "ollama", "deepseek_account"}
             and isinstance(policy, str) and policy in {"ask", "always"}
             and isinstance(frozen_policy, str) and frozen_policy in {"ask", "always"})
         def clean(settings: Json) -> Json:
@@ -472,7 +474,7 @@ class AutonomousGoals:
     def attach(self, session: Json, project: Json, run_id: str, cancel: asyncio.Event,
                mode: str, options: Json) -> Json:
         goal = self.current(session["id"])
-        if goal is None or session["settings"].get("tools", True) is False:
+        if goal is None or not kira_tools_enabled(session):
             return options
         metadata = self.metadata(run_id)
         writable = bool(metadata.get("goal_id") == goal["id"] and mode == "execute")

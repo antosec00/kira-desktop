@@ -14,6 +14,7 @@ from kira.domain.contracts import WRITE_PERMISSIONS, Json, KiraError
 from kira.domain.studio import (
     STUDIO_TOOL_NAMES, studio_action_contract, studio_tool_specs, validate_studio_action,
 )
+from kira.service.tool_policy import kira_tools_enabled
 
 if TYPE_CHECKING:
     from kira.service.studio import Studio
@@ -29,8 +30,8 @@ def _failure(exc: Exception) -> Json:
 def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
                   cancel: asyncio.Event, mode: str, options: Json) -> Json:
     """Enable only for an allowed ordinary chat, on a new executable model turn."""
-    if (session["backend"] not in {"codex", "openai_chatgpt", "ollama"}
-            or session["settings"].get("tools") is False or mode != "execute"
+    if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}
+            or not kira_tools_enabled(session) or mode != "execute"
             or project["permission"] not in WRITE_PERMISSIONS
             or studio.service._closing or studio.service.stopping.is_set()):
         return options
@@ -78,7 +79,7 @@ def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
                 or current_grant["grant_generation"] != grant_generation
                 or current_session["backend"] != session["backend"]
                 or current_session["model"] != session["model"]
-                or current_session["settings"].get("tools") is False
+                or not kira_tools_enabled(current_session)
                 or current_session["settings"].get("openai_account_id") !=
                     session["settings"].get("openai_account_id")
                 or studio.service.provider_routing.current_generation(session["id"])

@@ -254,8 +254,9 @@ async def test_environment_does_not_leak_other_project_and_disabled_backend_is_h
     data = (await snapshot(env))["environment"]
     assert other["id"] not in json.dumps(data) and "foreign-private-marker" not in json.dumps(data)
     assert data["capabilities"]["managed_team"]
-    assert not service.assistant.environment(project, {**session, "backend": "ollama"})["capabilities"]["managed_team"]
-    local = service.assistant.options("unused", project, {**session, "backend": "ollama"}, "execute")
+    # Ollama now joins the managed-team providers; DeepSeek Web does not.
+    assert not service.assistant.environment(project, {**session, "backend": "deepseek_web"})["capabilities"]["managed_team"]
+    local = service.assistant.options("unused", project, {**session, "backend": "deepseek_web"}, "execute")
     assert "You are Kira" in local["assistant_instructions"]
     assert [tool["name"] for tool in local["client_tools"][0]["tools"]] == ["environment"]
     disabled = service.assistant.options("unused", project, {**session, "settings": {"tools": False}}, "execute")

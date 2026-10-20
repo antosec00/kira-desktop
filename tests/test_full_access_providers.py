@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from kira.backends import codex
-from kira.backends.ollama import OllamaBackend, TOOL_SCHEMAS, local_tool_schemas
+from kira.backends.ollama import OllamaBackend, TOOL_CALL_GUIDANCE, TOOL_SCHEMAS, local_tool_schemas
 from kira.backends.openai_chatgpt import OpenAIChatGPTBackend
 from kira.domain.contracts import KiraError
 from test_backends_codex import FakeServer, context as codex_context, event, terminal
@@ -95,7 +95,8 @@ async def test_ollama_host_tools_are_verified_and_keep_path_scope(tmp_path, perm
                               "arguments": {"value": token}}}]}, "done": True}]))
         bodies.append(body)
         assert body["model"] == ctx.model
-        assert body["messages"][0] == {"role": "system", "content": ctx.assistant_instructions}
+        # Verified tools add Ollama's tool-call guidance to the system instructions.
+        assert body["messages"][0] == {"role": "system", "content": ctx.assistant_instructions + TOOL_CALL_GUIDANCE}
         schemas = {tool["function"]["name"]: tool["function"] for tool in body["tools"]}
         assert {"write_file", "run_command"} <= schemas.keys()
         scope = schemas["write_file"]["description"]

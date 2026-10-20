@@ -15,7 +15,8 @@ Json = dict[str, Any]
 MAX_SUMMARY_BYTES = 65_536
 MAX_SUMMARY_ITEMS = 64
 MAX_SUMMARY_RUNS = 60
-PROVIDERS = {"openai_chatgpt": "OpenAI · ChatGPT", "codex": "Codex", "ollama": "Ollama"}
+PROVIDERS = {"openai_chatgpt": "OpenAI · ChatGPT", "codex": "Codex", "ollama": "Ollama",
+             "deepseek_account": "DeepSeek"}
 SUMMARY_EVENTS = {"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"}
 
 

@@ -41,6 +41,10 @@ ApplicationWindow {
     property int page: 0
     property alias workspacePanels: panelHost
     onPageChanged: panelHost.closeCurrent()
+    // "Apri le opzioni del modello con la chat": the stored preference opens the
+    // model popover whenever a chat is shown; closing it never changes the preference.
+    readonly property string modelOptionsScope: workspace.modelControlsVisible + "|" + page + "|" + hasProject + "|" + workspace.sessionId
+    onModelOptionsScopeChanged: if (workspace.modelControlsVisible && page === 0 && hasProject && !workspace.busy) Qt.callLater(function() { modelPopover.open() })
     readonly property bool browserFocused: workspace.web.paneVisible && (workspace.web.expanded || window.width < 1120)
     readonly property bool studioFocused: workspace.studio.paneVisible && (workspace.studio.expanded || window.width < 1120)
     readonly property bool visualFocused: browserFocused || studioFocused
@@ -70,27 +74,56 @@ ApplicationWindow {
     readonly property color accent: appearance.colors.accent
     readonly property bool hasProject: Boolean(workspace.project.id)
 
+    // Tray tools are icons; their labels appear on request, their names always.
     component ChatToolButton: KButton {
         id: toolButton
+        property string label: ""
         subtle: true
-        implicitHeight: 24 + Math.max(0, appearance.uiFont.pixelSize - 13)
-        implicitWidth: Math.max(38, toolLabel.advanceWidth + (toolButton.text.length ? 44 : 38))
+        text: workspace.toolLabels ? label : ""
+        implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+        implicitWidth: text.length ? Math.max(38, toolLabel.advanceWidth + 44) : 34
         font.pixelSize: Math.max(11, appearance.uiFont.pixelSize - 1)
-        TextMetrics { id: toolLabel; text: toolButton.text; font: toolButton.font }
+        toolTipText: label
+        Accessible.name: label
+        TextMetrics { id: toolLabel; text: toolButton.label; font: toolButton.font }
     }
 
+    // Header actions keep their icon and show the label while the title has room.
     component HeaderSecondaryButton: KButton {
         id: headerButton
         property string label: ""
         property string compactText: ""
         property string compactIcon: ""
-        readonly property real fullLabelWidth: Math.max(38, fullLabel.advanceWidth + 28)
+        readonly property real fullLabelWidth: Math.max(38, fullLabel.advanceWidth + 28 + (compactIcon ? 29 : 0))
         text: projectHeader.compactActions ? compactText : label
-        iconName: projectHeader.compactActions ? compactIcon : ""
+        iconName: compactIcon
         implicitWidth: projectHeader.compactActions ? 38 : fullLabelWidth
+        implicitHeight: 38
+        subtle: true
         Accessible.name: label
         toolTipText: label
         TextMetrics { id: fullLabel; text: headerButton.label; font: headerButton.font }
+    }
+    // Side panels share one tab strip; each panel declares its own key.
+    readonly property var inspectorTabs: [
+        { key: "ricerca", label: qsTr("Ricerca del progetto"), icon: "research" },
+        { key: "anima", label: qsTr("Anima di Kira"), icon: "anima" },
+        { key: "contesto", label: qsTr("Contesto e memoria della chat"), icon: "context" },
+        { key: "memoria", label: qsTr("Memoria del progetto"), icon: "memory" },
+        { key: "conoscenza", label: qsTr("Conoscenza e strumenti"), icon: "knowledge" },
+        { key: "uso", label: qsTr("Uso e risorse"), icon: "usage" },
+        { key: "file", label: qsTr("Artefatti del progetto"), icon: "file" },
+        { key: "riprendi", label: qsTr("Riprendi lavoro"), icon: "resume" }
+    ]
+    function openInspector(key) {
+        if (key === "ricerca") researchDialog.open()
+        else if (key === "anima") soulDialog.open()
+        else if (key === "contesto") chatContextDialog.open()
+        else if (key === "memoria") sharedMemoryDialog.open()
+        else if (key === "conoscenza") assistantTeamPanel.showEnvironment()
+        else if (key === "uso") metricsDialog.open()
+        else if (key === "file") artifactsDialog.open()
+        else if (key === "riprendi") resumeDialog.open()
     }
 
     property bool restoringDraft: false
@@ -128,7 +161,7 @@ ApplicationWindow {
             if (action === "review" && !prompt.text.trim()) prompt.text = qsTr("Esamina le modifiche del progetto e segnala problemi concreti, senza modificare file.")
             prompt.forceActiveFocus()
         }
-        else if (action === "model") { window.page = 0; workspace.setUiPreference("model_controls_visible", true) }
+        else if (action === "model") { window.page = 0; modelPopover.open() }
         else if (action === "permissions") memoryDialog.open()
         else if (action === "memory") sharedMemoryDialog.open()
         else if (action === "team") window.page = 4
@@ -160,6 +193,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+Q"; enabled: hasProject; onActivated: inputDialog.open() }
     Shortcut { sequence: "Ctrl+Shift+P"; onActivated: { commandStart = -1; openActions("") } }
     Shortcut { sequence: "Ctrl+K"; onActivated: actionDialog.open() }
+    Shortcut { sequence: "Ctrl+B"; onActivated: workspace.cycleSidebarMode() }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: if (hasProject) resumeDialog.open() }
     Shortcut { sequence: "Ctrl+N"; onActivated: newProject.open() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: hasProject; onActivated: workspace.newChat() }
@@ -232,25 +266,32 @@ ApplicationWindow {
             id: sidebar
             objectName: "sidebar"
             readonly property color sidebarInk: appearance.colors.sidebar
+            // Whole, icon rail or hidden: the same controls, less chrome.
+            readonly property bool rail: workspace.sidebarMode === "rail"
+            visible: workspace.sidebarMode !== "hidden"
             Layout.fillHeight: true
-            Layout.preferredWidth: (window.width < 1080 ? 188 : 222) + Math.max(0, appearance.uiFont.pixelSize - 13) * 7
+            Layout.preferredWidth: rail ? 62 + Math.max(0, appearance.uiFont.pixelSize - 13) * 2
+                : (window.width < 1080 ? 188 : 222) + Math.max(0, appearance.uiFont.pixelSize - 13) * 7
             color: Qt.rgba(sidebarInk.r, sidebarInk.g, sidebarInk.b, appearance.values.sidebar_translucent ? 0.76 : 1)
             ScrollView {
                 id: sidebarScroll
                 anchors.fill: parent
-                padding: 18
+                padding: sidebar.rail ? 10 : 18
                 clip: true
                 contentWidth: availableWidth
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ColumnLayout {
+                id: sidebarColumn
                 width: sidebarScroll.availableWidth
                 height: Math.max(sidebarScroll.availableHeight, implicitHeight)
                 spacing: window.compact ? 6 : 10
+                // Short windows tighten the sidebar so every control stays in view.
+                readonly property real navHeight: (window.compact ? 34 : 38) + Math.max(0, appearance.uiFont.pixelSize - 13)
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     Layout.topMargin: 10
-                    Layout.bottomMargin: 20
+                    Layout.bottomMargin: window.compact ? 10 : 20
                     spacing: 11
                     Rectangle {
                         width: 44; height: 44; radius: 14
@@ -267,12 +308,13 @@ ApplicationWindow {
                         }
                     }
                     ColumnLayout {
+                        visible: !sidebar.rail
                         Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: 0
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: "kira"; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 12; font.weight: Font.DemiBold; font.letterSpacing: 0.2 }
                         Text { objectName: "appVersionLabel"; Layout.fillWidth: true; Layout.minimumWidth: 0; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 8; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: "DESKTOP  /  " + workspace.appVersion; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: workspace.appVersion.length > 7 || window.width < 1080 ? 0 : 1.6 }
                     }
                 }
-                KButton { objectName: "actionPaletteButton"; text: qsTr("Cerca  ·  Ctrl+K"); Layout.fillWidth: true; subtle: true; leftAligned: true; onClicked: actionDialog.open(); Accessible.name: qsTr("Cerca progetti e azioni, Control K") }
+                KButton { objectName: "actionPaletteButton"; text: sidebar.rail ? "" : qsTr("Cerca  ·  Ctrl+K"); iconName: "search"; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; leftAligned: !sidebar.rail; onClicked: actionDialog.open(); Accessible.name: qsTr("Cerca progetti e azioni, Control K"); toolTipText: sidebar.rail ? qsTr("Cerca  ·  Ctrl+K") : "" }
                 Repeater {
                     model: [{title: qsTr("Progetti"), icon: "projects", page: 0}, {title: qsTr("Attività"), icon: "activity", page: 2}, {title: qsTr("Team"), icon: "team", page: 4}]
                     delegate: KButton {
@@ -281,25 +323,29 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         implicitHeight: (window.compact ? 36 : 43) + Math.max(0, appearance.uiFont.pixelSize - 13)
-                        text: modelData.title
+                        text: sidebar.rail ? "" : modelData.title
                         objectName: modelData.page === 4 ? "teamNavButton" : ""
                         enabled: modelData.page !== 4 || hasProject
                         iconName: modelData.icon
-                        leftAligned: true
+                        leftAligned: !sidebar.rail
                         checked: window.page === modelData.page; quietSelection: true
                         subtle: true
                         onClicked: window.page = modelData.page
                         Accessible.name: modelData.title
+                        toolTipText: sidebar.rail ? modelData.title : ""
                     }
                 }
-                Rectangle { Layout.fillWidth: true; Layout.topMargin: 15; Layout.bottomMargin: 9; height: 1; color: appearance.colors.border }
+                Rectangle { visible: !sidebar.rail; Layout.fillWidth: true; Layout.topMargin: window.compact ? 8 : 15; Layout.bottomMargin: window.compact ? 4 : 9; height: 1; color: appearance.colors.border }
                 RowLayout {
+                    visible: !sidebar.rail
                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("PROGETTI E CHAT"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); font.letterSpacing: 1.1; Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.WordWrap }
                     KButton { text: "+"; subtle: true; implicitWidth: Math.ceil(28 * appearance.uiFont.pixelSize / 13); implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13); onClicked: newProject.open(); Accessible.name: qsTr("Nuovo progetto"); toolTipText: qsTr("Nuovo progetto · Ctrl+N") }
                 }
+                Item { visible: sidebar.rail; Layout.fillHeight: true }
                 ListView {
                     id: projectList
                     objectName: "projectList"
+                    visible: !sidebar.rail
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 60
@@ -394,32 +440,35 @@ ApplicationWindow {
                 }
                 KButton {
                     objectName: "assistantEnvironmentButton"
-                    text: qsTr("Conoscenza e strumenti"); iconName: "memory"
-                    Layout.fillWidth: true; implicitHeight: Math.max(46, appearance.uiFont.pixelSize * 2 + 16)
-                    subtle: true; leftAligned: true; wrapText: true
+                    text: sidebar.rail ? "" : qsTr("Conoscenza e strumenti"); iconName: "knowledge"
+                    Layout.fillWidth: true; implicitHeight: sidebar.rail ? 38 : Math.max(window.compact ? 40 : 46, appearance.uiFont.pixelSize * 2 + 16)
+                    subtle: true; leftAligned: !sidebar.rail; wrapText: !sidebar.rail
                     enabled: hasProject && workspace.sessionId.length > 0
                     onClicked: { window.page = 0; assistantTeamPanel.showEnvironment() }
+                    Accessible.name: qsTr("Conoscenza e strumenti")
                     toolTipText: qsTr("Conoscenza, capacità e strumenti di Kira")
                 }
                 ColumnLayout {
-                    Layout.fillWidth: true; spacing: 3
-                    KButton { text: qsTr("Modelli"); iconName: "models"; leftAligned: true; Layout.fillWidth: true; subtle: true; quietSelection: true; checked: window.page === 1; onClicked: window.page = 1 }
-                    KButton { text: qsTr("Impostazioni"); iconName: "settings"; leftAligned: true; Layout.fillWidth: true; subtle: true; quietSelection: true; checked: window.page === 3; onClicked: window.page = 3 }
+                    Layout.fillWidth: true; spacing: window.compact ? 2 : 3
+                    KButton { objectName: "modelsNavButton"; text: sidebar.rail ? "" : qsTr("Modelli"); iconName: "models"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; quietSelection: true; checked: window.page === 1; onClicked: window.page = 1; Accessible.name: qsTr("Modelli"); toolTipText: sidebar.rail ? qsTr("Modelli") : "" }
+                    KButton { objectName: "settingsNavButton"; text: sidebar.rail ? "" : qsTr("Impostazioni"); iconName: "settings"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; quietSelection: true; checked: window.page === 3; onClicked: window.page = 3; Accessible.name: qsTr("Impostazioni"); toolTipText: sidebar.rail ? qsTr("Impostazioni") : "" }
                 }
-                KButton { text: qsTr("Guida iniziale"); Layout.fillWidth: true; subtle: true; leftAligned: true; onClicked: onboardingDialog.open() }
+                KButton { objectName: "onboardingNavButton"; text: sidebar.rail ? "" : qsTr("Guida iniziale"); iconName: "help"; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; leftAligned: !sidebar.rail; onClicked: onboardingDialog.open(); Accessible.name: qsTr("Guida iniziale"); toolTipText: sidebar.rail ? qsTr("Guida iniziale") : "" }
                 Rectangle {
-                    Layout.fillWidth: true; implicitHeight: connectionLabel.implicitHeight + 26
+                    Layout.fillWidth: true; implicitHeight: sidebar.rail ? 26 : connectionLabel.implicitHeight + (window.compact ? 16 : 26)
                     color: "transparent"
                     RowLayout {
-                        anchors.fill: parent; anchors.margins: 12; spacing: 8
-                        Rectangle { width: 6; height: 6; radius: 3; color: workspace.connected ? accent : appearance.colors.warning; Layout.alignment: Qt.AlignTop; Layout.topMargin: 5 }
-                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; id: connectionLabel; text: workspace.connectionText; color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
+                        anchors.fill: parent; anchors.margins: sidebar.rail ? 6 : 12; anchors.topMargin: sidebar.rail ? 6 : (window.compact ? 7 : 12); anchors.bottomMargin: sidebar.rail ? 6 : (window.compact ? 7 : 12); spacing: 8
+                        Rectangle { objectName: "connectionDot"; width: 7; height: 7; radius: 3.5; color: workspace.connected ? appearance.colors.success : appearance.colors.warning; Layout.alignment: sidebar.rail ? Qt.AlignHCenter : Qt.AlignTop; Layout.topMargin: sidebar.rail ? 0 : 5; Accessible.name: workspace.connectionText
+                            KToolTip { visible: connectionHover.containsMouse && sidebar.rail; text: workspace.connectionText }
+                            MouseArea { id: connectionHover; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; acceptedButtons: Qt.NoButton } }
+                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; id: connectionLabel; visible: !sidebar.rail; text: workspace.connectionText; color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
                     }
                 }
             }
             }
         }
-        Rectangle { Layout.fillHeight: true; width: 1; color: appearance.colors.border }
+        Rectangle { visible: workspace.sidebarMode !== "hidden"; Layout.fillHeight: true; width: 1; color: appearance.colors.border }
         ColumnLayout {
             id: workspaceColumn
             Layout.fillWidth: true
@@ -428,26 +477,44 @@ ApplicationWindow {
             Rectangle {
                 id: projectHeader
                 objectName: "projectHeader"
-                readonly property bool compactActions: width - 53 < headerActions.fullWidth + 180
+                // One bar: where you are on the left, what you can do on the right.
+                // Actions drop their labels before they crowd the title; the
+                // threshold uses full labels so changing presentation cannot loop.
+                readonly property bool compactActions: width - 70 < headerActions.fullWidth + 400
                 Layout.fillWidth: true
-                implicitHeight: window.compact ? 65 : 77
+                implicitHeight: (window.compact ? 52 : 58) + Math.max(0, appearance.uiFont.pixelSize - 13)
                 color: appearance.colors.background
                 Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: appearance.colors.border }
                 RowLayout {
                     id: headerLayout
-                    anchors.fill: parent; anchors.leftMargin: 28; anchors.rightMargin: 25
-                    spacing: 12
-                    ColumnLayout {
-                        Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: 5
-                        Text { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: [qsTr("PROGETTO · %1").arg(workspace.project.name || ""), qsTr("INFERENZA & AGENTI"), qsTr("EVIDENZA DURABILE"), qsTr("PREFERENZE"), qsTr("COLLABORAZIONE")][window.page]; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: 1.7 }
-                        Text { objectName: "projectHeaderTitle"; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: window.page === 0 ? (hasProject ? workspace.sessionTitle : qsTr("Il tuo prossimo progetto")) : ["", qsTr("Modelli"), qsTr("Attività"), qsTr("Impostazioni"), qsTr("Team del progetto")][window.page]; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 8; font.weight: Font.Medium; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                    anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 14
+                    spacing: 8
+                    KButton {
+                        objectName: "sidebarToggle"; iconName: "sidebar"; subtle: true; quietSelection: true
+                        implicitWidth: 38; implicitHeight: 38
+                        checked: workspace.sidebarMode !== "full"
+                        onClicked: workspace.cycleSidebarMode()
+                        toolTipText: qsTr("Barra laterale: intera, a icone o nascosta · Ctrl+B")
+                        Accessible.name: workspace.sidebarMode === "full" ? qsTr("Riduci la barra laterale a icone") : workspace.sidebarMode === "rail" ? qsTr("Nascondi la barra laterale") : qsTr("Mostra la barra laterale")
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: 7
+                        Text {
+                            id: headerKicker; objectName: "projectHeaderKicker"
+                            font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText
+                            text: window.page === 0 ? (workspace.project.name || "") : ["", qsTr("Inferenza e agenti"), qsTr("Evidenza durabile"), qsTr("Preferenze"), qsTr("Collaborazione")][window.page]
+                            // The chat title keeps its room; the project name yields first.
+                            visible: text.length > 0 && !projectHeader.compactActions
+                            color: muted; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 1)
+                            elide: Text.ElideRight; Layout.maximumWidth: Math.max(80, headerLayout.width * 0.26); Layout.minimumWidth: 0
+                        }
+                        Text { font.family: appearance.uiFont.family; textFormat: Text.PlainText; text: "›"; color: muted; visible: headerKicker.visible; font.pixelSize: appearance.uiFont.pixelSize + 1 }
+                        Text { objectName: "projectHeaderTitle"; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: window.page === 0 ? (hasProject ? workspace.sessionTitle : qsTr("Il tuo prossimo progetto")) : ["", qsTr("Modelli"), qsTr("Attività"), qsTr("Impostazioni"), qsTr("Team del progetto")][window.page]; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 3; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: Math.min(150, implicitWidth) }
                     }
                     Row {
                         id: headerActions
                         objectName: "projectHeaderActions"
-                        spacing: 5
-                        // Condense secondary actions before they consume conversation height.
-                        // The threshold uses full labels so changing presentation cannot loop.
+                        spacing: 2
                         readonly property real fullWidth: {
                             let result = 0
                             for (let i = 0; i < children.length; ++i) {
@@ -459,19 +526,42 @@ ApplicationWindow {
                         }
                         Layout.minimumWidth: implicitWidth
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        KButton { objectName: "projectResearchButton"; text: qsTr("Ricerca"); visible: hasProject && (window.page === 0 || window.page === 4); subtle: true; enabled: projectResearch.available; onClicked: researchDialog.open() }
-                        KButton { objectName: "resumeWorkspaceButton"; text: qsTr("Riprendi"); visible: hasProject && window.page === 0; subtle: true; onClicked: resumeDialog.open(); toolTipText: qsTr("Esiti, strumenti e prove · Ctrl+Shift+R") }
-                        HeaderSecondaryButton { objectName: "quickActionsButton"; label: qsTr("Azioni"); compactText: "⋯"; subtle: true; toolTipText: qsTr("Azioni rapide · Ctrl+Shift+P"); onClicked: { window.commandStart = -1; window.openActions("") } }
-                        HeaderSecondaryButton { objectName: "projectExportButton"; label: qsTr("Esporta"); compactIcon: "file"; visible: hasProject && window.page === 0; subtle: true; onClicked: { window.memoryExport = false; exportDialog.open() } }
                         HeaderSecondaryButton {
-                            objectName: "detailsToggle"; label: qsTr("Dettagli"); compactIcon: "settings"
-                            visible: hasProject && window.page === 0
-                            checked: window.width >= 1120 ? window.detailsVisible : detailsDrawer.visible
-                            subtle: true
-                            onClicked: workspace.setUiPreference("details_visible", !window.detailsVisible)
-                            Accessible.name: checked ? qsTr("Nascondi dettagli del progetto") : qsTr("Mostra dettagli del progetto")
+                            objectName: "projectResearchButton"; label: qsTr("Ricerca"); compactIcon: "research"
+                            visible: hasProject && (window.page === 0 || window.page === 4)
+                            enabled: projectResearch.available
+                            badge: projectResearch.pendingProposals
+                            checked: panelHost.activePanel === researchDialog; quietSelection: true
+                            toolTipText: projectResearch.pendingProposals > 0 ? qsTr("Ricerca del progetto · proposte dell’assistente da esaminare: %1").arg(projectResearch.pendingProposalsText) : qsTr("Ricerca del progetto")
+                            Accessible.name: toolTipText
+                            onClicked: researchDialog.open()
                         }
-                        HeaderSecondaryButton { objectName: "headerNewProjectButton"; label: qsTr("+  Progetto"); compactText: "+"; toolTipText: qsTr("Nuovo progetto"); Accessible.name: qsTr("Nuovo progetto"); onClicked: newProject.open() }
+                        HeaderSecondaryButton {
+                            objectName: "resumeWorkspaceButton"; label: qsTr("Riprendi"); compactIcon: "resume"
+                            visible: hasProject && window.page === 0
+                            checked: panelHost.activePanel === resumeDialog; quietSelection: true
+                            toolTipText: qsTr("Riprendi lavoro · esiti, strumenti e prove · Ctrl+Shift+R"); Accessible.name: toolTipText
+                            onClicked: resumeDialog.open()
+                        }
+                        HeaderSecondaryButton { objectName: "quickActionsButton"; label: qsTr("Azioni"); compactIcon: "actions"; toolTipText: qsTr("Azioni rapide · Ctrl+Shift+P"); Accessible.name: toolTipText; onClicked: { window.commandStart = -1; window.openActions("") } }
+                        HeaderSecondaryButton { objectName: "projectExportButton"; label: qsTr("Esporta"); compactIcon: "export"; visible: hasProject && window.page === 0; toolTipText: qsTr("Esporta la cronologia della chat"); Accessible.name: toolTipText; onClicked: { window.memoryExport = false; exportDialog.open() } }
+                        HeaderSecondaryButton {
+                            objectName: "detailsToggle"; label: qsTr("Dettagli"); compactIcon: "details"
+                            visible: hasProject && window.page === 0
+                            checked: window.width >= 1120 ? window.detailsVisible : detailsDrawer.visible; quietSelection: true
+                            onClicked: workspace.setUiPreference("details_visible", !window.detailsVisible)
+                            toolTipText: checked ? qsTr("Nascondi dettagli del progetto") : qsTr("Mostra dettagli del progetto")
+                            Accessible.name: toolTipText
+                        }
+                        HeaderSecondaryButton { objectName: "headerNewProjectButton"; label: qsTr("Progetto"); compactIcon: "plus"; subtle: false; primary: true; toolTipText: qsTr("Nuovo progetto · Ctrl+N"); Accessible.name: qsTr("Nuovo progetto"); onClicked: newProject.open() }
+                    }
+                    Rectangle { width: 1; height: 22; color: appearance.colors.border }
+                    KButton {
+                        objectName: "themeToggle"; iconName: appearance.dark ? "sun" : "moon"; subtle: true
+                        implicitWidth: 38; implicitHeight: 38
+                        onClicked: appearance.setOption("mode", appearance.dark ? "light" : "dark")
+                        toolTipText: appearance.dark ? qsTr("Passa al tema chiaro") : qsTr("Passa al tema scuro")
+                        Accessible.name: toolTipText
                     }
                 }
             }
@@ -567,167 +657,6 @@ ApplicationWindow {
                                     id: branchRow; anchors.fill: parent; anchors.margins: 8
                                     Text { text: qsTr("Diramazione di una chat esistente. Il contesto è ereditato; chat originale e file restano invariati."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
                                     KButton { objectName: "openParentChatButton"; text: qsTr("Apri chat originale"); onClicked: workspace.selectSession(workbench.parentSessionId) }
-                                }
-                            }
-                            Rectangle {
-                                objectName: "modelControlsCard"
-                                Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
-                                Layout.topMargin: workspace.resumeHintVisible ? 0 : 4
-                                implicitHeight: modelPanel.implicitHeight + 12
-                                color: "transparent"
-                                Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: appearance.colors.border; opacity: 0.6 }
-                                ColumnLayout {
-                                    id: modelPanel
-                                    anchors.fill: parent; anchors.topMargin: 6; anchors.bottomMargin: 6; spacing: 8
-                                    GridLayout {
-                                        id: modelSummaryGrid
-                                        readonly property bool stacked: chatColumn.width < 600 + Math.max(0, appearance.uiFont.pixelSize - 13) * 12
-                                        Layout.fillWidth: true; columns: stacked ? 1 : 2; columnSpacing: 6; rowSpacing: 2
-                                        Text {
-                                            font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic
-                                            objectName: "modelControlsSummary"
-                                            Layout.fillWidth: true; Layout.minimumWidth: 0
-                                            readonly property string selectionSummary: workspace.backendLabel + "  ·  " + (workspace.selectedModel || qsTr("Scegli un modello")) + (workspace.backend !== "ollama" ? "  ·  " + (workspace.selectedEffort || qsTr("Predefinito del provider")) : "")
-                                            text: selectionSummary
-                                            textFormat: Text.PlainText; elide: Text.ElideRight
-                                            color: appearance.colors.text; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2)
-                                            KToolTip { visible: modelSummaryMouse.containsMouse; text: parent.selectionSummary + (workspace.accountLabel ? " · " + workspace.accountLabel : "") }
-                                            MouseArea { id: modelSummaryMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: modelSummaryGrid.stacked
-                                            spacing: chatColumn.width < 650 ? 2 : 6
-                                        KButton {
-                                            objectName: "chatSoulButton"
-                                            text: souls.activeName || qsTr("Anima")
-                                            Layout.maximumWidth: chatColumn.width < 650 ? 100 : 160
-                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
-                                            subtle: true
-                                            enabled: souls.available
-                                            toolTipText: qsTr("Anima di Kira · identità e ricordi")
-                                            Accessible.name: toolTipText
-                                            onClicked: soulDialog.open()
-                                        }
-                                        KButton {
-                                            id: teamStatusButton
-                                            objectName: "assistantConfigureTeam"
-                                            readonly property bool paused: assistantTeamPanel.current.state === "paused"
-                                                || (!!teams.team.id && teams.team.id === assistant.currentTeamId && teams.team.state === "paused")
-                                            text: paused ? qsTr("Team · %1").arg(qsTr("In pausa")) : assistantTeamPanel.hasDelegation ? qsTr("Team · %1").arg(assistant.current.label) : assistant.teamActive ? qsTr("Team al lavoro") : qsTr("Team")
-                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
-                                            Layout.maximumWidth: chatColumn.width < 650 ? 100 : 190
-                                            subtle: true; quietSelection: true; checked: assistantTeamPanel.expanded
-                                            implicitWidth: teamStatusLabel.implicitWidth + (paused ? 42 : 20)
-                                            contentItem: Item {
-                                                StatusIndicator {
-                                                    objectName: "teamStatusIndicator"
-                                                    visible: teamStatusButton.paused
-                                                    anchors.left: parent.left; anchors.leftMargin: 9
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    state: "paused"; diameter: 11
-                                                }
-                                                Text {
-                                                    id: teamStatusLabel
-                                                    anchors.fill: parent
-                                                    leftPadding: teamStatusButton.paused ? 26 : 10; rightPadding: 10
-                                                    text: teamStatusButton.text; font: teamStatusButton.font
-                                                    color: teamStatusButton.paused ? appearance.colors.warning : teamStatusButton.foreground
-                                                    textFormat: Text.PlainText; elide: Text.ElideRight
-                                                    verticalAlignment: Text.AlignVCenter
-                                                }
-                                            }
-                                            background: Rectangle {
-                                                radius: 8
-                                                color: teamStatusButton.paused ? Qt.rgba(appearance.colors.warning.r, appearance.colors.warning.g, appearance.colors.warning.b, 0.10)
-                                                    : teamStatusButton.down ? appearance.colors.pressed
-                                                    : teamStatusButton.hovered || teamStatusButton.checked ? appearance.colors.hover : "transparent"
-                                                border.width: teamStatusButton.activeFocus ? 2 : teamStatusButton.paused ? 1 : 0
-                                                border.color: teamStatusButton.activeFocus ? appearance.colors.accent
-                                                    : Qt.rgba(appearance.colors.warning.r, appearance.colors.warning.g, appearance.colors.warning.b, 0.25)
-                                            }
-                                            onClicked: { if (assistantTeamPanel.hasTeamContext) assistantTeamPanel.toggleDetails(); else assistant.configureTeam() }
-                                            toolTipText: paused ? text : assistantTeamPanel.hasDelegation ? qsTr("Team · %1").arg(assistant.current.label) : qsTr("Configura un team per questo progetto")
-                                        }
-                                        KButton {
-                                            objectName: "inputOpen"; text: qsTr("Domande")
-                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
-                                            subtle: inputs.pendingCount === 0; primary: inputs.pendingCount > 0
-                                            destructive: inputs.error.length > 0
-                                            onClicked: inputDialog.open(); toolTipText: inputs.error || qsTr("Apri le domande · Ctrl+Shift+Q")
-                                        }
-                                        KButton {
-                                            objectName: "modelControlsToggle"
-                                            text: workspace.modelControlsVisible ? qsTr("Nascondi") : qsTr("Modello")
-                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: Math.ceil(74 * appearance.uiFont.pixelSize / 13)
-                                            subtle: true
-                                            onClicked: workspace.setModelControlsVisible(!workspace.modelControlsVisible)
-                                            Accessible.name: workspace.modelControlsVisible ? qsTr("Nascondi opzioni del modello") : qsTr("Mostra opzioni del modello")
-                                            toolTipText: workspace.modelControlsVisible ? qsTr("Nascondi provider, modello e sessione") : qsTr("Mostra provider, modello e sessione")
-                                        }
-                                        }
-                                    }
-                                    ColumnLayout {
-                                        id: controlsColumn; objectName: "modelControlsExpanded"
-                                        Layout.fillWidth: true; spacing: 8
-                                        visible: workspace.modelControlsVisible
-                                        RowLayout {
-                                            Layout.fillWidth: true; spacing: 8
-                                            KComboBox {
-                                                palette.dark: window.muted
-                                                id: backendBox; objectName: "backendBox"; model: ["Ollama", "Codex", qsTr("OpenAI diretto · ChatGPT")]
-                                                Layout.preferredWidth: workspace.backend === "openai_chatgpt" ? (chatColumn.width < 650 ? 150 : 230) : 110; implicitHeight: 35
-                                                currentIndex: ["ollama", "codex", "openai_chatgpt"].indexOf(workspace.backend)
-                                                onActivated: { workspace.setBackend(["ollama", "codex", "openai_chatgpt"][currentIndex]); currentIndex = Qt.binding(function() { return ["ollama", "codex", "openai_chatgpt"].indexOf(workspace.backend) }) }
-                                                enabled: !workspace.busy && !assistant.active
-                                                Accessible.name: qsTr("Backend")
-                                                KToolTip { visible: backendBox.hovered; text: workspace.backendLabel }
-                                            }
-                                            KComboBox {
-                                                palette.dark: window.muted
-                                                id: modelBox; objectName: "modelBox"; model: workspace.models; textRole: "name"; valueRole: "id"
-                                                Layout.fillWidth: true; implicitHeight: 35
-                                                currentIndex: indexOfValue(workspace.selectedModel)
-                                                displayText: currentIndex < 0 ? (workspace.selectedModel || qsTr("Scegli un modello…")) : currentText
-                                                onActivated: workspace.setModel(currentValue)
-                                                enabled: !workspace.busy && !assistant.active
-                                                Accessible.name: qsTr("Modello")
-                                            }
-                                            KComboBox {
-                                                palette.dark: window.muted
-                                                id: effortBox; objectName: "effortBox"; model: [qsTr("Predefinito del provider")].concat(workspace.efforts)
-                                                Layout.preferredWidth: chatColumn.width < 650 ? 122 : 150; implicitHeight: 35
-                                                visible: workspace.backend !== "ollama"
-                                                currentIndex: Math.max(0, workspace.efforts.indexOf(workspace.selectedEffort) + 1)
-                                                displayText: currentIndex === 0 && workspace.selectedEffort.length > 0 ? qsTr("%1 · salvato").arg(workspace.selectedEffort) : currentText
-                                                onActivated: workspace.setEffort(currentIndex === 0 ? "" : currentText)
-                                                enabled: !workspace.busy && !assistant.active
-                                                Accessible.name: qsTr("Livello di ragionamento")
-                                            }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: true; spacing: 8
-                                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("SESSIONE"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: 1 }
-                                            KComboBox {
-                                                palette.dark: window.muted
-                                                id: sessionBox; objectName: "sessionBox"; model: workspace.sessions; textRole: "label"; valueRole: "id"
-                                                Layout.fillWidth: true; implicitHeight: 28
-                                                currentIndex: indexOfValue(workspace.sessionId)
-                                                displayText: currentIndex < 0 ? qsTr("Nuova · contesto della memoria condiviso") : currentText
-                                                onActivated: workspace.selectSession(currentValue)
-                                                enabled: !workspace.busy && !assistant.active
-                                                Accessible.name: qsTr("Sessione")
-                                            }
-                                            CheckBox { HoverHandler { cursorShape: appearance.pointerCursors && parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
-                                                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
-                                                text: qsTr("Strumenti"); checked: workspace.toolsEnabled || workspace.backend !== "ollama"
-                                                visible: workspace.backend === "ollama"; enabled: workspace.canUseTools && !workspace.busy
-                                                onClicked: workspace.setTools(checked)
-                                                KToolTip { visible: parent.hovered; text: workspace.canUseTools ? qsTr("La prima esecuzione verifica il supporto del modello; se fallisce resta disponibile la chat.") : qsTr("Strumenti non dichiarati dal modello. La chat resta disponibile.") }
-                                            }
-                                            KButton { text: "↻"; subtle: true; implicitWidth: Math.ceil(30 * appearance.uiFont.pixelSize / 13); implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13); onClicked: workspace.discover(workspace.backend); Accessible.name: qsTr("Aggiorna modelli") }
-                                        }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; id: providerLabel; text: workspace.providerText; Layout.fillWidth: true; elide: Text.ElideRight; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); KToolTip { visible: providerMouse.containsMouse; text: providerLabel.text } MouseArea { id: providerMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton } }
-                                    }
                                 }
                             }
                             AssistantTeamPanel {
@@ -985,12 +914,12 @@ ApplicationWindow {
                                             onClicked: conversation.toggleToolGroup(entry)
                                         }
                                         Rectangle {
-                                            id: card; width: entry.kind === "user" ? parent.width * 0.92 : parent.width
+                                            id: card; width: entry.kind === "user" ? Math.min(parent.width * 0.82, Math.max(parent.width * 0.5, messageText.implicitWidth + 30)) : parent.width
                                             x: entry.kind === "user" ? parent.width - width : 0
                                             visible: entry.toolGroupCount === 0 || entry.toolGroupExpanded
                                             y: groupHeader.visible ? groupHeader.height + 6 : 0
                                             implicitHeight: messageColumn.implicitHeight + (entry.kind === "tool" ? 0 : entry.kind === "state" ? 20 : 26)
-                                            radius: 14
+                                            radius: entry.kind === "user" ? 18 : 14
                                             color: entry.kind === "user" ? appearance.colors.surfaceAlt : entry.kind === "state" || entry.kind === "team" ? appearance.colors.surface : "transparent"
                                             border.width: 0; border.color: appearance.colors.border
                                             ColumnLayout {
@@ -1029,7 +958,9 @@ ApplicationWindow {
                                                             font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold
                                                         }
                                                     }
-                                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; visible: entry.kind !== "state"; textFormat: Text.PlainText; text: entry.kind === "tool" ? "⌘  " + entry.title : entry.title; color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold; font.letterSpacing: entry.kind === "user" || entry.kind === "assistant" ? 1.2 : 0; Layout.fillWidth: true; elide: Text.ElideRight }
+                                                    Image { visible: entry.kind === "assistant"; source: "../assets/kira-mascot.png"; sourceSize.width: 48; sourceSize.height: 48; Layout.preferredWidth: 20; Layout.preferredHeight: 20; fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true; Accessible.ignored: true }
+                                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; visible: entry.kind !== "state" && entry.kind !== "user"; textFormat: Text.PlainText; text: entry.kind === "tool" ? "⌘  " + entry.title : entry.title; color: entry.kind === "assistant" ? appearance.colors.textSecondary : accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold; font.letterSpacing: entry.kind === "assistant" ? 1.2 : 0; Layout.fillWidth: true; elide: Text.ElideRight }
+                                                    Item { visible: entry.kind === "user"; Layout.fillWidth: true }
                                                     Item { visible: entry.kind === "state"; Layout.fillWidth: true }
                                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "messageStatus_" + entry.index; Layout.maximumWidth: entry.kind === "user" ? messageColumn.width * 0.6 : Infinity; Layout.minimumWidth: 0; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: { localization.revision; return qsTr(entry.status) } color: entry.status === "errore" || entry.status === "incompleto" ? appearance.colors.danger : muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); visible: entry.kind !== "state" }
                                                     KButton { objectName: "messageDetails_" + entry.index; text: entry.kind === "state" ? qsTr("Dettagli") : qsTr("Dati"); subtle: true; implicitHeight: 23 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: entry.kind === "state" ? 65 : 38; visible: entry.raw.length > 0; Accessible.name: entry.kind === "state" ? qsTr("Apri dettagli esecuzione") : entry.kind === "team" ? qsTr("Apri dati del team") : qsTr("Apri dati dello strumento"); onClicked: { window.eventDetails = entry.raw; window.eventDetailsIsRun = entry.kind === "state"; eventDialog.open() } }
@@ -1162,9 +1093,10 @@ ApplicationWindow {
                                     toolTipText: qsTr("Stato e dati registrati dell’esecuzione")
                                 }
                                 KButton {
-                                    objectName: "stopRunButton"; text: qsTr("■  Ferma")
+                                    objectName: "stopRunButton"; text: qsTr("Ferma"); iconName: "stop"
                                     implicitHeight: 32 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                     destructive: true; visible: workspace.busy
+                                    toolTipText: qsTr("Ferma l’esecuzione in corso")
                                     enabled: workspace.connected && workspace.activeRunId.length > 0
                                     onClicked: workspace.stop()
                                 }
@@ -1180,20 +1112,6 @@ ApplicationWindow {
                                 border.color: prompt.activeFocus ? appearance.colors.accent : appearance.colors.border; border.width: 1
                                 ColumnLayout {
                                     id: composerColumn; anchors.fill: parent; anchors.margins: window.compact ? 8 : 10; spacing: window.compact ? 4 : 6
-                                    RowLayout {
-                                        Layout.fillWidth: true; spacing: 6
-                                        KComboBox {
-                                            objectName: "composerModeChoice"; implicitHeight: 32; Layout.preferredWidth: chatColumn.width < 650 ? 110 : 125; Layout.maximumWidth: 150
-                                            model: [qsTr("Esegui"), qsTr("Pianifica"), qsTr("Revisione"), qsTr("Riepiloga")]
-                                            currentIndex: ["execute", "plan", "review", "recap"].indexOf(workbench.mode)
-                                            Accessible.name: qsTr("Modalità della prossima richiesta")
-                                            onActivated: workbench.setMode(["execute", "plan", "review", "recap"][index])
-                                        }
-                                        KButton { objectName: "projectFilesButton"; implicitHeight: 32; text: qsTr("File del progetto"); subtle: true; Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 180; onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file del progetto · @ nel messaggio") }
-                                        Item { Layout.fillWidth: true }
-                                        KButton { objectName: "projectQueueButton"; implicitHeight: 32; text: qsTr("Coda (%1)").arg(workbench.pendingCount); subtle: true; onClicked: workbenchDialog.openSection("queue") }
-                                        KButton { objectName: "chatToolsButton"; implicitHeight: 32; text: "⋯"; implicitWidth: 38; Accessible.name: qsTr("Strumenti della chat"); toolTipText: qsTr("Cronologia, obiettivo, modifiche e gestione chat"); onClicked: { window.commandStart = -1; window.openActions("") } }
-                                    }
                                     Text { visible: workbench.mode !== "execute"; Layout.fillWidth: true; text: workbench.mode === "plan" ? qsTr("Pianifica in sola lettura. Per applicare il piano scegli Esegui e invia una nuova richiesta.") : workbench.mode === "review" ? qsTr("Revisione in sola lettura: controlla i problemi senza modificare file.") : qsTr("Riepiloga produce una risposta; non riduce il contesto del provider."); color: appearance.colors.muted; wrapMode: Text.Wrap; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2); font.family: appearance.uiFont.family; textFormat: Text.PlainText }
                                     Text { visible: !workbench.modeAvailable; text: qsTr("Questa modalità non è dichiarata disponibile dal provider selezionato. Aggiorna il catalogo o scegli un’altra modalità."); Layout.fillWidth: true; wrapMode: Text.Wrap; color: appearance.colors.warning; font: appearance.uiFont; textFormat: Text.PlainText }
                                     Text { visible: workbench.sessionArchived; text: qsTr("Chat archiviata: ripristinala da Strumenti della chat per continuare."); Layout.fillWidth: true; wrapMode: Text.Wrap; color: appearance.colors.warning; font: appearance.uiFont; textFormat: Text.PlainText }
@@ -1206,8 +1124,8 @@ ApplicationWindow {
                                     }
                                     ImageAttachments { objectName: "draftImageAttachments"; images: workspace.draftImages; editable: true; Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
                                     Text {
-                                        visible: workspace.draftImages.length > 0 && workspace.backend !== "openai_chatgpt"; Layout.fillWidth: true
-                                        text: qsTr("Le immagini allegate richiedono OpenAI diretto. Cambia provider o rimuovi le immagini prima di inviare.")
+                                        visible: workspace.draftImages.length > 0 && !workspace.imageInputsEnabled; Layout.fillWidth: true
+                                        text: qsTr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare.")
                                         color: appearance.colors.muted; font: appearance.uiFont; textFormat: Text.PlainText; wrapMode: Text.Wrap
                                     }
                                     ScrollView {
@@ -1225,7 +1143,7 @@ ApplicationWindow {
                                         AttachmentTextArea {
                                             attachmentContext: JSON.stringify([workspace.project.id || "", workspace.sessionId])
                                             id: prompt; objectName: "prompt"
-                                            imageAttachments: workspace.backend === "openai_chatgpt"
+                                            imageAttachments: workspace.imageInputsEnabled
                                             width: composerScroll.availableWidth
                                             height: composerScroll.inputHeight
                                             placeholderText: workbench.guidanceMode ? qsTr("Aggiungi indicazioni al turno in corso…") : qsTr("Descrivi il prossimo passo…")
@@ -1256,38 +1174,84 @@ ApplicationWindow {
                                         color: prompt.attachmentBusy ? muted : appearance.colors.danger
                                         font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); textFormat: Text.PlainText; wrapMode: Text.Wrap
                                     }
-                                    RowLayout {
-                                        Layout.fillWidth: true; spacing: 6
+                                    // Two groups: what the message carries, then how it goes out.
+                                    // Narrow columns stack them instead of overflowing the card.
+                                    GridLayout {
+                                        id: composerChips; objectName: "composerChips"
+                                        Layout.fillWidth: true; columnSpacing: 4; rowSpacing: 4
+                                        readonly property bool narrow: chatColumn.width < 700
+                                        columns: narrow ? 1 : 2
+                                        RowLayout {
+                                        Layout.fillWidth: true; spacing: 4
                                         KButton {
                                             objectName: "promptAttach"
-                                            text: chatColumn.width < 650 ? "" : qsTr("Allega"); iconName: "attach"; subtle: true
+                                            iconName: "attach"; subtle: true
                                             Accessible.name: qsTr("Allega")
-                                            implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
-                                            implicitWidth: chatColumn.width < 650 ? 38 : Math.ceil(92 * appearance.uiFont.pixelSize / 13)
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: 34
                                             enabled: !prompt.attachmentBusy
                                             onClicked: prompt.chooseAttachments()
-                                            toolTipText: workspace.backend === "openai_chatgpt" ? qsTr("Le immagini saranno inviate solo con il messaggio. La disponibilità della visione dipende dal modello.") : qsTr("Scegli file, oppure incolla o trascina file e immagini nel messaggio")
+                                            toolTipText: qsTr("Allega") + " · " + (workspace.imageInputsEnabled ? qsTr("Le immagini saranno inviate solo con il messaggio. La disponibilità della visione dipende dal modello.") : qsTr("Scegli file, oppure incolla o trascina file e immagini nel messaggio"))
                                         }
-                                        Text {
-                                            text: workbench.guidanceMode ? qsTr("Ctrl+Invio: invia indicazioni") : qsTr("Ctrl+Invio per inviare")
-                                            visible: chatColumn.width >= 1000
-                                            color: muted; font: appearance.uiFont; Layout.fillWidth: true; textFormat: Text.PlainText
+                                        KButton { objectName: "projectFilesButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; text: composerChips.narrow ? "" : qsTr("File"); iconName: "file"; subtle: true; Accessible.name: qsTr("File del progetto"); onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file del progetto · @ nel messaggio") }
+                                        KComboBox {
+                                            objectName: "composerModeChoice"; chip: true; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            // Shares the row's slack with the model chip and elides before overflowing.
+                                            Layout.fillWidth: true; Layout.minimumWidth: 64
+                                            Layout.preferredWidth: (composerChips.narrow ? 118 : 132) + Math.max(0, appearance.uiFont.pixelSize - 13) * 4
+                                            Layout.maximumWidth: Layout.preferredWidth
+                                            model: [qsTr("Esegui"), qsTr("Pianifica"), qsTr("Revisione"), qsTr("Riepiloga")]
+                                            currentIndex: ["execute", "plan", "review", "recap"].indexOf(workbench.mode)
+                                            Accessible.name: qsTr("Modalità della prossima richiesta")
+                                            onActivated: workbench.setMode(["execute", "plan", "review", "recap"][index])
                                         }
-                                        Item { Layout.fillWidth: true; Layout.minimumWidth: 0; visible: chatColumn.width < 1000 }
+                                        KButton {
+                                            id: modelChip; objectName: "modelControlsToggle"
+                                            subtle: true; quietSelection: true; checked: modelPopover.visible; cornerRadius: 15
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            // The chip takes the slack of the row and shrinks to its icon first.
+                                            Layout.fillWidth: true; Layout.minimumWidth: 46
+                                            Layout.maximumWidth: Math.min(composerChips.narrow ? 220 : 340, modelChipMetrics.advanceWidth + 60)
+                                            TextMetrics { id: modelChipMetrics; text: modelChipLabel.selectionSummary; font: modelChip.font }
+                                            onClicked: modelPopover.visible ? modelPopover.close() : modelPopover.open()
+                                            toolTipText: modelChipLabel.selectionSummary + (workspace.accountLabel ? " · " + workspace.accountLabel : "")
+                                            Accessible.name: modelPopover.visible ? qsTr("Nascondi opzioni del modello") : qsTr("Mostra opzioni del modello")
+                                            contentItem: Item {
+                                                KIcon { name: "models"; ink: modelChip.foreground; width: 16; height: 16; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter }
+                                                Text {
+                                                    id: modelChipLabel; objectName: "modelControlsSummary"
+                                                    readonly property string selectionSummary: workspace.backendLabel + " · " + (workspace.selectedModel || qsTr("Scegli un modello")) + (workspace.backend !== "ollama" ? " · " + (workspace.selectedEffort || qsTr("Predefinito del provider")) : "")
+                                                    anchors.fill: parent; leftPadding: 32; rightPadding: 26
+                                                    text: selectionSummary; textFormat: Text.PlainText; elide: Text.ElideRight
+                                                    font: modelChip.font; color: modelChip.foreground; verticalAlignment: Text.AlignVCenter
+                                                }
+                                                KIcon { name: "chevron-down"; ink: modelChip.foreground; width: 12; height: 12; anchors.right: parent.right; anchors.rightMargin: 9; anchors.verticalCenter: parent.verticalCenter }
+                                            }
+                                        }
+                                        }
+                                        RowLayout {
+                                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 4
+                                        KButton { objectName: "projectQueueButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; iconName: "queue"; text: composerChips.narrow ? (workbench.pendingCount > 0 ? String(workbench.pendingCount) : "") : qsTr("Coda %1").arg(workbench.pendingCount); subtle: true; Accessible.name: qsTr("Coda del progetto: %1 richieste").arg(workbench.pendingCount); toolTipText: qsTr("Coda del progetto · controlla, modifica e riordina le richieste"); onClicked: workbenchDialog.openSection("queue") }
+                                        KButton { objectName: "chatToolsButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); iconName: "more"; subtle: true; implicitWidth: 34; Accessible.name: qsTr("Strumenti della chat"); toolTipText: qsTr("Cronologia, obiettivo, modifiche e gestione chat"); onClicked: { window.commandStart = -1; window.openActions("") } }
                                         KButton {
                                             objectName: "queueComposerButton"; text: qsTr("Accoda")
-                                            subtle: true; visible: workspace.busy || teams.busy || assistant.active || workbench.guidanceRetryAvailable
+                                            subtle: true; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            visible: workspace.busy || teams.busy || assistant.active || workbench.guidanceRetryAvailable
                                             toolTipText: qsTr("Accoda una richiesta separata; non cambia il turno attivo")
-                                            enabled: workbench.composerReady && workbench.modeAvailable && !workbench.sessionArchived && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0) && (workspace.draftImages.length === 0 || workspace.backend === "openai_chatgpt") && workspace.selectedModel.length > 0
+                                            enabled: workbench.composerReady && workbench.modeAvailable && !workbench.sessionArchived && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0) && (workspace.draftImages.length === 0 || workspace.imageInputsEnabled) && workspace.selectedModel.length > 0
                                             onClicked: workbench.enqueue(prompt.text)
                                         }
                                         KButton {
                                             id: sendButton; objectName: "sendButton"
-                                            text: workbench.guidanceRetryAvailable ? qsTr("Verifica invio") : workbench.guidanceMode ? qsTr("Invia indicazioni") : qsTr("Invia  ↑")
-                                            primary: true
-                                            toolTipText: workbench.guidanceRetryAvailable ? qsTr("Verifica la stessa richiesta con la sua identità originale") : workbench.guidanceMode ? qsTr("Invia indicazioni senza interrompere lo strumento in corso") : qsTr("Avvia la richiesta nella modalità scelta")
-                                            enabled: (workbench.canSubmit || workbench.goalCommandReady(prompt.text)) && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0) && (workspace.draftImages.length === 0 || workspace.backend === "openai_chatgpt") && workspace.selectedModel.length > 0
+                                            // Guidance and retry keep their words: they change what the message does.
+                                            iconName: workbench.guidanceRetryAvailable || workbench.guidanceMode ? "" : "send"
+                                            text: workbench.guidanceRetryAvailable ? qsTr("Verifica invio") : workbench.guidanceMode ? qsTr("Invia indicazioni") : ""
+                                            primary: true; cornerRadius: 15
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            toolTipText: workbench.guidanceRetryAvailable ? qsTr("Verifica la stessa richiesta con la sua identità originale") : workbench.guidanceMode ? qsTr("Invia indicazioni senza interrompere lo strumento in corso · Ctrl+Invio") : qsTr("Invia · Ctrl+Invio")
+                                            Accessible.name: workbench.guidanceRetryAvailable ? qsTr("Verifica invio") : workbench.guidanceMode ? qsTr("Invia indicazioni") : qsTr("Invia")
+                                            enabled: (workbench.canSubmit || workbench.goalCommandReady(prompt.text)) && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0) && (workspace.draftImages.length === 0 || workspace.imageInputsEnabled) && workspace.selectedModel.length > 0
                                             onClicked: window.submitComposer()
+                                        }
                                         }
                                     }
                                     Text {
@@ -1302,22 +1266,148 @@ ApplicationWindow {
                                     Text { visible: workbench.error.length > 0 && !workbenchDialog.visible; Layout.fillWidth: true; text: workbench.error; color: appearance.colors.warning; wrapMode: Text.Wrap; font: appearance.uiFont; textFormat: Text.PlainText
                                     }
                                 }
+                                // Provider, model, effort and session live behind the composer's model chip.
+                                Popup {
+                                    id: modelPopover; objectName: "modelPopover"
+                                    x: 0; y: -height - 8; width: parent.width
+                                    padding: 14; modal: false; dim: false; focus: true
+                                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                                    Component.onCompleted: if (workspace.modelControlsVisible && window.page === 0 && hasProject) Qt.callLater(function() { modelPopover.open() })
+                                    background: Rectangle { color: appearance.colors.surfaceRaised; radius: 14; border.color: appearance.colors.border }
+                                    contentItem: ColumnLayout {
+                                        id: controlsColumn; objectName: "modelControlsExpanded"
+                                        spacing: 8
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 8
+                                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Provider, modello e ragionamento"); color: appearance.colors.text; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                                            KButton { iconName: "refresh"; subtle: true; implicitWidth: 32; implicitHeight: 30; onClicked: workspace.discover(workspace.backend); Accessible.name: qsTr("Aggiorna modelli"); toolTipText: qsTr("Aggiorna modelli") }
+                                            KButton { objectName: "modelPopoverClose"; iconName: "close"; subtle: true; implicitWidth: 32; implicitHeight: 30; onClicked: modelPopover.close(); Accessible.name: qsTr("Chiudi le opzioni del modello"); toolTipText: Accessible.name }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 8
+                                            KComboBox {
+                                                palette.dark: window.muted
+                                                id: backendBox; objectName: "backendBox"
+                                                Layout.preferredWidth: ["openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend) >= 0 ? (chatColumn.width < 650 ? 160 : 255) : 110; implicitHeight: 35
+                                                model: ["ollama", "codex", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek Account"), qsTr("DeepSeek Web · sperimentale"), qsTr("Claude Code · uso personale")]
+                                                currentIndex: ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend)
+                                                onActivated: { workspace.setBackend(["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"][currentIndex]); currentIndex = Qt.binding(function() { return ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend) }) }
+                                                enabled: !workspace.busy && !assistant.active
+                                                Accessible.name: qsTr("Backend")
+                                                KToolTip { visible: backendBox.hovered; text: workspace.backendLabel }
+                                            }
+                                            KComboBox {
+                                                palette.dark: window.muted
+                                                id: modelBox; objectName: "modelBox"; model: workspace.models; textRole: "name"; valueRole: "id"
+                                                Layout.fillWidth: true; implicitHeight: 35
+                                                currentIndex: indexOfValue(workspace.selectedModel)
+                                                displayText: currentIndex < 0 ? (workspace.selectedModel || qsTr("Scegli un modello…")) : currentText
+                                                onActivated: workspace.setModel(currentValue)
+                                                enabled: !workspace.busy && !assistant.active
+                                                Accessible.name: qsTr("Modello")
+                                            }
+                                            KComboBox {
+                                                palette.dark: window.muted
+                                                id: effortBox; objectName: "effortBox"; model: [qsTr("Predefinito del provider")].concat(workspace.efforts)
+                                                Layout.preferredWidth: chatColumn.width < 650 ? 122 : 150; implicitHeight: 35
+                                                visible: workspace.backend !== "ollama"
+                                                currentIndex: Math.max(0, workspace.efforts.indexOf(workspace.selectedEffort) + 1)
+                                                displayText: currentIndex === 0 && workspace.selectedEffort.length > 0 ? qsTr("%1 · salvato").arg(workspace.selectedEffort) : currentText
+                                                onActivated: workspace.setEffort(currentIndex === 0 ? "" : currentText)
+                                                enabled: !workspace.busy && !assistant.active
+                                                Accessible.name: qsTr("Livello di ragionamento")
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 8
+                                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("SESSIONE"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: 1 }
+                                            KComboBox {
+                                                palette.dark: window.muted
+                                                id: sessionBox; objectName: "sessionBox"; model: workspace.sessions; textRole: "label"; valueRole: "id"
+                                                Layout.fillWidth: true; implicitHeight: 28
+                                                currentIndex: indexOfValue(workspace.sessionId)
+                                                displayText: currentIndex < 0 ? qsTr("Nuova · contesto della memoria condiviso") : currentText
+                                                onActivated: workspace.selectSession(currentValue)
+                                                enabled: !workspace.busy && !assistant.active
+                                                Accessible.name: qsTr("Sessione")
+                                            }
+                                            CheckBox { HoverHandler { cursorShape: appearance.pointerCursors && parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
+                                                text: qsTr("Strumenti"); checked: workspace.toolsEnabled || workspace.backend !== "ollama"
+                                                visible: workspace.backend === "ollama"; enabled: workspace.canUseTools && !workspace.busy
+                                                onClicked: workspace.setTools(checked)
+                                                KToolTip { visible: parent.hovered; text: workspace.canUseTools ? qsTr("La prima esecuzione verifica il supporto del modello; se fallisce resta disponibile la chat.") : qsTr("Strumenti non dichiarati dal modello. La chat resta disponibile.") }
+                                            }
+                                        }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; id: providerLabel; text: workspace.providerText; Layout.fillWidth: true; elide: Text.ElideRight; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); KToolTip { visible: providerMouse.containsMouse; text: providerLabel.text } MouseArea { id: providerMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton } }
+                                    }
+                                }
                             }
                             Flow {
                                 objectName: "chatToolBar"
                                 Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
                                 Layout.maximumWidth: appearance.fullWidth ? Infinity : 900
                                 Layout.alignment: Qt.AlignHCenter
-                                spacing: 4
-                                ChatToolButton { objectName: "chatFilesButton"; text: qsTr("File"); iconName: "file"; onClicked: artifactsDialog.open() }
-                                ChatToolButton { objectName: "chatUsageButton"; text: qsTr("Uso"); iconName: "usage"; onClicked: metricsDialog.open() }
-                                ChatToolButton { objectName: "chatContextButton"; text: chatContext.compacting ? qsTr("Compattazione…") : chatColumn.width < 750 ? qsTr("Contesto") : qsTr("Contesto e memoria"); iconName: "context"; enabled: workspace.sessionId.length > 0; onClicked: chatContextDialog.open() }
-                                ChatToolButton { objectName: "chatKnowledgeButton"; text: chatColumn.width < 750 ? "" : qsTr("Conoscenza"); iconName: "memory"; Accessible.name: qsTr("Conoscenza"); enabled: workspace.sessionId.length > 0; onClicked: assistantTeamPanel.showEnvironment(); toolTipText: qsTr("Conoscenza e strumenti") }
-                                ChatToolButton { objectName: "chatWebButton"; text: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; onClicked: { workspace.studio.hideStudio(); workspace.web.showBrowser() }
-                                    toolTipText: workspace.backend === "openai_chatgpt" ? qsTr("Apri il browser integrato") : qsTr("Il browser integrato è disponibile con OpenAI diretto.") }
-                                ChatToolButton { objectName: "chatStudioButton"; text: chatColumn.width < 880 ? "" : qsTr("Studio"); iconName: "file"; Accessible.name: qsTr("Studio"); enabled: workspace.connected; onClicked: workspace.studio.showStudio(); toolTipText: qsTr("Apri il mondo creativo locale di questo progetto") }
-                                ChatToolButton { objectName: "sharedMemoryButton"; text: chatColumn.width < 750 ? qsTr("Memoria") : qsTr("Memoria del progetto"); iconName: "memory"; toolTipText: qsTr("Memoria del progetto"); onClicked: sharedMemoryDialog.open() }
-                                ChatToolButton { objectName: "chatWebSettingsButton"; text: ""; iconName: "settings"; toolTipText: qsTr("Impostazioni web"); Accessible.name: toolTipText; implicitWidth: 38; enabled: workspace.web.available; onClicked: webDialog.open() }
+                                spacing: 2
+                                ChatToolButton { objectName: "chatFilesButton"; label: qsTr("File"); iconName: "file"; checked: panelHost.activePanel === artifactsDialog; quietSelection: true; onClicked: artifactsDialog.open() }
+                                ChatToolButton { objectName: "chatUsageButton"; label: qsTr("Uso"); iconName: "usage"; checked: panelHost.activePanel === metricsDialog; quietSelection: true; onClicked: metricsDialog.open() }
+                                ChatToolButton { objectName: "chatContextButton"; label: chatContext.compacting ? qsTr("Compattazione…") : qsTr("Contesto e memoria"); iconName: "context"; enabled: workspace.sessionId.length > 0; checked: panelHost.activePanel === chatContextDialog; quietSelection: true; onClicked: chatContextDialog.open() }
+                                ChatToolButton { objectName: "chatKnowledgeButton"; label: qsTr("Conoscenza"); iconName: "knowledge"; enabled: workspace.sessionId.length > 0; onClicked: assistantTeamPanel.showEnvironment(); toolTipText: qsTr("Conoscenza e strumenti") }
+                                ChatToolButton { objectName: "chatWebButton"; label: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; checked: workspace.web.paneVisible; quietSelection: true; onClicked: { workspace.studio.hideStudio(); workspace.web.showBrowser() } toolTipText: qsTr("Apri il browser integrato") }
+                                ChatToolButton { objectName: "chatStudioButton"; label: qsTr("Studio"); iconName: "studio"; enabled: workspace.connected; checked: workspace.studio.paneVisible; quietSelection: true; onClicked: workspace.studio.showStudio(); toolTipText: qsTr("Apri il mondo creativo locale di questo progetto") }
+                                ChatToolButton { objectName: "sharedMemoryButton"; label: qsTr("Memoria del progetto"); iconName: "memory"; checked: panelHost.activePanel === sharedMemoryDialog; quietSelection: true; onClicked: sharedMemoryDialog.open() }
+                                ChatToolButton { objectName: "chatSoulButton"; label: souls.activeName || qsTr("Anima"); iconName: "anima"; enabled: souls.available; checked: panelHost.activePanel === soulDialog; quietSelection: true; onClicked: soulDialog.open(); toolTipText: qsTr("Anima di Kira · identità e ricordi") + (souls.activeName ? " · " + souls.activeName : "") }
+                                KButton {
+                                    id: teamStatusButton
+                                    objectName: "assistantConfigureTeam"
+                                    readonly property bool paused: assistantTeamPanel.current.state === "paused"
+                                        || (!!teams.team.id && teams.team.id === assistant.currentTeamId && teams.team.state === "paused")
+                                    readonly property string stateText: paused ? qsTr("Team · %1").arg(qsTr("In pausa")) : assistantTeamPanel.hasDelegation ? qsTr("Team · %1").arg(assistant.current.label) : assistant.teamActive ? qsTr("Team al lavoro") : qsTr("Team")
+                                    readonly property bool showState: paused || assistantTeamPanel.hasDelegation || assistant.teamActive || workspace.toolLabels
+                                    text: showState ? stateText : ""
+                                    implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                    // Measured text keeps the width independent of the live label's layout.
+                                    implicitWidth: showState ? Math.min(chatColumn.width < 650 ? 120 : 200, teamMetrics.advanceWidth + 44) : 34
+                                    subtle: true; quietSelection: true; checked: assistantTeamPanel.expanded
+                                    font.pixelSize: Math.max(11, appearance.uiFont.pixelSize - 1)
+                                    TextMetrics { id: teamMetrics; text: teamStatusButton.stateText; font: teamStatusButton.font }
+                                    contentItem: Item {
+                                        KIcon { name: "team"; ink: teamStatusButton.paused ? appearance.colors.warning : teamStatusButton.foreground; width: 18; height: 18; anchors.left: parent.left; anchors.leftMargin: teamStatusButton.showState ? 10 : (parent.width - width) / 2; anchors.verticalCenter: parent.verticalCenter }
+                                        StatusIndicator {
+                                            objectName: "teamStatusIndicator"
+                                            visible: teamStatusButton.paused
+                                            anchors.left: parent.left; anchors.leftMargin: teamStatusButton.showState ? 20 : (parent.width - 18) / 2 + 10
+                                            anchors.top: parent.top; anchors.topMargin: 3
+                                            state: "paused"; diameter: 10
+                                        }
+                                        Text {
+                                            id: teamStatusLabel
+                                            visible: teamStatusButton.showState
+                                            anchors.fill: parent
+                                            leftPadding: 34; rightPadding: 10
+                                            text: teamStatusButton.stateText; font: teamStatusButton.font
+                                            color: teamStatusButton.paused ? appearance.colors.warning : teamStatusButton.foreground
+                                            textFormat: Text.PlainText; elide: Text.ElideRight
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                    background: Rectangle {
+                                        radius: 10
+                                        color: teamStatusButton.paused ? Qt.rgba(appearance.colors.warning.r, appearance.colors.warning.g, appearance.colors.warning.b, 0.10)
+                                            : teamStatusButton.down ? appearance.colors.pressed
+                                            : teamStatusButton.hovered || teamStatusButton.checked ? appearance.colors.hover : "transparent"
+                                        border.width: teamStatusButton.activeFocus ? 2 : teamStatusButton.paused ? 1 : 0
+                                        border.color: teamStatusButton.activeFocus ? appearance.colors.accent
+                                            : Qt.rgba(appearance.colors.warning.r, appearance.colors.warning.g, appearance.colors.warning.b, 0.25)
+                                    }
+                                    onClicked: { if (assistantTeamPanel.hasTeamContext) assistantTeamPanel.toggleDetails(); else assistant.configureTeam() }
+                                    toolTipText: paused ? stateText : assistantTeamPanel.hasDelegation ? qsTr("Team · %1").arg(assistant.current.label) : qsTr("Configura un team per questo progetto")
+                                    Accessible.name: stateText
+                                }
+                                ChatToolButton { objectName: "inputOpen"; label: qsTr("Domande"); iconName: "questions"; badge: inputs.pendingCount; primary: inputs.pendingCount > 0; destructive: inputs.error.length > 0; onClicked: inputDialog.open(); toolTipText: inputs.error || qsTr("Domande · Ctrl+Shift+Q") }
+                                ChatToolButton { objectName: "chatWebSettingsButton"; label: qsTr("Impostazioni web"); iconName: "settings"; enabled: workspace.web.available; onClicked: webDialog.open() }
+                                Item { width: 9; height: 30; Rectangle { anchors.centerIn: parent; width: 1; height: 18; color: appearance.colors.border } }
+                                ChatToolButton { objectName: "toolLabelsToggle"; label: qsTr("Etichette"); iconName: "labels"; text: label; checked: workspace.toolLabels; quietSelection: true; onClicked: workspace.setToolLabels(!workspace.toolLabels); toolTipText: qsTr("Mostra o nascondi le etichette accanto alle icone degli strumenti") }
                             }
                             ColumnLayout {
                                 objectName: "chatFootnote"
@@ -1403,49 +1493,112 @@ ApplicationWindow {
                 ScrollView {
                     id: modelsScroll; clip: true; contentWidth: availableWidth
                     ColumnLayout {
-                        width: modelsScroll.availableWidth; spacing: 20
-                        anchors.leftMargin: 28; anchors.rightMargin: 28
+                        id: modelsPage
+                        readonly property real sideMargin: modelsScroll.availableWidth < 900 ? 24 : Math.max(28, (modelsScroll.availableWidth - 960) / 2)
+                        width: modelsScroll.availableWidth; spacing: 18
                         RowLayout {
-                            Layout.fillWidth: true; Layout.margins: 28; Layout.bottomMargin: 0
+                            Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; Layout.topMargin: 30
                             ColumnLayout {
-                                Layout.fillWidth: true; spacing: 7
-                                Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Il modello giusto, scelto da te."); color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 11 }
-                                Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("La scelta riguarda Kira. La configurazione globale di Codex resta tua."); color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Layout.fillWidth: true; spacing: 6
+                                Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Il modello giusto, scelto da te."); color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 11; font.weight: Font.DemiBold; font.letterSpacing: -0.2; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("La scelta riguarda Kira. La configurazione globale di Codex resta tua."); color: appearance.colors.textSecondary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            KButton { text: qsTr("Aggiorna"); onClicked: workspace.discover(workspace.backend) }
+                            KButton { objectName: "modelsRefreshButton"; text: qsTr("Aggiorna"); iconName: "refresh"; onClicked: workspace.discover(workspace.backend); toolTipText: qsTr("Aggiorna il catalogo del provider selezionato") }
                         }
-                        RowLayout {
-                            Layout.leftMargin: 28; Layout.rightMargin: 28
-                            KButton { text: "Ollama"; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "ollama"; onClicked: workspace.setBackend("ollama") }
-                            KButton { text: "Codex"; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "codex"; onClicked: workspace.setBackend("codex") }
-                            KButton { objectName: "directBackendButton"; text: qsTr("OpenAI diretto · ChatGPT"); enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "openai_chatgpt"; onClicked: workspace.setBackend("openai_chatgpt") }
-                            Item { Layout.fillWidth: true }
-                            KButton { text: qsTr("Accedi con Codex  ↗"); visible: workspace.backend === "codex"; onClicked: workspace.login() }
+                        // Providers are a segmented row; the selected one carries the page.
+                        Flow {
+                            Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; spacing: 6
+                            KButton { objectName: "ollamaBackendButton"; text: "Ollama"; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "ollama"; onClicked: workspace.setBackend("ollama") }
+                            KButton { objectName: "codexBackendButton"; text: "Codex"; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "codex"; onClicked: workspace.setBackend("codex") }
+                            KButton { objectName: "directBackendButton"; text: qsTr("OpenAI diretto · ChatGPT"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "openai_chatgpt"; onClicked: workspace.setBackend("openai_chatgpt") }
+                            KButton { objectName: "deepseekBackendButton"; text: qsTr("DeepSeek Account"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "deepseek_account"; onClicked: workspace.setBackend("deepseek_account") }
+                            KButton { objectName: "deepseekWebBackendButton"; text: qsTr("DeepSeek Web · sperimentale"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "deepseek_web"; onClicked: workspace.setBackend("deepseek_web") }
+                            KButton { objectName: "claudeCodeBackendButton"; text: qsTr("Claude Code · uso personale"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "claude_code"; onClicked: workspace.setBackend("claude_code") }
                         }
-                        DirectAccountPane { objectPrefix: "modelsChatGPT"; visible: workspace.backend === "openai_chatgpt"; Layout.leftMargin: 28; Layout.rightMargin: 28 }
-                        ReadText { text: workspace.providerText; Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; color: muted }
-                        Repeater {
-                            model: workspace.models
-                            delegate: Rectangle {
-                                required property var modelData
-                                Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28
-                                implicitHeight: modelRow.implicitHeight + 34; radius: 10
-                                color: appearance.colors.surfaceAlt; border.color: workspace.selectedModel === modelData.id ? appearance.colors.accent : appearance.colors.border
-                                RowLayout {
-                                    id: modelRow; anchors.fill: parent; anchors.margins: 17; spacing: 15
+                        // One status line: what the provider reported and the one action that follows.
+                        Rectangle {
+                            objectName: "providerStatusCard"
+                            Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin
+                            implicitHeight: providerStatusRow.implicitHeight + 24; radius: 12
+                            color: appearance.colors.surface; border.color: appearance.colors.border
+                            RowLayout {
+                                id: providerStatusRow; anchors.fill: parent; anchors.margins: 12; anchors.leftMargin: 16; spacing: 12
+                                Rectangle { objectName: "providerStatusDot"; width: 10; height: 10; radius: 5; color: workspace.providerState === "error" ? appearance.colors.danger : workspace.providerState === "ok" ? appearance.colors.success : workspace.providerState === "warning" ? appearance.colors.warning : muted; Layout.alignment: Qt.AlignVCenter }
+                                ReadText { objectName: "providerStatusText"; text: workspace.providerText; Layout.fillWidth: true; color: workspace.providerUnavailable ? appearance.colors.danger : appearance.colors.text; wrapMode: Text.Wrap }
+                                KButton { objectName: "codexLoginButton"; text: qsTr("Accedi con Codex"); iconName: "external"; visible: workspace.backend === "codex"; onClicked: workspace.login() }
+                            }
+                        }
+                        DirectAccountPane { objectPrefix: "modelsChatGPT"; visible: workspace.backend === "openai_chatgpt"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        DeepSeekAccountPane { visible: workspace.backend === "deepseek_account"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        DeepSeekWebPane { objectName: "deepseekWebPane"; visible: workspace.backend === "deepseek_web"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        ReadText { objectName: "claudeCodePersonalNotice"; visible: workspace.backend === "claude_code"; text: qsTr("Claude Code usa l'accesso già fatto nel tuo Claude Code locale: Kira non legge né conserva le credenziali. Solo per uso personale: non distribuire Kira con questo provider. I permessi del progetto decidono gli strumenti di Claude Code; Kira blocca i percorsi fuori dal progetto e registra le azioni osservate."); Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; color: muted; wrapMode: Text.Wrap }
+                        GridLayout {
+                            Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin
+                            columns: modelsScroll.availableWidth - modelsPage.sideMargin * 2 < 700 ? 1 : 2; columnSpacing: 14; rowSpacing: 14
+                            Repeater {
+                                model: workspace.models
+                                delegate: Rectangle {
+                                    id: modelCard
+                                    required property var modelData
+                                    objectName: "modelCard_" + modelData.id
+                                    readonly property bool selected: workspace.selectedModel === modelData.id
+                                    readonly property var efforts: (modelData.supported_reasoning_efforts || []).map(function(value) { return typeof value === "string" ? value : String(value.reasoningEffort || value.reasoning_effort || "") })
+                                    // Cards in one row share their height; the action stays at the bottom.
+                                    Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumWidth: 0
+                                    implicitHeight: modelColumn.implicitHeight + 32; radius: 14
+                                    color: appearance.colors.surface
+                                    border.width: selected ? 2 : 1
+                                    border.color: selected ? appearance.colors.accent : appearance.colors.border
                                     ColumnLayout {
-                                        Layout.fillWidth: true; spacing: 8
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelData.name || modelData.id; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 4; Layout.fillWidth: true; elide: Text.ElideRight }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelData.id; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.fillWidth: true; elide: Text.ElideMiddle }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelData.tools_verified ? qsTr("Strumenti verificati") : modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : workspace.backend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : workspace.backend === "openai_chatgpt" ? qsTr("OpenAI diretto · strumenti gestiti da Kira") : qsTr("Conversazione"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; visible: workspace.backend !== "openai_chatgpt"; text: modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg((modelData.size_bytes / 1073741824).toFixed(2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3) }
+                                        id: modelColumn; anchors.fill: parent; anchors.margins: 16; spacing: 6
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 10
+                                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelCard.modelData.name || modelCard.modelData.id; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 4; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Text { font.family: appearance.codeFont.family; textFormat: Text.PlainText; text: modelCard.modelData.id; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); elide: Text.ElideMiddle; Layout.maximumWidth: 200 }
+                                        }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: workspace.backend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : workspace.backend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : workspace.backend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["openai_chatgpt", "deepseek_account"].indexOf(workspace.backend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; visible: workspace.backend !== "openai_chatgpt" && workspace.backend !== "claude_code"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg((modelCard.modelData.size_bytes / 1073741824).toFixed(2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Flow {
+                                            visible: modelCard.efforts.length > 0
+                                            Layout.fillWidth: true; spacing: 4
+                                            Repeater {
+                                                model: modelCard.efforts
+                                                delegate: Rectangle {
+                                                    required property string modelData
+                                                    implicitWidth: effortLabel.implicitWidth + 14; implicitHeight: 20; radius: 10
+                                                    color: workspace.selectedEffort === modelData && modelCard.selected ? appearance.colors.accentSoft : appearance.colors.surfaceAlt
+                                                    Text { id: effortLabel; anchors.centerIn: parent; text: parent.modelData; textFormat: Text.PlainText; font.family: appearance.codeFont.family; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); color: appearance.colors.textSecondary }
+                                                }
+                                            }
+                                        }
+                                        Item { Layout.fillHeight: true }
+                                        RowLayout {
+                                            Layout.fillWidth: true; Layout.topMargin: 4
+                                            Item { Layout.fillWidth: true }
+                                            Text { visible: modelCard.selected; font.family: appearance.uiFont.family; textFormat: Text.PlainText; text: qsTr("Selezionato"); color: appearance.colors.accent; font.weight: Font.DemiBold; font.pixelSize: appearance.uiFont.pixelSize }
+                                            KButton { objectName: "useModel_" + modelCard.modelData.id; visible: !modelCard.selected; text: qsTr("Usa modello"); enabled: !workspace.busy && !assistant.active; onClicked: { workspace.setModel(modelCard.modelData.id); if (hasProject) window.page = 0 } }
+                                        }
                                     }
-                                    KButton { text: workspace.selectedModel === modelData.id ? qsTr("Selezionato") : qsTr("Usa modello"); primary: workspace.selectedModel === modelData.id; enabled: !workspace.busy && !assistant.active; onClicked: { workspace.setModel(modelData.id); if (hasProject) window.page = 0 } }
                                 }
                             }
                         }
-                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("DATI DEL PROVIDER · VALORI NON DISPONIBILI RESTANO SCONOSCIUTI"); Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.fillWidth: true; wrapMode: Text.Wrap; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: 1 }
-                        ReadText { color: appearance.colors.codeText; text: workspace.catalogText; Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.bottomMargin: 30; font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; font.pixelSize: appearance.codeFont.pixelSize - 1 }
+                        // Raw provider data stay available, folded by default.
+                        Rectangle {
+                            Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; Layout.bottomMargin: 30
+                            implicitHeight: catalogColumn.implicitHeight + 2; radius: 12
+                            color: appearance.colors.surface; border.color: appearance.colors.border
+                            ColumnLayout {
+                                id: catalogColumn; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; spacing: 0
+                                KButton {
+                                    id: catalogToggle; objectName: "catalogToggle"
+                                    Layout.fillWidth: true; implicitHeight: 42
+                                    text: qsTr("Dati del provider · valori non disponibili restano sconosciuti"); iconName: checked ? "chevron-down" : "chevron-right"
+                                    subtle: true; quietSelection: true; leftAligned: true; checkable: true; checked: false
+                                    Accessible.name: checked ? qsTr("Nascondi i dati del provider") : qsTr("Mostra i dati del provider")
+                                }
+                                ReadText { objectName: "catalogText"; visible: catalogToggle.checked; color: appearance.colors.codeText; text: workspace.catalogText; Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16; Layout.bottomMargin: 16; font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; font.pixelSize: appearance.codeFont.pixelSize - 1 }
+                            }
+                        }
                     }
                 }
                 ColumnLayout {
@@ -1503,9 +1656,29 @@ ApplicationWindow {
                                     RowLayout {
                                         visible: workspace.backend === "ollama"
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Contesto richiesto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true }
-                                        SpinBox { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; from: 0; to: 2097152; stepSize: 1024; value: workspace.requestedContext; editable: true; Layout.preferredWidth: 115; enabled: !workspace.busy && !assistant.active; onValueModified: workspace.setContextSize(value) }
+                                        KComboBox {
+                                            objectName: "ollamaContextPreset"; Layout.preferredWidth: 150
+                                            model: [qsTr("Predefinito Ollama"), qsTr("32K"), qsTr("128K"), qsTr("256K")]
+                                            currentIndex: [0, 32768, 131072, 262144].indexOf(workspace.requestedContext)
+                                            enabled: !workspace.busy && !assistant.active
+                                            onActivated: workspace.setContextSize([0, 32768, 131072, 262144][currentIndex])
+                                            Accessible.name: qsTr("Dimensione contesto Ollama")
+                                        }
                                     }
-                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("0 usa il default del provider; il contesto effettivamente caricato è nei dati Ollama."); visible: workspace.backend === "ollama"; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Il contesto effettivo dipende dal modello e dalla memoria disponibile. 128K e 256K possono richiedere molta RAM/VRAM; verifica i dati del modello in Ollama."); visible: workspace.backend === "ollama"; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    RowLayout {
+                                        visible: workspace.backend === "ollama"
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Pensiero interno del modello"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true }
+                                        KComboBox {
+                                            objectName: "ollamaThinkMode"; Layout.preferredWidth: 190
+                                            model: [qsTr("Predefinito del modello"), qsTr("Ragionamento interno disattivato"), qsTr("Ragionamento interno attivato")]
+                                            currentIndex: workspace.requestedThink
+                                            enabled: !workspace.busy && !assistant.active
+                                            onActivated: workspace.setThink(currentIndex)
+                                            Accessible.name: qsTr("Modalità di ragionamento Ollama")
+                                        }
+                                    }
+                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Il ragionamento interno non viene mostrato in Kira. Disattivarlo può lasciare più spazio alla risposta nella finestra del modello."); visible: workspace.backend === "ollama"; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: workspace.backend !== "ollama" ? qsTr("Il catalogo non prova l'accesso: lo conferma un turno riuscito.") : qsTr("Gli strumenti dichiarati vengono verificati prima del primo utilizzo."); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                     Rectangle { Layout.fillWidth: true; height: 1; color: appearance.colors.border }
                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("ARTEFATTI"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: 1.3 }
@@ -1548,7 +1721,7 @@ ApplicationWindow {
     ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay }
     WorkbenchDialog { id: workbenchDialog; parent: Overlay.overlay }
     FileDialog { id: chatMarkdownExport; title: qsTr("Esporta chat"); fileMode: FileDialog.SaveFile; nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; onAccepted: workbench.exportChat(selectedFile.toString()) }
-    WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay }
+    WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
     ActionDialog { id: actionDialog; parent: Overlay.overlay; onProjectSelected: { window.page = 0; window.followOutput = true } }
     DiagnosticsDialog { id: diagnosticsDialog; parent: Overlay.overlay }
     ProviderSwitchDialog { id: providerSwitchDialog; parent: Overlay.overlay }
@@ -1565,7 +1738,7 @@ ApplicationWindow {
         defaultSuffix: "json"
         onAccepted: { if (window.memoryExport) workspace.exportMemory(selectedFile.toString()); else workspace.exportTranscript(selectedFile.toString()) }
     }
-    KiraSoulsDialog { id: soulDialog }
+    KiraSoulsDialog { id: soulDialog; inspectorKey: "anima" }
     Dialog {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
         id: newProject; objectName: "newProjectDialog"; title: qsTr("Un nuovo spazio di lavoro"); modal: true
@@ -1636,7 +1809,7 @@ ApplicationWindow {
     }
     KiraPanel {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
-        id: artifactsDialog; objectName: "artifactsDialog"; title: qsTr("Artefatti del progetto")
+        id: artifactsDialog; objectName: "artifactsDialog"; title: qsTr("Artefatti del progetto"); inspectorKey: "file"
         standardButtons: Dialog.Close
         ListView {
             id: artifactList; anchors.fill: parent; clip: true; spacing: 10; model: workspace.artifacts
@@ -1645,9 +1818,9 @@ ApplicationWindow {
             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("Nessun artefatto registrato."); width: artifactList.width; wrapMode: Text.Wrap; visible: artifactList.count === 0; color: muted }
         }
     }
-    UsageDialog { id: metricsDialog; onContextRequested: chatContextDialog.open() }
-    ContextDialog { id: chatContextDialog }
-    ResearchDialog { id: researchDialog }
+    UsageDialog { id: metricsDialog; inspectorKey: "uso"; onContextRequested: chatContextDialog.open() }
+    ContextDialog { id: chatContextDialog; inspectorKey: "contesto" }
+    ResearchDialog { id: researchDialog; inspectorKey: "ricerca" }
     WebDialog { id: webDialog }
     ChatGPTWelcomeDialog { parent: Overlay.overlay }
     Dialog {
@@ -1668,7 +1841,7 @@ ApplicationWindow {
     }
     KiraPanel {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
-        id: sharedMemoryDialog; objectName: "sharedMemoryDialog"
+        id: sharedMemoryDialog; objectName: "sharedMemoryDialog"; inspectorKey: "memoria"
         title: qsTr("Memoria del progetto")
         onOpened: workspace.refreshSharedContext()
         contentItem: ColumnLayout {

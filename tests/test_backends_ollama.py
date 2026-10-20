@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-from kira.backends.ollama import OllamaBackend, StreamError, ndjson
+from kira.backends.ollama import NO_TOOLS_GUIDANCE, TOOL_CALL_GUIDANCE, OllamaBackend, StreamError, ndjson
 from kira.domain.contracts import RunContext
 from kira.domain.knowledge import IDENTITY_INSTRUCTIONS, knowledge_tool_specs
 from kira.domain.project_tools import project_tool_specs
@@ -637,7 +637,8 @@ async def test_common_kira_identity_and_json_gateway_use_verified_ollama_transpo
             return httpx.Response(200, json={"capabilities": ["completion", "tools"]})
         body = json.loads(request.content)
         bodies.append(body)
-        assert body["messages"][0] == {"role": "system", "content": IDENTITY_INSTRUCTIONS}
+        guidance = TOOL_CALL_GUIDANCE if verified else NO_TOOLS_GUIDANCE
+        assert body["messages"][0] == {"role": "system", "content": IDENTITY_INSTRUCTIONS + guidance}
         assert body["messages"][1]["role"] == "user"
         assert "fixture context" in body["messages"][1]["content"]
         if not verified:
@@ -696,3 +697,13 @@ async def test_malformed_tool_name_returns_invalid_tool_without_alias_lookup_cra
         assert not executed
     finally:
         await backend.close()
+
+
+def test_missing_user_query_error_detection_and_stream_timeout_constant():
+    from kira.backends.ollama import OLLAMA_CHAT_READ_TIMEOUT, _is_missing_user_query_error
+    assert OLLAMA_CHAT_READ_TIMEOUT == 600.0
+    assert _is_missing_user_query_error(b'{"error": "No user query found in messages"}')
+    assert _is_missing_user_query_error(b'{"error": {"message": "no  USER query\\nfound in messages"}}')
+    assert not _is_missing_user_query_error(b'{"error": "model not found"}')
+    assert not _is_missing_user_query_error(b'not json')
+    assert not _is_missing_user_query_error(b'[]')

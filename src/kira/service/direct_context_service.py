@@ -33,11 +33,23 @@ def _text(params: Json, key: str, maximum: int = 128) -> str:
 class DirectContexts:
     def __init__(self, service: Service):
         self.service, self.store = service, service.store
-        self.data = DirectContextStore(self.store, service.image_inputs.images)
+        self.data = DirectContextStore(self.store, service.image_inputs.images,
+                                       self._provider_account_identity)
         self.catalogs: dict[tuple[str, str], tuple[float, Json]] = {}
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.cancellations: dict[str, asyncio.Event] = {}
         self.statuses: dict[str, Json] = {}
+
+    def _provider_account_identity(self, session: Json) -> str:
+        if session.get("backend") != "deepseek_account":
+            return ""
+        account = self.service.deepseek_accounts.auth
+        if account.proxy_enabled:
+            material = account.proxy_url + "\0" + account.proxy_api_key
+            return "deeperseeker:" + hashlib.sha256(material.encode()).hexdigest()[:32]
+        token = account.token
+        return ("deepseek:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+                if token else "deepseek:disconnected")
 
     def recover(self) -> None:
         # A stopped HTTP owner cannot execute local tools. A remote maintenance
@@ -55,20 +67,34 @@ class DirectContexts:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def catalog(self, session: Json, provider: Any = None) -> Json:
-        if session["backend"] != "openai_chatgpt":
+        backend_name = str(session["backend"])
+        if backend_name not in {"openai_chatgpt", "deepseek_account"}:
             return {}
-        key = (str(session["settings"].get("openai_account_id", "")), session["model"])
+        account_id = self.data.identity(session)["account_id"]
+        key = (backend_name + ":" + account_id, session["model"])
         cached = self.catalogs.get(key)
         if cached and time.monotonic() - cached[0] < 60:
             return dict(cached[1])
+        temporary = False
         if provider is None:
-            provider = self.service._control_backends.get("openai_chatgpt")
-            if provider is None:
-                provider = self.service._backend("openai_chatgpt")
-                self.service._control_backends["openai_chatgpt"] = provider
+            if backend_name == "openai_chatgpt":
+                provider = self.service._control_backends.get(backend_name)
+                if provider is None:
+                    provider = self.service._backend(backend_name)
+                    self.service._control_backends[backend_name] = provider
+            else:
+                provider = self.service._backend(backend_name)
+                temporary = True
         if not getattr(provider, "supports_durable_context", False):
+            if temporary:
+                await provider.close()
             return {}
-        result = await provider.discover(account_id=key[0] or None)
+        try:
+            result = (await provider.discover(account_id=account_id or None)
+                      if backend_name == "openai_chatgpt" else await provider.discover())
+        finally:
+            if temporary:
+                await provider.close()
         selected: Json = next((item for item in result.get("models", []) if item.get("id") == key[1]), {})
         if selected:
             self.catalogs[key] = time.monotonic(), dict(selected)
@@ -153,9 +179,12 @@ class DirectContexts:
         options["client_tool_call"] = tool
         return options
 
-    def _operation(self, session_id: str) -> Json | None:
+    def _operation(self, session: Json) -> Json | None:
+        identity = self.data.identity(session)
         row = self.store.db.execute("SELECT request_id,status,error,result FROM direct_context_operations "
-            "WHERE session_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", (session_id,)).fetchone()
+            "WHERE session_id=? AND generation=? AND account_id=? AND model=? "
+            "ORDER BY created_at DESC,rowid DESC LIMIT 1",
+            self.data._key(identity)).fetchone()
         if row is None:
             return None
         return {"request_id": row["request_id"], "status": row["status"], "error": row["error"],
@@ -165,19 +194,26 @@ class DirectContexts:
         metadata = await self.catalog(session)
         saved = self.data.snapshot(session)
         metrics = dict(saved["metrics"])
-        policy = ContextPolicy.from_catalog(metadata).public()
+        if session["backend"] == "deepseek_account":
+            from kira.backends.deepseek_context import context_policy
+            policy = context_policy(metadata)
+        else:
+            policy = ContextPolicy.from_catalog(metadata).public()
         for key in ("context_window", "default_context_window", "max_context_window", "reserved_tokens",
                     "compact_threshold", "capacity_source", "maximum_verified"):
             if policy.get(key) is None and key in metrics:
                 policy[key] = metrics[key]
-        operation = self._operation(session["id"])
+        operation = self._operation(session)
         pending = bool(operation and operation["status"] == "pending")
         status = self.statuses.get(session["id"], {})
         memory = saved["memory"]
         sources = list(dict.fromkeys(source for entry in memory for source in entry.get("source_ids", [])))
-        return {"backend": session["backend"], "model": session["model"], "account_id": saved["account_id"],
+        public_account_id = (saved["account_id"] if session["backend"] == "openai_chatgpt"
+                             else "deepseek_account" if session["backend"] == "deepseek_account" else "")
+        return {"backend": session["backend"], "model": session["model"], "account_id": public_account_id,
                 "provider_generation": saved["generation"],
-                "mode": "automatic_maximum" if session["backend"] == "openai_chatgpt" else "provider_managed",
+                "mode": "automatic_maximum" if session["backend"] == "openai_chatgpt" else
+                        "automatic_kira" if session["backend"] == "deepseek_account" else "provider_managed",
                 "policy": policy,
                 "metrics": {**metrics, "compaction_count": metrics.get("compactions", 0 if saved["has_state"] else None),
                     "last_compacted_at": metrics.get("last_compaction_at"),
@@ -191,8 +227,8 @@ class DirectContexts:
         if self.service._closing or self.service.stopping.is_set() or self.service._settings_changing:
             raise KiraError("BUSY", "Service or provider settings are changing")
         session = ProjectChats(self.store).owned_session(project_id, session_id)
-        if require_direct and session["backend"] != "openai_chatgpt":
-            raise KiraError("UNSUPPORTED", "Direct context maintenance requires OpenAI direct")
+        if require_direct and session["backend"] not in {"openai_chatgpt", "deepseek_account"}:
+            raise KiraError("UNSUPPORTED", "Automatic context maintenance is unavailable for this provider")
         if ProjectChats(self.store).enrich(session)["archived"]:
             raise KiraError("ARCHIVED", "Restore this chat before changing its context")
         project = self.store.one("projects", project_id)
@@ -230,16 +266,27 @@ class DirectContexts:
         fingerprint = hashlib.sha256(encode({"method": method, **params}).encode()).hexdigest()
         previous = self.store.db.execute("SELECT * FROM direct_context_operations WHERE request_id=?", (request_id,)).fetchone()
         if previous:
-            if previous["fingerprint"] != fingerprint or previous["session_id"] != session_id:
+            identity = self.data.identity(session)
+            if (previous["fingerprint"] != fingerprint or previous["session_id"] != session_id
+                    or previous["generation"] != identity["generation"]
+                    or previous["account_id"] != identity["account_id"]
+                    or previous["model"] != identity["model"]):
                 raise KiraError("CONFLICT", "Context request identity was used with different input")
             return {"context": await self.snapshot(session), "operation": self._operation_by_id(request_id)}
         project, session = self._admit(project_id, session_id,
                                        require_direct=method == "session.context.compact")
         if method == "session.context.compact":
-            await self.service.direct_accounts.prepare(session["settings"])
+            if session["backend"] == "openai_chatgpt":
+                await self.service.direct_accounts.prepare(session["settings"])
+            else:
+                await self.service.deepseek_accounts.prepare()
             previous = self.store.db.execute("SELECT * FROM direct_context_operations WHERE request_id=?", (request_id,)).fetchone()
             if previous is not None:
-                if previous["fingerprint"] != fingerprint or previous["session_id"] != session_id:
+                identity = self.data.identity(session)
+                if (previous["fingerprint"] != fingerprint or previous["session_id"] != session_id
+                        or previous["generation"] != identity["generation"]
+                        or previous["account_id"] != identity["account_id"]
+                        or previous["model"] != identity["model"]):
                     raise KiraError("CONFLICT", "Context request identity was used with different input")
                 return {"context": await self.snapshot(self.store.one("sessions", session_id)),
                         "operation": self._operation_by_id(request_id)}
@@ -291,10 +338,10 @@ class DirectContexts:
             # create a fake execution. Freeze the current user-level identity
             # before provider discovery can yield, for budget accounting.
             soul_context = self.service.souls.context(session)
-            provider = self.service._backend("openai_chatgpt")
+            provider = self.service._backend(session["backend"])
             compact = getattr(provider, "compact_context", None)
             if compact is None:
-                raise KiraError("UNSUPPORTED", "The selected provider cannot compact direct context")
+                raise KiraError("UNSUPPORTED", "The selected provider cannot compact its working context")
             options = await self.options(session, None, provider)
 
             async def emitted(kind: str, payload: Json) -> None:
@@ -323,7 +370,9 @@ class DirectContexts:
                 raise KiraError("UNSUPPORTED", "Context maintenance cannot execute tools")
 
             context = RunContext(run_id="context:" + request_id, project={**project, "permission": "read_only"},
-                session={**session, "provider_generation": self.data.identity(session)["generation"]},
+                session={**session, "provider_generation": self.data.identity(session)["generation"],
+                         **({"context_account_id": self.data.identity(session)["account_id"]}
+                            if session["backend"] == "deepseek_account" else {})},
                 prompt="", supplied_context="Project instructions:\n" + project["instructions"] +
                     "\nUser project memory:\n" + encode(project["memory"]) + self.notes(session) +
                     ("\n" + soul_context if soul_context else ""),

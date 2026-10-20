@@ -264,7 +264,129 @@ sanitize any report before deliberately sharing it.
 
 The configured endpoint defaults to `http://127.0.0.1:11434`. Explicit HTTP(S) remote endpoints are supported; embedded credentials are rejected. Kira does not switch endpoints, pull models, or download weights. The native API uses NDJSON, not SSE. `/api/tags`, `/api/show`, `/api/ps`, and `/api/chat` provide catalog, capability metadata, loaded model details, and inference. These interfaces are documented by [Ollama chat](https://docs.ollama.com/api/chat), [tool calling](https://docs.ollama.com/capabilities/tool-calling), and [running models](https://docs.ollama.com/api/ps).
 
-Model metadata and runtime observations remain separate: installed size, model context metadata, requested `num_ctx`, loaded context, and model VRAM allocation are distinct fields. Total device memory is not inferred from model allocation. Counts and durations come from provider response fields; absent values remain absent/unknown. Images are advertised as unsupported by this release even when an underlying model accepts them.
+Model metadata and runtime observations remain separate: installed size, model context metadata, requested `num_ctx`, loaded context, and model VRAM allocation are distinct fields. Total device memory is not inferred from model allocation. Counts and durations come from provider response fields; absent values remain absent/unknown. Release 0.15.1 advertises images as unsupported.
+
+For Ollama, `num_ctx` is a per-chat request override; zero leaves the model's
+configured default in effect. The optional `think` setting can preserve that
+default or explicitly turn the model's internal reasoning generation on/off.
+The adapter never publishes or persists the raw `thinking` field.
+The experimental model details expose presets for the provider default, 32K,
+128K and 256K. These are requested limits, not a guarantee that the selected
+model or machine can load that context; inspect Ollama's loaded-context and
+memory metrics after changing the setting.
+
+## DeepSeek account (experimental source)
+
+The 0.16.0.dev1 branch has an account-backed DeepSeek provider. Its sign-in is
+implemented in Kira using the first-party DeepSeek Harness account flow as the
+protocol reference: PKCE, an exact loopback callback, state validation, and an
+account grant stored privately under the selected Kira profile. Kira does not
+read browser cookies or import Harness runtime code. The flow and its model
+transport are described in the [DeepSeek Harness account packages](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/credentials/deepseek-account-platform)
+and [account Messages provider](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/llm/llm-deepseek-account).
+
+Inference uses the account grant only with `https://api.deepseek.com`, through
+the Anthropic-compatible Messages transport and `x-dsh-auth-token`. The catalog
+comes from the account model list. The adapter reuses Kira's Ollama tool loop,
+so local file/command permissions, Kira service tools, browser/Computer,
+questions, Teams, research and other callbacks stay service-owned. An inherited
+Ollama `tools: false` preference does not disable DeepSeek's Kira tool loop;
+project permission scopes still filter or reject operations. Internal
+thinking blocks are discarded; Kira does not display raw private reasoning.
+Normalized image attachments are sent as base64 image blocks when the selected
+catalog model advertises vision; text-only models reject image inputs. The same
+capability check applies to the optional DeeperSeeker catalog.
+If DeepSeek ends a response with incomplete tool JSON, Kira drops every tool
+call from that response, reports an interrupted turn, and marks execution as not
+started. It does not retry those calls automatically; continue explicitly after
+reviewing any earlier completed tool effects in the same turn.
+Non-success Messages responses retain only bounded JSON `code`, `type` and
+`message` fields for diagnosis; the raw provider body is discarded. Authentication,
+quota, rate-limit and server errors during the tool probe now stop the turn
+instead of being misreported as unsupported tools followed by another request.
+This account route follows a rapidly changing developer-preview project and
+has not received live account or inference qualification.
+
+The same experimental DeepSeek provider can optionally connect to a
+DeeperSeeker instance. The user selects this mode in the DeepSeek pane, supplies
+the instance base URL and API key, and Kira stores the key in a separate
+user-owned `0600` file inside the private profile credential directory; it is
+not returned by status or exported settings. Kira calls `GET /v1/models` and
+streams Anthropic Messages requests to `POST /v1/messages` with Bearer
+authentication. The configured URL must use HTTP or HTTPS and cannot contain
+embedded credentials, query or fragment components. Keep the instance bound to
+loopback unless remote access is deliberately secured. Kira keeps its service
+owned tool loop, permissions and durable context handling for this transport.
+Image and context/output metadata are taken from the proxy catalog when present;
+tool availability still requires Kira's side-effect-free runtime probe. This
+path has not received live proxy qualification.
+
+## DeepSeek web session (experimental source)
+
+The separate `deepseek_web` backend uses a manually supplied `userToken` from
+the user's DeepSeek web session. Kira stores it in a private file under the
+selected profile, validates it against `chat.deepseek.com`, and sends it only to
+that origin. It does not import another browser profile, use the Harness PKCE
+grant, or call the account-backed Messages API. The current web model entries
+(`deepseek-v4-flash` and `deepseek-reasoner`) are configured locally because the
+adapter has no live model-inventory endpoint. The web transport solves the
+site's Proof-of-Work challenge and streams completions. Kira mediates text-only
+browser/web search, project, file, command and information-question tools through
+strict JSON envelopes. The prompt asks the model to use one JSON envelope per
+tool call; the parser also accepts legacy DeepSeek DSML envelopes and a single
+matching Markdown code fence. Surrounding prose is rejected. For a malformed
+envelope, Kira asks DeepSeek for a corrected JSON call up to two times
+consecutively; a valid tool envelope resets this repair limit for the next tool
+round. Kira executes no tool until parsing and validation succeed. Calls continue through the
+service's permission, mode and approval checks. If a stream ends before a complete
+response, Kira saves the last confirmed parent and marks the next turn to resume
+in the same remote chat; it does not replay tools from the incomplete response.
+If the Kira service itself stops during a turn, the next explicit continuation
+can also resume that saved parent when every run after it is recorded as
+interrupted. Kira supplies a bounded record of the interrupted request and
+completed tool outcomes as historical context, and instructs the model not to
+repeat recorded side effects. A missing or mismatched account, model, or remote
+reference still starts a new remote chat rather than guessing which thread to use.
+This is a Kira-managed protocol,
+not native DeepSeek function calling. The `deepseek-v4-flash` and
+`deepseek-reasoner` model choices accept image inputs in this web route: Kira uploads normalized user attachments and requested
+Browser screenshots to the DeepSeek web file endpoint, waits for processing, then
+passes the resulting file references in vision mode. Computer interaction tools are not exposed. This image-upload route is
+reverse-engineered from the web client and is separate from the documented API-key
+vision endpoint. Uploaded images are sent to DeepSeek under the connected web
+account. Kira persists the remote chat ID and, when DeepSeek returns one, its
+parent-message ID; it reuses that chat across turns for the same account and
+model. Without a parent ID Kira resends its bounded transcript in that remote
+chat. If the chat reference is missing or the model/account changes, Kira starts
+a new remote chat seeded from the bounded local transcript. An interrupted Kira
+run can resume from the last confirmed parent when its saved remote reference is
+still valid. The full Kira instruction set, current project
+context and tool catalog are sent when a remote chat is bootstrapped. Later
+turns send a compact current-scope and request update; Kira refreshes the full
+bootstrap when its application instructions, project instructions or memory,
+mode, scope, settings or registered tool schemas change. Tool-loop continuations
+send only new tool results and a short continuation instruction. The integration
+remains experimental and has not received broad live qualification.
+
+DeepSeek Harness' account exchange has been reported to create a platform
+managed key that may remain after local sign-out; the Harness issue tracker
+reports that its logout route does not revoke that key ([issue 9472](https://github.com/deepseek-ai/deepseek-harness/discussions/9472)).
+Kira's DeepSeek sign-in pane discloses this before login. Logging out removes
+Kira's local grant and asks DeepSeek to end the account session, but cannot
+claim that the separate managed key was revoked.
+
+The experimental 0.16.0.dev1 source maps Ollama function calls to Kira's
+registered tool set: project files and commands, history and questions,
+assistant/team operations, research, knowledge, project tools, goals, Studio,
+browser and Computer. Each callback retains its Kira service validation,
+permission and approval checks. With the general tools setting off, Ollama
+receives only the separately enabled browser/Computer tools. Browser text tools
+are registered only when the model passes the side-effect-free tool probe.
+Visual tools additionally require `/api/show` to declare `vision`; owned
+screenshots are sent in Ollama chat messages and are not persisted in events.
+Kira adapts web search to `browser.search`; OpenAI-hosted `web_search` itself
+remains specific to OpenAI direct. This source change has not been live
+qualified across the full tool set; see [STATUS](STATUS.md).
 
 The 0.2 audit correction bounds metadata before JSON decoding: 262,144 bytes per
 response and a 10-second total deadline. Requests require identity encoding;
@@ -282,6 +404,38 @@ Tool metadata alone does not enable execution. When a run requests tools for a m
 The service owns the actual `list_files`, `search_files`, `read_file`, `write_file`, and `run_command` operations. Tool schemas are restricted by project permission. File writes require an expected SHA256 for an existing file or null for create-only; commands use argv without implicit shell interpretation. The provider validates complete argument objects and sends structured errors back to the model when they are invalid.
 
 The parser handles split UTF-8 and JSON records incrementally, with a 1 MiB record limit. Assistant content, private thinking required by the API, and tool calls are accumulated until `done: true`. Tools are never executed from a partial response. Thinking is retained only in the active in-memory exchange and never published or persisted; the service also removes private fields recursively from retained provider messages. Portable assistant/tool message fields are preserved for subsequent turns. If interrupted history contains a tool request without a recorded result, the next explicit continuation receives `UNKNOWN_OUTCOME` and an instruction to inspect current state; no side effect is replayed by the adapter.
+
+Ollama chat streams use a 600-second read-inactivity timeout, separate from the
+short metadata deadlines. Large prompts can take several minutes to prefill
+without yielding a stream chunk; this limit is not a total run deadline and
+explicit cancellation remains available. A read timeout is reported with this
+cause instead of a bare HTTP client exception. When verified tools are supplied,
+the Ollama-only system instructions tell the model to execute the next useful
+tool call instead of ending on an announcement, and to continue after tool
+results until completion or a concrete blocker. This improves prompting but
+cannot force a model to emit a tool call. No thinking content is exposed or
+persisted by this guidance.
+
+If a local model template returns the specific `No user query found in messages`
+error after tool results, Kira retries once with the original request as an
+explicit provider-only continuation. Completed tool results remain in context;
+Kira does not replay them. The recovery is bounded to one attempt per run and
+does not apply to other HTTP 500 errors.
+
+DeepSeek also uses Kira-managed automatic context compaction. The service pages
+the durable original history into a provider-specific Messages checkpoint. Kira
+estimates pressure from the selected model catalog and calibrates its byte/token
+ratio using actual DeepSeek input usage; there is no preflight counter on this
+account route. It compacts before sending a request, uses a no-tool/no-thinking
+summary call, validates cited source IDs and retains a recent tail. The default
+trigger is the lower of 80% of the active window and the window less the 65,536
+token local request output cap and 65,536 token headroom. The most recent 16% of the
+usable window is retained verbatim. Fallback catalog capacity is capped at 256K
+and marked unverified. Original chat events and tool results remain unchanged;
+historical tool requests are inert records and are never replayed. The summary
+call consumes DeepSeek account usage. A bounded HTTP 400/413 response explicitly
+identifying context overflow allows one compaction and retry; uncertain requests
+are never retried.
 
 Cancellation closes the active client stream and cancels Kira-owned local work through the service. The result explicitly does not promise remote generation termination. Broken streams cannot become successful runs. HTTP overload and invalid tool requests are visible failures. A configured `max_tool_rounds` is enforced; three identical successive tool requests/results stop with a stated lack-of-progress reason. Response bytes and command timeouts use the service's configured resource limits. These guards are not represented as model reasoning limits.
 
@@ -315,6 +469,85 @@ uv run ruff check src/kira/backends tests/test_backends_codex.py tests/test_back
 uv run mypy src/kira/backends
 ```
 
+## Claude Code through the Agent SDK (personal use, experimental source)
+
+The `claude_code` backend drives the unmodified Claude Code binary bundled with
+the optional `claude-agent-sdk` dependency. Install it in a development checkout
+with `uv sync --frozen --extra claude-code`; the extra is not part of the Debian
+package, and a plain `uv sync` removes it again. Claude Code keeps its own
+sign-in: Kira has no sign-in flow for it and never reads, stores or forwards
+Claude credentials. Sign in once with `claude` and `/login` in a terminal.
+This provider is intended only for the signed-in user's own local work; do not
+enable it in a build distributed to other people. Anthropic's terms ask
+developers of products built on the Agent SDK to use API key authentication.
+
+Kira starts Claude Code through a private generated launcher in its runtime
+directory. The launcher keeps the process identity, makes it the leader of its own
+session so the service can register and clean it up like Codex, and passes only
+desktop basics plus `CLAUDE_*`, `ANTHROPIC_*` and locale variables. Claude Code
+loads no user or project settings (`setting_sources=[]`), no external MCP servers
+(`strict_mcp_config`) and no `CLAUDE.md`; Kira supplies instructions and context.
+
+The project permission selects the built-in tools: read-only offers `Read`, `Glob`
+and `Grep`; project write adds `Edit`, `Write` and `NotebookEdit`; trusted host and
+full access add `Bash`, `WebFetch` and `WebSearch`. Subagents and other built-ins
+are not offered. Background commands are disabled
+(`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`): Claude Code ends with the Kira run, so
+a command must finish within its Bash timeout. Claude Code's own per-directory
+automatic memory is disabled (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`): Kira supplies
+project memory, chat notes, cross-chat excerpts and the research registry, and the
+model proposes durable records through `kira.research_propose` for user review.
+Permission mode `dontAsk` denies anything not listed, and a
+`PreToolUse` hook denies every unlisted tool and every file path or Glob pattern
+that resolves outside the project unless full access is enabled. Observed tool
+events keep the recorded identity `claude_code.<Tool>` (Kira MCP tools keep their
+Kira names after the prefix); the transcript receipts show the same operation
+labels as Kira's own tools with the literal path, command, pattern, URL or query,
+and unknown native tools stay literal as `Claude Code · <Tool>`. Built-in tool
+execution belongs to Claude Code; Kira records `tool.started`/`tool.completed`
+observations and artifacts for written files and never re-executes them.
+Kira's assistant, history, knowledge, research, project-tool, goal, Studio,
+browser, Computer and question callbacks are served through one in-process MCP
+server named `kira`; the turn stops if Claude Code reports that server as not
+connected. The browser and Computer namespaces are offered under the same
+conditions as for the other providers (browser enabled for the chat, Kira tools
+on, not a Team member). A successful `browser.screenshot`, `computer.observe` or
+`computer.act` returns its text result plus the owned screenshot as an MCP image
+block (PNG, at most 2 MiB); a failed image delivery returns an error result while
+the screenshot itself stays in Kira's private artifacts. Claude Code keeps those
+images in its own session transcript like any tool result; Kira does not trim
+them. Up to four imported PNG attachments of the current turn are sent as image
+blocks of the user message; earlier turns' images are not re-sent after a
+provider switch, and portable history stays text.
+
+Discovery reads Claude Code's own model catalog and supported effort levels
+without sending a prompt. The account summary contains only the plan name and
+provider; the address and organization are not returned. The Claude Code session
+ID is the chat's native reference and is resumed on later turns; after a provider
+switch the first turn receives Kira's portable history. Only a result whose
+`origin` is absent or `human` completes the Kira prompt. Claude Code reports
+injected turns separately, for example a notification about a background command
+stopped with an earlier run, which a resumed session handles before the prompt;
+Kira records a notice and keeps waiting. **Ferma** sends an
+interrupt and waits up to 15 seconds for Claude Code's terminal result. Usage
+reports provider token counts only; Claude Code's API-equivalent cost estimate
+is not shown.
+
+Synthetic fixtures cover option mapping, the path guard, the launcher, streaming,
+tool observation, MCP callbacks, browser/Computer screenshot delivery, image
+attachments, questions, cancellation, injected-turn results and discovery. Live smoke tests ran the backend outside the service with a
+signed-in subscription account: a project file read, a denied read outside the
+project in the resumed session, an interrupted stream, and a resumed session
+holding a stopped background command's notification, which still returned the
+prompt's answer. Through an isolated service, a Claude Code chat proposed a
+research record, the record was accepted, and a new chat retrieved it. The GUI integration has not been live
+qualified.
+
+```sh
+uv sync --frozen --extra claude-code
+uv run pytest tests/test_claude_code.py
+```
+
 ## Kira assistant tools (0.5)
 
 Ordinary Codex chats may receive the scoped `kira` namespace through a private
@@ -330,6 +563,11 @@ Managed Team members use the existing dynamic `team` mailbox namespace. Both
 paths disable and verify native delegation so the visible Kira roster remains
 authoritative. MCP notifications remain observable tool evidence, including
 approval failures, and never cause a second execution of an action.
+
+The experimental DeepSeek Account adapter uses the same service-bound mailbox
+callback for coordinators and members. Team member runs keep their dedicated
+assignment history and mailbox; ordinary-chat context checkpoints are not
+attached to them.
 
 The service-owned assistant operating contract uses supported developerInstructions;
 project instructions, memory and tool content are never promoted into that field.
