@@ -54,7 +54,7 @@ does not bypass approval requests: if a cycle needs a consent, it waits for
 you.
 
 At every cycle Kira receives the goal, a compact progress summary, the planned
-next step and references to the evidence recorded in previous cycles; your
+next step and references to the records kept in previous cycles; your
 corrections stay in the conversation and take precedence. When details are
 needed, Kira consults the chat history with her own tools. The summary is a
 statement by the model: it helps to keep the thread, but it does not replace
@@ -121,7 +121,7 @@ new configuration applies only after this resume; to change the identity of a
 chat with an active goal, pause it first.
 
 Closing the window does not erase the goal: it belongs to the service. After a
-service restart Kira keeps the goal, the checkpoint and the evidence, but does
+service restart Kira keeps the goal, the checkpoint and the records, but does
 not repeat a cycle left half-way or with an unknown outcome: the status becomes
 **Autonomous goal interrupted** with **Resume explicitly after restart**. A
 repeated command does not create a second goal or a duplicate cycle.

@@ -236,3 +236,357 @@ accepted the message) and **outcome to verify**. The provider's confirmation
 proves delivery, **not understanding**: check the response and the tool rows.
 A send with an uncertain outcome is not repeated automatically; a restart or a
 cancellation leaves it marked as undelivered or unknown.
+
+## 6. Request mode
+
+The mode chip under the field applies to the **next** request:
+
+| Mode | What it does | Effective permissions |
+| --- | --- | --- |
+| **Execute** | Carries out the request. | The project's. |
+| **Plan** | Analyzes and proposes a plan. | Read only. |
+| **Review** | Looks for concrete problems in the code or text. | Read only. |
+| **Recap** | Produces a readable summary of the conversation. | Read only. |
+
+The read-only modes do not change the project's saved permission: they only
+reduce it for that turn. To apply a plan go back to **Execute** and send a new
+explicit request; no plan is executed on its own. With Codex, the final plan
+appears in the conversation as a formatted response even when it arrives as a
+native plan instead of a normal message. **Recap** produces a response you can
+read: it does not compact the provider's context and does not replace
+compaction (see [Context and memory](CONTEXT_AND_MEMORY.md)).
+
+### Changes
+
+**Actions → Changes** shows the project files changed according to Git: staged
+changes, local changes and new files, with a read-only diff. You can pick a
+file for a focused view. Sensitive content, unreadable files and size limits
+can reduce what you see. This screen does not run repository hooks, does not
+use external diff tools and neither applies nor reverts changes. **Request
+review** prepares in the field a draft in **Review** mode with the diff
+preview: check it and send it. It also works with local providers that cannot
+run Git on their own.
+
+## 7. Archiving, branching, exporting
+
+All these actions are in **Actions → Manage chat**.
+
+### Archive chat
+
+**Archive chat** hides an **idle** chat from the main list and keeps its
+history, provider reference and files. In **Archived chats** you can open it,
+export it or restore it. An archived chat cannot start work: restore it before
+sending new messages. Archived chats do not feed new excerpts shared between
+chats. The archive is Kira's: it has no relationship with the provider's
+archive.
+
+### Continue from here
+
+**Continue from here** creates a new chat that starts from the end of the
+conversation or from a completed request chosen in the list. The original
+chat stays intact and no branch undoes the changes already made to the
+project files.
+
+- **Codex** uses a native branch. An intermediate point requires a **turn
+  boundary recorded** by the provider; an older chat that does not have one
+  can only branch from the end. The inherited context stays in the provider's
+  thread and the new chat's local history starts from the new requests; a
+  banner with **Open original chat** takes you back to the earlier messages
+  kept by Kira.
+- **Ollama** and **OpenAI direct · ChatGPT** receive an **explicit copy of the
+  recorded context**. The full copied source is limited to **8,000,000 bytes**
+  (beyond that, Kira refuses the branch); at subsequent requests the model
+  receives a declared excerpt of at most **100,000 characters** of the source.
+  No invented messages or events are inserted, and an uncertain branch
+  outcome is not repeated on its own.
+
+### Export chat as Markdown
+
+**Export chat as Markdown** saves the **whole** persisted conversation, even
+when the view shows only part of it, followed by the retained activity
+records and the current goal, if any. It includes the guidance accepted during
+work and the assistant's partial outputs; truncation markers already present
+in the events stay as they are. Artifact paths remain references: the files
+are neither read nor embedded. Large exports go through a private file of the
+service and a destination you choose. The export of a native Codex branch
+contains what Kira recorded in that branch: for the inherited history, export
+the starting chat as well. Always check the content before sharing it.
+
+**Copy last response** instead copies to the clipboard the text of a completed
+response present in the visible chat.
+
+## 8. Chat goal
+
+**Actions → Chat goal** opens a field in which to describe the desired
+result; **Save without starting** records it without starting any work. While
+it is active, Kira includes it in the context of every new turn of the chat.
+**Continue with one step** sends a single new explicit request; saving or
+resuming a goal starts no work cycle.
+
+**Pause goal** removes the text from new turns (without retracting what the
+provider has already received), **Resume goal** puts it back and **Mark
+completed** records your assessment, which is not an independent verification
+of the result. These commands do not replace **Stop** for a turn already
+started. A saved goal appears as a compact box above the field only when an
+explicit record exists; opening it shows the same controls.
+
+To have Kira work in successive cycles without sending every step by hand,
+use the `/obiettivo` command described in
+[Autonomous goals](AUTONOMOUS_GOALS.md).
+
+## 9. Persistent questions
+
+When the model needs a choice and phrases it as a structured question, Kira
+opens a box separate from the conversation. For each question you can select
+one of the choices or **Other** and write the answer; **Send answer** becomes
+active when all the questions of the form have an answer. No option is chosen
+or sent automatically.
+
+The box is not modal: you can close it and reopen it from the **Questions**
+button in the tool tray or with **Ctrl+Shift+Q**; the questions banner stays
+visible as long as there are answers to give. **Asynchronous** questions let
+the agent continue its independent work; **blocking** ones stop that turn
+until you answer.
+
+Kira distinguishes three answer states: **saved** (recorded by Kira), **being
+forwarded** and **forwarded to the backend**. The last state proves that the
+provider received the answer, not that the model used it. If the turn ends,
+is cancelled or the forwarding fails, the request is closed: question and
+answer remain readable and copyable for a new turn, without automatic
+resends. Questions from Team members appear in the same list.
+
+| Limit | Value |
+| --- | --- |
+| Question requests per run | 16 |
+| Questions per request | 1 to 3 |
+| Choices per question | at most 6 |
+| Form (encoded) | 64 KiB |
+| Answer set | 16 KiB |
+
+Requests and sent answers survive reconnection and restart. Free-text answers
+**not yet sent** stay only in memory and are lost when you close the app or
+switch project. A question written in the text of a response does not become
+a form: the provider's structured format is required. Requests for passwords
+or secrets are refused (provider sign-in uses their normal flow). Answers
+never change the project permissions, do not approve commands and do not
+start or resume work.
+
+## 10. Attachments and images
+
+### Who sees the images
+
+| Provider | Visual content of attachments |
+| --- | --- |
+| **OpenAI direct · ChatGPT** | Yes |
+| **DeepSeek Account** (experimental) | Yes, only with the models whose catalog entry declares image support |
+| **DeepSeek Web** (experimental) | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) |
+| **Claude Code · personal use** (experimental) | Yes, up to 4 PNGs |
+| **Codex**, **Ollama** | No: the attachment becomes a reference to the path, as text |
+
+A refusal by the model is shown as an error: Kira does not change model on its
+own.
+
+### Attaching an image
+
+With a provider that accepts images you can press **Attach** and choose the
+files, paste an image from the clipboard with **Ctrl+V**, **Shift+Ins** or
+**Paste**, or drag image files when the system forwards the drag. Every image
+appears with preview, name and dimensions, and can be removed before sending.
+You can send an image-only message or queue images together with text.
+
+| Limit | Value |
+| --- | --- |
+| Images per message | 4 |
+| Accepted formats | PNG, JPEG, WebP, static GIF |
+| Source file | 32 MiB and 32 million pixels |
+| Each normalized PNG | 8 MiB |
+| Normalized total per message | 16 MiB |
+
+Animated GIF, WebP and APNG are refused, not reduced to the first frame. A
+file over a limit fails with a message: Kira neither resizes nor discards
+silently.
+
+### Normalization and retention
+
+Preparation is local and contacts no service. Kira honors the recorded
+orientation, converts colors to **sRGB** and copies the pixels into a new PNG
+**without EXIF, comments, text and color profiles**. Dimensions stay the
+original ones (width and height are swapped only if the orientation requires
+a rotation). The original file is not touched, and modifying it after import
+changes neither the preview nor what will be sent. The bytes are transmitted
+to the provider only with the message.
+
+Images in the draft are saved per chat and found again after a restart. If
+you switch provider or model to one without vision, the images stay in the
+draft but sending is blocked: choose a compatible model or remove them.
+
+### Paths as text
+
+**Writing or pasting a path remains text**: it does not attach the bytes and
+does not let the model see the image. With **Codex** and **Ollama**,
+**Attach** and paste always insert the local path, even for images; with the
+direct provider the same applies to non-image files and to free-text answers
+to questions. An image pasted from the clipboard into an answer to a question
+is saved as a private PNG in the `attachments/` folder and inserted as a path.
+Reading a path requires the project's tools and permissions and does not
+guarantee visual understanding.
+
+A reference import accepts at most **64 files** and **16,384 characters** of
+paths; converting an image from the clipboard for a reference has the same
+limits of 32 MiB and 32 million pixels. Preparation happens off the UI thread,
+shows progress and errors and disables sending until it is finished.
+
+### Windows and WSL
+
+From Windows **File Explorer** copy the files with **Ctrl+C** and paste them
+into Kira with **Ctrl+V**: Kira queries the Windows file list only at that
+moment (no clipboard monitoring) and recognizes the paths reachable from the
+current WSL distribution, including mounted drives. Wait for the preview or
+the reference to appear before sending. Missing files, inaccessible mounts and
+a different distribution are reported; nothing is downloaded from the network.
+Direct drag to the Linux window depends on WSLg: when it does not arrive, use
+copy/paste or **Attach**. In the picker, drive C: is `/mnt/c`.
+
+### Where the files end up
+
+Kira keeps the normalized PNGs in `image-attachments/` and the path- or
+clipboard-based inputs in `attachments/`, both in the data folder
+(`$HOME/.local/share/kira/`, or `$KIRA_HOME/data/`). Imported files are
+read-only and private to your user. Removing an attachment from the draft
+deletes neither the files already imported nor the images of sent messages;
+there is no automatic expiry. A database-only backup does not contain these
+bytes: keep the data folder as well (see [Installation](INSTALLATION.md)).
+
+## 11. Tool receipts
+
+Every operation the model performs (reading a file, a command, a text search,
+a browser page…) appears in the chat as a **receipt**: a row with a light-blue
+thread on the left, the operation label, the literal path or command and the
+outcome. The labels are the same for all providers (**Reading the file**,
+**Running the command**, **Searching text**…); the tool's native name stays in
+the row's original data. An unknown tool keeps its literal name.
+
+### Kira activity
+
+Consecutive operations of the same request are gathered in a **Kira
+activity** group, with the number of operations and their overall status. The
+grouping does not cross user or assistant messages, notices, Team entries or
+different requests; it is presentation only: order, contents and original
+data of the individual rows stay intact. Open the group to see the receipts;
+errors and unconfirmed outcomes remain visible even with the group closed.
+
+### Preview and full body
+
+Receipts start compact: they show the first **12 lines**, up to **1,600
+characters**, in about 144 pixels of height. Short results have no toggle;
+long ones offer **Show all** and **Collapse**, by keyboard and pointer. The
+body shown is limited to **131,072 characters** with a notice: expanding does
+not recover bytes absent from the recorded output; for very large outputs use
+**Export** or the artifacts. When the history is reloaded, receipts start
+compact again.
+
+For every receipt you find: **Copy** (always copies the full body, regardless
+of the preview), **Copy command**, **Data** (the JSON of the recorded event),
+**Artifacts** (the files recorded as results) and **Open folder**, because not
+every file created by a command automatically becomes an artifact. A sentence
+from the model such as "I ran the command" must always be compared with the
+actual receipt.
+
+### Status indicators
+
+Every receipt and the activity row use a color, a symbol and an accessible
+label: **blue** running, **green** confirmed completion, **red** error,
+**amber** waiting, paused or unconfirmed outcome, **gray** queued, cancelled
+or unknown. Only an operation actually in progress pulses (1.4-second cycle,
+no movement); the animation stops when the window is hidden, with **Reduce
+motion** or outside the active chat. A request that ended with failed or
+unconfirmed tools keeps those outcomes visible: the completion of the turn
+does not become the success of every tool.
+
+Opening a receipt keeps the reading position and suspends automatic
+scrolling; **Latest updates** brings you back to the bottom and re-enables
+it.
+
+## 12. Formatted responses
+
+The assistant's responses are rendered as Markdown: headings, bold, italic,
+strikethrough, lists, quotes, inline code, code blocks, tables, horizontal
+rules and links. This also applies to conversations already saved. Selection
+crosses paragraphs and code; **Ctrl+C** copies the text as you see it, so a
+command without the block delimiters.
+
+For every response: **Copy** copies the whole original Markdown; **Text**
+shows the source and **Formatted** returns to the formatted view (the choice
+persists during streaming). Tool results, user messages and labels always
+remain literal text.
+
+- **Links** open only on click: HTTP/HTTPS pages with a host and without
+  embedded credentials, or **existing, non-executable** documents inside the
+  project folder. Scripts, programs, files with an executable bit or an
+  executable header are blocked: open them in your editor. Other schemes and
+  remote file hosts are refused. Opening a document runs no commands.
+- Markdown **images** appear as text descriptions: nothing is downloaded.
+- **HTML** written by the model stays visible as literal text.
+- `diff` blocks color added and removed lines while keeping the `+` and `-`
+  signs; there is no general syntax highlighting and no interactive checkboxes
+  for task lists.
+- The renderer accepts at most **131,072 characters** of input and 20 nesting
+  levels; beyond the output limit it shows the source.
+
+**Typographic punctuation** (quotes and dashes) changes only the display of
+prose; sent text, code and **Copy** stay identical. Details in
+[Appearance and language](APPEARANCE_AND_LANGUAGE.md).
+
+## 13. Request status
+
+Every run of a request has its own final status: several **Completed** rows
+in **Activity** refer to different requests, not to repeated work.
+**Completed** means the backend confirmed the end of the run; it is not proof
+that every task succeeded, which is why the responses, receipts and artifacts
+remain. The **Activity** cards show an excerpt of the request (up to 160
+characters), the start time and the outcome time in **UTC**; **Details**
+shows identifiers, full request, event sequence, status, error and recorded
+outcome in JSON.
+
+If the chat's last request fails or is interrupted, an **error box** appears
+above the message field with the available reason and a reference to the
+request; **Details** opens the full error with HTTP code and call identifier,
+when the provider supplies them. The box reappears when the chat is reopened
+and is replaced by the next request; earlier outcomes remain in
+**Activity**. It does not appear while the history is loading, during a new
+send or for your own cancellations.
+
+An **HTTP 503** means the provider was unavailable for that request; the code
+alone does not say whether the cause was overload, a billing problem or
+something else. Kira **does not resend** automatically, does not replace the
+draft and does not change model: the sent message is saved in the chat
+anyway. Before retrying, check in **Activity** the actions already executed.
+
+## 14. Chat preferences
+
+In **Settings → Work** and in the other tabs you find the preferences that
+concern the conversation. They are saved immediately in
+`$HOME/.config/kira/ui.json` and do not touch project permissions, models or
+credentials.
+
+| Preference | Values | Notes |
+| --- | --- | --- |
+| Chat text size | 12 to 20 px (default 14) | Interface and code sizes are separate, in **Appearance**. |
+| Density | compact / comfortable | |
+| **Reduce motion** | yes / no | Stops animations while keeping the status texts. |
+| **Sidebar** | **Whole / Icons only / Hidden** | Also with **Ctrl+B**. |
+| Tool **Labels** | yes / no | Shows the text next to the icons of the tray under the field. |
+| **Open the model options with the chat** | yes / no | Opens **Provider, model and reasoning** when entering a chat. |
+| **Details** panel | open / closed | The right-hand panel starts closed; the choice is remembered. |
+| Confirmation on close | **while working** / **always** / **never** | Closing the window never stops a turn. |
+| Opening files | system application / **VS Code** | VS Code requires the `code` command; if it is missing, Kira reports it. |
+| Initial permission of **new** projects | **Read only** (default) and the others | Existing projects do not change; wider permissions must be chosen explicitly. |
+| **The next step** hint | visible / hidden | **Hide** closes it; here you re-enable it. It does not delete the saved note. |
+| **Show reasoning summaries** | yes / no | Shows or hides the **Reasoning summary** panel under the chat without interrupting the work. |
+
+The **Reasoning summary** is the public summary that some providers (Codex,
+OpenAI direct) supply during processing; it does not certify that an operation
+happened and is not the final response; with Ollama it is not available.
+Themes, fonts, column width and interface language are in
+[Appearance and language](APPEARANCE_AND_LANGUAGE.md); the choice of provider
+and model in [Providers](PROVIDERS.md).

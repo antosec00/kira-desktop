@@ -67,9 +67,9 @@ you open it. No value is invented: what the provider does not declare (size,
 context window, image support) remains unknown in the model card too.
 
 **Shared settings** are in **Settings → Connections**: **Tool timeout
-(seconds)**, **Tool round limit (0 = unlimited)** and **Maximum output per run**
-apply to all providers and take effect with **Save settings**. While work is
-running, connections and limits cannot be edited; interface preferences can.
+(seconds)**, **Tool round limit (0 = unlimited)** and **Maximum output per
+run** apply to all providers and take effect with **Save settings**. While work
+is running, connections and limits cannot be edited; interface preferences can.
 
 ## Ollama
 
@@ -139,9 +139,10 @@ execution.
 
 Ollama receives a recent, limited window of the history, with an indication of
 how much was omitted. A model with verified tools can retrieve the rest through
-the history and Knowledge tools; with tools disabled or unsupported, the archive
-is still kept but the model cannot consult it on its own. The **Important chat
-notes** and the project instructions stay in the initial context.
+the history and Knowledge tools; with tools disabled or unsupported, the
+archive is still kept but the model cannot consult it on its own. The
+**Important chat notes** and the project instructions stay in the initial
+context.
 
 In **Details** you find two options that are saved with the chat:
 
@@ -191,12 +192,13 @@ it does not guarantee that the server stops generating immediately.
 ### Branching, queue and modes
 
 Ollama uses the same queue, the same archive and the same chat goals as the
-other providers. **Plan**, **Review** and **Recap** reduce the local permissions
-to read only for that request; there is no provider-native mode. **Continue
-from here** creates a new branch by copying the readable text context within
-declared limits; it does not clone an Ollama process and does not undo changes
-already made to files. Guidance sent while work is running is added to the next
-request to the model, after the response or tool already in progress.
+other providers. **Plan**, **Review** and **Recap** reduce the local
+permissions to read only for that request; there is no provider-native mode.
+**Continue from here** creates a new branch by copying the readable text
+context within declared limits; it does not clone an Ollama process and does
+not undo changes already made to files. Guidance sent while work is running is
+added to the next request to the model, after the response or tool already in
+progress.
 
 Ollama does not provide a public reasoning summary: the **Reasoning summary**
 panel says so and does not show the raw internal reasoning.
@@ -376,8 +378,8 @@ You can connect several accounts with **Add account**, choose the **Account for
 new chats** in the panel menu and disconnect one with **Disconnect account**.
 Every direct chat stays bound to the account it started with, even if you later
 choose another account for new chats; model changes and Team continuations keep
-the binding. To change the account of an existing conversation, use the provider
-selection in the chat (see below).
+the binding. To change the account of an existing conversation, use the
+provider selection in the chat (see below).
 
 Changing the active account is blocked while there is direct work, queues or
 pending reservations; a sign-in in progress blocks new direct requests. Logging
@@ -405,10 +407,9 @@ may prevent older images from being resent, and Kira reports it.
 
 In the chat's web settings (**⚙** icon in the browser bar) choose the **Web
 search mode** (**Live access**, **Indexed content** or **Search disabled**) and
-enable the browser.
-The web search hosted by OpenAI depends on the model and the account's
-authorizations; a refusal is shown without changing model or billing. Sources
-appear as links in the responses and are not invented.
+enable the browser. The web search hosted by OpenAI depends on the model and
+the account's authorizations; a refusal is shown without changing model or
+billing. Sources appear as links in the responses and are not invented.
 
 Kira's isolated browser and **Kira's Computer** work with this provider: pages
 open in the **Browser** panel next to the chat, Kira runs the browser tools
@@ -499,15 +500,15 @@ their message.
 
 ### Use DeeperSeeker mode
 
-In the DeepSeek panel enable **Use DeeperSeeker** to use a DeeperSeeker instance
-instead of the account. Enter the **DeeperSeeker address** (for example
-`http://127.0.0.1:4000`) and the **DeeperSeeker API key**, then press **Save
-DeeperSeeker connection**. The key is saved in a private file of the profile,
-with permissions restricted to your user, and is no longer shown nor included
-in the status or in exported settings. The address must be HTTP or HTTPS, with
-no credentials, query or fragments; keep the instance on loopback unless remote
-access is deliberately protected. The proxy must already be running and
-reachable from the Kira service.
+In the DeepSeek panel enable **Use DeeperSeeker** to use a DeeperSeeker
+instance instead of the account. Enter the **DeeperSeeker address** (for
+example `http://127.0.0.1:4000`) and the **DeeperSeeker API key**, then press
+**Save DeeperSeeker connection**. The key is saved in a private file of the
+profile, with permissions restricted to your user, and is no longer shown nor
+included in the status or in exported settings. The address must be HTTP or
+HTTPS, with no credentials, query or fragments; keep the instance on loopback
+unless remote access is deliberately protected. The proxy must already be
+running and reachable from the Kira service.
 
 Kira reads the catalog from the proxy and sends requests to its messages
 endpoint. Tools, permissions and context remain managed by Kira; image support
@@ -745,7 +746,7 @@ provider's default. Provider-specific options (Codex service tier, Ollama's
 **Requested context**) stay with that provider and come back when you select it
 again; the shared tool settings apply to all.
 
-After a provider or account change, the **Always allow the agent's actions in
+After a provider or account change, the **Always allow the agent’s actions in
 this chat** consent returns to per-action confirmation.
 
 ## Usage and resources
@@ -819,7 +820,7 @@ the private reasoning and does not certify that an operation was performed or
 a goal reached: for that, the tool receipts and the recorded outcomes apply.
 **Thinking…** keeps indicating processing; a summary is not a final answer.
 Summaries do not enter the portable context, branches, history search or the
-evidence of a goal; in Markdown and JSON exports they appear labeled
+proof of a goal; in Markdown and JSON exports they appear labeled
 separately.
 
 Per run, at most 64 parts and 64 KiB of text are kept; omitted parts are
