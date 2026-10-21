@@ -2,7 +2,7 @@
 
 *[Leggi in italiano](../it/OBIETTIVI_AUTONOMI.md)*
 
-An autonomous goal is a result that Kira pursues on her own, cycle after cycle,
+An autonomous goal is a result that Kira pursues on its own, cycle after cycle,
 in the chat where you declared it, without you having to press **Continue**
 after every reply. This guide explains the difference from a saved goal, the
 `/obiettivo` commands, what a cycle does, when Kira stops and how to resume.
@@ -15,7 +15,7 @@ can do two different things:
 | | Saved goal | Autonomous goal |
 | --- | --- | --- |
 | How it is activated | **Save without starting** | **Start autonomously** or `/obiettivo …` |
-| What Kira does | Includes the text in the context of every new turn | Starts new cycles on her own until the goal is reached or she stops |
+| What Kira does | Includes the text in the context of every new turn | Starts new cycles on its own until the goal is reached or it stops |
 | How it proceeds | **Continue with one step** starts a single explicit request | Every cycle starts automatically after the previous one |
 | Controls | **Pause goal**, **Resume goal**, **Mark completed** | **Pause goal**, **Resume autonomously**, `/obiettivo pausa|riprendi|stato` |
 | Status shown | **Saved goal · manual start** | **Autonomous goal active** and the other statuses described below |
@@ -56,7 +56,7 @@ you.
 At every cycle Kira receives the goal, a compact progress summary, the planned
 next step and references to the records kept in previous cycles; your
 corrections stay in the conversation and take precedence. When details are
-needed, Kira consults the chat history with her own tools. The summary is a
+needed, Kira consults the chat history with its own tools. The summary is a
 statement by the model: it helps to keep the thread, but it does not replace
 the original records nor guarantee a perfect memory. In the history a cycle is
 introduced by a service notice, not by a made-up user message. A completed
@@ -131,7 +131,7 @@ repeated command does not create a second goal or a duplicate cycle.
 | Provider | Autonomous goals |
 | --- | --- |
 | **Codex** | Yes |
-| **OpenAI direct · ChatGPT** | Yes |
+| **Direct OpenAI · ChatGPT** | Yes |
 | **Ollama** | Yes |
 | **DeepSeek Account** (experimental) | Yes (checkpoints use the tools managed by Kira) |
 | **Claude Code · personal use** (experimental) | Yes |
@@ -146,7 +146,7 @@ managed by Kira that DeepSeek Account uses.
   never ends; "List every point where the authentication module reads
   external input, with path and line, and stop when the list covers all the
   files in `src/auth/`" has a finish line. Without a success condition, Kira
-  stays active until you pause her or she hits a block, and does not consider
+  stays active until you pause it or it hits a block, and does not consider
   the research finished just because a reply has ended.
 - **Ask for records, not impressions.** Instruct Kira to keep findings in
   project files or in the [Research](RESEARCH.md) registry, so that the

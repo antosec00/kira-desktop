@@ -70,7 +70,7 @@ always see what really happened.
 | --- | --- | --- |
 | **Ollama** | Local HTTP API (`http://127.0.0.1:11434` by default) | Kira; tools verified on first use, no automatic model downloads |
 | **Codex** | OpenAI Codex App Server, with the official sign-in | Codex, with its sandboxes; Kira observes and records every operation |
-| **OpenAI direct · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
+| **Direct OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
 | **DeepSeek Account** (experimental) | Account sign-in | Kira |
 | **DeepSeek Web** (experimental) | Session token from the website | Kira, with text-based tools |
 | **Claude Code · personal use** (experimental) | Your already signed-in Claude Code (optional extra, not in the packages) | Claude Code, observed by Kira; browser, Computer, questions and Research through an internal MCP server |

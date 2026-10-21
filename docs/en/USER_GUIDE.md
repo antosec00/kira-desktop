@@ -129,7 +129,7 @@ the details are in [Permissions and security](PERMISSIONS_AND_SECURITY.md).
 ### Connecting a provider
 
 Open **Models** in the sidebar. The providers are a row of buttons: **Ollama**,
-**Codex**, **OpenAI direct · ChatGPT**, **DeepSeek Account**, **DeepSeek Web**
+**Codex**, **Direct OpenAI · ChatGPT**, **DeepSeek Account**, **DeepSeek Web**
 and **Claude Code · personal use**. Below, a line reports the provider status
 with a colored dot (green connected, amber to be connected or without models,
 red unavailable) and the action to take, if any, for example **Sign in with
@@ -359,7 +359,7 @@ with a preview, name and dimensions and you can remove it before pressing
 together with the message. You can also send images alone, or queue them with
 the text.
 
-Images reach the model as **visual content** with **OpenAI direct · ChatGPT**,
+Images reach the model as **visual content** with **Direct OpenAI · ChatGPT**,
 **DeepSeek Account** (only with the models that declare image support in the
 catalog), **DeepSeek Web** (DeepSeek V4 Flash web and DeepSeek Reasoner web)
 and **Claude Code · personal use** (up to four PNGs). With **Codex** and
@@ -705,7 +705,7 @@ before interrupting, a limit on the wait, not on the total duration.
 | --- | --- | --- | --- | --- | --- |
 | **Ollama** | Yes (tools verified on first use; screenshots and Computer only with a model that accepts images) | No (paths as text) | Yes | Yes | No |
 | **Codex** | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes |
-| **OpenAI direct · ChatGPT** | Yes | Yes (up to 4) | Yes | Yes | Yes |
+| **Direct OpenAI · ChatGPT** | Yes | Yes (up to 4) | Yes | Yes | Yes |
 | **DeepSeek Account** (experimental) | Yes | Yes, vision models only | Yes | Yes | No |
 | **DeepSeek Web** (experimental) | Browser yes, Computer no | Yes | No | No | No |
 | **Claude Code · personal use** (experimental) | Yes | Yes (up to 4 PNGs) | No | Yes | No |
@@ -734,7 +734,7 @@ network according to the runtime and do not promise that only the project
 folder is readable. The session configuration notice does not appear in the
 chat but remains in the full export.
 
-**OpenAI direct · ChatGPT.** In **Models** or **Settings → Connections →
+**Direct OpenAI · ChatGPT.** In **Models** or **Settings → Connections →
 ChatGPT accounts** press **Continue with ChatGPT**, authorize Kira in the
 browser and choose a model from your account's catalog. Kira communicates
 directly with OpenAI and manages the tool cycle, the questions and the Teams.

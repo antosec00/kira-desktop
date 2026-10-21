@@ -26,7 +26,7 @@ or a sequential task an ordinary chat is simpler and cheaper.
 | Provider | Team |
 | --- | --- |
 | **Codex** | Yes |
-| **OpenAI direct · ChatGPT** | Yes |
+| **Direct OpenAI · ChatGPT** | Yes |
 | **Ollama** | Yes (tools depend on the chosen model) |
 | **DeepSeek Account** (experimental) | Yes |
 | **DeepSeek Web** (experimental) | No |
@@ -79,7 +79,7 @@ useful when you want the discipline of task-based planning.
 
 ## Requesting a Team from the chat
 
-With **Codex** or **OpenAI direct · ChatGPT** and tools enabled, you can ask
+With **Codex** or **Direct OpenAI · ChatGPT** and tools enabled, you can ask
 for a Team directly in the conversation. For example:
 
 > Organize a team of three members: a coordinator, a test analyst and an
@@ -103,7 +103,7 @@ The path has five phases:
    members, completed tasks, status. From there you can **Open Team** for the
    full view, write **Instructions for the coordinator…** and press **Send to
    team**, or **Stop team**.
-5. **Automatic reply.** When the Team finishes, Kira replies on her own in the
+5. **Automatic reply.** When the Team finishes, Kira replies on its own in the
    original conversation with the results, without you having to send another
    message (see below).
 
@@ -335,5 +335,5 @@ or the provider settings.
   hand while a writer is active.
 
 For the technical reference of the Team methods and events see
-[Contracts](CONTRACTS.md); for the goals Kira pursues on her own, which can
+[Contracts](CONTRACTS.md); for the goals Kira pursues on its own, which can
 wait for a Team's results, see [Autonomous goals](AUTONOMOUS_GOALS.md).

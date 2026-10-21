@@ -15,7 +15,7 @@ Kira offers four different things, which often work together:
 
 | Feature | What it is | Availability |
 | --- | --- | --- |
-| Hosted web search | The search run by the provider on its own servers, with sources cited in the response | **OpenAI direct · ChatGPT** only; modes **Live access**, **Indexed content**, **Search disabled** |
+| Hosted web search | The search run by the provider on its own servers, with sources cited in the response | **Direct OpenAI · ChatGPT** only; modes **Live access**, **Indexed content**, **Search disabled** |
 | Web search through the browser | The `browser.search` tool: the agent searches the public web inside Kira's isolated browser | Ollama and the other providers with a browser |
 | Integrated browser | A dedicated Chromium, with a separate profile, running on a private virtual screen and shown in the **Browser** panel next to the chat | All providers except **Codex** |
 | Kira's Computer | Visual control of the integrated browser: the model observes a screenshot and acts by coordinates | Same as the browser, except **DeepSeek Web** |
@@ -48,7 +48,7 @@ the app uses:
 
 ```sh
 kira-desktop browser-install
-# Dal sorgente:
+# From a source checkout:
 uv run kira-desktop browser-install
 ```
 

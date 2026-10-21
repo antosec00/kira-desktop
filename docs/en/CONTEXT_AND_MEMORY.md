@@ -138,7 +138,7 @@ Omissions are flagged; instructions and notes are never cut by this window.
 The rest of the conversation remains reachable by the model with the history
 tools (section 8), if the model supports tools.
 
-### OpenAI direct · ChatGPT
+### Direct OpenAI · ChatGPT
 
 The direct provider uses a **persistent context** managed by Kira for each
 chat, account and model, rebuilt from the original messages and kept across

@@ -2,7 +2,7 @@
 
 *[Leggi in italiano](../it/ANIMA_E_CONOSCENZA.md)*
 
-This guide explains how Kira presents herself to the model, how to create
+This guide explains how Kira presents itself to the model, how to create
 personal identities with **Kira's Soul**, how to consult what the model can
 know through **Knowledge and tools** and how the project's reusable tools work.
 It is for anyone who wants to adapt Kira to their own way of working without
@@ -94,7 +94,7 @@ In the **How it evolves** section choose the **Learning mode**:
 | Mode | What happens |
 | --- | --- |
 | **Manual** | Only you change the identity and preferences. The model cannot propose lessons. |
-| **Suggestions** (default) | Kira can propose what she could learn from a message or a result in the chat. You decide what to keep. |
+| **Suggestions** (default) | Kira can propose what it could learn from a message or a result in the chat. You decide what to keep. |
 | **Adaptive** | Like Suggestions, plus the `/anima preferenza` command automatically applies an explicit preference. Every change stays tracked. |
 
 In no mode does Kira start an extra model or a background analysis: proposals
@@ -257,7 +257,7 @@ has verified a result.
 
 When a capability is missing, you can ask Kira to prepare a reusable tool for
 the project: a Python script that receives a JSON object on stdin and returns
-a JSON object on stdout. Kira can also propose one on her own during an
+a JSON object on stdout. Kira can also propose one on its own during an
 authorized activity. Tools belong to the project.
 
 ### The Project tools tab

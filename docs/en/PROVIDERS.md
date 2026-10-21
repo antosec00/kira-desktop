@@ -15,7 +15,7 @@ behind every answer.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Ollama** | An Ollama server already installed; endpoint in **Settings → Connections → Ollama endpoint** | Kira | Yes (tools verified on first use; screenshots only with a model that accepts images); no Computer without vision | No (paths as text only) | Yes | Yes | Yes | No |
 | **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes | Yes |
-| **OpenAI direct · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
+| **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **DeepSeek Account** (experimental) | **Models → DeepSeek Account → Sign in with DeepSeek**, or **Use DeeperSeeker** | Kira | Yes | Yes, vision models only | Yes | Yes | Yes | No |
 | **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | No |
 | **Claude Code · personal use** (experimental) | `claude-code` extra from source; sign-in already done in Claude Code | The provider (Claude Code built-in tools) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | No | Yes | Yes | No |
@@ -334,7 +334,7 @@ same account based on e-mail or plan.
 
 Codex provides the public reasoning summary; see the final section.
 
-## OpenAI direct · ChatGPT
+## Direct OpenAI · ChatGPT
 
 This provider talks directly to the OpenAI API using your ChatGPT plan, through
 the official **Sign in with ChatGPT** flow. It does not involve Codex: the tool
@@ -810,7 +810,7 @@ an old run is never presented as the current one.
 | Provider | Public summary |
 | --- | --- |
 | Codex | Yes |
-| OpenAI direct · ChatGPT | Yes |
+| Direct OpenAI · ChatGPT | Yes |
 | Ollama | No (the raw internal reasoning stays excluded) |
 | DeepSeek Account / Web | No |
 | Claude Code · personal use | No |

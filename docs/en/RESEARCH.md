@@ -199,7 +199,7 @@ indication of any cuts; reading it starts nothing.
 With sharing on:
 
 - all providers receive the context of the accepted records;
-- in chats with tools enabled (**Codex**, **OpenAI direct · ChatGPT**,
+- in chats with tools enabled (**Codex**, **Direct OpenAI · ChatGPT**,
   **Claude Code · personal use**) the assistant can also consult the list of
   accepted records, read a linked source and **propose** new records, using
   the chat's model, reasoning, account and permissions;

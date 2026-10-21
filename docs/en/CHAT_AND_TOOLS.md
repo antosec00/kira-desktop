@@ -221,7 +221,7 @@ queue.
 ### How providers receive guidance
 
 - **Codex** uses its own delivery to the active turn, when the turn allows it.
-- **OpenAI direct · ChatGPT**, **DeepSeek Account** and **Ollama** receive it
+- **Direct OpenAI · ChatGPT**, **DeepSeek Account** and **Ollama** receive it
   at the **next request** to the model: the response or tool already in
   progress finishes normally, then the waiting text is added in order. Tools
   of a group not yet started can be deferred with outcome
@@ -293,7 +293,7 @@ project files.
   thread and the new chat's local history starts from the new requests; a
   banner with **Open original chat** takes you back to the earlier messages
   kept by Kira.
-- **Ollama** and **OpenAI direct · ChatGPT** receive an **explicit copy of the
+- **Ollama** and **Direct OpenAI · ChatGPT** receive an **explicit copy of the
   recorded context**. The full copied source is limited to **8,000,000 bytes**
   (beyond that, Kira refuses the branch); at subsequent requests the model
   receives a declared excerpt of at most **100,000 characters** of the source.
@@ -377,7 +377,7 @@ start or resume work.
 
 | Provider | Visual content of attachments |
 | --- | --- |
-| **OpenAI direct · ChatGPT** | Yes |
+| **Direct OpenAI · ChatGPT** | Yes |
 | **DeepSeek Account** (experimental) | Yes, only with the models whose catalog entry declares image support |
 | **DeepSeek Web** (experimental) | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) |
 | **Claude Code · personal use** (experimental) | Yes, up to 4 PNGs |

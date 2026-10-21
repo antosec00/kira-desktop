@@ -56,7 +56,7 @@ Some important clarifications:
   but they do not promise that only the project folder is readable. Codex
   treats **Trusted host** and **Full access** the same way; the difference
   between the two applies to the file tools managed by Kira.
-- With **OpenAI direct · ChatGPT**, **Ollama**, **DeepSeek** and **Claude Code**
+- With **Direct OpenAI · ChatGPT**, **Ollama**, **DeepSeek** and **Claude Code**
   the model only receives the tools the permission allows: in read only it does
   not even see the definition of the write tool.
 - Changing the permission does not change the model, account, reasoning level
@@ -233,7 +233,7 @@ Each provider handles its own credentials with the official flow:
 - **Codex** keeps its own sign-in in its storage; Kira opens the official
   sign-in and does not read, copy or modify Codex tokens, cookies or global
   configuration.
-- **OpenAI direct · ChatGPT** uses the sign-in managed by Kira. The credentials
+- **Direct OpenAI · ChatGPT** uses the sign-in managed by Kira. The credentials
   live in the private folder `openai-chatgpt/` under Kira's configuration
   (`$HOME/.config/kira/` or `config/` inside `KIRA_HOME`), with 0600
   permissions. They are excluded from the database, events, context, exports
