@@ -354,7 +354,7 @@ Tutti i metodi richiedono `project_id`.
 
 | Metodo | Parametri → risultato | Regole |
 | --- | --- | --- |
-| `research.list` | `{project_id, cursor?, limit?, view?, query?}` → `{project_id, records, settings, has_more, next_cursor}` | `view` ∈ `all`, `knowledge` (obiettivi, ipotesi, decisioni), `next` (voci aperte), `proposals` (non accettate) e la vista degli esperimenti/osservazioni; `limit` 20 (max 30). |
+| `research.list` | `{project_id, cursor?, limit?, view?, query?}` → `{project_id, records, settings, has_more, next_cursor}` | `view` ∈ `all`, `knowledge` (obiettivi, ipotesi, decisioni), `evidence` (esperimenti e osservazioni), `next` (voci aperte), `proposals` (non accettate); `limit` 20 (max 30). |
 | `research.get` | `{project_id, record_id, revision?}` → `{project_id, record}` | |
 | `research.history` | `{project_id, record_id, before_revision?, limit?}` → `{project_id, revisions, has_more, next_cursor}` | Revisioni più recenti prima. |
 | `research.save` | `{project_id, request_id, record_id?, expected_revision?, reason?, reassess?, record}` → `{project_id, record, operation}` | `record` contiene solo i campi modificabili; la modifica di una scheda esistente richiede `reason`; `reassess` è riservato all'utente. |
@@ -571,9 +571,8 @@ class Backend(Protocol):
     # facoltativo: async def login(self) -> Json
 ```
 
-Costruttori di riferimento: `OllamaBackend(endpoint=...)` (predefinito:
-l'indirizzo locale di Ollama sulla porta 11434, cioè `ollama_url` delle
-impostazioni) e `CodexBackend(binary="codex")`. OpenAI diretto e DeepSeek
+Costruttori di riferimento: `OllamaBackend(endpoint="http://127.0.0.1:11434")`
+(il predefinito è `ollama_url` delle impostazioni) e `CodexBackend(binary="codex")`. OpenAI diretto e DeepSeek
 ricevono il gestore account del servizio; Claude Code riceve la cartella
 runtime per il proprio relay MCP.
 
@@ -699,7 +698,7 @@ nessun argomento può cambiare. Namespace riconosciuti: `team`, `kira`,
 | `kira.research_list` / `research_read` / `research_propose` | elenco, `{record_id, source_index?, offset?, limit?}`, contenuto della scheda | Solo con condivisione della Ricerca attiva; solo schede accettate; una proposta non può accettarsi né valutare. |
 | `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?}` | Solo con un'Anima in modo `suggest` o `adaptive`; propone soltanto. |
 | `goal.status` | `{}` | Obiettivo autonomo, checkpoint e riferimenti recenti. |
-| `goal.checkpoint` | `{status:"continue"\|"completed"\|"blocked", summary, next_step, deliverable?}` più l'elenco obbligatorio di riferimenti `[{run_id, seq}]` | Solo con corsia scrivibile; `summary` ≤ 6.000, `next_step` ≤ 3.000, `deliverable` ≤ 12.000 caratteri, al massimo 24 riferimenti a eventi registrati (presi da `goal.status`); il completamento si applica dopo il turno riuscito. |
+| `goal.checkpoint` | `{status:"continue"\|"completed"\|"blocked", summary, next_step, deliverable?}` e `evidence:[{run_id, seq}]` (obbligatorio) | Solo con corsia scrivibile; `summary` ≤ 6.000, `next_step` ≤ 3.000, `deliverable` ≤ 12.000 caratteri, al massimo 24 riferimenti a eventi registrati (presi da `goal.status`); il completamento si applica dopo il turno riuscito. |
 | `team.send_message` | `{recipient_id, content}` | Membri di un Team; ≤ 8.000 byte; non avvia nessuno. |
 | `team.read_messages` | `{after_seq?:0, limit?:20}` | Pagine fino a 50 messaggi entro 64 KiB; include i fatti di scheduling. |
 | `kira_history.search` / `kira_history.read` | `{query, limit?, before_id?}` / `{source_id, offset?, limit?}` | Archivio originale della chat corrente; risultati ≤ 32.000 byte, letture ≤ 32.000 caratteri. |

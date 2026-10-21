@@ -40,7 +40,7 @@ claude-code = ["claude-agent-sdk==0.2.168"]
 [project.urls]
 Homepage = "https://github.com/antosec00/kira-desktop-app"
 Documentation = "https://github.com/antosec00/kira-desktop-app/blob/main/docs/README.md"
-Changelog = "https://github.com/antosec00/kira-desktop-app/blob/main/CHANGELOG.md"
+Releases = "https://github.com/antosec00/kira-desktop-app/releases"
 Issues = "https://github.com/antosec00/kira-desktop-app/issues"
 
 [project.scripts]
