@@ -40,7 +40,8 @@ FIXTURE_HOMES = {
     "tests/test_ui_attachments_io.py": {
         b"/home/test", b"/home/file", b"/Users/Test", b"C:\\Users\\Test",
     },
-    "docs/USER_GUIDE_IT.md": {b"/Users/...", b"C:\\Users\\..."},
+    "docs/it/GUIDA_UTENTE.md": {b"/Users/...", b"C:\\Users\\..."},
+    "docs/en/USER_GUIDE.md": {b"/Users/...", b"C:\\Users\\..."},
 }
 # This file declares the reviewed synthetic examples above; other paths still fail.
 FIXTURE_HOMES["scripts/check_public_tree.py"] = set().union(*FIXTURE_HOMES.values())
@@ -59,7 +60,7 @@ def inspect_content(name: str, data: bytes) -> set[str]:
     problems = set()
     path = Path(name)
     if (name.startswith(("build/", "dist/", ".venv/"))
-            or (name.startswith("docs/evidence/") and name != "docs/evidence/README.md")
+            or name.startswith("docs/evidence/")
             or path.suffix in {".sqlite", ".sqlite3", ".db", ".pem", ".key", ".bundle"}
             or path.name in {"auth.json", "credentials.json", "id_rsa", "id_ed25519", ".env"}
             or (path.name.startswith(".env.") and path.name != ".env.example")):

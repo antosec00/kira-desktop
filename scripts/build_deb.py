@@ -89,11 +89,22 @@ def build() -> None:
         "LICENSE": "usr/share/doc/kira-desktop/copyright",
         "packaging/requirements.lock.txt": "usr/share/doc/kira-desktop/requirements.lock.txt",
     }
-    for filename in ("README.md", "docs/ARCHITECTURE.md", "docs/CONTRACTS.md", "docs/BACKENDS.md", "docs/OPENAI_DIRECT.md", "docs/WEB_BROWSER.md",
-                     "docs/V03_TEAMS.md", "docs/INPUT_QUESTIONS.md", "docs/USER_GUIDE_IT.md",
-                     "docs/THIRD_PARTY_NOTICES.md", "docs/MARKDOWN_OUTPUT.md", "docs/DESIGN_033.md", "docs/DESIGN_018.md", "docs/TOOL_OUTPUT.md", "docs/ATTACHMENT_INPUT.md", "docs/CHAT_SETTINGS.md", "docs/APPEARANCE.md", "docs/LOCALIZATION.md", "docs/WORKBENCH.md", "docs/RUN_STATUS.md", "docs/PROJECT_CHATS.md"):
+    for filename in ("README.md", "README.en.md",
+                     "docs/it/GUIDA_UTENTE.md", "docs/it/INSTALLAZIONE.md", "docs/it/PROVIDER.md",
+                     "docs/it/PERMESSI_E_SICUREZZA.md", "docs/it/BROWSER_E_COMPUTER.md", "docs/it/CHAT_E_STRUMENTI.md",
+                     "docs/it/CONTESTO_E_MEMORIA.md", "docs/it/TEAM.md", "docs/it/OBIETTIVI_AUTONOMI.md",
+                     "docs/it/RICERCA.md", "docs/it/ANIMA_E_CONOSCENZA.md", "docs/it/ASPETTO_E_LINGUA.md",
+                     "docs/it/ARCHITETTURA.md", "docs/it/CONTRATTI.md", "docs/it/LICENZE_TERZE_PARTI.md",
+                     "docs/en/USER_GUIDE.md", "docs/en/INSTALLATION.md", "docs/en/PROVIDERS.md",
+                     "docs/en/PERMISSIONS_AND_SECURITY.md", "docs/en/BROWSER_AND_COMPUTER.md", "docs/en/CHAT_AND_TOOLS.md",
+                     "docs/en/CONTEXT_AND_MEMORY.md", "docs/en/TEAMS.md", "docs/en/AUTONOMOUS_GOALS.md",
+                     "docs/en/RESEARCH.md", "docs/en/SOUL_AND_KNOWLEDGE.md", "docs/en/APPEARANCE_AND_LANGUAGE.md",
+                     "docs/en/ARCHITECTURE.md", "docs/en/CONTRACTS.md", "docs/en/THIRD_PARTY_LICENSES.md"):
         if (ROOT / filename).exists():
-            placements[filename] = f"usr/share/doc/kira-desktop/{Path(filename).name}"
+            relative = Path(filename)
+            if relative.parts[0] == "docs":
+                relative = Path(*relative.parts[1:])
+            placements[filename] = f"usr/share/doc/kira-desktop/{relative.as_posix()}"
     for source, target in placements.items():
         target_path = stage / target
         target_path.parent.mkdir(parents=True, exist_ok=True)

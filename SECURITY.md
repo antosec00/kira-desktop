@@ -1,49 +1,53 @@
-# Security policy
+# Politica di sicurezza
 
-Kira Desktop runs agents that read files, run commands and browse the web on
-your behalf. Taking that seriously is the whole point of the project, so
-reports are welcome and handled with care.
+*[Read in English](SECURITY.en.md)*
 
-## Reporting a vulnerability
+Kira Desktop esegue agenti che leggono file, lanciano comandi e navigano sul web
+per conto tuo. Prendere sul serio la sicurezza è il senso stesso del progetto:
+le segnalazioni sono benvenute e trattate con cura.
 
-Please do **not** open a public issue for security problems.
+## Segnalare una vulnerabilità
 
-- Use GitHub's private vulnerability reporting on this repository
-  (*Security → Report a vulnerability*), or
-- contact the maintainer through the GitHub profile of the repository owner.
+**Non aprire una issue pubblica** per un problema di sicurezza.
 
-Include the version (`kira-desktop --version`), the provider involved, the
-project permission in use and a reproduction that does not contain your own
-credentials or private data. You will receive an acknowledgement, and the fix
-will be published with a changelog entry once it is ready.
+- Usa la segnalazione privata di GitHub su questo repository
+  (*Security → Report a vulnerability*), oppure
+- contatta il manutentore tramite il profilo GitHub del proprietario del repository.
 
-## Supported versions
+Includi la versione (`kira-desktop --version`), il provider coinvolto, il
+permesso del progetto in uso e una riproduzione che non contenga le tue
+credenziali o dati privati. Riceverai una conferma di ricezione; la correzione
+sarà pubblicata con una nota nella versione successiva.
 
-| Version | Supported |
+## Versioni supportate
+
+| Versione | Supporto |
 | --- | --- |
-| `main` snapshot (0.15.1) | Yes |
-| `dev/0.18` development line | Best effort; development versions must not replace an active user profile |
-| Older releases | No |
+| Ultima versione su `main` | Sì |
+| Linea di sviluppo `dev/<versione>` | Nel limite del possibile; le versioni di sviluppo non vanno installate sopra un profilo utente attivo |
+| Versioni precedenti | No |
 
-## What Kira protects, in short
+## Che cosa protegge Kira, in breve
 
-- **Execution boundary.** The GUI never executes tools. The user service does,
-  with the project's permission (read-only, project write, trusted host, full
-  access) and descriptor-relative file access that refuses paths outside the
-  project unless full access was granted explicitly.
-- **Credentials.** Provider sign-ins use the providers' official flows. Kira
-  stores its own tokens (where a provider has them) in 0600 files under the
-  user's profile and never reads another application's credentials, including
-  Claude Code's.
-- **Private IPC.** GUI and service talk over a Unix socket in a 0700 runtime
-  directory; the service is the only SQLite writer.
-- **Browser.** Pages run in an isolated profile through a service-owned proxy;
-  page content is untrusted data, consent and logins are the user's.
-- **Attachments and tool data.** Bounded sizes, hashed artifacts, no replay of
-  recorded tool effects.
-- **Publication hygiene.** `scripts/check_public_tree.py` rejects personal paths
-  and unreviewed binaries in the tracked tree.
+- **Confine di esecuzione.** L'interfaccia non esegue mai strumenti. Lo fa il
+  servizio locale, con il permesso del progetto (sola lettura, scrittura nel
+  progetto, host fidato, accesso completo) e con accesso ai file relativo al
+  descrittore della cartella, che rifiuta i percorsi fuori dal progetto a meno
+  che l'accesso completo non sia stato concesso esplicitamente.
+- **Credenziali.** L'accesso ai provider usa i loro flussi ufficiali. Kira
+  conserva i propri token (dove un provider li prevede) in file 0600 sotto il
+  profilo dell'utente e non legge mai le credenziali di un'altra applicazione,
+  comprese quelle di Claude Code.
+- **IPC privato.** Interfaccia e servizio comunicano su un socket Unix in una
+  cartella runtime 0700; il servizio è l'unico a scrivere nel database SQLite.
+- **Browser.** Le pagine girano in un profilo isolato attraverso un proxy del
+  servizio; il contenuto delle pagine è un dato non fidato, consensi e accessi
+  sono tuoi.
+- **Allegati e dati degli strumenti.** Dimensioni limitate, artefatti con hash,
+  nessuna ripetizione automatica degli effetti registrati.
+- **Igiene di pubblicazione.** `scripts/check_public_tree.py` rifiuta percorsi
+  personali e binari non revisionati nell'albero versionato.
 
-Known limits and the scope of what has actually been verified are listed in
-[docs/STATUS.md](docs/STATUS.md); the automation boundary is described in
-[docs/CONTROL.md](docs/CONTROL.md) and [docs/FULL_ACCESS.md](docs/FULL_ACCESS.md).
+I confini dell'automazione e i limiti noti sono descritti in
+[Permessi e sicurezza](docs/it/PERMESSI_E_SICUREZZA.md) e
+[Browser e Computer](docs/it/BROWSER_E_COMPUTER.md).

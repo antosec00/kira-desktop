@@ -1,111 +1,31 @@
-# Kira Desktop documentation
+# Documentazione di Kira Desktop · Kira Desktop documentation
 
-This repository contains the native Desktop application. Start with the Italian
-user guide for everyday use; engineering and operational references are English.
-Released desktop: **0.15.1** (`main`); development line **0.18.0.dev1**
-(`dev/0.18`) with the quiet interface, the Claude Code and DeepSeek providers
-and Ollama robustness fixes — see the [changelog](../CHANGELOG.md).
+La documentazione è scritta in **italiano** e tradotta in **inglese**. Ogni
+documento esiste nelle due lingue con lo stesso contenuto.
 
-## Start here
+The documentation is written in **Italian** and translated into **English**.
+Every document exists in both languages with the same content.
 
-| You are… | Begin with |
+- 🇮🇹 [Indice in italiano](it/README.md)
+- 🇬🇧 [Index in English](en/README.md)
+
+| Italiano (`docs/it/`) | English (`docs/en/`) |
 | --- | --- |
-| New to Kira | [README](../README.md), then the [Italian user guide](USER_GUIDE_IT.md) |
-| Installing or operating it | [Operations](OPERATIONS.md), [Profiles](PROFILES.md), [Platform targets](PLATFORM_TARGETS.md) |
-| Connecting a provider | [Backends](BACKENDS.md), [OpenAI direct](OPENAI_DIRECT.md), [Status](STATUS.md) |
-| Working on the code | [Developer guide](DEVELOPER_GUIDE.md), [Architecture](ARCHITECTURE.md), [Contracts](CONTRACTS.md), [CONTRIBUTING](../CONTRIBUTING.md) |
-The 0.15.1 patch fixes provider tool registration for learning-enabled profiles.
-The [identity contract](KIRA_SOULS.md) defines versioned profiles, learning review
-and compaction continuity. It retains compact public provider reasoning summaries.
-It retains explicitly activated autonomous chat objectives
-and durable progress. It retains recovery from unusable native compaction
-output envelopes and shape-only diagnostics. It retains evidence-based status
-indicators, nearby tool outcomes and a compact adaptive composer. It retains explicit full filesystem
-access and corrected live browser consent during guidance delivery. It retains live turn guidance,
-conversation alongside active Teams and automatic result followups. It retains the native
-side-panel workspace, compact tool receipts and categorized settings. It retains editable
-Team continuation limits, common identity, selective knowledge
-retrieval and reusable project tools. Browser consent, native authentication,
-explicit wait status, the project registry and linked evidence remain included.
-[STATUS](STATUS.md) records qualification and remaining
-limits; [Profiles](PROFILES.md) describes application source and user-data storage.
+| [Guida utente](it/GUIDA_UTENTE.md) | [User guide](en/USER_GUIDE.md) |
+| [Installazione](it/INSTALLAZIONE.md) | [Installation](en/INSTALLATION.md) |
+| [Provider](it/PROVIDER.md) | [Providers](en/PROVIDERS.md) |
+| [Permessi e sicurezza](it/PERMESSI_E_SICUREZZA.md) | [Permissions and security](en/PERMISSIONS_AND_SECURITY.md) |
+| [Browser e Computer](it/BROWSER_E_COMPUTER.md) | [Browser and Computer](en/BROWSER_AND_COMPUTER.md) |
+| [Chat e strumenti](it/CHAT_E_STRUMENTI.md) | [Chat and tools](en/CHAT_AND_TOOLS.md) |
+| [Contesto e memoria](it/CONTESTO_E_MEMORIA.md) | [Context and memory](en/CONTEXT_AND_MEMORY.md) |
+| [Team](it/TEAM.md) | [Teams](en/TEAMS.md) |
+| [Obiettivi autonomi](it/OBIETTIVI_AUTONOMI.md) | [Autonomous goals](en/AUTONOMOUS_GOALS.md) |
+| [Ricerca](it/RICERCA.md) | [Research](en/RESEARCH.md) |
+| [Anima e Conoscenza](it/ANIMA_E_CONOSCENZA.md) | [Soul and Knowledge](en/SOUL_AND_KNOWLEDGE.md) |
+| [Aspetto e lingua](it/ASPETTO_E_LINGUA.md) | [Appearance and language](en/APPEARANCE_AND_LANGUAGE.md) |
+| [Architettura](it/ARCHITETTURA.md) | [Architecture](en/ARCHITECTURE.md) |
+| [Contratti](it/CONTRATTI.md) | [Contracts](en/CONTRACTS.md) |
+| [Sviluppo](it/SVILUPPO.md) | [Development](en/DEVELOPMENT.md) |
+| [Licenze di terze parti](it/LICENZE_TERZE_PARTI.md) | [Third-party licenses](en/THIRD_PARTY_LICENSES.md) |
 
-The [registry and evidence contract](RESEARCH_REGISTRY.md) describes the first
-Research increment included in this release. [Project research](PROJECT_RESEARCH.md)
-distinguishes implemented features from later proposals and describes the
-separate environment used for further experimental development.
-
-## Guides
-
-| Need | Document |
-| --- | --- |
-| Use projects, chats, agents and preferences | [Guida italiana](USER_GUIDE_IT.md) |
-| Start, stop, back up or upgrade the application | [Operations](OPERATIONS.md) |
-| Choose or migrate an application profile | [Profiles](PROFILES.md) |
-| Understand supported local actions and control boundaries | [Control](CONTROL.md) |
-| Build packages and customize the interface | [Build and customization](BUILD_AND_CUSTOMIZATION.md) |
-| Orient yourself in the code, tests and release process | [Developer guide](DEVELOPER_GUIDE.md) |
-| Understand processes, persistence and architectural decisions | [Architecture](ARCHITECTURE.md) |
-| Read canonical IPC, event and permission contracts | [Contracts](CONTRACTS.md) |
-| Configure providers and understand live-test limits | [Backends](BACKENDS.md) |
-| Use a ChatGPT plan directly with Kira | [OpenAI direct](OPENAI_DIRECT.md) |
-| Inspect account limits and recorded consumption | [Account usage](ACCOUNT_USAGE.md) |
-| Provider context compaction and chat memory | [Direct context](DIRECT_CONTEXT.md) |
-| Common identity, selective knowledge and reusable project tools | [Kira identity](KIRA_IDENTITY.md) |
-| Personal profiles, scoped experience and learning review | [Anima di Kira](KIRA_SOULS.md) |
-| Project records, evidence, assessments and agent proposals | [Research registry](RESEARCH_REGISTRY.md) |
-| Web research, rendered pages and isolated browser profiles | [Web and browser](WEB_BROWSER.md) |
-| Select the correct Ubuntu/Python package | [Platform targets](PLATFORM_TARGETS.md) |
-| Review experimental Kira Studio source (branch only) | [Studio prototype](studio/M1_IMPLEMENTED.md) and [provider gateway](studio/M2_PROVIDER_BRIDGE.md) |
-| Review bundled licenses | [Third-party notices](THIRD_PARTY_NOTICES.md) |
-
-## Feature contracts
-
-| Feature | Contract |
-| --- | --- |
-| Quick actions, drafts, queue, steering, modes, goals and chat organization | [Chat controls and workbench](WORKBENCH.md) |
-| Workspace, file references and explicit native actions | [Desktop 0.2 APIs](V02_IMPLEMENTATION.md) |
-| Permission scopes and live browser consent | [Full access](FULL_ACCESS.md) |
-| Autonomous objectives, checkpoints and pause/resume | [Autonomous goals](AUTONOMOUS_GOALS.md) |
-| Live guidance, concurrent chat and Team result delivery | [Live conversation](LIVE_CONVERSATION.md) |
-| Collaborating project teams | [Teams](V03_TEAMS.md) |
-| Persistent structured questions | [Questions](INPUT_QUESTIONS.md) |
-| Public provider reasoning summaries | [Reasoning summaries](REASONING_SUMMARIES.md) |
-| Formatted assistant replies | [Markdown](MARKDOWN_OUTPUT.md) |
-| Mascot and compact model controls | [Design](DESIGN_033.md) |
-| Quiet workspace: top bar, sidebar modes, composer chips, inspector tabs | [Design 0.18](DESIGN_018.md) |
-| Activity row, dismissible hint and compact tool groups | [Chat layout](CHAT_LAYOUT.md) |
-| Expandable tool output | [Tool output](TOOL_OUTPUT.md) |
-| File paths, screenshots, paste and drop | [Attachments](ATTACHMENT_INPUT.md) |
-| Real image inputs and previews | [Image attachments](IMAGE_ATTACHMENTS.md) |
-| Change provider in the same chat | [Provider continuity](PROVIDER_CONTINUITY.md) |
-| Preferences and observed activity | [Chat settings](CHAT_SETTINGS.md) |
-| Themes, fonts and presentation | [Appearance](APPEARANCE.md) |
-| Interface language and translation catalogs | [Localization](LOCALIZATION.md) |
-| Request-specific outcomes in Activity | [Run status](RUN_STATUS.md) |
-| Multiple chats, project context and readable usage | [Project chats](PROJECT_CHATS.md) |
-
-## Design background
-
-[Personalized Kira identities](KIRA_SOULS_PROPOSAL.md) proposes multiple user-owned
-profiles with a compact working philosophy, source-linked learning and explicit
-compaction/revision semantics. The original offline prototype exercises
-the lifecycle in disposable databases. [The implemented contract](KIRA_SOULS.md)
-governs the 0.15.0 integration; STATUS distinguishes preparation from activation
-and synthetic evidence from live provider behavior.
-
-## Evidence and documentation maintenance
-
-Private installation reports, screenshots, logs and migration records are
-excluded from the distributed repository. The [evidence policy](evidence/README.md)
-explains this boundary. Use [STATUS](STATUS.md) for qualification summaries and
-remaining gaps; a historical result does not certify a newly built artifact.
-
-The supported automation boundary is described in [CONTROL](CONTROL.md).
-Installation and backup instructions use paths resolved from each user's
-environment and an explicitly selected application profile.
-
-Update relevant guides when behavior changes, and distinguish synthetic checks,
-installed-package checks and actual provider turns. Engineering instructions are
-in [AGENTS](../AGENTS.md); implemented behavior is governed by the current
-[contracts](CONTRACTS.md).
+Le immagini condivise sono in [`images/`](images/). · Shared images live in [`images/`](images/).

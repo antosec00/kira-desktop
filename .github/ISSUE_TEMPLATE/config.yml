@@ -3,9 +3,9 @@ contact_links:
   - name: Security report
     url: https://github.com/antosec00/kira-desktop-app/security/advisories/new
     about: Report a vulnerability privately instead of opening a public issue.
-  - name: User guide (Italian)
-    url: https://github.com/antosec00/kira-desktop-app/blob/main/docs/USER_GUIDE_IT.md
+  - name: Guida utente (italiano)
+    url: https://github.com/antosec00/kira-desktop-app/blob/main/docs/it/GUIDA_UTENTE.md
+    about: Come funziona ogni pannello, provider e permesso.
+  - name: User guide (English)
+    url: https://github.com/antosec00/kira-desktop-app/blob/main/docs/en/USER_GUIDE.md
     about: How every panel, provider and permission works.
-  - name: Qualification status
-    url: https://github.com/antosec00/kira-desktop-app/blob/main/docs/STATUS.md
-    about: What has been verified, what is experimental and known limits.

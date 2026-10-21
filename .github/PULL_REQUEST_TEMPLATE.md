@@ -13,8 +13,7 @@
 - [ ] `python3 scripts/check_translations.py` (new UI strings have English catalog entries)
 - [ ] `python3 scripts/check_public_tree.py` (no personal paths, credentials or unreviewed binaries)
 - [ ] Tests added or updated for the behavior change
-- [ ] `docs/USER_GUIDE_IT.md` (Italian) and/or the English contract updated
-- [ ] `CHANGELOG.md` entry under *Unreleased*
+- [ ] Documentation updated in `docs/it/` (Italian) and its translation in `docs/en/`
 
 ## Live checks (if any)
 

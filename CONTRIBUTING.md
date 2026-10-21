@@ -1,91 +1,94 @@
-# Contributing to Kira Desktop
+# Contribuire a Kira Desktop
 
-Thank you for helping Kira grow. This page explains how the repository is
-organised, how to set up a development environment and what a change needs
-before it can be merged. Engineering rules that apply to every change are in
-[AGENTS.md](AGENTS.md); feature behavior is governed by the documented contracts
-in [docs/](docs/README.md).
+*[Read in English](CONTRIBUTING.en.md)*
 
-## Ground rules
+Grazie per aiutare Kira a crescere. Questa pagina spiega come è organizzato il
+repository, come preparare l'ambiente di sviluppo e che cosa serve a una
+modifica prima di essere integrata. Le regole di ingegneria che valgono per
+ogni modifica sono in [AGENTS.md](AGENTS.md); il comportamento delle funzioni
+è descritto nella [documentazione](docs/it/README.md).
 
-- **Durable evidence over narration.** Service events establish what happened;
-  a model's description never does. Code and docs must keep that distinction.
-- **The user's data is private.** No credentials, personal paths, provider
-  identifiers or chat content in fixtures, docs, screenshots or commits.
-  `python3 scripts/check_public_tree.py` enforces part of this; review the rest.
-- **Permissions are explicit.** Nothing may widen a project's permission, bypass
-  the browser consent policy or execute a tool the user did not enable.
-- **Languages.** User-facing text and `docs/USER_GUIDE_IT.md` are Italian;
-  implementation and technical documentation are English. UI strings use
-  `qsTr`/`tr()` and need an entry in the English catalogs.
+## Regole di base
 
-## Development setup
+- **Le prove contano, la narrazione no.** Gli eventi del servizio stabiliscono
+  che cosa è successo; la descrizione di un modello non lo fa mai. Codice e
+  documentazione devono mantenere questa distinzione.
+- **I dati dell'utente sono privati.** Niente credenziali, percorsi personali,
+  identificativi di provider o contenuti di chat in fixture, documentazione,
+  screenshot o commit. `python3 scripts/check_public_tree.py` ne controlla una
+  parte; il resto va rivisto a mano.
+- **I permessi sono espliciti.** Nulla può allargare il permesso di un progetto,
+  aggirare il consenso del browser o eseguire uno strumento che l'utente non ha
+  abilitato.
+- **Lingue.** L'interfaccia e la documentazione sono scritte in italiano; la
+  documentazione è tradotta in inglese in `docs/en/`. I testi dell'interfaccia
+  usano `qsTr`/`tr()` e hanno una voce nei cataloghi inglesi.
 
-Ubuntu 24.04 (Python 3.12) or 26.04 (Python 3.14), natively or on WSL2/WSLg.
+## Ambiente di sviluppo
+
+Ubuntu 24.04 (Python 3.12) o 26.04 (Python 3.14), in modo nativo o su WSL2/WSLg.
 
 ```sh
 git clone https://github.com/antosec00/kira-desktop-app.git
 cd kira-desktop-app
-uv sync --frozen --extra claude-code   # the extra is optional
-export KIRA_HOME="$HOME/kira-dev-profile"   # never develop against your real profile
+uv sync --frozen --extra claude-code   # l'extra è facoltativo
+export KIRA_HOME="$HOME/kira-dev-profile"   # mai sviluppare sul profilo reale
 uv run kira-desktop
 ```
 
-`KIRA_HOME` keeps the development profile (database, drafts, preferences,
-runtime socket) apart from an installed application. The GUI and the service
-must run the same version; stop a running service with `uv run kira-desktop
-stop-service` before switching checkouts.
+`KIRA_HOME` tiene il profilo di sviluppo (database, bozze, preferenze, socket)
+separato da un'installazione in uso. Interfaccia e servizio devono avere la
+stessa versione; ferma un servizio in esecuzione con
+`uv run kira-desktop stop-service` prima di cambiare checkout.
 
-## Checks before a pull request
+## Controlli prima di una pull request
 
 ```sh
-QT_QPA_PLATFORM=offscreen uv run pytest tests        # ~20 minutes, offscreen Qt
+QT_QPA_PLATFORM=offscreen uv run pytest tests        # ~20 minuti, Qt offscreen
 uv run ruff check src tests scripts packaging
 uv run mypy src
 python3 scripts/check_translations.py
 python3 scripts/check_public_tree.py
 ```
 
-Tests are synthetic: they use fixture projects, fake providers and offscreen
-rendering, and they never contact a real provider. A change in behavior comes
-with a test that would fail without it. When you need to prove something
-against a real provider, do it outside the suite and record the outcome in
-[docs/STATUS.md](docs/STATUS.md) as a live check, separate from synthetic coverage.
+I test sono sintetici: usano progetti di prova, provider finti e rendering
+offscreen, e non contattano mai un provider reale. Una modifica di comportamento
+arriva con un test che fallirebbe senza di essa. Se devi dimostrare qualcosa
+contro un provider reale, fallo fuori dalla suite con gli script `scripts/live_*.py`
+in un profilo usa-e-getta e descrivi l'esito nella pull request.
 
-Useful conventions:
+Convenzioni utili:
 
-- UI tests pin `objectName`s and geometry on purpose. If you add a `ComboBox`,
-  update the pinned counts in `tests/test_ui_contracts.py` and
+- I test dell'interfaccia fissano di proposito `objectName` e geometrie. Se
+  aggiungi una `ComboBox`, aggiorna i conteggi in `tests/test_ui_contracts.py` e
   `tests/test_ui_workspace.py`.
-- Offscreen renders are the quickest way to review a layout change; see
-  [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
-- Keep comments and names in the style of the surrounding code.
+- I render offscreen sono il modo più rapido per rivedere una modifica di
+  layout; vedi [Sviluppo](docs/it/SVILUPPO.md).
+- Mantieni commenti e nomi nello stile del codice circostante.
 
-## Branches and commits
+## Rami e commit
 
-- `main` — one reviewed snapshot per release. It is updated only by the maintainer.
-- `dev/<version>` — the active development line (currently `dev/0.18`).
-  Open pull requests against it.
-- `release/<version>` — retained exact copies of published releases.
+- `main` — l'ultima versione pubblicata. Viene aggiornato solo dal manutentore.
+- `dev/<versione>` — la linea di sviluppo attiva. Apri le pull request su questo ramo.
+- `release/<versione>` — copie conservate delle versioni pubblicate.
 
-Commit messages follow the conventional form used in the history:
-`type(scope): summary`, for example `fix(ollama): report stream inactivity as a
-timeout` or `docs(guide): describe sidebar modes`. Types: `feat`, `fix`,
-`docs`, `test`, `refactor`, `security`, `ci`, `i18n`, `style`, `chore`.
+I messaggi di commit seguono la forma convenzionale usata nella cronologia:
+`tipo(ambito): sintesi`, per esempio `fix(ollama): report stream inactivity as a
+timeout` o `docs(guide): describe sidebar modes`. Tipi: `feat`, `fix`, `docs`,
+`test`, `refactor`, `security`, `ci`, `i18n`, `style`, `chore`.
 
-A pull request should:
+Una pull request deve:
 
-1. describe the behavior change and the contract or guide it touches;
-2. list the checks you ran (and any live check, with its scope);
-3. update `docs/USER_GUIDE_IT.md` for user-visible changes and the relevant
-   English contract for technical ones;
-4. update `CHANGELOG.md` under *Unreleased*.
+1. descrivere la modifica di comportamento e la guida che tocca;
+2. elencare i controlli eseguiti (ed eventuali prove dal vivo, con il loro ambito);
+3. aggiornare la documentazione in `docs/it/` per le modifiche visibili
+   all'utente e la relativa traduzione in `docs/en/`.
 
-## Reporting problems
+## Segnalare problemi
 
-Use the issue templates. For anything security-related, follow
-[SECURITY.md](SECURITY.md) instead of opening a public issue.
+Usa i modelli di issue. Per tutto ciò che riguarda la sicurezza segui
+[SECURITY.md](SECURITY.md) invece di aprire una issue pubblica.
 
-## Code of conduct
+## Codice di condotta
 
-This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
+Il progetto adotta il [Contributor Covenant](CODE_OF_CONDUCT.md).
