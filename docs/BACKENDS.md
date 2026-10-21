@@ -531,7 +531,14 @@ stopped with an earlier run, which a resumed session handles before the prompt;
 Kira records a notice and keeps waiting. **Ferma** sends an
 interrupt and waits up to 15 seconds for Claude Code's terminal result. Usage
 reports provider token counts only; Claude Code's API-equivalent cost estimate
-is not shown.
+is not shown. The turn's usage is normalized so that input includes the tokens
+read from and written to the prompt cache (the uncached share stays visible);
+the last API request of the turn is kept apart as the current context occupancy,
+and the model's context window comes from Claude Code's per-model report.
+Claude Code's rate-limit notice — the five-hour and seven-day plan windows its
+own usage indicator shows — is recorded as an account-scoped usage event and
+served by `backend.usage` to the **Uso e risorse** panel and the composer
+footnote; see [ACCOUNT_USAGE.md](ACCOUNT_USAGE.md#claude-code-source).
 
 Synthetic fixtures cover option mapping, the path guard, the launcher, streaming,
 tool observation, MCP callbacks, browser/Computer screenshot delivery, image

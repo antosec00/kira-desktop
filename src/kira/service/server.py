@@ -798,7 +798,7 @@ class Service:
         if method == "backend.usage":
             fields(params, {"backend", "account_id"})
             name = string(params, "backend", maximum=32)
-            if name not in {"codex", "openai_chatgpt", "ollama"}:
+            if name not in {"codex", "openai_chatgpt", "ollama", "claude_code"}:
                 raise KiraError("INVALID_ARGUMENT", "Unknown usage provider")
             account_id = string(params, "account_id", maximum=128) if "account_id" in params else None
             if account_id and name != DIRECT_BACKEND:

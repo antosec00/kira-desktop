@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from kira.domain.account_usage import normalize_claude_plan, unavailable_claude_usage
 from kira.domain.contracts import Json, KiraError
 from kira.service.storage import now
 
@@ -45,6 +46,8 @@ class AccountUsage:
         rejected = False
         for row in rows[:MAX_EVENTS]:
             payload = row["payload"]
+            if payload.get("scope") == "account":
+                continue  # Plan-limit notices describe the account, not a request.
             round_ = payload.get("round")
             if payload.get("source") == backend and payload.get("scope") == "context_compaction":
                 identity = payload.get("measurement_id")
@@ -122,6 +125,8 @@ class AccountUsage:
                     return self.unavailable(backend, "unavailable")
                 return dict(self.service.redactor.clean(result))
         observed_at = now()
+        if backend == "claude_code":
+            return {**self.claude_plan(), "local_usage": self.local(backend, None, observed_at)}
         account: Json = {"type": "local", "label": "Ollama", "plan_type": None}
         if backend == "openai_chatgpt":
             status = await self.service.direct_accounts.status()
@@ -135,6 +140,22 @@ class AccountUsage:
         return {"available": True, "source": backend, "scope": "kira_recorded", "observed_at": observed_at,
                 "account": account, "limits": [], "reason": "not_exposed" if backend == "openai_chatgpt" else "not_applicable",
                 "local_usage": self.local(backend, account_id, observed_at)}
+
+    def claude_plan(self) -> Json:
+        """The latest plan-limit notice Claude Code emitted during a Kira run.
+
+        Claude Code derives it from its own API responses; Kira records it as an
+        account-scoped usage event and reads it back here. No provider call, no
+        credential access and no account identity are involved.
+        """
+        rows = self.service.store.all(
+            "SELECT payload, timestamp FROM events WHERE type='usage' "
+            "AND json_extract(payload,'$.source')='claude_code' "
+            "AND json_extract(payload,'$.measurement')='plan_limits' "
+            "ORDER BY timestamp DESC, seq DESC LIMIT 1")
+        if not rows:
+            return unavailable_claude_usage("no_observation")
+        return normalize_claude_plan(rows[0]["payload"], rows[0]["timestamp"])
 
     @staticmethod
     def unavailable(backend: str, reason: str) -> Json:

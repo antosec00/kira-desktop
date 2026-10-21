@@ -216,3 +216,25 @@ ApplicationWindow {{ visible: true; width: {size[0]}; height: {size[1]}
         window.close()
         engine.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_claude_turn_last_request_and_context_share_are_separate():
+    usage = {"source": "claude_code", "measurement": "provider", "scope": "turn", "round": 1, "requests": 2,
+             "input_tokens": 51_569, "cached_input_tokens": 51_163, "cache_creation_input_tokens": 400,
+             "uncached_input_tokens": 6, "output_tokens": 2_287, "total_tokens": 53_856,
+             "model": "claude-sonnet-5-5", "model_context_window": 200_000,
+             "last_request": {"input_tokens": 31_267, "cached_input_tokens": 31_163,
+                              "cache_creation_input_tokens": 100, "output_tokens": 2_200}}
+    data = present_metrics(usage, {})
+    turn, last, capacity = data["cards"][:3]
+    assert turn["title"] == "Ultimo turno" and "Claude Code" in turn["note"]
+    assert rows(turn) == {"Richieste al modello": "2", "Token in ingresso": "51.569", "Di cui in cache": "51.163",
+                          "Scritti in cache": "400", "Token in uscita": "2.287", "Totale riportato": "53.856"}
+    assert last["title"] == "Ultima richiesta"
+    assert rows(last) == {"Token in ingresso": "31.267", "Di cui in cache": "31.163", "Token in uscita": "2.200"}
+    assert rows(capacity) == {"Capacità in token": "200.000", "Contesto dell’ultima richiesta": "31.267",
+                              "Occupazione": "15,6 %"}
+    assert "claude-sonnet-5-5" in capacity["note"]
+    bare = present_metrics({"source": "claude_code", "input_tokens": 5}, {})
+    assert bare["cards"][0]["title"] == "Ultimo turno" and bare["cards"][1]["title"] == "Finestra di contesto"
+    assert rows(bare["cards"][1])["Occupazione"] == UNKNOWN and rows(bare["cards"][1])["Capacità in token"] == UNKNOWN

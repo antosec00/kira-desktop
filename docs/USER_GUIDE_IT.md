@@ -677,8 +677,10 @@ del progetto, le note delle chat e il registro **Ricerca**, dove il modello può
 proporre schede che decidi tu se accettare. Il browser e il Computer di Kira
 funzionano come con gli altri provider: le pagine si aprono nel browser isolato
 di Kira e gli screenshot arrivano a Claude Code come immagini; puoi anche
-allegare fino a quattro immagini PNG alla richiesta. Un `uv sync` senza
-`--extra claude-code` rimuove di nuovo il supporto.
+allegare fino a quattro immagini PNG alla richiesta. In **Uso e risorse**
+trovi i limiti del piano comunicati da Claude Code e, per ogni turno, i token del
+turno, quelli dell’ultima richiesta e l’occupazione della finestra di contesto.
+Un `uv sync` senza `--extra claude-code` rimuove di nuovo il supporto.
 
 Il modello usato per sviluppare Kira e quello selezionato dentro Kira sono scelte
 distinte. [BACKENDS.md](BACKENDS.md) descrive i collegamenti verificati. La prova
@@ -986,6 +988,20 @@ aprirla manualmente. Il browser può essere collegato a un account diverso:
 verifica quello mostrato da ChatGPT. Un dato assente rimane **Non disponibile**;
 zero viene mostrato soltanto quando è effettivamente riportato. Le misure locali
 non rappresentano il saldo del piano e possono essere incomplete.
+
+Per **Claude Code**, il pannello mostra i limiti del piano che Claude Code
+stesso comunica durante le esecuzioni: la finestra di sessione (5 ore) e quella
+settimanale, con la percentuale disponibile, l’ora del ripristino e il tempo che
+manca, più lo stato dell’uso extra. Sono gli stessi valori dell’indicatore di
+utilizzo di Claude Code e si aggiornano a ogni turno: Kira non legge le
+credenziali di Claude Code e non interroga alcun servizio per conto tuo, quindi
+senza un turno recente la misura resta quella dell’ultima esecuzione (la data è
+sempre indicata) e una finestra già ripristinata viene segnalata come azzerata.
+Sotto la chat, mentre è selezionato Claude Code, una riga riassume l’ultima
+misura ricevuta in questa sessione di Kira (**Piano Claude · sessione X% ·
+settimana Y%**) con il pulsante **Dettagli**: compare dopo il primo turno o dopo
+un **Aggiorna** del pannello. **Apri claude.ai** porta alla pagina di utilizzo del
+tuo account nel browser.
 
 Il riepilogo distingue anche ultima richiesta, totali della conversazione,
 capacità del contesto e risorse RAM/GPU osservate. Nel diretto, la capacità del

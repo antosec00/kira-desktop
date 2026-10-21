@@ -6,6 +6,9 @@ Rectangle {
     id: card
     objectName: "accountUsageCard"
     readonly property var report: { localization.revision; return accountUsage.report }
+    readonly property var providers: ["codex", "openai_chatgpt", "ollama", "claude_code"]
+    readonly property bool chatgptLinks: accountUsage.backend === "codex" || accountUsage.backend === "openai_chatgpt"
+    readonly property bool claudeLinks: accountUsage.backend === "claude_code"
     implicitHeight: column.implicitHeight + 28
     radius: 12
     color: appearance.colors.surfaceAlt
@@ -26,10 +29,10 @@ Rectangle {
             KComboBox {
                 objectName: "usageProviderChoice"
                 Layout.fillWidth: true
-                model: ["Codex", qsTr("OpenAI diretto · ChatGPT"), "Ollama"]
-                currentIndex: ["codex", "openai_chatgpt", "ollama"].indexOf(accountUsage.backend)
+                model: ["Codex", qsTr("OpenAI diretto · ChatGPT"), "Ollama", qsTr("Claude Code")]
+                currentIndex: card.providers.indexOf(accountUsage.backend)
                 Accessible.name: qsTr("Provider di cui mostrare l'utilizzo")
-                onActivated: accountUsage.setBackend(["codex", "openai_chatgpt", "ollama"][currentIndex])
+                onActivated: accountUsage.setBackend(card.providers[currentIndex])
             }
             KButton {
                 objectName: "accountUsageRefresh"
@@ -64,22 +67,29 @@ Rectangle {
         }
         ReadText {
             Layout.fillWidth: true
-            visible: accountUsage.backend !== "ollama"
+            visible: card.chatgptLinks || card.claudeLinks
             text: qsTr("Nel browser, verifica di usare lo stesso account mostrato in Kira.")
             color: appearance.colors.muted
         }
         ReadText {
             objectName: "usageBrowserMessage"
             Layout.fillWidth: true
-            visible: accountUsage.backend !== "ollama" && !!directAccount.usageMessage
-            text: directAccount.usageMessage
+            visible: (card.chatgptLinks && !!directAccount.usageMessage) || (card.claudeLinks && !!accountUsage.linkMessage)
+            text: card.claudeLinks ? accountUsage.linkMessage : directAccount.usageMessage
             color: appearance.colors.muted
         }
         RowLayout {
-            visible: accountUsage.backend !== "ollama"
+            visible: card.chatgptLinks
             Layout.fillWidth: true
             KButton { objectName: "usageManageChatGPT"; text: qsTr("Apri ChatGPT ↗"); enabled: !directAccount.usageOpening; onClicked: directAccount.openUsage() }
             KButton { objectName: "usageCopyChatGPTLink"; text: qsTr("Copia collegamento"); onClicked: directAccount.copyUsageLink() }
+            Item { Layout.fillWidth: true }
+        }
+        RowLayout {
+            visible: card.claudeLinks
+            Layout.fillWidth: true
+            KButton { objectName: "usageManageClaude"; text: qsTr("Apri claude.ai ↗"); enabled: !accountUsage.linkOpening; onClicked: accountUsage.openPlanPage() }
+            KButton { objectName: "usageCopyClaudeLink"; text: qsTr("Copia collegamento"); onClicked: accountUsage.copyPlanLink() }
             Item { Layout.fillWidth: true }
         }
         ReadText {
@@ -111,6 +121,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 9
                 ReadText { Layout.fillWidth: true; text: modelData.name; font.bold: true }
+                ReadText { Layout.fillWidth: true; visible: !!modelData.status; text: modelData.status; color: appearance.colors.warning }
                 Repeater {
                     model: modelData.windows
                     delegate: ColumnLayout {
@@ -141,7 +152,7 @@ Rectangle {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    ReadText { Layout.fillWidth: true; text: qsTr("Crediti") }
+                    ReadText { Layout.fillWidth: true; text: modelData.credits_label }
                     ReadText { text: modelData.credits; font.bold: true }
                 }
             }

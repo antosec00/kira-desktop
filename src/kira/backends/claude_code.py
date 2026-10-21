@@ -17,6 +17,7 @@ import binascii
 import contextlib
 import hashlib
 import json
+import math
 import os
 import secrets
 import shutil
@@ -49,6 +50,11 @@ TARGET_ENV = "KIRA_CLAUDE_CODE_TARGET"
 LAUNCHER_NAME = "claude-code-launcher"
 CONNECT_TIMEOUT = 60.0
 INTERRUPT_GRACE = 15.0
+# Plan windows Claude Code names in its rate-limit notices; other keys are dropped.
+PLAN_WINDOWS = ("five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet")
+PLAN_STATUSES = frozenset({"allowed", "allowed_warning", "rejected"})
+MAX_TIMESTAMP = 253_402_300_799
+MAX_COUNT = 2**53
 MAX_OBSERVED_TEXT = 65_536
 MAX_MODELS = 64
 # The child receives the desktop basics plus Claude Code's own configuration
@@ -213,6 +219,104 @@ def observed_arguments(name: str, tool_input: Json) -> Json:
         if isinstance(tool_input.get(key), str):
             arguments[key] = tool_input[key][:2_048]
     return arguments
+
+
+def plan_status(value: Any) -> str | None:
+    return value if isinstance(value, str) and value in PLAN_STATUSES else None
+
+
+def plan_text(value: Any) -> str | None:
+    return value[:64] if isinstance(value, str) and value and value.isprintable() else None
+
+
+def plan_time(value: Any) -> int | None:
+    return value if type(value) is int and 0 <= value <= MAX_TIMESTAMP else None
+
+
+def plan_fraction(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return float(value) if 0 <= value <= 100 else None
+
+
+def plan_limits(info: Any) -> Json:
+    """Bound the rate-limit notice Claude Code derives from its own API responses.
+
+    These are the same window percentages Claude Code shows in its usage
+    indicator; Kira records them as an account-scoped usage event. Nothing here
+    reads credentials or calls a usage endpoint.
+    """
+    raw = info.raw if isinstance(info.raw, dict) else {}
+    using = raw.get("isUsingOverage")
+    payload: Json = {"source": BACKEND, "measurement": "plan_limits", "scope": "account",
+                     "status": plan_status(info.status), "limit_type": plan_text(info.rate_limit_type),
+                     "resets_at": plan_time(info.resets_at), "utilization": plan_fraction(info.utilization),
+                     "overage_status": plan_status(info.overage_status),
+                     "overage_resets_at": plan_time(info.overage_resets_at),
+                     "overage_disabled_reason": plan_text(info.overage_disabled_reason),
+                     "using_overage": using if type(using) is bool else None, "windows": {}}
+    unified = raw.get("unifiedWindows")
+    if isinstance(unified, dict):
+        for name in PLAN_WINDOWS:
+            window = unified.get(name)
+            if isinstance(window, dict):
+                payload["windows"][name] = {"utilization": plan_fraction(window.get("utilization")),
+                                            "resets_at": plan_time(window.get("resetsAt"))}
+    return payload
+
+
+def _count(value: Any) -> int | None:
+    return value if type(value) is int and 0 <= value < MAX_COUNT else None
+
+
+def _prompt_tokens(usage: Json) -> tuple[int | None, int | None, int | None, int | None]:
+    """Uncached, cache-read and cache-written input plus output, each unknown when absent."""
+    return (_count(usage.get("input_tokens")), _count(usage.get("cache_read_input_tokens")),
+            _count(usage.get("cache_creation_input_tokens")), _count(usage.get("output_tokens")))
+
+
+def turn_usage(message: Any, view: Json) -> Json | None:
+    """Normalize Claude Code's turn usage to Kira's shape, where input includes cached tokens.
+
+    Anthropic reports uncached, cache-read and cache-written input separately;
+    Kira's usage cards treat cached tokens as part of input, so their sum is the
+    input count and the cache read stays visible as "of which cached". The last
+    API request of the turn is kept apart: its input is the context currently
+    occupied, which Claude Code's own context view also reports.
+    """
+    usage = message.usage if isinstance(message.usage, dict) else {}
+    uncached, cached, written, output = _prompt_tokens(usage)
+    parts = [value for value in (uncached, cached, written) if value is not None]
+    prompt = sum(parts) if parts else None
+    payload: Json = {"source": BACKEND, "measurement": "provider", "scope": "turn",
+                     "round": view["rounds"], "input_tokens": prompt, "cached_input_tokens": cached,
+                     "cache_creation_input_tokens": written, "uncached_input_tokens": uncached,
+                     "output_tokens": output,
+                     "total_tokens": prompt + output if prompt is not None and output is not None else None}
+    # An interrupted turn reports zero usage; keep the previous measurement visible.
+    if not any(value for value in (uncached, cached, written, output)):
+        return None
+    iterations = usage.get("iterations")
+    requests = [item for item in iterations if isinstance(item, dict)] if isinstance(iterations, list) else []
+    if requests:
+        last_uncached, last_cached, last_written, last_output = _prompt_tokens(requests[-1])
+        last_parts = [value for value in (last_uncached, last_cached, last_written) if value is not None]
+        payload["requests"] = len(requests)
+        payload["last_request"] = {"input_tokens": sum(last_parts) if last_parts else None,
+                                   "cached_input_tokens": last_cached,
+                                   "cache_creation_input_tokens": last_written,
+                                   "output_tokens": last_output}
+    model = view["model"]
+    models = message.model_usage if isinstance(message.model_usage, dict) else {}
+    entry = models.get(model) if isinstance(model, str) else None
+    if entry is None and len(models) == 1:
+        entry = next(iter(models.values()))
+    window = _count(entry.get("contextWindow")) if isinstance(entry, dict) else None
+    if window:
+        payload["model_context_window"] = window
+    if isinstance(model, str) and model:
+        payload["model"] = model[:128]
+    return payload
 
 
 class ClaudeCodeBackend:
@@ -571,7 +675,7 @@ class ClaudeCodeBackend:
         interrupted = False
         deadline: float | None = None
         view: Json = {"session_id": None, "model": None, "message_id": "", "text_ids": {},
-                      "current_text": None, "streamed": set(), "tools": {}}
+                      "current_text": None, "streamed": set(), "tools": {}, "rounds": 0}
         try:
             while True:
                 if next_message is None:
@@ -654,11 +758,12 @@ class ClaudeCodeBackend:
                 if isinstance(block, module.ToolResultBlock):
                     await self._tool_result(ctx, block, message.tool_use_result, view)
         elif isinstance(message, module.RateLimitEvent):
-            info = message.rate_limit_info
-            if info.status != "allowed":
+            payload = plan_limits(message.rate_limit_info)
+            await ctx.emit("usage", payload)
+            if payload["status"] != "allowed":
                 await ctx.emit("backend.notice", {"message": "Claude plan usage limit status",
-                    "status": info.status, "limit_type": info.rate_limit_type,
-                    "resets_at": info.resets_at, "utilization": info.utilization})
+                    "status": payload["status"], "limit_type": payload["limit_type"],
+                    "resets_at": payload["resets_at"], "utilization": payload["utilization"]})
 
     async def _initialized(self, ctx: RunContext, data: Json, view: Json, mcp_names: set[str]) -> None:
         session_id = data.get("session_id")
@@ -753,16 +858,10 @@ class ClaudeCodeBackend:
         if isinstance(message.session_id, str) and message.session_id \
                 and message.session_id != view["session_id"]:
             await ctx.emit("session.updated", {"backend_ref": message.session_id})
-        usage = message.usage if isinstance(message.usage, dict) else {}
-        payload: Json = {"source": BACKEND, "measurement": "provider", "scope": "turn"}
-        for old, new in (("input_tokens", "input_tokens"), ("output_tokens", "output_tokens"),
-                         ("cache_read_input_tokens", "cached_input_tokens"),
-                         ("cache_creation_input_tokens", "cache_creation_input_tokens")):
-            if type(usage.get(old)) is int:
-                payload[new] = usage[old]
-        # An interrupted turn reports zero usage; keep the previous measurement visible.
-        if any(type(value) is int and value > 0 for value in payload.values()):
-            await ctx.emit("usage", payload)
+        view["rounds"] += 1
+        usage = turn_usage(message, view)
+        if usage is not None:
+            await ctx.emit("usage", usage)
         outcome: Json = {"session_id": message.session_id, "model": view["model"] or ctx.model,
                          "reasoning_effort": ctx.settings.get("reasoning_effort"),
                          "num_turns": message.num_turns, "duration_ms": message.duration_ms,

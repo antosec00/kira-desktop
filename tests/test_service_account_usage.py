@@ -201,3 +201,35 @@ async def test_context_maintenance_usage_is_counted_without_double_count_or_fake
     assert local["context_compaction_requests"] == 3
     assert local["input_tokens"] == 800 and local["total_tokens"] == 990
     assert local["coverage"] == "complete" and local["field_coverage"]["total_tokens"] == 4
+
+
+async def test_claude_code_usage_reads_the_latest_recorded_plan_notice_without_provider_calls(usage_service):
+    service, project, backend = usage_service
+    session = await create(service, project, backend="claude_code")
+    empty = await service.dispatch("backend.usage", {"backend": "claude_code"})
+    assert empty["available"] is False and empty["reason"] == "no_observation"
+    assert empty["account"] == {"type": "claude_code", "label": None, "plan_type": None}
+    assert empty["local_usage"]["runs"] == 0 and empty["local_usage"]["coverage"] == "none"
+    run = measured(service, session)
+    stale = {"source": "claude_code", "measurement": "plan_limits", "scope": "account", "status": "rejected",
+             "limit_type": "five_hour", "resets_at": 1792567000, "utilization": 1.0,
+             "windows": {"five_hour": {"utilization": 1.0, "resets_at": 1792567000}}}
+    latest = {"source": "claude_code", "measurement": "plan_limits", "scope": "account", "status": "allowed",
+              "limit_type": "five_hour", "resets_at": 1792567800, "utilization": 0.01,
+              "windows": {"five_hour": {"utilization": 0.01, "resets_at": 1792567800},
+                          "seven_day": {"utilization": 0.13, "resets_at": 1792879200}}}
+    service.store.event(run["id"], "usage", stale)
+    service.store.event(run["id"], "usage", latest)
+    result = await service.dispatch("backend.usage", {"backend": "claude_code"})
+    assert result["available"] and result["scope"] == "provider_account" and backend.calls == 0
+    assert result["reason"] == "observed_during_runs" and result["observed_at"]
+    group, = result["limits"]
+    assert group["status"] == "allowed"
+    assert [(window["kind"], window["used_percent"]) for window in group["windows"]] == [("five_hour", 1.0), ("seven_day", 13.0)]
+    local = result["local_usage"]
+    # The account-scoped notices are not request measurements: the turn stays counted once.
+    assert (local["runs"], local["requests"], local["input_tokens"], local["total_tokens"]) == (1, 1, 100, 120)
+    assert local["coverage"] == "complete" and not local["is_plan_allowance"]
+    assert not service.store.all("SELECT * FROM runs WHERE id NOT IN (?)", (run["id"],))
+    with pytest.raises(KiraError):
+        await service.dispatch("backend.usage", {"backend": "claude_code", "account_id": "direct-id"})

@@ -2,6 +2,7 @@
 
 import copy
 import os
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -10,7 +11,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QObject, QRectF
 from PySide6.QtQml import QQmlEngine, QQmlExpression
 
 from kira.domain.paths import Paths
-from kira.ui.account_usage import present_account_usage
+from kira.ui.account_usage import plan_summary, present_account_usage
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 
@@ -239,3 +240,96 @@ def test_browser_failure_feedback_and_copy_are_visible_on_account_surfaces(usage
         window.close()
         engine.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def claude_snapshot(**updates):
+    now = int(time.time())
+    return {"available": True, "source": "claude_code", "scope": "provider_account",
+            "observed_at": "2026-10-21T04:50:00+00:00",
+            "account": {"type": "claude_code", "label": None, "plan_type": None},
+            "limits": [{"id": "claude_plan", "name": None, "plan_type": None, "status": "allowed_warning",
+                        "limit_type": "five_hour",
+                        "windows": [{"kind": "five_hour", "used_percent": 91.0, "remaining_percent": 9.0,
+                                     "duration_minutes": 300, "resets_at": now + 4 * 3600 + 24 * 60 + 30,
+                                     "status": "allowed_warning"},
+                                    {"kind": "seven_day", "used_percent": 13.0, "remaining_percent": 87.0,
+                                     "duration_minutes": 10080, "resets_at": now + 3 * 86400 + 2 * 3600 + 90,
+                                     "status": None},
+                                    {"kind": "seven_day_opus", "used_percent": 2.0, "remaining_percent": 98.0,
+                                     "duration_minutes": 10080, "resets_at": 1_600_000_000, "status": None}],
+                        "credits": {"kind": "overage", "status": "rejected", "reason": "out_of_credits",
+                                    "active": False, "resets_at": None}}],
+            "limits_omitted": 0, "reason": "observed_during_runs", **updates}
+
+
+def test_claude_plan_windows_are_named_counted_down_and_never_estimated():
+    data = claude_snapshot()
+    report = present_account_usage(data, "claude_code")
+    assert report["source"] == "Claude Code" and report["account"] == "accesso locale"
+    assert "Claude Code" in report["plan"]
+    group = report["groups"][0]
+    assert group["name"] == "Limiti del piano Claude"
+    assert group["credits_label"] == "Uso extra" and group["credits"] == "Non disponibile · crediti esauriti"
+    assert "vicino" in group["status"]
+    session, week, opus = group["windows"]
+    assert session["title"] == "Sessione · 5 ore" and session["known"] and session["remaining"] == 9.0
+    assert session["value"] == "9% disponibile · vicino al limite"
+    assert session["reset"].startswith("Ripristino: ") and session["reset"].endswith("tra 4 h 24 min")
+    assert week["title"] == "Settimanale · tutti i modelli" and week["value"] == "87% disponibile"
+    assert week["reset"].endswith("tra 3 g 2 h")
+    assert opus["title"] == "Settimanale · Opus" and opus["known"] is False and opus["remaining"] == 0
+    assert opus["value"] == "Finestra azzerata dopo l’ultima misura" and opus["reset"].startswith("Ripristinato: ")
+    assert "credenziali" in report["note"]
+    assert plan_summary(data) == ("Piano Claude · sessione 91% · settimana 13%", True)
+    assert plan_summary({"available": False}) == ("", False)
+    empty = present_account_usage({"available": False, "source": "claude_code", "reason": "no_observation",
+                                   "limits": [], "account": {"type": "claude_code"}}, "claude_code")
+    assert empty["note"].startswith("Nessuna misura") and empty["groups"] == []
+    exhausted = claude_snapshot()
+    exhausted["limits"][0]["status"] = "rejected"
+    exhausted["limits"][0]["windows"][0].update(status="rejected", used_percent=100, remaining_percent=0)
+    report = present_account_usage(exhausted, "claude_code")
+    assert report["groups"][0]["windows"][0]["value"] == "0% disponibile · limite raggiunto"
+    assert report["groups"][0]["status"].startswith("Limite raggiunto")
+
+
+def test_credit_balance_is_formatted_when_numeric_and_literal_otherwise():
+    data = snapshot()
+    data["limits"][0]["credits"]["balance"] = "1826.4197087500"
+    assert present_account_usage(data, "codex")["groups"][0]["credits"] == "1.826,42"
+    assert present_account_usage(data, "codex")["groups"][0]["credits_label"] == "Crediti"
+    data["limits"][0]["credits"]["balance"] = "12 crediti"
+    assert present_account_usage(data, "codex")["groups"][0]["credits"] == "12 crediti"
+    data["limits"][0]["credits"]["balance"] = "inf"
+    assert present_account_usage(data, "codex")["groups"][0]["credits"] == "inf"
+
+
+def test_plan_notice_refreshes_the_open_claude_view_and_feeds_the_footnote(usage):
+    workspace, controller, requests = usage
+    before = len(requests)
+    workspace._backend = "claude_code"
+    workspace.changed.emit()
+    # Selecting the provider reads nothing: run events or an explicit refresh fill the footnote.
+    assert len(requests) == before
+    assert controller.planSummary == "" and controller.planWarning is False
+    now = int(time.time())
+    notice = {"source": "claude_code", "measurement": "plan_limits", "scope": "account", "status": "allowed",
+              "limit_type": "five_hour", "utilization": 0.01, "resets_at": now + 3600,
+              "windows": {"five_hour": {"utilization": 0.01, "resets_at": now + 3600},
+                          "seven_day": {"utilization": 0.13, "resets_at": now + 86400}}}
+    controller.observed(notice)
+    assert controller.planSummary == "Piano Claude · sessione 1% · settimana 13%"
+    assert controller.planWarning is False and len(requests) == before
+    controller.open()
+    assert requests[-1][:2] == ("backend.usage", {"backend": "claude_code"})
+    requests[-1][2](claude_snapshot())
+    assert controller.report["groups"][0]["windows"][0]["title"] == "Sessione · 5 ore"
+    assert controller.planWarning is True
+    before = len(requests)
+    controller.observed({**notice, "status": "allowed"})
+    assert len(requests) == before + 1, "a new notice refreshes the open Claude view"
+    controller.observed({"source": "codex", "measurement": "plan_limits", "scope": "account"})
+    assert len(requests) == before + 1
+    workspace._backend = "codex"
+    workspace.changed.emit()
+    assert controller.planSummary == ""

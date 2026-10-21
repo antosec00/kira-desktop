@@ -504,5 +504,16 @@
   "Ricerca degli strumenti": "Tool search",
   "Inizio della pianificazione": "Starting planning",
   "Fine della pianificazione": "Ending planning",
-  "Claude Code · {tool}": "Claude Code · {tool}"
+  "Claude Code · {tool}": "Claude Code · {tool}",
+  "Capacità dichiarata da Claude Code per il modello {model}. L’occupazione confronta l’ingresso dell’ultima richiesta con la capacità.": "Capacity declared by Claude Code for model {model}. Occupancy compares the last request's input with the capacity.",
+  "Claude Code": "Claude Code",
+  "Contesto dell’ultima richiesta": "Context of the last request",
+  "Contesto inviato con l’ultima richiesta del turno: è l’occupazione attuale della finestra, cache inclusa.": "Context sent with the turn's last request: the current occupancy of the window, cache included.",
+  "DeepSeek Web": "DeepSeek Web",
+  "Occupazione": "Occupancy",
+  "OpenAI diretto": "OpenAI direct",
+  "Provider: Claude Code. Totali del turno riportati da Claude Code; l’ingresso comprende i token letti e scritti in cache.": "Provider: Claude Code. Turn totals reported by Claude Code; input includes tokens read from and written to the cache.",
+  "Richieste al modello": "Model requests",
+  "Scritti in cache": "Written to cache",
+  "Ultimo turno": "Latest turn"
 }

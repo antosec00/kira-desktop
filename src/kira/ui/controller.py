@@ -892,6 +892,13 @@ class Workspace(QObject):
                 "deepseek_web": tr("DeepSeek Web · sperimentale"),
                 "claude_code": tr("Claude Code · uso personale")}.get(self._backend, self._backend)
 
+    @qt_property(str, notify=changed)
+    def backendShortLabel(self) -> str:
+        """The composer chip has little room: the provider name without its qualifier."""
+        return {"codex": "Codex", "ollama": "Ollama", "openai_chatgpt": tr("OpenAI diretto"),
+                "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
+                "claude_code": tr("Claude Code")}.get(self._backend, self._backend)
+
     @qt_property(str, notify=accountChanged)
     def accountLabel(self) -> str:
         if self._backend != "openai_chatgpt":
@@ -2325,7 +2332,10 @@ class Workspace(QObject):
             if not any(a.get("path") == payload.get("path") for a in self._artifacts):
                 self._artifacts.append(payload)
         elif kind == "usage":
-            self._usage = payload
+            if payload.get("scope") == "account":
+                self.accountUsage.observed(payload)  # Plan limits are not a request measure.
+            else:
+                self._usage = payload
         elif kind == "context.supplied":
             self._context = str(payload.get("content", ""))
         elif kind == "approval.requested":

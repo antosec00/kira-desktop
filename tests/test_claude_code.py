@@ -248,8 +248,71 @@ async def test_run_streams_text_observes_tools_and_records_the_session(tmp_path)
     artifact = next(payload for kind, payload in events if kind == "artifact.created")
     assert artifact["sha256"] == hashlib.sha256(b"written").hexdigest()
     usage = next(payload for kind, payload in events if kind == "usage")
-    assert usage["input_tokens"] == 3 and usage["cached_input_tokens"] == 11
+    # Kira's input count folds the cache read in; the uncached share stays visible.
+    assert usage["input_tokens"] == 14 and usage["cached_input_tokens"] == 11
+    assert usage["uncached_input_tokens"] == 3 and usage["round"] == 1 and usage["scope"] == "turn"
     assert kinds.index("tool.started") < kinds.index("tool.completed")
+
+
+async def test_plan_limits_and_turn_usage_are_recorded_from_claude_code_reports(tmp_path):
+    ctx, events, _ = context(tmp_path, permission="read_only")
+    info = sdk.RateLimitInfo(
+        status="allowed_warning", resets_at=1792567800, rate_limit_type="five_hour", utilization=0.91,
+        overage_status="rejected", overage_disabled_reason="out_of_credits",
+        raw={"status": "allowed_warning", "isUsingOverage": False, "unifiedWindows": {
+            "five_hour": {"utilization": 0.91, "resetsAt": 1792567800},
+            "seven_day": {"utilization": 0.13, "resetsAt": 1792879200},
+            "unknown_window": {"utilization": 0.5, "resetsAt": 1}}})
+    turn_usage = {"input_tokens": 6, "cache_read_input_tokens": 51_163, "cache_creation_input_tokens": 400,
+                  "output_tokens": 2_287, "iterations": [
+                      {"input_tokens": 2, "cache_read_input_tokens": 20_000, "cache_creation_input_tokens": 300,
+                       "output_tokens": 87, "type": "message"},
+                      {"input_tokens": 4, "cache_read_input_tokens": 31_163, "cache_creation_input_tokens": 100,
+                       "output_tokens": 2_200, "type": "message"}]}
+    model_usage = {"claude-sonnet-5-5": {"inputTokens": 6, "outputTokens": 2287, "cacheReadInputTokens": 51163,
+                                         "cacheCreationInputTokens": 400, "webSearchRequests": 0, "costUSD": 0.2,
+                                         "contextWindow": 200_000, "maxOutputTokens": 64_000}}
+    script = [init(), sdk.RateLimitEvent(rate_limit_info=info, uuid="r1", session_id="session-fixture"),
+              sdk.AssistantMessage([sdk.TextBlock("Ok")], "claude-sonnet-5-5", message_id="m1"),
+              result(usage=turn_usage, model_usage=model_usage, total_cost_usd=0.2)]
+    outcome = await backend(tmp_path, script).run(ctx)
+    assert outcome["state"] == "completed"
+
+    plan, turn = [payload for kind, payload in events if kind == "usage"]
+    assert plan["measurement"] == "plan_limits" and plan["scope"] == "account" and "round" not in plan
+    assert plan["status"] == "allowed_warning" and plan["limit_type"] == "five_hour"
+    assert plan["utilization"] == 0.91 and plan["resets_at"] == 1792567800
+    assert plan["windows"] == {"five_hour": {"utilization": 0.91, "resets_at": 1792567800},
+                               "seven_day": {"utilization": 0.13, "resets_at": 1792879200}}
+    assert plan["overage_status"] == "rejected" and plan["overage_disabled_reason"] == "out_of_credits"
+    assert plan["using_overage"] is False
+    notice = next(payload for kind, payload in events
+                  if kind == "backend.notice" and payload.get("message") == "Claude plan usage limit status")
+    assert notice["status"] == "allowed_warning" and notice["limit_type"] == "five_hour"
+
+    assert turn["round"] == 1 and turn["scope"] == "turn" and turn["model"] == "claude-sonnet-5-5"
+    assert turn["input_tokens"] == 6 + 51_163 + 400 and turn["cached_input_tokens"] == 51_163
+    assert turn["cache_creation_input_tokens"] == 400 and turn["uncached_input_tokens"] == 6
+    assert turn["output_tokens"] == 2_287 and turn["total_tokens"] == 6 + 51_163 + 400 + 2_287
+    assert turn["requests"] == 2
+    assert turn["last_request"] == {"input_tokens": 4 + 31_163 + 100, "cached_input_tokens": 31_163,
+                                    "cache_creation_input_tokens": 100, "output_tokens": 2_200}
+    assert turn["model_context_window"] == 200_000
+    # The API-equivalent cost estimate is not forwarded.
+    assert "cost" not in json.dumps(turn).lower()
+
+
+async def test_plan_notice_with_allowed_status_is_recorded_without_a_warning(tmp_path):
+    ctx, events, _ = context(tmp_path, permission="read_only")
+    info = sdk.RateLimitInfo(status="allowed", resets_at=None, rate_limit_type=None, utilization=None,
+                             raw={"status": "allowed", "unifiedWindows": "not-a-mapping"})
+    script = [init(), sdk.RateLimitEvent(rate_limit_info=info, uuid="r1", session_id="session-fixture"),
+              result(usage={"input_tokens": 0, "output_tokens": 0})]
+    assert (await backend(tmp_path, script).run(ctx))["state"] == "completed"
+    usage = [payload for kind, payload in events if kind == "usage"]
+    assert len(usage) == 1 and usage[0]["measurement"] == "plan_limits" and usage[0]["windows"] == {}
+    assert not any(payload.get("message") == "Claude plan usage limit status"
+                   for kind, payload in events if kind == "backend.notice")
 
 
 async def test_stop_interrupts_claude_code_and_reports_cancelled(tmp_path):

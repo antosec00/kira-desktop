@@ -53,6 +53,31 @@ Synthetic tests verify normalization, account-change handling and protocol
 failures. They are not evidence that a particular account returned quota data.
 Current qualification belongs in [STATUS](STATUS.md).
 
+## Claude Code source
+
+Claude Code derives its own usage indicator from the rate-limit headers of its
+API responses and forwards them to the Agent SDK as a `rate_limit_event`:
+status, representative window, reset time and the `unifiedWindows` percentages
+of the five-hour and seven-day windows (Opus and Sonnet weekly windows when the
+plan reports them). Kira's `claude_code` backend records that notice as an
+account-scoped usage event (`measurement: plan_limits`, `scope: account`) of the
+run in which it was observed, bounded to the known window names, statuses and
+numeric ranges. `backend.usage {backend: claude_code}` returns the latest
+recorded notice normalized to the shared limits shape — one group, one window
+per reported Claude window with used/remaining percentages, duration and Unix
+reset time, and the extra-usage status as the group's credits entry — together
+with the seven-day local records.
+
+Kira never reads Claude Code's credentials, never calls a usage endpoint and
+runs no inference to refresh the view: a notice is as fresh as the last turn
+that produced it. The observation time is therefore always shown, and a window
+whose reset time has passed is presented as reset instead of with its old
+percentage. Account identity (address, organization, plan name) is not part of
+the notice and is not displayed. While a Claude Code chat is selected, the
+composer footnote summarizes the last notice (`Piano Claude · sessione X% ·
+settimana Y%`); it is filled by the run events of the current GUI session and by
+the panel's explicit refresh. Selecting a provider reads nothing, and nothing polls.
+
 ## Service and local records
 
 `backend.usage {backend,account_id?}` is a read-only IPC operation. `account_id`
@@ -60,8 +85,9 @@ selects a direct registration only; it cannot select or impersonate a Codex
 account. Reads do not create model runs, tools, billing mutations or usage events.
 Provider settings transitions and service shutdown block new provider reads.
 
-Direct and Ollama views include measurements recorded by this Kira profile over
-the preceding seven days. They count runs and distinct reported generation rounds;
+Direct, Ollama and Claude Code views include measurements recorded by this Kira
+profile over the preceding seven days; account-scoped plan notices are not request
+measurements and are skipped by the tally. They count runs and distinct reported generation rounds;
 the latest measurement for each `(run, round)` replaces repeated notifications.
 Additional context-maintenance requests are counted separately and included in
 the reported totals, including completed measurements before a later maintenance

@@ -30,6 +30,15 @@ recorded separately in [docs/STATUS.md](docs/STATUS.md).
   accepted directly from the Proposals view.
 - Italian tool-receipt labels for Claude Code's native tools, with the literal
   path, command, pattern, URL or query.
+- **Claude plan limits in Uso e risorse.** The rate-limit notice Claude Code
+  derives from its own API responses (five-hour and seven-day windows, reset
+  times, extra-usage status) is recorded as an account-scoped usage event and
+  shown with a countdown to each reset; a composer footnote summarizes the last
+  notice of the session (`Piano Claude · sessione X% · settimana Y%`). Kira
+  reads no Claude credentials, calls no usage endpoint and never polls.
+- Claude Code turn usage normalized to Kira's shape (input includes cache reads
+  and writes), with the last request's context, the model's context window and
+  the resulting occupancy in the usage summary.
 
 ### Changed
 - Ollama chat streams use a 600-second read-inactivity timeout, recover once
@@ -39,6 +48,11 @@ recorded separately in [docs/STATUS.md](docs/STATUS.md).
   opt-in); the `model_controls_visible` preference now opens the model popover
   when a chat is shown.
 - Ollama model details offer provider-default, 32K, 128K and 256K context presets.
+- ComboBox lists open as raised modal surfaces under their control: a wheel or
+  click outside no longer scrolls the host panel away from an open list.
+- Usage panel: numeric credit balances are formatted with two decimals, reset
+  times show the remaining time, and the composer chip uses the short provider
+  name so the model stays readable in narrow layouts.
 
 ### Fixed
 - Ollama tool rounds no longer crash on a malformed (non-string) tool name;

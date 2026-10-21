@@ -7,7 +7,7 @@ from datetime import datetime
 import pytest
 
 from kira.backends.codex import CodexBackend, ProtocolError, RpcError
-from kira.domain.account_usage import normalize_codex_usage
+from kira.domain.account_usage import normalize_claude_plan, normalize_codex_usage, unavailable_claude_usage
 
 ACCOUNT = {"type": "chatgpt", "email": "fixture@example.test", "planType": "plus"}
 
@@ -147,3 +147,44 @@ def test_missing_snapshot_is_unavailable_and_unrecognized_fields_are_dropped():
     assert "ignored" not in json.dumps(result)
     assert result["limits"][0]["windows"] == []
     assert result["limits"][0]["credits"] is None
+
+
+def test_claude_plan_notice_normalizes_windows_without_identity_or_credentials():
+    payload = {"source": "claude_code", "measurement": "plan_limits", "scope": "account",
+               "status": "allowed", "limit_type": "five_hour", "resets_at": 1792567800, "utilization": 0.01,
+               "overage_status": "rejected", "overage_disabled_reason": "out_of_credits", "using_overage": False,
+               "windows": {"five_hour": {"utilization": 0.01, "resets_at": 1792567800},
+                           "seven_day": {"utilization": 0.135, "resets_at": 1792879200},
+                           "seven_day_opus": {"utilization": None, "resets_at": "soon"}}}
+    report = normalize_claude_plan(payload, "2026-10-21T04:50:00+00:00")
+    assert report["available"] and report["source"] == "claude_code"
+    assert report["observed_at"] == "2026-10-21T04:50:00+00:00"
+    assert report["account"] == {"type": "claude_code", "label": None, "plan_type": None}
+    group, = report["limits"]
+    assert group["status"] == "allowed" and group["limit_type"] == "five_hour"
+    session, week, opus = group["windows"]
+    assert (session["kind"], session["used_percent"], session["remaining_percent"],
+            session["duration_minutes"], session["status"]) == ("five_hour", 1.0, 99.0, 300, "allowed")
+    assert (week["kind"], week["used_percent"], week["remaining_percent"], week["duration_minutes"],
+            week["status"]) == ("seven_day", 13.5, 86.5, 10080, None)
+    assert opus["used_percent"] is None and opus["remaining_percent"] is None and opus["resets_at"] is None
+    assert group["credits"] == {"kind": "overage", "status": "rejected", "reason": "out_of_credits",
+                                "active": False, "resets_at": None}
+    serialized = json.dumps(report).lower()
+    assert "email" not in serialized and "token" not in serialized and "organization" not in serialized
+
+
+def test_claude_plan_notice_falls_back_to_the_representative_limit_and_bounds_garbage():
+    report = normalize_claude_plan({"status": "rejected", "limit_type": "seven_day", "utilization": 1.2,
+                                    "resets_at": 5}, None)
+    week, = report["limits"][0]["windows"]
+    assert week["used_percent"] == 120.0 and week["remaining_percent"] == 0.0 and week["status"] == "rejected"
+    assert report["observed_at"] is None
+    assert normalize_claude_plan({"status": "allowed", "windows": {}}, None) == unavailable_claude_usage("invalid_record")
+    assert normalize_claude_plan("nope", None)["available"] is False
+    report = normalize_claude_plan({"status": "weird", "limit_type": "five_hour", "utilization": float("nan"),
+                                    "resets_at": -1, "overage_status": True}, "x" * 65)
+    window, = report["limits"][0]["windows"]
+    assert window["used_percent"] is None and window["resets_at"] is None
+    assert report["limits"][0]["status"] is None and report["limits"][0]["credits"]["status"] is None
+    assert report["observed_at"] is None

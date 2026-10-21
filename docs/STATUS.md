@@ -48,7 +48,14 @@ same source adds a pending-proposal count on the Research header button and
 direct acceptance from the Proposals view, covered by synthetic UI tests only.
 The 0.18 source also offers Kira's browser, Computer and PNG image attachments
 to Claude Code through the same MCP bridge (screenshots travel as MCP image
-blocks); this is covered by synthetic fixtures and has not been live-qualified. See
+blocks); this is covered by synthetic fixtures and has not been live-qualified.
+It also records Claude Code's plan-limit notices and normalized turn usage for
+the usage panel and the composer footnote: synthetic fixtures cover the
+pipeline; the notice shape (five-hour and seven-day windows) was confirmed with
+one live Agent SDK probe of two short Haiku turns, and one short Haiku turn
+through an isolated service recorded the notice and returned it through
+`backend.usage` with both windows and a complete local tally. The GUI side of
+this feature was reviewed on offscreen renders only. See
 [BACKENDS](BACKENDS.md#claude-code-through-the-agent-sdk-personal-use-experimental-source).
 
 ## Experimental Ollama tool parity

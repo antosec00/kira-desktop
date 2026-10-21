@@ -85,7 +85,7 @@ Methods and params:
   [question contracts](INPUT_QUESTIONS.md#ipc-and-events) for full forms,
   pagination, delivery evidence, bounds and recovery.
 - `backend.discover {backend:ollama|codex|openai_chatgpt|deepseek_account,account_id?}` -> provider catalog.
-- `backend.usage {backend:codex|openai_chatgpt|ollama,account_id?}` reads reported account limits or attributed local measurements. It does not run a model or change billing. See [Account usage](ACCOUNT_USAGE.md).
+- `backend.usage {backend:codex|openai_chatgpt|ollama|claude_code,account_id?}` reads reported account limits or attributed local measurements. It does not run a model or change billing. See [Account usage](ACCOUNT_USAGE.md).
 - `backend.login {backend:codex|openai_chatgpt|deepseek_account,account_id?}` -> provider login information. Direct account operations and private credential storage are defined in [OpenAI direct](OPENAI_DIRECT.md) and the experimental DeepSeek account provider; auth payloads never enter application events or SQLite.
 - `backend.account {backend:deepseek_account,action:status|login|cancel|logout}` manages the experimental DeepSeek Harness account grant; credentials remain in the private profile, outside SQLite.
 - `settings.get {}` / `settings.update {ollama_url?,codex_binary?,tool_timeout?,max_output_bytes?,max_tool_rounds?}` -> `{settings}`; no automatic endpoint/model changes or weight downloads.

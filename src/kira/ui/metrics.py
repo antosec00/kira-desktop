@@ -36,8 +36,8 @@ def _legacy_italian_grouping(text: str) -> str:
     return text
 
 
-def decimal(value: float) -> str:
-    return _legacy_italian_grouping(locale().toString(float(value), "f", 1))
+def decimal(value: float, digits: int = 1) -> str:
+    return _legacy_italian_grouping(locale().toString(float(value), "f", digits))
 
 
 def gib(value: Any) -> str:
@@ -96,19 +96,35 @@ def present_metrics(usage: dict[str, Any], resources: dict[str, Any],
     """Keep per-request, cumulative and capacity measures separate, including missing values."""
     source = label(usage.get("source"))
     provider = {"codex": "Codex", "ollama": "Ollama",
-                "openai_chatgpt": tr("OpenAI diretto · ChatGPT")}.get(source, source)
+                "openai_chatgpt": tr("OpenAI diretto · ChatGPT"),
+                "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
+                "claude_code": tr("Claude Code")}.get(source, source)
     scope = usage.get("scope")
+    claude = source == "claude_code"
     heading = tr("Ultima richiesta") if scope == "last_request" else tr("Ultima misura del provider")
     if source == "ollama" and number(usage.get("round")) is not None:
         heading = tr("Ultimo ciclo di generazione")
-    cards: list[dict[str, Any]] = [{
-        "title": heading,
-        "note": tr("Provider: {provider}. I token in cache sono già inclusi nell’ingresso.", provider=provider),
-        "rows": [row(tr("Token in ingresso"), count(usage.get("input_tokens"))),
-                 row(tr("Di cui in cache"), count(usage.get("cached_input_tokens"))),
-                 row(tr("Token in uscita"), count(usage.get("output_tokens"))),
-                 row(tr("Totale riportato"), count(usage.get("total_tokens")))],
-    }]
+    note = tr("Provider: {provider}. I token in cache sono già inclusi nell’ingresso.", provider=provider)
+    rows = [row(tr("Token in ingresso"), count(usage.get("input_tokens"))),
+            row(tr("Di cui in cache"), count(usage.get("cached_input_tokens"))),
+            row(tr("Token in uscita"), count(usage.get("output_tokens"))),
+            row(tr("Totale riportato"), count(usage.get("total_tokens")))]
+    if claude:
+        # Claude Code reports a whole turn; Kira folds cache reads and writes into input.
+        heading = tr("Ultimo turno")
+        note = tr("Provider: Claude Code. Totali del turno riportati da Claude Code; l’ingresso comprende i token letti e scritti in cache.")
+        rows.insert(0, row(tr("Richieste al modello"), count(usage.get("requests"))))
+        rows.insert(3, row(tr("Scritti in cache"), count(usage.get("cache_creation_input_tokens"))))
+    cards: list[dict[str, Any]] = [{"title": heading, "note": note, "rows": rows}]
+    last = mapping(usage.get("last_request")) if claude else {}
+    if last:
+        cards.append({
+            "title": tr("Ultima richiesta"),
+            "note": tr("Contesto inviato con l’ultima richiesta del turno: è l’occupazione attuale della finestra, cache inclusa."),
+            "rows": [row(tr("Token in ingresso"), count(last.get("input_tokens"))),
+                     row(tr("Di cui in cache"), count(last.get("cached_input_tokens"))),
+                     row(tr("Token in uscita"), count(last.get("output_tokens")))],
+        })
     thread = mapping(usage.get("thread_total"))
     if thread:
         cards.append({
@@ -122,6 +138,19 @@ def present_metrics(usage: dict[str, Any], resources: dict[str, Any],
         })
     if context and context.get("backend") == "openai_chatgpt":
         cards.append(context_card(context))
+    elif claude:
+        capacity = number(usage.get("model_context_window"))
+        occupied = number(last.get("input_tokens"))
+        share = (f"{decimal(occupied / capacity * 100)} %" if capacity and occupied is not None
+                 and occupied <= capacity else tr(UNKNOWN))
+        cards.append({
+            "title": tr("Finestra di contesto"),
+            "note": tr("Capacità dichiarata da Claude Code per il modello {model}. L’occupazione confronta l’ingresso dell’ultima richiesta con la capacità.",
+                       model=label(usage.get("model"))),
+            "rows": [row(tr("Capacità in token"), count(capacity)),
+                     row(tr("Contesto dell’ultima richiesta"), count(occupied)),
+                     row(tr("Occupazione"), share)],
+        })
     else:
         cards.append({
             "title": tr("Finestra di contesto"),

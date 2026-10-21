@@ -1180,6 +1180,8 @@ ApplicationWindow {
                                         id: composerChips; objectName: "composerChips"
                                         Layout.fillWidth: true; columnSpacing: 4; rowSpacing: 4
                                         readonly property bool narrow: chatColumn.width < 700
+                                        // Labels give way before the rows stack, so the model chip keeps its text.
+                                        readonly property bool tight: chatColumn.width < 820
                                         columns: narrow ? 1 : 2
                                         RowLayout {
                                         Layout.fillWidth: true; spacing: 4
@@ -1192,12 +1194,12 @@ ApplicationWindow {
                                             onClicked: prompt.chooseAttachments()
                                             toolTipText: qsTr("Allega") + " · " + (workspace.imageInputsEnabled ? qsTr("Le immagini saranno inviate solo con il messaggio. La disponibilità della visione dipende dal modello.") : qsTr("Scegli file, oppure incolla o trascina file e immagini nel messaggio"))
                                         }
-                                        KButton { objectName: "projectFilesButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; text: composerChips.narrow ? "" : qsTr("File"); iconName: "file"; subtle: true; Accessible.name: qsTr("File del progetto"); onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file del progetto · @ nel messaggio") }
+                                        KButton { objectName: "projectFilesButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; text: composerChips.tight ? "" : qsTr("File"); iconName: "file"; subtle: true; Accessible.name: qsTr("File del progetto"); onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file del progetto · @ nel messaggio") }
                                         KComboBox {
                                             objectName: "composerModeChoice"; chip: true; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             // Shares the row's slack with the model chip and elides before overflowing.
                                             Layout.fillWidth: true; Layout.minimumWidth: 64
-                                            Layout.preferredWidth: (composerChips.narrow ? 118 : 132) + Math.max(0, appearance.uiFont.pixelSize - 13) * 4
+                                            Layout.preferredWidth: (composerChips.tight ? 118 : 132) + Math.max(0, appearance.uiFont.pixelSize - 13) * 4
                                             Layout.maximumWidth: Layout.preferredWidth
                                             model: [qsTr("Esegui"), qsTr("Pianifica"), qsTr("Revisione"), qsTr("Riepiloga")]
                                             currentIndex: ["execute", "plan", "review", "recap"].indexOf(workbench.mode)
@@ -1210,16 +1212,20 @@ ApplicationWindow {
                                             implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             // The chip takes the slack of the row and shrinks to its icon first.
                                             Layout.fillWidth: true; Layout.minimumWidth: 46
-                                            Layout.maximumWidth: Math.min(composerChips.narrow ? 220 : 340, modelChipMetrics.advanceWidth + 60)
+                                            Layout.preferredWidth: Math.min(composerChips.tight ? 260 : 340, modelChipMetrics.advanceWidth + 72)
+                                            Layout.maximumWidth: Layout.preferredWidth
                                             TextMetrics { id: modelChipMetrics; text: modelChipLabel.selectionSummary; font: modelChip.font }
                                             onClicked: modelPopover.visible ? modelPopover.close() : modelPopover.open()
-                                            toolTipText: modelChipLabel.selectionSummary + (workspace.accountLabel ? " · " + workspace.accountLabel : "")
+                                            toolTipText: modelChipLabel.fullSummary + (workspace.accountLabel ? " · " + workspace.accountLabel : "")
                                             Accessible.name: modelPopover.visible ? qsTr("Nascondi opzioni del modello") : qsTr("Mostra opzioni del modello")
                                             contentItem: Item {
                                                 KIcon { name: "models"; ink: modelChip.foreground; width: 16; height: 16; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter }
                                                 Text {
                                                     id: modelChipLabel; objectName: "modelControlsSummary"
-                                                    readonly property string selectionSummary: workspace.backendLabel + " · " + (workspace.selectedModel || qsTr("Scegli un modello")) + (workspace.backend !== "ollama" ? " · " + (workspace.selectedEffort || qsTr("Predefinito del provider")) : "")
+                                                    readonly property string details: (workspace.selectedModel || qsTr("Scegli un modello")) + (workspace.backend !== "ollama" ? " · " + (workspace.selectedEffort || qsTr("Predefinito del provider")) : "")
+                                                    // The chip shows the short provider name; the tooltip keeps the full label.
+                                                    readonly property string selectionSummary: workspace.backendShortLabel + " · " + details
+                                                    readonly property string fullSummary: workspace.backendLabel + " · " + details
                                                     anchors.fill: parent; leftPadding: 32; rightPadding: 26
                                                     text: selectionSummary; textFormat: Text.PlainText; elide: Text.ElideRight
                                                     font: modelChip.font; color: modelChip.foreground; verticalAlignment: Text.AlignVCenter
@@ -1230,7 +1236,7 @@ ApplicationWindow {
                                         }
                                         RowLayout {
                                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 4
-                                        KButton { objectName: "projectQueueButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; iconName: "queue"; text: composerChips.narrow ? (workbench.pendingCount > 0 ? String(workbench.pendingCount) : "") : qsTr("Coda %1").arg(workbench.pendingCount); subtle: true; Accessible.name: qsTr("Coda del progetto: %1 richieste").arg(workbench.pendingCount); toolTipText: qsTr("Coda del progetto · controlla, modifica e riordina le richieste"); onClicked: workbenchDialog.openSection("queue") }
+                                        KButton { objectName: "projectQueueButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; iconName: "queue"; text: composerChips.tight ? (workbench.pendingCount > 0 ? String(workbench.pendingCount) : "") : qsTr("Coda %1").arg(workbench.pendingCount); subtle: true; Accessible.name: qsTr("Coda del progetto: %1 richieste").arg(workbench.pendingCount); toolTipText: qsTr("Coda del progetto · controlla, modifica e riordina le richieste"); onClicked: workbenchDialog.openSection("queue") }
                                         KButton { objectName: "chatToolsButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); iconName: "more"; subtle: true; implicitWidth: 34; Accessible.name: qsTr("Strumenti della chat"); toolTipText: qsTr("Cronologia, obiettivo, modifiche e gestione chat"); onClicked: { window.commandStart = -1; window.openActions("") } }
                                         KButton {
                                             objectName: "queueComposerButton"; text: qsTr("Accoda")
@@ -1411,7 +1417,7 @@ ApplicationWindow {
                             }
                             ColumnLayout {
                                 objectName: "chatFootnote"
-                                Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.bottomMargin: 2
+                                Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.bottomMargin: 6
                                 Layout.maximumWidth: appearance.fullWidth ? Infinity : 892
                                 Layout.alignment: Qt.AlignHCenter
                                 spacing: 1
@@ -1450,6 +1456,27 @@ ApplicationWindow {
                                             implicitHeight: 25 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
                                             primary: workspace.planQuotaLimited; subtle: !workspace.planQuotaLimited
+                                            onClicked: metricsDialog.open()
+                                        }
+                                    }
+                                    RowLayout {
+                                        // Claude Code reports its plan windows during each run; Kira shows the last notice.
+                                        visible: workspace.backend === "claude_code" && accountUsage.planSummary.length > 0
+                                        Layout.fillWidth: true; spacing: 6
+                                        Text {
+                                            objectName: "claudePlanIndicator"
+                                            Layout.fillWidth: true
+                                            text: accountUsage.planSummary
+                                            font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                            color: accountUsage.planWarning ? appearance.colors.warning : appearance.colors.muted
+                                            textFormat: Text.PlainText; wrapMode: Text.Wrap
+                                        }
+                                        KButton {
+                                            objectName: "claudePlanUsage"; text: qsTr("Dettagli")
+                                            implicitHeight: 25 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                            subtle: true
+                                            Accessible.name: qsTr("Dettagli dell’utilizzo del piano Claude")
                                             onClicked: metricsDialog.open()
                                         }
                                     }

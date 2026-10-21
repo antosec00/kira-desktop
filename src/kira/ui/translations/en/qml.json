@@ -796,5 +796,6 @@
   "Dati del provider · valori non disponibili restano sconosciuti": "Provider data · unavailable values remain unknown",
   "Nascondi i dati del provider": "Hide provider data",
   "Mostra i dati del provider": "Show provider data",
-  "Con Claude Code, Kira offre i propri strumenti Browser e Computer tramite il server MCP interno: le pagine si aprono nel browser isolato di Kira, le azioni rispettano i permessi del progetto e gli screenshot arrivano a Claude Code come immagini.": "With Claude Code, Kira offers its own Browser and Computer tools through the internal MCP server: pages open in Kira's isolated browser, actions follow the project permissions and screenshots reach Claude Code as images."
+  "Con Claude Code, Kira offre i propri strumenti Browser e Computer tramite il server MCP interno: le pagine si aprono nel browser isolato di Kira, le azioni rispettano i permessi del progetto e gli screenshot arrivano a Claude Code come immagini.": "With Claude Code, Kira offers its own Browser and Computer tools through the internal MCP server: pages open in Kira's isolated browser, actions follow the project permissions and screenshots reach Claude Code as images.",
+  "Dettagli dell’utilizzo del piano Claude": "Claude plan usage details"
 }
