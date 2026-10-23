@@ -293,8 +293,10 @@ first load. An upgrade is not fixed by clearing unrelated caches or data.
    attach them to a **draft** release `v<version>` under stable names
    (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`)
    together with their `SHA256SUMS`. The draft's notes start from
-   `.github/release-notes.md`; if the draft already exists, the workflow only
-   refreshes its commit and files and leaves the notes untouched.
+   `.github/release-notes.md` and link the documentation of the built commit,
+   so the links already work in the draft; if the draft already exists, the
+   workflow only refreshes its commit and files and leaves the notes
+   untouched.
 4. Review the draft, complete the notes and publish it: publishing creates the
    tag. The workflow refuses to replace the files of an already published
    version, so any later fix requires a new version.

@@ -15,9 +15,9 @@ kira
 ```
 
 Su Ubuntu 26.04 usa `kira-desktop_ubuntu26.04_amd64.deb`. Su Windows installa
-prima Ubuntu in WSL ([istruzioni](https://github.com/__REPOSITORY__/blob/__TAG__/docs/it/INSTALLAZIONE.md#su-windows-con-wsl)).
+prima Ubuntu in WSL ([istruzioni](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/INSTALLAZIONE.md#su-windows-con-wsl)).
 Se aggiorni da una versione precedente, segui la
-[procedura di aggiornamento](https://github.com/__REPOSITORY__/blob/__TAG__/docs/it/INSTALLAZIONE.md#aggiornamento).
+[procedura di aggiornamento](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/INSTALLAZIONE.md#aggiornamento).
 
 ## Installation
 
@@ -27,6 +27,6 @@ Se aggiorni da una versione precedente, segui la
 | Ubuntu 26.04 | `kira-desktop_ubuntu26.04_amd64.deb` |
 
 Use the commands above; on Ubuntu 26.04 use `kira-desktop_ubuntu26.04_amd64.deb`.
-On Windows install Ubuntu in WSL first ([instructions](https://github.com/__REPOSITORY__/blob/__TAG__/docs/en/INSTALLATION.md#on-windows-with-wsl)).
+On Windows install Ubuntu in WSL first ([instructions](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/INSTALLATION.md#on-windows-with-wsl)).
 If you upgrade from an earlier version, follow the
-[upgrade procedure](https://github.com/__REPOSITORY__/blob/__TAG__/docs/en/INSTALLATION.md#upgrading).
+[upgrade procedure](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/INSTALLATION.md#upgrading).

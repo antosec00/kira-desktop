@@ -61,7 +61,10 @@ jobs:
           cp "dist/kira-desktop_${VERSION}_amd64.deb" build/release-assets/kira-desktop_ubuntu24.04_amd64.deb
           cp "dist/resolute/kira-desktop_${VERSION}_amd64.deb" build/release-assets/kira-desktop_ubuntu26.04_amd64.deb
           (cd build/release-assets && sha256sum -- *.deb > SHA256SUMS && cat SHA256SUMS)
-          sed -e "s|__TAG__|$TAG|g" -e "s|__REPOSITORY__|$GITHUB_REPOSITORY|g" \
+          # Documentation links name the built commit: the tag exists only once the
+          # draft is published, so tag links would fail while the draft is reviewed.
+          sed -e "s|__TAG__|$TAG|g" -e "s|__COMMIT__|$GITHUB_SHA|g" \
+              -e "s|__REPOSITORY__|$GITHUB_REPOSITORY|g" \
             .github/release-notes.md > build/release-notes.md
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

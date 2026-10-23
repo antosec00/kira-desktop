@@ -291,8 +291,10 @@ risolve cancellando cache o dati non correlati.
    pacchetti a una **bozza** di release `v<versione>` con nomi stabili
    (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`)
    e il loro `SHA256SUMS`. Le note della bozza partono da
-   `.github/release-notes.md`; se la bozza esiste già, il workflow ne aggiorna
-   solo il commit e i file, senza toccare le note.
+   `.github/release-notes.md` e collegano la documentazione del commit
+   costruito, così i collegamenti funzionano già nella bozza; se la bozza
+   esiste già, il workflow ne aggiorna solo il commit e i file, senza toccare
+   le note.
 4. Controlla la bozza, completa le note e pubblicala: la pubblicazione crea il
    tag. Il workflow si rifiuta di sostituire i file di una versione già
    pubblicata, quindi ogni correzione successiva richiede una nuova versione.
