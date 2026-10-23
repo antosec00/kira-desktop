@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kira Desktop
+Comment=Desktop workspace for AI projects, chats, tools and agents
+Comment[it]=Spazio di lavoro desktop per progetti, chat, strumenti e agenti di IA
+Exec=kira-desktop
+Icon=kira-desktop
+Terminal=false
+Categories=Development;Utility;
+StartupWMClass=Kira Desktop
+Keywords=AI;Agents;Kira;Ollama;Codex;OpenAI;ChatGPT;DeepSeek;Projects;

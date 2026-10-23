@@ -1,0 +1,63 @@
+name: CI
+on:
+  push:
+    branches: [main, 'dev/**', 'release/**']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  static:
+    name: Static and publication checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Prepare isolated build tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/build-env"
+          "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
+          echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra claude-code
+      - name: Lock files are current
+        run: |
+          uv lock --check
+          # The packaging lock is the exported runtime lock (header comments aside).
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt --quiet \
+            | grep -v '^#' | diff -u <(grep -v '^#' packaging/requirements.lock.txt) -
+      - name: Lint
+        run: uv run ruff check src tests scripts packaging
+      - name: Type check
+        run: uv run mypy src
+      - name: Translation catalogs
+        run: python3 scripts/check_translations.py
+      - name: Public tree review
+        run: python3 scripts/check_public_tree.py
+  tests:
+    name: Synthetic test suite (offscreen Qt)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+      KIRA_HOME: ${{ github.workspace }}/build/ci-profile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Prepare isolated build tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/build-env"
+          "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
+          echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+      - name: Install headless Qt system libraries
+        run: sudo apt-get update -qq && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 fonts-noto-core
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra claude-code
+      - name: Run the suite
+        run: uv run pytest tests -q -p no:cacheprovider --durations=15

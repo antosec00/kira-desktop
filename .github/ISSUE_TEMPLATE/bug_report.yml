@@ -1,0 +1,82 @@
+name: Bug report
+description: Something in Kira Desktop does not behave as documented.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please keep credentials, tokens, personal paths and chat contents out of the report.
+        Security problems go through [SECURITY.md](../blob/main/SECURITY.md), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Kira version
+      description: Output of `kira-desktop --version` (or `uv run kira-desktop --version`).
+      placeholder: Kira Desktop 0.18.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Ubuntu 24.04 native
+        - Ubuntu 26.04 native
+        - WSL2 + WSLg on Windows
+        - Other (describe below)
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider involved
+      options:
+        - Ollama
+        - Codex
+        - OpenAI direct · ChatGPT
+        - DeepSeek Account
+        - DeepSeek Web
+        - Claude Code (personal use)
+        - Not provider related
+    validations:
+      required: true
+  - type: dropdown
+    id: permission
+    attributes:
+      label: Project permission in use
+      options:
+        - Read-only
+        - Project write
+        - Trusted host
+        - Full access
+        - Not applicable
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what Kira showed instead. Mention the exact label of buttons or panels.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open project …
+        2. Choose provider …
+        3. Send …
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Relevant lines from `kira-desktop diagnostics` or the service log, with personal paths and identifiers removed.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed credentials, tokens, personal paths and chat contents from this report.
+          required: true
+        - label: I searched existing issues and the user guide.

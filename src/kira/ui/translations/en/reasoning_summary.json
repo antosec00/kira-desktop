@@ -1,0 +1,18 @@
+{
+  "Mostra riepiloghi del ragionamento": "Show reasoning summaries",
+  "Riepilogo del ragionamento": "Reasoning summary",
+  "Riepiloghi pubblici forniti dal provider, distinti dalla risposta": "Public summaries supplied by the provider, separate from the answer",
+  "Puoi riattivarli da Impostazioni · Lavoro": "You can show them again in Settings · Work",
+  "Riepiloghi delle esecuzioni di questa chat": "Summaries of this chat's runs",
+  "Esecuzione precedente": "Previous run",
+  "Nessun riepilogo ricevuto per questa esecuzione": "No summary received for this run",
+  "Riepilogo pubblico del provider": "Public provider summary",
+  "Riepilogo limitato; sono mostrati solo i contenuti ricevuti entro il limite.": "Summary limited; only content received within the limit is shown.",
+  "Esecuzione {id}": "Run {id}",
+  "Riepilogo parziale": "Partial summary",
+  "In aggiornamento": "Updating",
+  "Ricevuto dal provider": "Received from provider",
+  "Il provider non ha fornito un riepilogo": "The provider did not supply a summary",
+  "Riepilogo non supportato dal provider": "Summaries are not supported by this provider",
+  "In attesa del riepilogo del provider": "Waiting for the provider's summary"
+}

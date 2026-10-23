@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/antosec00/kira-desktop/security/advisories/new
+    about: Report a vulnerability privately instead of opening a public issue.
+  - name: Guida utente (italiano)
+    url: https://github.com/antosec00/kira-desktop/blob/main/docs/it/GUIDA_UTENTE.md
+    about: Come funziona ogni pannello, provider e permesso.
+  - name: User guide (English)
+    url: https://github.com/antosec00/kira-desktop/blob/main/docs/en/USER_GUIDE.md
+    about: How every panel, provider and permission works.

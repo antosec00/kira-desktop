@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+.coverage
+# Raw reports and screenshots can contain personal paths and provider identifiers.
+docs/evidence/
+# Keep local credentials and application state out of source control.
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.pem
+*.key
+auth.json
+credentials.json
+*:Zone.Identifier

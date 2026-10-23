@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "languages": [
+    {"code": "it", "name": "Italiano"},
+    {"code": "en", "name": "English"}
+  ]
+}

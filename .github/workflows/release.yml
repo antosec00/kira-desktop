@@ -1,0 +1,117 @@
+name: Release packages
+# Run by hand. On any branch it builds both Ubuntu packages with the same scripts
+# used locally and validates each one in a disposable container. Only on main
+# does a separate job, the only one with write access, attach them to a draft
+# release for the version in pyproject.toml. Publishing the draft (which
+# creates the tag) stays a manual step on GitHub.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-packages
+  cancel-in-progress: false
+jobs:
+  packages:
+    name: Build and validate the .deb packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Prepare isolated build tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/build-env"
+          "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
+          echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+      - name: Read and check the version
+        id: version
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release versions must look like 1.2.3; pyproject.toml says $version"
+            exit 1
+          fi
+          grep -qxF "__version__ = \"$version\"" src/kira/__init__.py \
+            || { echo "::error::src/kira/__init__.py does not say $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - name: Build the Ubuntu 24.04 package
+        run: /usr/bin/python3 scripts/build_deb.py
+      - name: Validate the Ubuntu 24.04 package
+        run: python3 scripts/check_deb.py --target noble
+      - name: Build the Ubuntu 26.04 package
+        run: python3 scripts/build_deb.py --target resolute
+      - name: Validate the Ubuntu 26.04 package
+        run: python3 scripts/check_deb.py --target resolute
+      - name: Show validation logs
+        if: failure()
+        run: tail -n 200 build/releases/*/*/package/package-validation.log || true
+      - name: Collect the release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p build/release-assets
+          # Stable names keep the releases/latest/download links valid across versions.
+          cp "dist/kira-desktop_${VERSION}_amd64.deb" build/release-assets/kira-desktop_ubuntu24.04_amd64.deb
+          cp "dist/resolute/kira-desktop_${VERSION}_amd64.deb" build/release-assets/kira-desktop_ubuntu26.04_amd64.deb
+          (cd build/release-assets && sha256sum -- *.deb > SHA256SUMS && cat SHA256SUMS)
+          # Documentation links name the built commit: the tag exists only once the
+          # draft is published, so tag links would fail while the draft is reviewed.
+          sed -e "s|__TAG__|$TAG|g" -e "s|__COMMIT__|$GITHUB_SHA|g" \
+              -e "s|__REPOSITORY__|$GITHUB_REPOSITORY|g" \
+            .github/release-notes.md > build/release-notes.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets
+          path: |
+            build/release-assets/
+            build/release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach the packages to the draft release
+    needs: packages
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-assets
+          path: release
+      - name: Attach to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.packages.outputs.version }}
+          TAG: ${{ needs.packages.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd release
+          if state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>&1); then
+            if [ "$state" != "true" ]; then
+              echo "::error::$TAG is already published; its files are never replaced. Raise the version."
+              exit 1
+            fi
+            # Keep any notes already edited on the draft; refresh target and assets only.
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release-assets/*
+          elif [[ "$state" == *"release not found"* ]]; then
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+              echo "::error::Tag $TAG already exists without a release; refusing to reuse it"
+              exit 1
+            fi
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+              --title "Kira Desktop $VERSION" --notes-file release-notes.md release-assets/*
+          else
+            echo "::error::Could not read release $TAG: $state"
+            exit 1
+          fi

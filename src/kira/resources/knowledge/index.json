@@ -1,0 +1,65 @@
+[
+  {
+    "id": "identity",
+    "title": "Kira identity and initiative",
+    "summary": "Kira's application identity, selected model and evidence-based initiative.",
+    "keywords": "kira identity identità chi sei assistente modello provider autonomia iniziativa capacità",
+    "revision": "35c0c0361cee793ba2157d0f"
+  },
+  {
+    "id": "permissions",
+    "title": "Permissions and current capabilities",
+    "summary": "Separate callable tools, project permissions, model transport and manual consent.",
+    "keywords": "permissions permessi autorizzazioni accesso strumenti capacità execute esegui sola lettura host sandbox codex full_access full access accesso completo external files percorsi esterni",
+    "revision": "2772f8991e8e36e6610208b3"
+  },
+  {
+    "id": "context",
+    "title": "Memory and targeted source retrieval",
+    "summary": "Use explicit goals, notes, original chat sources and attributed summaries without loading everything.",
+    "keywords": "context contesto memoria ricorda ricordare obiettivo note pin cronologia history ricerca retrieval fonti riassunto sintesi autonomous autonomo autonomia goal obbiettivo cicli checkpoint pausa riprendi",
+    "revision": "2cef699938ab0d9f17180fa2"
+  },
+  {
+    "id": "tool-building",
+    "title": "Build and reuse a project tool",
+    "summary": "Discover missing capabilities, register a project script and verify its exact immutable revision.",
+    "keywords": "tool tools strumenti strumento creare costruire programma script python riusare riutilizzare registro test procedura procedure",
+    "revision": "9bb0ca9df11d645e98d697db"
+  },
+  {
+    "id": "verification",
+    "title": "Verification and uncertain outcomes",
+    "summary": "Keep declared tests, observed execution, external effects and human assessments distinct.",
+    "keywords": "verification verifica verificare prove evidence esito risultato test fallito sconosciuto cancellazione interruzione",
+    "revision": "b1a723fcf5fbfe3856084737"
+  },
+  {
+    "id": "providers",
+    "title": "Provider differences and tool transport",
+    "summary": "The common Kira identity does not make provider capabilities or context handling identical.",
+    "keywords": "provider modello modelli codex openai chatgpt ollama deepseek claude claude_code anthropic mcp differenze supporto strumenti memoria contesto public reasoning summaries riepilogo ragionamento pensiero",
+    "revision": "1809db8a5450a8cf17cb8193"
+  },
+  {
+    "id": "browser-http",
+    "title": "Browser, authentication and independent HTTP work",
+    "summary": "Understand browser ownership, native authentication and authorized independent API testing.",
+    "keywords": "browser web ricerca pagine http api rete network login passkey autenticazione windows hello pin consenso autorizzazione cookie sessione",
+    "revision": "d12f17f00daed3f866c5b72e"
+  },
+  {
+    "id": "teams",
+    "title": "Managed teams, assignments and continuation",
+    "summary": "Schedule and verify assignments, talk alongside an active Team and receive its results in the originating chat.",
+    "keywords": "team teams squadra gruppi gruppo agenti agents coordinatore coordinator incarichi assignments task tasks piano plan mailbox messaggi messages posta casella attesa wait resume riprendi riprendere continuare continua continuation completamento completion round_limit giri turni limite blocco bloccato rounds turns limit waiting completed blocked round round_limit limite cicli illimitati unlimited 0 followup automatic result conversation conversazione risposta automatica",
+    "revision": "8c8fa860f1ea38d311b1bb6a"
+  },
+  {
+    "id": "souls",
+    "title": "Personalized Kira identities and experience",
+    "summary": "Select a compact personal identity, retrieve scoped experience and propose source-linked lessons for review.",
+    "keywords": "anima anime soul souls identità personalità personalizzazione identita profilo profiles ricordi apprendimento evoluzione preferenze philosophy filosofia tono stile",
+    "revision": "c3a80c8b0e4297233ec5bbd1"
+  }
+]

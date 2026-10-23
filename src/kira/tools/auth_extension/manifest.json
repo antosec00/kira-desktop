@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Kira",
+  "version": "1.0.0",
+  "minimum_chrome_version": "115",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvEqAXLXw3ff8mkUb778wc0w/MbTc4Og/gfCj8IRLJF3rX6q7/f/a2H44KoCoBIyQCRV0BbF+Y5hpJCcMQsZCm2tHl/TOghtPU2nEIdoKn4jl2VJK/ZfsJmCN7WWtbrwARDFYH9rYIMN2YbivqgIKshKngxRu+JuY3UiVCxYFTjpqc39xQ1Y3hjjvKPoSiTQpa/94Uau4Mmaj5Xvb4tZoC9r+M2piEq5VKTMWFYqwMDNkHvsRLoKHBK5RCeuCf4SNKF5CLkDcOtDXbUiD1f76MzBElpZmBb/v1MsLt3GfH4DWU8Bsq0jBOkUzrU8r9jJfQ/FIPCOgH8hDEs+WmeNrYQIDAQAB",
+  "permissions": [
+    "webAuthenticationProxy"
+  ],
+  "background": {
+    "service_worker": "worker.js"
+  }
+}

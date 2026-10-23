@@ -1,0 +1,26 @@
+{
+  "generator_version": "codex-cli 0.162.1",
+  "command": "codex app-server generate-json-schema --experimental --out <build-directory>",
+  "scope": "Selected generated native planning, steering, branching and compaction contracts.",
+  "reference": "https://learn.chatgpt.com/docs/app-server",
+  "files": {
+    "v2/TurnSteerParams.json": "99f7fdff8b090065b68f36420b70870b5eafed048c024b308230aaa02f15d891",
+    "v2/TurnSteerResponse.json": "866ba9a77c12b5d570c837d58f73bf40b24e50fa93404bdf792dd984d313b1aa",
+    "v2/TurnStartParams.json": "062373a7dfc290b506e591bc5c2a35005211df27b3c60358cee3efed12859062",
+    "v2/ThreadForkParams.json": "674134467796c011068b9dd5efc912de4560fa31f65c0fb2163f14e352be7a61",
+    "v2/ThreadForkResponse.json": "e63cfbeb846304309c9c64fa1235abb1723f8a0abd413aef2d342598bbaf902c",
+    "v2/ThreadResumeParams.json": "c69d0d08d046e48b2f9e631761e1127c347fac2f8c2776df458559eb3aa4bd83",
+    "v2/ThreadReadParams.json": "dfe040c6ac71d30795b8be3f3ff232e66f362a37f883b491e5d1ea367f470db4",
+    "v2/ThreadReadResponse.json": "d8b6934897c959f589fdf33be4f750a81f46f075df77bedcaaa92e15ad80a2b1",
+    "v2/ThreadCompactStartParams.json": "684b20adf20213a9fcbca31b59108feadcd5a8b693c16431c20d701049df3737",
+    "v2/ThreadCompactStartResponse.json": "74674e47f33e37d7d97d144eac1789ef0580a1fc12d45a5675bb97caa08d803a",
+    "v2/TurnStartedNotification.json": "74050381ae8a90db4893fc15fc26ef14560762c3d320c3fa8d9df9b1aba1273b",
+    "v2/TurnCompletedNotification.json": "69413578ec3ecd02691424bdeb9d640c7244b4ca4c5c3ef26f69a2efe7c37db8",
+    "v2/ItemStartedNotification.json": "692c5876f44a4c12a9b9211912860ceddb65d34497ab4fe9aa46cbebe1a63166",
+    "v2/ItemCompletedNotification.json": "940dcfba0740e86a7e62b0eacf1bb53c634fdbe8b75fa3163b6e366a55f85fae",
+    "v2/CollaborationModeListResponse.json": "d51cd5bd1b7cdf93a1a665adc333867ee12fa85ee811a873cb0131bf5d49d3e6",
+    "v2/ThreadGoalGetParams.json": "1a5de89b3c5c49528af404a65411a73ef05dc7c9c49c3f00c90d9926dfe34137",
+    "v2/ThreadGoalGetResponse.json": "f610000963194731c96ce2b45e46722ca700f1b6ccc1fc55a2fd95e526018fd9",
+    "v2/PlanDeltaNotification.json": "a5cf42ccfc6cf905ede0fa9041e9c951ea7870aba4e3a7c7f68d85f01416d3af"
+  }
+}

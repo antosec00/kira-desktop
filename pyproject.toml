@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kira-desktop"
+version = "0.18.0"
+description = "A native desktop harness for AI projects, chats, tools and collaborating agents"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.15"
+keywords = ["ai", "agents", "desktop", "qt", "pyside6", "ollama", "codex", "openai", "deepseek", "claude-code"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "PySide6-Essentials==6.11.2",
+    "httpx==0.28.1",
+    "markdown-it-py==4.0.0",
+    "pydantic==2.12.5",
+    "PyJWT[crypto]==2.15.1",
+    "playwright==1.64.0",
+    "wasmtime>=49.0.0",
+]
+
+[project.optional-dependencies]
+# Personal-use provider: drives the locally signed-in Claude Code. Not packaged.
+claude-code = ["claude-agent-sdk==0.2.168"]
+
+[project.urls]
+Homepage = "https://github.com/antosec00/kira-desktop"
+Documentation = "https://github.com/antosec00/kira-desktop/blob/main/docs/README.md"
+Releases = "https://github.com/antosec00/kira-desktop/releases"
+Issues = "https://github.com/antosec00/kira-desktop/issues"
+
+[project.scripts]
+kira-desktop = "kira.cli:main"
+kira = "kira.cli:main"
+kira-service = "kira.service.server:main"
+
+[dependency-groups]
+dev = ["pytest==9.0.2", "pytest-asyncio==1.3.0", "ruff==0.15.6", "mypy==1.19.1", "pytest-qt==4.5.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kira"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# A hung test prints every thread's traceback and stops the run, instead of
+# silently consuming the CI job's time limit.
+faulthandler_timeout = 300
+faulthandler_exit_on_timeout = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["build", "dist"]

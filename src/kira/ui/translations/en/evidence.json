@@ -1,0 +1,13 @@
+{
+  "Esecuzione: %1": "Run: %1",
+  "Vista leggibile": "Readable view",
+  "JSON originale": "Original JSON",
+  "Testo a capo e strutture annidate indentate, senza cambiare i dati registrati.": "Wrap text and indent nested structures without changing recorded data.",
+  "Riduci il testo degli eventi": "Decrease event text size",
+  "Ingrandisci il testo degli eventi": "Increase event text size",
+  "Comprimi evento %1": "Collapse event %1",
+  "Espandi evento %1": "Expand event %1",
+  "Copia il payload originale di questo evento.": "Copy this event’s original payload.",
+  "Anteprima abbreviata: il payload completo resta negli eventi registrati. La copia JSON è disabilitata per questa anteprima.": "Shortened preview: the full payload remains in the recorded events. JSON copying is disabled for this preview.",
+  "Vista leggibile abbreviata. Il JSON originale è disponibile.": "Shortened readable view. The original JSON is available."
+}
