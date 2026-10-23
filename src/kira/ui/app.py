@@ -11,6 +11,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from kira import __version__
 from kira.ui.appearance import Appearance
 from kira.ui.attachments import AttachmentInputs
+from kira.ui.file_browser import FileBrowser
 from kira.ui.browser_frames import BrowserFrames
 from kira.ui.context_controller import ContextController
 from kira.ui.controller import Workspace
@@ -48,6 +49,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         attachment_inputs = AttachmentInputs(workspace.paths.data, engine, workspace=workspace)
         localization.changed.connect(attachment_inputs.retranslate)
         engine.rootContext().setContextProperty("attachmentInputs", attachment_inputs)
+        engine.rootContext().setContextProperty("fileBrowser", FileBrowser(workspace, engine))
         if isinstance(app, QGuiApplication):
             app.installEventFilter(attachment_inputs)
         engine.rootContext().setContextProperty("markdownRenderer", MarkdownRenderer(engine, appearance))

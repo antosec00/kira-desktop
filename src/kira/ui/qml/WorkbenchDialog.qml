@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 
 Dialog {
     id: dialog; objectName: "workbenchDialog"
@@ -212,5 +211,5 @@ Dialog {
         contentItem: Text { text: qsTr("Le operazioni precedenti potrebbero essere già riuscite. Conferma solo dopo aver controllato chat, coda e attività: inviare nuovamente può duplicare una richiesta o una diramazione. Questa conferma non invia nulla."); wrapMode: Text.Wrap; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
         onAccepted: workbench.allowNewRequests()
     }
-    FileDialog { id: chatExport; objectName: "chatMarkdownExport"; title: qsTr("Esporta chat"); fileMode: FileDialog.SaveFile; nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; onAccepted: workbench.exportChat(selectedFile.toString()) }
+    KiraFileDialog { id: chatExport; objectName: "chatMarkdownExport"; mode: "save"; purpose: "export"; title: qsTr("Esporta chat"); nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; suggestedName: ((workspace.project.name || "Kira") + " - " + qsTr("chat")).replace(/[\\/:*?"<>|]+/g, "-"); onAccepted: workbench.exportChat(selectedFile.toString()) }
 }

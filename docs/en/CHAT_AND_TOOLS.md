@@ -109,7 +109,8 @@ The search covers only the project folder and excludes:
 The search is limited to **10,000 entries examined, 100 matches shown and a
 depth of 32 folders**. If it hits a limit, Kira reports it: refine the search
 with a more precise name. **Attach** always remains
-available to explicitly pick any other file with the system picker.
+available to explicitly pick any other file with
+[Kira's chooser](USER_GUIDE.md#the-folder-and-file-chooser).
 
 A reference is text in the message: it does not change the project
 permissions and does not guarantee that the model can read that type of file;
@@ -460,7 +461,8 @@ current WSL distribution, including mounted drives. Wait for the preview or
 the reference to appear before sending. Missing files, inaccessible mounts and
 a different distribution are reported; nothing is downloaded from the network.
 Direct drag to the Linux window depends on WSLg: when it does not arrive, use
-copy/paste or **Attach**. In the picker, drive C: is `/mnt/c`.
+copy/paste or **Attach**. In the chooser the Windows drives are among the
+places (drive C: is `/mnt/c`).
 
 ### Where the files end up
 

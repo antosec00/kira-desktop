@@ -109,8 +109,8 @@ La ricerca riguarda solo la cartella del progetto ed esclude:
 La ricerca è limitata a **10.000 voci esaminate, 100 corrispondenze mostrate e
 32 livelli di cartelle**. Se raggiunge un limite, Kira lo segnala: affina la
 ricerca con un nome più preciso. **Allega** resta sempre
-disponibile per scegliere esplicitamente qualunque altro file con il selettore
-di sistema.
+disponibile per scegliere esplicitamente qualunque altro file con il
+[selettore di Kira](GUIDA_UTENTE.md#il-selettore-di-cartelle-e-file).
 
 Un riferimento è testo nel messaggio: non cambia i permessi del progetto e non
 garantisce che il modello possa leggere quel tipo di file; la lettura avviene
@@ -467,8 +467,8 @@ distribuzione WSL corrente, compresi i dischi montati. Attendi che compaia
 l'anteprima o il riferimento prima di inviare. File mancanti, montaggi non
 accessibili e un'altra distribuzione vengono segnalati; nulla viene scaricato
 dalla rete. Il trascinamento diretto verso la finestra Linux dipende da WSLg:
-quando non arriva, usa copia/incolla oppure **Allega**. Nel selettore il disco
-C: è `/mnt/c`.
+quando non arriva, usa copia/incolla oppure **Allega**. Nel selettore i dischi
+di Windows sono tra i luoghi (il disco C: è `/mnt/c`).
 
 ### Dove finiscono i file
 

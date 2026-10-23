@@ -477,7 +477,6 @@ def test_research_and_compact_chat_header_actions_remain_reachable(research, qtb
 
         # A real pointer opens the file chooser; cancel without exporting personal data.
         export = item("projectExportDialog")
-        evaluate(window, "exportDialog.options = FileDialog.DontUseNativeDialog")
         click(item("projectExportButton"))
         qtbot.waitUntil(lambda: bool(export.property("visible")))
         evaluate(export, "close()")

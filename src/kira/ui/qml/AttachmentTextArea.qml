@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 
 TextArea {
     font.family: appearance.contentFont.family; font.styleName: appearance.contentFont.styleName; font.weight: appearance.contentFont.weight; font.italic: appearance.contentFont.italic; font.pixelSize: appearance.contentFont.pixelSize
@@ -55,12 +54,12 @@ TextArea {
         attachmentPicker.openingContext = attachmentContext
         attachmentPicker.open()
     }
-    FileDialog {
+    KiraFileDialog {
         id: attachmentPicker
         objectName: root.objectName + "AttachmentPicker"
         property string openingContext: ""
         title: qsTr("Allega file al messaggio")
-        fileMode: FileDialog.OpenFiles
+        mode: "open"; purpose: "attachments"; acceptText: qsTr("Allega")
         onAccepted: {
             if (openingContext !== root.attachmentContext) {
                 root.attachmentContextError = true
