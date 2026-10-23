@@ -3,6 +3,8 @@
 import os
 from uuid import uuid4
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent
@@ -10,6 +12,12 @@ from PySide6.QtCore import QCoreApplication, QEvent
 from kira.domain.paths import Paths
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
+
+
+@pytest.fixture(autouse=True)
+def studio_available(monkeypatch):
+    # Studio is not offered in this release; these tests keep its dormant code working.
+    monkeypatch.setattr("kira.domain.studio.STUDIO_AVAILABLE", True)
 
 
 def test_studio_off_by_default_and_project_switch_ignores_late_callbacks(qapp, tmp_path,
@@ -35,7 +43,7 @@ def test_studio_off_by_default_and_project_switch_ignores_late_callbacks(qapp, t
         assert requests[-1][1]["enabled"] is True
         requests[-1][2]({"enabled": True, "revision": 0, "scene": {}, "history": []})
         assert studio.enabled
-        studio.createPoster("Ambra mi manchi")
+        studio.createPoster("Synthetic poster caption")
         assert requests[-1][0] == "studio.poster"
         assert requests[-1][1]["expected_revision"] == 0
         late = requests[-1][2]
@@ -50,7 +58,9 @@ def test_studio_off_by_default_and_project_switch_ignores_late_callbacks(qapp, t
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-def test_qml_has_an_off_by_default_studio_pane_without_hiding_browser(qapp, tmp_path):
+def test_qml_has_an_off_by_default_studio_pane_without_hiding_browser(qapp, tmp_path, monkeypatch):
+    # Compiled catalogs and the QML disk cache stay out of the user's cache.
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     workspace = Workspace(Paths(*(tmp_path / part for part in
                                    ("config", "data", "state", "runtime"))))
     engine = create_engine(workspace)

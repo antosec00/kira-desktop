@@ -1,6 +1,6 @@
-"""Schema 16: durable chat-scoped Studio consent and attributed agent revisions.
+"""Durable chat-scoped Studio consent and attributed agent revisions.
 
-Rebuild only the Studio v15 revision table to accept 'agent' as an origin.
+Only the Studio revision table is rebuilt, to accept 'agent' as an origin.
 Original revision bytes and indexes survive; core Kira tables are untouched.
 """
 

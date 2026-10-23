@@ -13,7 +13,9 @@ from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
 
 from kira.ui.presentation import refresh_ui, tr
 from kira.ui.actions import quick_actions
+from kira.ui.drafts import MAX_PENDING
 from kira.ui.qt_properties import qt_property
+from kira.ui.service_errors import UNCERTAIN_ERRORS, service_error_text
 
 if TYPE_CHECKING:
     from kira.ui.controller import Workspace
@@ -479,11 +481,16 @@ class WorkbenchController(QObject):
             self.workspace.sendMode(prompt, self._mode)
 
     def _fail(self, error: Json) -> None:
-        self._error = str(error.get("message", tr("Operazione non riuscita.")))
+        self._error = service_error_text(error, tr("Operazione non riuscita."))
         self.changed.emit()
 
     def _request(self, method: str, params: Json, done: Callable[[Json], None], *,
                  scope_session: bool = True, settle: Callable[[Json], None] | None = None) -> None:
+        """Send one workbench call; with settle, params carry a saved intent identity.
+
+        A rejected intent started nothing and is forgotten, while an uncertain
+        reply keeps its identity so an identical retry is recognised.
+        """
         if not self.workspace.connected or not self.workspace.project:
             self._error = tr("Attendi la connessione e apri un progetto.")
             self.changed.emit()
@@ -514,6 +521,9 @@ class WorkbenchController(QObject):
         def failed(error: Json) -> None:
             if self._loading.get(method) is token:
                 self._loading.pop(method, None)
+            if settle is not None and params.get("request_id"):
+                self._settle_intent(str(params["request_id"]),
+                                    unknown=error.get("code") in UNCERTAIN_ERRORS)
             if current():
                 self._fail(error)
             self.changed.emit()
@@ -534,6 +544,10 @@ class WorkbenchController(QObject):
         record = next((row for row in self.workspace._pending_intents
                        if row["fingerprint"] == fingerprint), None)
         if record is None:
+            if len(self.workspace._pending_intents) >= MAX_PENDING:
+                self._error = tr("Troppe operazioni con esito incerto: verifica le attività prima di inviarne altre.")
+                self.changed.emit()
+                return None
             record = {"fingerprint": fingerprint, "method": method, "request_id": str(uuid.uuid4()),
                       "project_id": project, "session_id": session, "state": "pending"}
             if method == "run.steer":
@@ -646,14 +660,11 @@ class WorkbenchController(QObject):
         if not self.workspace.selectedModel:
             return
         project = str(self.workspace.project.get("id", ""))
-        settings: Json = {"tools": self.workspace.toolsEnabled}
-        if self.workspace.selectedEffort:
-            settings["reasoning_effort"] = self.workspace.selectedEffort
-        if self.workspace.requestedContext and self.workspace.backend == "ollama":
-            settings["num_ctx"] = self.workspace.requestedContext
+        create, soul = self.workspace.new_chat_request()
 
         def created(result: Json) -> None:
             session = result["session"]
+            self.workspace.consume_new_chat_soul(project, soul)
             self.workspace._adopt_session(session)
             self.workspace._sessions.append(session)
             self.workspace._remember_session()
@@ -671,8 +682,7 @@ class WorkbenchController(QObject):
             else:
                 self._enqueue_existing(prompt, mode)
 
-        self._request("session.create", {"project_id": project, "backend": self.workspace.backend,
-                      "model": self.workspace.selectedModel, "settings": settings}, created)
+        self._request("session.create", create, created)
 
     def _enqueue_existing(self, prompt: str, mode: str) -> None:
         project = str(self.workspace.project.get("id", ""))
@@ -891,7 +901,7 @@ class WorkbenchController(QObject):
             def copy_export() -> None:
                 source = Path(result["path"])
                 if source.is_symlink() or not source.is_file():
-                    raise ValueError("Export is not a regular file")
+                    raise ValueError(tr("Il servizio non ha fornito un file di esportazione regolare."))
                 source.resolve(strict=True).relative_to((self.workspace.paths.data / "exports").resolve())
                 shutil.copyfile(source, destination.toLocalFile())
             self.workspace._background(copy_export,
@@ -942,6 +952,7 @@ class WorkbenchController(QObject):
                 self._compact_timer.start()
             else:
                 self._compaction = None
+                self._settle_intent(submitted["request_id"], unknown=error.get("code") in UNCERTAIN_ERRORS)
             if selected():
                 self._fail(error)
             self.changed.emit()
@@ -1079,12 +1090,13 @@ class WorkbenchController(QObject):
         if self.workspace.draft_image_ids():
             self._fail({"message": tr("Invia l’obiettivo senza allegati; i file restano nella bozza.")})
             return
+        # Every command word accepts the Italian and the English subcommands.
         action = command.casefold()
-        if not command or action == "stato":
+        if not command or action in {"stato", "status"}:
             self.showPanel.emit("goal")
             self._acknowledge_prompt(prompt, str(self.workspace.project.get("id", "")), self.workspace.sessionId)
-        elif action in {"pausa", "riprendi"}:
-            self._goal_operation("goal.pause" if action == "pausa" else "goal.resume", prompt=prompt)
+        elif action in {"pausa", "pause", "riprendi", "resume"}:
+            self._goal_operation("goal.pause" if action in {"pausa", "pause"} else "goal.resume", prompt=prompt)
         else:
             self._start_goal(command, prompt)
 

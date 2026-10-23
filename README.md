@@ -31,8 +31,9 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
   ciò che il modello racconta non vale mai come prova.
 - **Niente esce dal tuo computer senza di te.** Progetti, chat, eventi delle
   esecuzioni, screenshot e allegati stanno in un database SQLite e in cartelle
-  private del tuo profilo. Le credenziali restano nell'accesso ufficiale di ogni
-  provider: Kira non le legge e non le conserva.
+  private del tuo profilo. Kira non legge cookie né credenziali di altre
+  applicazioni; i token degli accessi che gestisce (ChatGPT, DeepSeek) restano in
+  file privati del profilo, fuori da database, esportazioni e diagnostica.
 - **Porta il tuo modello.** Ollama sul tuo computer, OpenAI Codex, il tuo piano
   ChatGPT, DeepSeek o il tuo Claude Code: scegli il provider per ogni chat e
   puoi cambiarlo senza perdere la conversazione.
@@ -75,7 +76,7 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
 | **Codex** | OpenAI Codex App Server, con l'accesso ufficiale | Codex, con le sue sandbox; Kira osserva e registra ogni operazione |
 | **OpenAI diretto · ChatGPT** | Il tuo piano ChatGPT, con l'accesso ufficiale | Kira; immagini in ingresso, ricerca web ospitata, contesto gestito automaticamente |
 | **DeepSeek Account** (sperimentale) | Accesso account | Kira |
-| **DeepSeek Web** (sperimentale) | Token di sessione del sito | Kira, con strumenti testuali |
+| **DeepSeek Web** (sperimentale) | Token di sessione del sito | Kira, con un protocollo testuale per gli strumenti |
 | **Claude Code · uso personale** (sperimentale) | Il tuo Claude Code già autenticato (extra opzionale, non incluso nei pacchetti) | Claude Code, osservato da Kira; browser, Computer, domande e Ricerca tramite un server MCP interno |
 
 Il provider si sceglie per ogni chat in **Modelli**. [Provider](docs/it/PROVIDER.md)
@@ -84,7 +85,23 @@ descrive ogni collegamento, le sue capacità e i limiti noti.
 ## Avvio rapido
 
 Kira funziona su Ubuntu 24.04 (Python 3.12) e Ubuntu 26.04 (Python 3.14), in
-modo nativo o in WSL2 con WSLg. Il desktop di riferimento è KDE Plasma/Wayland.
+modo nativo o su Windows in WSL2 con WSLg. Il desktop di riferimento è KDE
+Plasma/Wayland.
+
+**Dal pacchetto (Ubuntu 24.04):**
+
+```sh
+cd "$(mktemp -d)"
+wget https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_ubuntu24.04_amd64.deb
+sudo apt install --no-remove ./kira-desktop_ubuntu24.04_amd64.deb
+kira
+```
+
+Per Ubuntu 26.04 usa `kira-desktop_ubuntu26.04_amd64.deb`. Tutte le versioni,
+con le impronte `SHA256SUMS` per controllare i file, sono nella pagina
+[Releases](https://github.com/antosec00/kira-desktop/releases). Su Windows
+installa prima Ubuntu in WSL: i passi sono in
+[Installazione → Su Windows con WSL](docs/it/INSTALLAZIONE.md#su-windows-con-wsl).
 
 **Dal sorgente:**
 
@@ -97,16 +114,22 @@ cd kira-desktop
 uv sync --frozen                     # oppure: uv sync --frozen --extra claude-code
 
 # 3. Avvia
-uv run kira-desktop
+uv run kira
 ```
 
-Al primo avvio si apre la guida iniziale. Crea un progetto scegliendo una
-cartella, seleziona provider e modello in **Modelli** e scrivi la prima
-richiesta. La [guida utente](docs/it/GUIDA_UTENTE.md) spiega ogni pannello.
+Dal sorgente servono anche le librerie di sistema elencate in
+[Installazione → Avvio dal sorgente con `uv`](docs/it/INSTALLAZIONE.md#avvio-dal-sorgente-con-uv);
+il pacchetto `.deb` le installa da solo.
 
-**Pacchetti nativi.** `python3 scripts/build_deb.py` costruisce il pacchetto
-`.deb` per Ubuntu 24.04 (`--target resolute` per la 26.04). [Installazione](docs/it/INSTALLAZIONE.md)
-copre requisiti, percorsi dei dati, profili separati, backup e aggiornamenti.
+Al primo avvio la schermata iniziale offre **Come funziona Kira**, che apre la
+**Guida iniziale**. Crea un progetto scegliendo una cartella, seleziona provider
+e modello in **Modelli** e scrivi la prima richiesta. La
+[guida utente](docs/it/GUIDA_UTENTE.md) spiega ogni pannello.
+
+**Costruire i pacchetti.** `python3 scripts/build_deb.py` costruisce il
+pacchetto `.deb` per Ubuntu 24.04 (`--target resolute` per la 26.04).
+[Installazione](docs/it/INSTALLAZIONE.md) copre requisiti, controllo delle
+impronte, percorsi dei dati, profili separati, backup e aggiornamenti.
 
 ## Sicurezza e dati
 
@@ -117,8 +140,8 @@ copre requisiti, percorsi dei dati, profili separati, backup e aggiornamenti.
 - **L'esecuzione è registrata.** Gli eventi durevoli stabiliscono che cosa è
   successo; strumenti falliti o non confermati restano visibili.
 - **Browser isolato.** Le pagine pubbliche sono dati non fidati, mai istruzioni.
-  Accessi e consensi richiedono te; i profili sono separati per chat salvo
-  scelta esplicita. [Browser e Computer](docs/it/BROWSER_E_COMPUTER.md).
+  Accessi e consensi richiedono te; ogni chat ha il proprio profilo, temporaneo
+  salvo che tu scelga di conservarlo. [Browser e Computer](docs/it/BROWSER_E_COMPUTER.md).
 - **Privato per impostazione.** Percorsi XDG o un `KIRA_HOME` esplicito, file
   0600, socket Unix privato fra interfaccia e servizio, nessuna telemetria.
 

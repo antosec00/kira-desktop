@@ -55,14 +55,14 @@ async def test_queue_rechecks_service_transition_after_account_validation(contin
     monkeypatch.setattr(service.direct_accounts, "prepare", prepare)
     pending = asyncio.create_task(service.dispatch("queue.add", {
         "session_id": session["id"], "request_id": "late-queued-request", "prompt": "Synthetic queued task"}))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     if gate == "stopping":
         service.stopping.set()
     else:
         setattr(service, gate, True)
     release.set()
     with pytest.raises(KiraError) as error:
-        await pending
+        await asyncio.wait_for(pending, 30)
     assert error.value.code in {"BUSY", "SHUTTING_DOWN"}
     assert not service.store.all("SELECT * FROM prompt_queue")
     assert not service.store.all("SELECT * FROM runs")

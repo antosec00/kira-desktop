@@ -21,6 +21,7 @@ from kira.ui.language_catalog import (
     CatalogError,
     available_languages,
     load_catalog,
+    native_labels,
     supported_language,
 )
 from kira.ui.qt_properties import qt_property
@@ -45,7 +46,7 @@ def _native_translator(code: str, parent: QObject, *, strict: bool = False) -> t
         catalog = load_catalog(code) if strict else _safe_catalog(code)
         if not catalog:
             return translator, {}
-        if not translator.load(str(compiled_catalog(code, catalog))):
+        if not translator.load(str(compiled_catalog(code, catalog, native_labels(code)))):
             raise ValueError("Native catalog could not be loaded")
     except (OSError, ValueError, RuntimeError, SubprocessError) as error:
         if strict:

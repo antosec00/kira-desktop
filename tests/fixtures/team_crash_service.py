@@ -66,7 +66,9 @@ assert sys.stdin.buffer.read(1) == b'g'
 root, marker = Path(sys.argv[1]), Path(sys.argv[2])
 ticks = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()[19]
 (root / 'effect.txt').write_text('Actual disposable fixture effect; not AI work.\\n')
-marker.write_text(json.dumps({'pid': os.getpid(), 'start_ticks': ticks}))
+temporary = marker.with_name(marker.name + '.tmp')
+temporary.write_text(json.dumps({'pid': os.getpid(), 'start_ticks': ticks}))
+temporary.replace(marker)
 while True:
     with (root / 'heartbeat.txt').open('a') as stream:
         stream.write('alive\\n')
@@ -92,6 +94,8 @@ while True:
 
 
 async def main():
+    if not os.environ.get("KIRA_HOME"):
+        raise SystemExit("This fixture service only runs on an isolated KIRA_HOME profile")
     service = Service(backend_factory=lambda name, settings: TeamCrashBackend())
     await service.start()
     for value in (signal.SIGTERM, signal.SIGINT):

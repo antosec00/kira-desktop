@@ -21,7 +21,9 @@ def manifest(**changes):
         "output_schema": {"type": "object", "properties": {"sum": {"type": "integer"}},
             "required": ["sum"], "additionalProperties": False},
         "tests": [{"name": "small sum", "arguments": {"a": 2, "b": 3}, "expected": {"sum": 5}}],
-        "timeout_seconds": 2, **changes}
+        # Service tests run a real worker, interpreter start-up included, within
+        # this limit; a test that must time out sets its own short limit.
+        "timeout_seconds": 30, **changes}
 
 
 @pytest.mark.parametrize("action,payload", [

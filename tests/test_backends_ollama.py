@@ -569,7 +569,7 @@ async def test_discovery_serialized_response_limit_stops_more_detail_requests(mo
         await backend.close()
 
 
-async def test_repeated_catalogs_and_probes_keep_caches_bounded(monkeypatch):
+async def test_repeated_catalogs_and_probes_keep_caches_bounded(tmp_path, monkeypatch):
     monkeypatch.setattr("kira.backends.ollama.MAX_MODELS", 2)
     monkeypatch.setattr("kira.backends.ollama.MAX_CACHE_BYTES", 210)
     generation = 0
@@ -584,13 +584,14 @@ async def test_repeated_catalogs_and_probes_keep_caches_bounded(monkeypatch):
                 "model_info": {"label": "x" * 70}, "template": "not retained", "modelfile": "not retained"})
         return httpx.Response(200, stream=ChunkStream([{"done": True}]))
 
+    ctx, _, _ = context(tmp_path)
     backend = OllamaBackend()
     await install_transport(backend, handler)
     try:
         for generation in range(6):
             result = await backend.discover()
             assert result["available"]
-            await backend._probe_tools(f"fixture-{generation}", asyncio.Event())
+            await backend._probe_tools(f"fixture-{generation}", ctx)
             assert len(backend._details) <= 2 and len(backend._probed) <= 2
             size = sum(len(json.dumps(detail, separators=(",", ":")).encode()) + len(model.encode())
                        for model, detail in backend._details.items())

@@ -15,9 +15,14 @@ Json = dict[str, Any]
 MAX_SUMMARY_BYTES = 65_536
 MAX_SUMMARY_ITEMS = 64
 MAX_SUMMARY_RUNS = 60
-PROVIDERS = {"openai_chatgpt": "OpenAI · ChatGPT", "codex": "Codex", "ollama": "Ollama",
-             "deepseek_account": "DeepSeek"}
+PROVIDERS = frozenset({"openai_chatgpt", "codex", "ollama", "deepseek_account"})
 SUMMARY_EVENTS = {"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"}
+
+
+def provider_label(provider: str) -> str:
+    """The provider name used by the rest of the interface, in the current language."""
+    return {"openai_chatgpt": tr("OpenAI diretto · ChatGPT"), "codex": "Codex", "ollama": "Ollama",
+            "deepseek_account": tr("DeepSeek Account")}.get(provider, provider)
 
 
 def bounded_text(value: str, limit: int) -> tuple[str, bool]:
@@ -142,7 +147,7 @@ class ReasoningController(QObject):
                   if terminal or entry["status"] == "unavailable" else tr("Riepilogo non supportato dal provider")
                   if entry["status"] == "unsupported" else tr("In attesa del riepilogo del provider"))
         return {"available": True, "runId": run_id, "text": text, "status": status,
-                "provider": PROVIDERS[entry["provider"]], "partial": partial,
+                "provider": provider_label(entry["provider"]), "partial": partial,
                 "truncated": entry["truncated"] or display_clipped, "historical": run_id != latest.get("id")}
 
     @Slot(str)

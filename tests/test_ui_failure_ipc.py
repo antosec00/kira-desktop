@@ -19,6 +19,7 @@ from kira.service.direct_accounts import DirectAccounts
 from kira.service.server import Service
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
+from test_ui_support import SERVICE_WAIT_MS
 
 MODEL = "synthetic-failure-model"
 ACCOUNT = "synthetic-failure-account"
@@ -62,7 +63,7 @@ class FailureTransport:
 
 
 async def spin(app, condition):
-    async with asyncio.timeout(5):
+    async with asyncio.timeout(SERVICE_WAIT_MS / 1000):
         while not condition():
             app.processEvents()
             await asyncio.sleep(.01)
@@ -110,7 +111,7 @@ def close_desktop(desktop):
 async def test_failed_direct_request_is_visible_with_durable_details_and_survives_reopen(qapp, tmp_path):
     """A 503 is shown in chat without retrying, changing settings or losing the next draft."""
     with tempfile.TemporaryDirectory(prefix="kira-failure-qt-") as directory, \
-            patch.dict(os.environ, {"XDG_CACHE_HOME": str(Path(directory) / "cache")}):
+            patch.dict(os.environ, {"KIRA_HOME": directory, "XDG_CACHE_HOME": str(Path(directory) / "cache")}):
         base = Path(directory)
         paths = Paths(*(base / part for part in ("config", "data", "state", "runtime")))
         transport = FailureTransport()

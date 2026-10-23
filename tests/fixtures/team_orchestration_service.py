@@ -184,6 +184,8 @@ class TeamOrchestrationBackend:
 
 
 async def main():
+    if not os.environ.get("KIRA_HOME"):
+        raise SystemExit("This fixture service only runs on an isolated KIRA_HOME profile")
     control = Path(os.environ["KIRA_TEST_TEAM_ORCHESTRATION_CONTROL"])
     service = Service(backend_factory=lambda *_: TeamOrchestrationBackend(service, control))
     await service.start()

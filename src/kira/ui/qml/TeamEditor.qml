@@ -106,7 +106,7 @@ Dialog {
                 KComboBox {
                     objectName: "teamBackendInput"
                     Layout.fillWidth: true
-                    model: ["Codex", "Ollama", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek")]
+                    model: ["Codex", "Ollama", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek Account")]
                     currentIndex: teams.draft.backend === "ollama" ? 1 : teams.draft.backend === "openai_chatgpt" ? 2 : teams.draft.backend === "deepseek_account" ? 3 : 0
                     onActivated: teams.setBackend(["codex", "ollama", "openai_chatgpt", "deepseek_account"][currentIndex])
                     enabled: !workspace.busy && !teams.busy
@@ -146,7 +146,7 @@ Dialog {
                 }
                 RowLayout {
                     KButton { text: qsTr("Aggiorna catalogo"); subtle: true; onClicked: workspace.discoverForTeam(teams.draft.backend) }
-                    KButton { text: qsTr("Accedi a Codex"); visible: teams.draft.backend === "codex"; subtle: true; onClicked: workspace.login() }
+                    KButton { text: qsTr("Accedi con Codex"); visible: teams.draft.backend === "codex"; subtle: true; onClicked: workspace.login() }
                 }
                 DirectAccountPane { objectPrefix: "teamChatGPT"; visible: teams.draft.backend === "openai_chatgpt" }
                 DeepSeekAccountPane { visible: teams.draft.backend === "deepseek_account" }

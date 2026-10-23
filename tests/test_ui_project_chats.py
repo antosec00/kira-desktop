@@ -83,14 +83,16 @@ def test_replay_is_serial_and_ignores_old_callbacks(controller):
     assert not view.transcript.rows
 
 
-def test_background_run_stays_cancellable_without_polluting_chat(controller):
+def test_background_run_is_not_stopped_from_another_chat_and_does_not_pollute_it(controller):
     view, calls = controller
     view._runs = {"ra": run("ra", "a", "running")}
     load(view, calls, "b")
     assert view.busy
     assert view.activityLabel == "Altra chat in esecuzione"
+    # Stop acts on the selected chat only; chat a's run is stopped from chat a.
     view.stop()
-    assert request(calls, "run.cancel")[1] == {"run_id": "ra"}
+    assert not any(c[0] == "run.cancel" for c in calls)
+    assert view.notice == "Un’altra chat sta lavorando: aprila per fermarne il turno."
     view.send("must not send")
     assert not any(c[0] == "run.start" for c in calls)
     view._event(event("ra", 1, "message.user", content="Other chat"))

@@ -1,4 +1,4 @@
-"""Synthetic Computer di Kira provider loop, image bounds and callback ownership."""
+"""Synthetic Kira's Computer provider loop, image bounds and callback ownership."""
 
 import asyncio
 import copy
@@ -54,7 +54,7 @@ async def test_observe_act_loop_delivers_original_pixels_and_preserves_model_set
         assert not any(tool["type"] in {"computer", "computer_use_preview"} for tool in body["tools"])
         namespace = next(tool for tool in body["tools"] if tool.get("name") == "kira_computer")
         assert {tool["name"] for tool in namespace["tools"]} == {"observe", "act"}
-        assert "Computer di Kira" in body["instructions"] and "action_executed=true" in body["instructions"]
+        assert "Kira's Computer" in body["instructions"] and "action_executed=true" in body["instructions"]
         if len(bodies) == 1:
             return wire([terminal([{**call(name="observe", namespace="kira_computer"), "arguments": "{}"}])])
         output = body["input"][-1]["output"]

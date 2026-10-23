@@ -7,9 +7,17 @@ An Ollama tool probe or a Codex MCP inventory check is not implied by model nami
 
 Read-only, Plan, Review and Recap do not permit project modification. Project-write
 permits Kira file writes inside the chosen project; Kira's arbitrary host commands
-require trusted-host or full-access. Codex's provider sandbox has its own checked mapping and
-must not be described as unrestricted host access. Trusted-host executes as the
-user and is not a containment guarantee.
+require trusted-host or full-access. Trusted-host executes as the user and is not
+a containment guarantee.
+
+Codex's native tools run in a checked Codex sandbox chosen by the permission:
+read-only uses `read-only` without network; project-write uses `workspace-write`,
+writable only in the project root and without network; trusted-host and
+full-access use `danger-full-access`, which is no sandbox: Codex commands run as
+the user with the user's files and network. Plan, Review and Recap always use
+`read-only`. These sandboxes limit writes and network; they do not promise that
+only the project is readable. Claude Code's built-in tools follow their own
+allowlist (app:providers).
 
 Project tool registration requires Execute plus project-write, trusted-host or full-access.
 Testing and running arbitrary Python require Execute plus trusted-host or full-access. Passing

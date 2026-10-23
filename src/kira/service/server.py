@@ -31,11 +31,15 @@ from kira.domain.contracts import (
     RunControl,
 )
 from kira.domain.paths import Paths
+from kira.domain import studio as studio_domain
+from kira.domain.providers import IN_PROCESS_BACKENDS
 from kira.domain.web import WEB_SETTINGS, validate_web_settings
 from kira.service.account_usage import AccountUsage
 from kira.service.direct_context_service import DirectContexts, METHODS as CONTEXT_METHODS
 from kira.service.research import METHODS as RESEARCH_METHODS, Research
-from kira.service.provider_routing import ProviderRouting, METHODS as PROVIDER_METHODS
+from kira.service.provider_routing import (
+    CHAT_SETTINGS, PROVIDER_SETTINGS, ProviderRouting, METHODS as PROVIDER_METHODS,
+)
 from kira.service.image_attachments import ImageAttachments
 from kira.service.attachment_inputs import AttachmentInputs
 from kira.service.portable_history import portable_history
@@ -55,10 +59,8 @@ from kira.service.chat_lanes import ChatLanes
 from kira.service.autonomous_goals import AutonomousGoals, METHODS as GOAL_METHODS
 from kira.service.direct_accounts import BACKEND as DIRECT_BACKEND, DirectAccounts
 from kira.backends.deepseek_account import DeepSeekAccountBackend, DeepSeekAccounts
-# [DEEPSEEK WEB] nuovi import
 from kira.backends.deepseek_web import DeepSeekWebBackend
 from kira.service.deepseek_web_accounts import DeepSeekWebAccounts
-# [DEEPSEEK WEB] fine
 from kira.backends.claude_code import BACKEND as CLAUDE_CODE_BACKEND, require_sdk as require_claude_code
 from kira.service.workspace import METHODS as WORKSPACE_METHODS
 from kira.service.workspace import Workspaces
@@ -96,6 +98,11 @@ def integer(params: Json, key: str, default: int, low: int, high: int) -> int:
     return value
 
 
+def _encodable(text: str) -> str:
+    """Text that always encodes as UTF-8; unpaired surrogates become '?'."""
+    return text.encode("utf-8", "replace").decode("utf-8")
+
+
 def fields(params: Json, allowed: set[str]) -> None:
     if not isinstance(params, dict) or any(not isinstance(key, str) for key in params):
         raise KiraError("INVALID_ARGUMENT", "params must be an object")
@@ -107,7 +114,7 @@ def fields(params: Json, allowed: set[str]) -> None:
 class Client:
     def __init__(self, writer: asyncio.StreamWriter) -> None:
         self.writer = writer
-        self.queue: asyncio.Queue[Json | None] = asyncio.Queue(maxsize=128)
+        self.queue: asyncio.Queue[Json] = asyncio.Queue(maxsize=128)
         self.runs: set[str] = set()
         self.team_ids: set[str] = set()
         self.browser_ids: set[str] = set()
@@ -134,26 +141,31 @@ class Client:
             self.ready.set()
 
     async def pump(self) -> None:
-        while not self.closed:
-            if not self.queue.empty():
-                message = self.queue.get_nowait()
-            elif self.browser_frames:
-                browser_id = next(iter(self.browser_frames))
-                message = self.browser_frames.pop(browser_id)
-            else:
-                self.ready.clear()
-                await self.ready.wait()
-                continue
-            if message is None:
-                return
-            packet = encode(message).encode("utf-8") + b"\n"
-            if len(packet) > MAX_FRAME_BYTES:
-                packet = (encode({"version": IPC_VERSION, "id": message.get("id"),
-                                  "error": {"code": "OUTPUT_LIMIT", "message":
-                                            "Response exceeds IPC frame limit; request bounded event replay"}})
-                          .encode() + b"\n")
-            self.writer.write(packet)
-            await asyncio.wait_for(self.writer.drain(), 5)
+        try:
+            while not self.closed:
+                if not self.queue.empty():
+                    message = self.queue.get_nowait()
+                elif self.browser_frames:
+                    browser_id = next(iter(self.browser_frames))
+                    message = self.browser_frames.pop(browser_id)
+                else:
+                    self.ready.clear()
+                    await self.ready.wait()
+                    continue
+                packet = encode(message).encode("utf-8") + b"\n"
+                if len(packet) > MAX_FRAME_BYTES:
+                    packet = (encode({"version": IPC_VERSION, "id": message.get("id"),
+                                      "error": {"code": "OUTPUT_LIMIT", "message":
+                                                "Response exceeds IPC frame limit; request bounded event replay"}})
+                              .encode() + b"\n")
+                self.writer.write(packet)
+                await asyncio.wait_for(self.writer.drain(), 5)
+        except Exception:
+            # A slow consumer, a broken connection or an unencodable frame ends
+            # delivery. Disconnect, so the reader stops admitting requests whose
+            # responses could never be sent; the client replays after reconnecting.
+            self.closed = True
+            self.writer.close()
 
 
 class Service:
@@ -184,9 +196,7 @@ class Service:
         self._settings_changing = False
         self.direct_accounts = DirectAccounts(self)
         self.deepseek_accounts = DeepSeekAccounts(self)
-        # [DEEPSEEK WEB] account web
         self.deepseek_web_accounts = DeepSeekWebAccounts(self)
-        # [DEEPSEEK WEB] fine
 
     async def start(self) -> None:
         self.paths.ensure()
@@ -199,12 +209,16 @@ class Service:
             self._lock_fd = None
             raise KiraError("ALREADY_RUNNING", "Another Kira service owns this data store") from exc
         try:
-            credentials = self.paths.config / "openai-chatgpt" / "accounts.json"
-            if credentials.exists() or credentials.is_symlink():
-                _ = self.direct_accounts.auth
-            deepseek_credentials = self.paths.config / "deepseek-account" / "account.json"
-            if deepseek_credentials.exists() or deepseek_credentials.is_symlink():
-                _ = self.deepseek_accounts.auth
+            # Stored credentials load early so their values are redacted from the
+            # start. An unsafe or invalid store is never loaded: only that provider
+            # stays unavailable, and each later use reports the reason.
+            stores: tuple[tuple[Path, DirectAccounts | DeepSeekAccounts], ...] = (
+                (self.paths.config / "openai-chatgpt" / "accounts.json", self.direct_accounts),
+                (self.paths.config / "deepseek-account" / "account.json", self.deepseek_accounts))
+            for credentials, accounts in stores:
+                with contextlib.suppress(KiraError, OSError, ValueError):
+                    if credentials.exists() or credentials.is_symlink():
+                        _ = accounts.auth
             if self.paths.socket.exists() or self.paths.socket.is_symlink():
                 info = self.paths.socket.lstat()
                 if info.st_uid != os.getuid() or not stat.S_ISSOCK(info.st_mode):
@@ -229,17 +243,29 @@ class Service:
             self.contexts = DirectContexts(self)
             self.contexts.recover()
             self.research = Research(self)
+            # A reboot ends every process of earlier boots, including those whose
+            # cleanup recorded no process identity: only then are such records
+            # resolvable. Each start records its boot once recovery is complete.
+            previous_boot = self.store.db.execute(
+                "SELECT value FROM runtime_metadata WHERE key='service_boot_id'").fetchone()
+            rebooted = previous_boot is not None and previous_boot[0] != boot_id()
             self.processes = ProcessRegistry(self.store)
             await self.processes.recover()
             self.project_tools = ProjectTools(self)
             await self.project_tools.recover()
             self.studio = Studio(self)
             self.web = Web(self)
-            await self.web.recover()
+            await self.web.recover(rebooted=rebooted)
             self.control_processes = ProcessRegistry(self.store, kind="control")
             await self.control_processes.recover()
             self.store.db.execute("UPDATE session_forks SET cleanup_blocked=0 WHERE EXISTS "
                                   "(SELECT 1 FROM control_processes c WHERE c.run_id=session_forks.request_id AND c.state='stopped')")
+            if rebooted:
+                # A blocked operation that never registered a process has nothing
+                # left to check after a reboot.
+                self.store.db.execute("UPDATE session_forks SET cleanup_blocked=0 WHERE cleanup_blocked=1 "
+                                      "AND NOT EXISTS (SELECT 1 FROM control_processes c "
+                                      "WHERE c.run_id=session_forks.request_id)")
             self.teams = Teams(self)
             self.questions = Questions(self)
             await self.questions.recover()
@@ -264,6 +290,8 @@ class Service:
             self.server = await asyncio.start_unix_server(self._client, path=self.paths.socket,
                                                           limit=MAX_FRAME_BYTES)
             os.chmod(self.paths.socket, 0o600)
+            self.store.db.execute("INSERT INTO runtime_metadata VALUES ('service_boot_id',?) "
+                                  "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (boot_id(),))
             self._started = True
             self._closing = False
             self.stopping.clear()
@@ -399,10 +427,8 @@ class Service:
             return OllamaBackend(config["ollama_url"])
         if backend == "deepseek_account":
             return DeepSeekAccountBackend(self.deepseek_accounts.auth)
-        # [DEEPSEEK WEB] nuovo backend
         if backend == "deepseek_web":
             return DeepSeekWebBackend(self.deepseek_web_accounts)
-        # [DEEPSEEK WEB] fine
         if backend == DIRECT_BACKEND:
             from kira.backends.openai_chatgpt import OpenAIChatGPTBackend
             return OpenAIChatGPTBackend(self.direct_accounts.auth)
@@ -437,7 +463,8 @@ class Service:
                 "session.compact", "session.switch", "session.configure", "assistant.resume", "settings.update", "backend.discover", "backend.login", "backend.account", "backend.usage"}:
             raise KiraError("BUSY", "Provider settings are being updated; try again after they finish")
         if (self._closing or self.stopping.is_set()) and (method in {"run.start", "team.start", "team.resume",
-                "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume"}
+                "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume",
+                "desktop.launch", "workspace.launch"}
                 or method in SOUL_METHODS | GOAL_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | STUDIO_METHODS):
             raise KiraError("SHUTTING_DOWN", "Service is draining; new work is not accepted")
         if method in {"assistant.snapshot", "assistant.cancel", "assistant.message", "assistant.resume"}:
@@ -492,7 +519,8 @@ class Service:
                      "prompt_queue": True, "run_modes": True, "chat_goals": True, "autonomous_goals": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
-                     "studio_m1": True, "studio_agent_gateway": True}}
+                     **({"studio_m1": True, "studio_agent_gateway": True}
+                        if studio_domain.STUDIO_AVAILABLE else {})}}
         if method == "project.list":
             fields(params, set())
             return {"projects": self.store.all("SELECT * FROM projects ORDER BY updated_at DESC")}
@@ -535,23 +563,28 @@ class Service:
                     raise KiraError("INVALID_ARGUMENT", "memory must be an object of at most 100000 encoded bytes")
             old_permission = project["permission"]
             project["permission"] = params.get("permission", project["permission"])
-            self.store.db.execute("UPDATE projects SET name=?,instructions=?,permission=?,memory=?,updated_at=? WHERE id=?",
-                                  (project["name"], project["instructions"], project["permission"],
-                                   encode(project["memory"]), now(), project["id"]))
-            if project["permission"] != old_permission:
-                self.store.db.execute(
-                    "UPDATE studio_grants SET enabled=0,generation=generation+1,"
-                    "updated_at=? WHERE project_id=? AND enabled=1",
-                    (now(), project["id"]),
-                )
+            self.store.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.store.db.execute("UPDATE projects SET name=?,instructions=?,permission=?,memory=?,updated_at=? WHERE id=?",
+                                      (project["name"], project["instructions"], project["permission"],
+                                       encode(project["memory"]), now(), project["id"]))
+                if project["permission"] != old_permission:
+                    # A permission change revokes Studio grants in the same commit.
+                    self.store.db.execute(
+                        "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                        "updated_at=? WHERE project_id=? AND enabled=1",
+                        (now(), project["id"]),
+                    )
+                self.store.db.execute("COMMIT")
+            except BaseException:
+                self.store.db.execute("ROLLBACK")
+                raise
             return {"project": self.store.one("projects", project["id"])}
         if method == "session.create":
             fields(params, {"project_id", "backend", "model", "settings", "handoff", "title", "soul_id"})
             project = self.store.one("projects", string(params, "project_id", maximum=128))
             backend = string(params, "backend", maximum=32)
-            # [DEEPSEEK WEB] aggiunto deepseek_web ai backend ammessi
-            if backend not in {"ollama", "codex", DIRECT_BACKEND, "deepseek_account", "deepseek_web",
-                               CLAUDE_CODE_BACKEND}:
+            if backend not in PROVIDER_SETTINGS:
                 raise KiraError("INVALID_ARGUMENT", "Unknown backend")
             model = string(params, "model", maximum=200)
             config = params.get("settings", {})
@@ -561,25 +594,15 @@ class Service:
             self._validate_session_settings(config)
             if backend == "deepseek_account" and set(config) & {"num_ctx", "seed", "service_tier"}:
                 raise KiraError("UNSUPPORTED_SETTING", "DeepSeek account does not support these Ollama/Codex settings")
-            # [DEEPSEEK WEB] settings non supportate
             if backend == "deepseek_web" and set(config) & {"num_ctx", "seed", "service_tier"}:
                 raise KiraError("UNSUPPORTED_SETTING", "DeepSeek web does not support these settings")
-            # [DEEPSEEK WEB] fine
             if backend == CLAUDE_CODE_BACKEND and set(config) & {"num_ctx", "seed", "service_tier",
                                                                "temperature", "think"}:
                 raise KiraError("UNSUPPORTED_SETTING", "Claude Code does not support these settings")
-            if backend == DIRECT_BACKEND:
-                config = await self.direct_accounts.prepare(config, bind_active=True)
-            elif backend == "deepseek_account":
-                await self.deepseek_accounts.prepare()
-            # [DEEPSEEK WEB] preparazione account
-            elif backend == "deepseek_web":
-                await self.deepseek_web_accounts.prepare()
-            # [DEEPSEEK WEB] fine
-            elif backend == CLAUDE_CODE_BACKEND:
-                require_claude_code()
-            elif "openai_account_id" in config:
+            if backend in {"ollama", "codex"} and "openai_account_id" in config:
                 raise KiraError("INVALID_ARGUMENT", "ChatGPT account binding requires OpenAI direct")
+            config = self._provider_settings(backend, await self.prepare_provider(backend, config,
+                                                                                  bind_active=True))
             if "title" in params:
                 config["chat_title"] = self._chat_title(params)
             if "handoff" in params:
@@ -637,7 +660,8 @@ class Service:
                 else:
                     config["think"] = think
             self._validate_session_settings({key: value for key, value in config.items()
-                                             if key not in {"chat_title", "handoff"}})
+                                             if key not in CHAT_SETTINGS})
+            config = self._provider_settings(session["backend"], config)
             if model != session["model"]:
                 await self.web.before_configuration(project_id, configured_session_id)
                 self.workbench._idle(project)
@@ -646,17 +670,24 @@ class Service:
                 if self.store.db.execute("SELECT 1 FROM prompt_queue WHERE project_id=? AND status IN "
                                          "('pending','starting','running')", (project_id,)).fetchone():
                     raise KiraError("BUSY", "Finish queued requests before changing the chat model")
-            self.provider_routing.refresh_generation(session)
-            self.store.db.execute("UPDATE sessions SET model=?,settings=? WHERE id=? AND project_id=?",
-                                  (model, encode(config), configured_session_id, project_id))
-            updated = self.store.one("sessions", configured_session_id)
-            self.provider_routing.refresh_generation(updated)
-            if model != session["model"]:
-                self.store.db.execute(
-                    "UPDATE studio_grants SET enabled=0,generation=generation+1,"
-                    "updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
-                    (now(), project_id, configured_session_id),
-                )
+            self.store.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.provider_routing.refresh_generation(session)
+                self.store.db.execute("UPDATE sessions SET model=?,settings=? WHERE id=? AND project_id=?",
+                                      (model, encode(config), configured_session_id, project_id))
+                updated = self.store.one("sessions", configured_session_id)
+                self.provider_routing.refresh_generation(updated)
+                if model != session["model"]:
+                    # A model change revokes the chat's Studio grant in the same commit.
+                    self.store.db.execute(
+                        "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                        "updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
+                        (now(), project_id, configured_session_id),
+                    )
+                self.store.db.execute("COMMIT")
+            except BaseException:
+                self.store.db.execute("ROLLBACK")
+                raise
             return {"session": chats.enrich(updated)}
         if method in {"session.list", "session.snapshot", "session.rename", "project.context"}:
             allowed = {"project_id", "offset", "limit", "archived"} if method == "session.list" else {"project_id", "session_id"}
@@ -706,16 +737,7 @@ class Service:
             if ProjectChats(self.store).enrich(session)["archived"]:
                 raise KiraError("ARCHIVED", "Restore this chat before starting work")
             project = self.store.one("projects", session["project_id"])
-            if session["backend"] == DIRECT_BACKEND:
-                await self.direct_accounts.prepare(session["settings"])
-            elif session["backend"] == "deepseek_account":
-                await self.deepseek_accounts.prepare()
-            # [DEEPSEEK WEB] preparazione account
-            elif session["backend"] == "deepseek_web":
-                await self.deepseek_web_accounts.prepare()
-            # [DEEPSEEK WEB] fine
-            elif session["backend"] == CLAUDE_CODE_BACKEND:
-                require_claude_code()
+            await self.prepare_provider(session["backend"], session["settings"])
             if self.store.one("sessions", session["id"]) != session:
                 raise KiraError("CONFLICT", "The chat provider changed while preparing the request; send again")
             if ProjectChats(self.store).enrich(session)["archived"]:
@@ -809,28 +831,29 @@ class Service:
             if method in {"backend.login", "backend.discover"}:
                 allowed.add("account_id")
             elif method == "backend.account":
-                # [DEEPSEEK WEB] aggiunto token
                 allowed |= {"action", "account_id", "url", "api_key", "enabled", "token"}
             fields(params, allowed)
             name = string(params, "backend", maximum=32)
-            # [DEEPSEEK WEB] aggiunto deepseek_web ai backend ammessi
-            if name not in {"ollama", "codex", DIRECT_BACKEND, "deepseek_account", "deepseek_web",
-                            CLAUDE_CODE_BACKEND}:
+            if name not in PROVIDER_SETTINGS:
                 raise KiraError("INVALID_ARGUMENT", "Unsupported backend operation")
-            # [DEEPSEEK WEB] blocco per deepseek_web
             if name == "deepseek_web":
                 if "account_id" in params:
                     raise KiraError("INVALID_ARGUMENT", "DeepSeek web account selection is not supported")
+                if method == "backend.login":
+                    raise KiraError("INVALID_ARGUMENT", "DeepSeek Web has no sign-in flow; save the web token "
+                                    "with backend.account action login")
                 if method == "backend.discover":
+                    unavailable = self.deepseek_web_accounts.error
+                    if unavailable is not None:
+                        return {"available": False, "models": [], "error_code": unavailable.code,
+                                "error": str(unavailable)}
                     provider = self._control_backends.get(name)
                     if provider is None:
                         provider = self._backend(name)
                         self._control_backends[name] = provider
                     return dict(self.redactor.clean(await provider.discover()))
-                action = "login" if method == "backend.login" else string(params, "action", maximum=30)
-                result = await self.deepseek_web_accounts.dispatch(action, params)
+                result = await self.deepseek_web_accounts.dispatch(string(params, "action", maximum=30), params)
                 return dict(result)
-            # [DEEPSEEK WEB] fine
             if name == "deepseek_account":
                 if "account_id" in params:
                     raise KiraError("INVALID_ARGUMENT", "DeepSeek account selection is not supported")
@@ -910,7 +933,7 @@ class Service:
                 (snapshot["project"]["id"],))
             workspace["captures_truncated"] = False
             snapshot["workspace"] = workspace
-            exported = self.redactor.text(json.dumps(snapshot, ensure_ascii=False, indent=2))
+            exported = json.dumps(self.redactor.clean(snapshot), ensure_ascii=False, indent=2)
             data = exported.encode("utf-8")
             if len(data) <= 700_000:
                 return {"text": exported}
@@ -932,18 +955,70 @@ class Service:
         if method == "service.shutdown":
             fields(params, set())
             if self.web.shutdown_busy():
-                raise KiraError("BUSY", "Close manually controlled browsers and confirm browser cleanup before shutdown")
-            active = self.store.all("SELECT id FROM runs WHERE state NOT IN ('completed','failed','cancelled','interrupted')")
-            if active or self.tasks or self.teams.tasks or self.chat_lanes.admissions or self.goals.admissions or self.store.all("SELECT owner_id FROM project_reservations") or self.store.all("SELECT request_id FROM direct_context_reservations") or self.store.all("SELECT request_id FROM session_forks WHERE status='pending' OR cleanup_blocked=1") or self.store.all("SELECT run_id FROM control_processes WHERE state!='stopped'"):
-                raise KiraError("BUSY", "Active runs must finish before service shutdown")
+                raise KiraError("BUSY", "Return or close manually controlled browsers before service shutdown")
+            active = self._active_work()
+            if active:
+                raise KiraError("BUSY", active)
+            # Nothing runs in this process. Records of unconfirmed provider or
+            # browser cleanup are durable and checked again at the next start,
+            # which is the only way to resolve them: they hold their projects and
+            # chats, not the service.
+            pending = self._pending_cleanup_projects()
             await self.goals.close()
             asyncio.get_running_loop().call_later(0.1, self.stopping.set)
-            return {"stopping": True}
+            if not pending:
+                return {"stopping": True}
+            return {"stopping": True, "pending_cleanup_projects": pending,
+                    "message": "Provider or browser cleanup is unconfirmed for these projects; "
+                               "it is checked again when the service starts"}
         raise KiraError("METHOD_NOT_FOUND", "Unknown IPC method")
 
     def _mode(self, run_id: str) -> str:
         row = self.store.db.execute("SELECT mode FROM run_modes WHERE run_id=?", (run_id,)).fetchone()
         return str(row[0]) if row else "execute"
+
+    def _active_work(self) -> str:
+        """Name work this service process still runs; a stop must wait for it."""
+        db = self.store.db
+        if self.tasks or db.execute("SELECT 1 FROM runs WHERE state NOT IN "
+                                    "('completed','failed','cancelled','interrupted') LIMIT 1").fetchone():
+            return "Active runs must finish before service shutdown"
+        if self.teams.tasks:
+            return "Active Teams must finish before service shutdown"
+        if self.chat_lanes.admissions or self.goals.admissions:
+            return "Active automatic continuations are being admitted; try again after they start or stop"
+        if self.contexts.tasks or db.execute("SELECT 1 FROM direct_context_reservations LIMIT 1").fetchone():
+            return "Active context maintenance must finish before service shutdown"
+        if self.turn_controls.tasks or db.execute(
+                "SELECT 1 FROM session_forks WHERE status='pending' LIMIT 1").fetchone() or db.execute(
+                "SELECT 1 FROM control_processes WHERE state='active' LIMIT 1").fetchone():
+            return "Active chat branches or compactions must finish before service shutdown"
+        return ""
+
+    def _pending_cleanup_projects(self) -> list[str]:
+        """Projects with unconfirmed cleanup records; once no work runs, nothing else holds them."""
+        return sorted(row[0] for row in self.store.db.execute(
+            "SELECT project_id FROM project_reservations UNION "
+            "SELECT project_id FROM session_forks f WHERE f.cleanup_blocked=1 OR EXISTS "
+            "(SELECT 1 FROM control_processes c WHERE c.run_id=f.request_id AND c.state!='stopped') UNION "
+            "SELECT project_id FROM browser_sessions WHERE state='unknown'"))
+
+    async def prepare_provider(self, backend: str, settings: Json, *, bind_active: bool = False) -> Json:
+        """Check the chat provider's account before admitting work.
+
+        Every admission path uses this check. It can yield, so callers recheck
+        their admission afterwards. OpenAI direct returns the settings bound to
+        its account; other providers return the settings unchanged.
+        """
+        if backend == DIRECT_BACKEND:
+            return await self.direct_accounts.prepare(settings, bind_active=bind_active)
+        if backend == "deepseek_account":
+            await self.deepseek_accounts.prepare()
+        elif backend == "deepseek_web":
+            await self.deepseek_web_accounts.prepare()
+        elif backend == CLAUDE_CODE_BACKEND:
+            require_claude_code()
+        return settings
 
     def run_lane(self, run_id: str) -> Json:
         return self.store.run_lane(run_id)
@@ -1034,6 +1109,18 @@ class Service:
         if len(title) > 120:
             raise KiraError("INVALID_ARGUMENT", "title must have at most 120 characters")
         return normalized_title(self.redactor.text(title), 120)
+
+    @staticmethod
+    def _provider_settings(backend: str, config: Json) -> Json:
+        """Keep only the settings this provider saves (PROVIDER_SETTINGS) and chat settings.
+
+        A known setting another provider uses (for example reasoning_effort for a
+        DeepSeek Web chat, or a key saved by an older version) has no effect here,
+        so it is dropped rather than stored or refused. Malformed values are
+        rejected earlier by validation.
+        """
+        return {key: value for key, value in config.items()
+                if key in PROVIDER_SETTINGS[backend] or key in CHAT_SETTINGS}
 
     def _validate_session_settings(self, config: Json) -> None:
         fields(config, {"reasoning_effort", "service_tier", "tools", "num_ctx", "temperature",
@@ -1225,12 +1312,9 @@ class Service:
                 payload.update(provider_generation=binding["generation"], backend=binding["backend"], model=binding["model"])
                 if event_type == "context.compaction":
                     self.contexts.statuses[binding["session_id"]] = {"phase": payload.get("phase"), "reason": payload.get("reason")}
-        cleaned: Json = self.redactor.clean(payload)
-        for private in ("thinking", "reasoning", "analysis"):
-            cleaned.pop(private, None)
-        if "provider_messages" in payload:
-            cleaned["provider_messages"] = self.redactor.clean(payload["provider_messages"],
-                                                               private=True)
+        # Private reasoning fields never persist or publish, at any depth (for
+        # example a provider's outcome.thinking or nested provider messages).
+        cleaned: Json = self.redactor.clean(payload, private=True)
         if event_type in {"message.delta", "message.completed"}:
             item = payload.get("item_id")
             if item is not None and (not isinstance(item, str) or len(item) > 256):
@@ -1370,15 +1454,31 @@ class Service:
                     await self.emit(run_id, "artifact.created", {"path": result["path"], "kind": result.get("kind", "project_file"),
                                                                 "sha256": result["sha256"], "tool_id": tool_id})
         except KiraError as exc:
-            result = {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+            result = {"ok": False, "error": {"code": exc.code, "message": _encodable(str(exc))}}
+        except TimeoutError:
+            result = {"ok": False, "error": {"code": "TIMEOUT",
+                                             "message": f"{name} did not finish within its time limit"}}
         except OSError as exc:
-            result = {"ok": False, "error": {"code": "FILE_ERROR", "message": str(exc)}}
+            result = {"ok": False, "error": {"code": "FILE_ERROR",
+                                             "message": _encodable(str(exc) or type(exc).__name__)}}
         except asyncio.CancelledError:
             await self.emit(run_id, "tool.completed", {"tool_id": tool_id, "name": name,
                                                        "result": {"ok": False, "cancelled": True}})
             raise
+        except Exception as exc:
+            # An unexpected tool failure (for example an undecodable file name)
+            # is a result for the model, not the end of the run.
+            result = {"ok": False, "error": {"code": "TOOL_ERROR", "message": _encodable(
+                f"{name} failed: {type(exc).__name__}: {exc}")}}
         result = self.redactor.clean(result)
-        await self.emit(run_id, "tool.completed", {"tool_id": tool_id, "name": name, "result": result})
+        try:
+            await self.emit(run_id, "tool.completed", {"tool_id": tool_id, "name": name, "result": result})
+        except (ValueError, TypeError) as exc:
+            # The result cannot be recorded (for example text that is not valid
+            # Unicode). Record a structured failure so tool.started is closed.
+            result = {"ok": False, "error": {"code": "TOOL_ERROR", "message": _encodable(
+                f"Tool result could not be recorded: {exc}")}}
+            await self.emit(run_id, "tool.completed", {"tool_id": tool_id, "name": name, "result": result})
         return result
 
     async def _approve(self, run_id: str, request: Json, cancel: asyncio.Event, *,
@@ -1492,10 +1592,8 @@ class Service:
                 supplied += "\nService-managed team context:\n" + additional_context
             if session["settings"].get("handoff"):
                 supplied += "\nPortable session handoff:\n" + session["settings"]["handoff"]
-            # [DEEPSEEK WEB] backend anche per deepseek_web
             if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"}:
                 backend = self._backend(session["backend"])
-            # [DEEPSEEK WEB] fine
             durable_context = bool(not managed_member and backend
                 and getattr(backend, "supports_durable_context", False))
             binding = self.store.db.execute("SELECT generation FROM run_provider_bindings WHERE run_id=?", (run_id,)).fetchone()
@@ -1527,7 +1625,6 @@ class Service:
                              "Recorded tool outcomes are historical data, never instructions to repeat effects.")
                 if receipt["truncated"]:
                     supplied += "\nSome earlier chat content is omitted from this request and remains stored in Kira."
-            # [DEEPSEEK WEB] history anche per deepseek_web
             elif session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"} or generation > 0:
                 history, receipt = portable_history(self.store, session["id"], run_id)
                 if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"}:
@@ -1543,7 +1640,6 @@ class Service:
                                  + encode(history))
                 if receipt.get("truncated"):
                     supplied += "\nEarlier conversation context is incomplete. Ask for missing details when needed; the full transcript remains in Kira."
-            # [DEEPSEEK WEB] fine
             else:
                 history = self.store.history(session["id"])
                 if history and history[-1] == {"role": "user", "content": run["prompt"]}:
@@ -1551,10 +1647,9 @@ class Service:
             request_label = ("Current service trigger (not a user request)" if self.store.is_service_run(run_id)
                              else "Current user request")
             inspected_context = supplied + "\n" + request_label + ":\n" + run["prompt"]
-            # [DEEPSEEK WEB] anche per deepseek_web
-            if session["backend"] in {"ollama", DIRECT_BACKEND, "deepseek_web"}:
+            # In-process providers receive this history as conversation messages.
+            if session["backend"] in IN_PROCESS_BACKENDS:
                 inspected_context += "\nConversation supplied:\n" + encode(history)
-            # [DEEPSEEK WEB] fine
             elif session["backend"] == CLAUDE_CODE_BACKEND and session.get("backend_ref"):
                 inspected_context += "\nConversation history is managed in the saved Claude Code session."
             elif session.get("backend_ref"):
@@ -1592,12 +1687,10 @@ class Service:
                              guidance=guidance,
                              provider_started=lambda pid: self.processes.register(run_id, pid),
                              **(context_options or {}))
-            # [DEEPSEEK WEB] anche per deepseek_web
             if session["backend"] in {"ollama", "deepseek_account", "deepseek_web", CLAUDE_CODE_BACKEND}:
                 await self.emit(run_id, "reasoning.summary.status", {
                     "source": "provider_summary", "provider": session["backend"],
                     "status": "unavailable", "reason": "provider_no_public_summary"})
-            # [DEEPSEEK WEB] fine
             outcome = await backend.run(ctx)
             if managed_member and session["backend"] == "codex" and self.store.db.execute(
                     "SELECT 1 FROM provider_processes WHERE run_id=?", (run_id,)).fetchone() is None:
@@ -1646,7 +1739,7 @@ class Service:
             cleaned = (verified and (closed or has_identity is not None)
                        and await self.web.ensure_run_cleanup(run_id)
                        and await self.project_tools.finish_run(run_id))
-            self.web.finalized(run_id, cleaned)
+            self.web.finalized(run_id)
             self.knowledge.forget(run_id)
             self.store.db.execute("UPDATE run_cleanup SET state=?,error=? WHERE run_id=?",
                 ("stopped" if cleaned else "unknown", None if cleaned else "Provider cleanup uncertain", run_id))
@@ -1682,25 +1775,25 @@ class Service:
         row = self.store.db.execute("SELECT * FROM run_cleanup WHERE run_id=?", (run_id,)).fetchone()
         if row is None or row["state"] == "stopped":
             if hasattr(self, "web"):
-                self.web.finalized(run_id, True)
+                self.web.finalized(run_id)
             return True
         provider = self.store.db.execute("SELECT 1 FROM provider_processes WHERE run_id=?", (run_id,)).fetchone()
         cleaned = row["boot_id"] != boot_id() or (provider is not None and await self.processes.cleanup(run_id))
         if provider is None and not cleaned:
             session = self.store.one("sessions", self.store.one("runs", run_id)["session_id"])
-            # [DEEPSEEK WEB] anche deepseek_web è HTTP e muore col servizio
-            if session["backend"] in {"ollama", DIRECT_BACKEND, "deepseek_web"}:
+            # In-process providers own no provider process and stop with the
+            # service; only a command they started can outlive it.
+            if session["backend"] in IN_PROCESS_BACKENDS:
                 pending_command = self.store.db.execute("SELECT 1 FROM events started WHERE started.run_id=? "
                     "AND started.type='tool.started' AND json_extract(started.payload,'$.name')='run_command' "
                     "AND NOT EXISTS (SELECT 1 FROM events finished WHERE finished.run_id=started.run_id "
                     "AND finished.type='tool.completed' AND json_extract(finished.payload,'$.tool_id')="
                     "json_extract(started.payload,'$.tool_id')) LIMIT 1", (run_id,)).fetchone()
                 cleaned = pending_command is None
-            # [DEEPSEEK WEB] fine
         if cleaned:
             self.store.db.execute("UPDATE run_cleanup SET state='stopped',error=NULL WHERE run_id=?", (run_id,))
             if hasattr(self, "web"):
-                self.web.finalized(run_id, True)
+                self.web.finalized(run_id)
         return cleaned
 
     async def _request_cancel(self, run_id: str) -> None:

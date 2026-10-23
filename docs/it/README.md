@@ -9,13 +9,13 @@ limiti. È scritta in italiano; la traduzione inglese è in `docs/en/`.
 
 ## Da dove cominciare
 
-| Tu sei… | Comincia da |
+| Se vuoi… | Comincia da |
 | --- | --- |
-| Nuovo di Kira | Il [README](../../README.md), poi la [Guida utente](GUIDA_UTENTE.md) |
-| Chi la installa o la amministra | [Installazione](INSTALLAZIONE.md) |
-| Chi vuole collegare un modello | [Provider](PROVIDER.md) |
-| Chi vuole capire che cosa Kira può fare sul computer | [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md) |
-| Chi lavora sul codice | [Sviluppo](SVILUPPO.md), [Architettura](ARCHITETTURA.md), [Contratti](CONTRATTI.md) |
+| Iniziare a usare Kira | Il [README](../../README.md), poi la [Guida utente](GUIDA_UTENTE.md) |
+| Installarla o amministrarla | [Installazione](INSTALLAZIONE.md) |
+| Collegare un modello | [Provider](PROVIDER.md) |
+| Capire che cosa Kira può fare sul computer | [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md) |
+| Lavorare sul codice | [Sviluppo](SVILUPPO.md), [Architettura](ARCHITETTURA.md), [Contratti](CONTRATTI.md) |
 
 ## Guide
 

@@ -7,7 +7,9 @@ This is process cleanup, not an isolation boundary for trusted_host programs.
 """
 
 import asyncio
+import contextlib
 from functools import lru_cache
+import json
 import os
 from pathlib import Path
 import signal
@@ -42,6 +44,36 @@ def identity(pid: int) -> Json | None:
 def same_process(a: Json, b: Json) -> bool:
     return bool(a.get("pid_namespace")) and all(a.get(k) == b.get(k) for k in (
         "pid", "uid", "boot_id", "start_ticks", "pgid", "sid", "pid_namespace"))
+
+
+def observed(pid: int) -> Json | None:
+    """Inspect a recorded PID for exit checks, even when another user now owns it.
+
+    Another user's process has an unreadable PID namespace but a readable start
+    time; that partial identity never matches a recorded one.
+    """
+    try:
+        return identity(pid)
+    except PermissionError:
+        try:
+            parts = (Path("/proc") / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()
+        except (FileNotFoundError, ProcessLookupError):
+            return None
+        return {"pid": pid, "uid": None, "state": parts[0], "start_ticks": parts[19]}
+
+
+def exited(record: Json, current: Json | None) -> bool:
+    """Whether a recorded process ended, observed in its own boot and PID namespace.
+
+    A process keeps its start time for life, so another start time under the
+    recorded PID proves the recorded process exited and the PID was reused.
+    """
+    return (current is None or current["state"] == "Z"
+            or current["start_ticks"] != record["start_ticks"])
+
+
+class IdentityChanged(KiraError):
+    """A recorded process still runs under a different uid, process group or session."""
 
 
 def complete_identity(value: object) -> bool:
@@ -158,10 +190,12 @@ class ProcessRegistry:
             raise
         self.monitors[run_id] = asyncio.create_task(self._monitor(run_id))
 
-    def _remember(self, run_id: str, record: Json, ownership: Json | None = None) -> None:
+    def _remember(self, run_id: str, record: Json, ownership: Json | None = None, *,
+                  replace: bool = False) -> None:
         record = {**record, "ownership": ownership or record.get("ownership") or self.ownership}
+        conflict = "DO UPDATE SET identity=excluded.identity" if replace else "DO NOTHING"
         self.store.db.execute(f"INSERT INTO {self._member_table} VALUES (?,?,?) "
-                              "ON CONFLICT(run_id,pid) DO NOTHING",
+                              f"ON CONFLICT(run_id,pid) {conflict}",
                               (run_id, record["pid"], encode(record)))
 
     async def _monitor(self, run_id: str) -> None:
@@ -183,13 +217,20 @@ class ProcessRegistry:
             return
         leader = self._leader(run_id, dict(row))
         self._assert_owner(leader)
-        current = identity(leader["pid"])
-        if current is not None and not same_process(leader, current):
-            raise KiraError("PROCESS_OWNERSHIP", "Recorded provider PID was reused")
-        known = self._members(run_id)
+        recorded = {r["pid"]: r for r in self._members(run_id)}
         alive = await asyncio.to_thread(processes)
-        owned = {r["pid"] for r in known if any(same_process(r, p) for p in alive)}
-        anchored_sessions = {p["sid"] for p in alive if p["pid"] in owned}
+        by_pid = {p["pid"]: p for p in alive}
+        owned = {pid for pid, r in recorded.items() if pid in by_pid and same_process(r, by_pid[pid])}
+        # An exited member whose session is empty can never be signalled again
+        # and nothing can rejoin that session: forget it so observation stays
+        # proportional to the live tree. The leader record always remains.
+        live_sessions = {p["sid"] for p in alive}
+        gone = [pid for pid, r in recorded.items() if pid != leader["pid"]
+                and exited(r, by_pid.get(pid)) and r["sid"] not in live_sessions]
+        if gone:
+            self.store.db.executemany(f"DELETE FROM {self._member_table} WHERE run_id=? AND pid=?",
+                                      [(run_id, pid) for pid in gone])
+        anchored_sessions = {by_pid[pid]["sid"] for pid in owned}
         if leader["sid"] not in anchored_sessions and any(
                 p["sid"] == leader["sid"] and p["pid"] not in owned for p in alive):
             raise KiraError("PROCESS_OWNERSHIP", "Unanchored provider session; no processes adopted")
@@ -202,13 +243,18 @@ class ProcessRegistry:
                     continue
                 if p["uid"] != leader["uid"] or int(p["start_ticks"]) < int(leader["start_ticks"]):
                     raise KiraError("PROCESS_OWNERSHIP", "Unverified member of provider session")
-                self._remember(run_id, p, leader["ownership"])
+                previous = recorded.get(p["pid"])
+                reused = previous is not None and previous["start_ticks"] != p["start_ticks"]
+                if reused and p["pid"] == leader["pid"]:
+                    raise KiraError("PROCESS_OWNERSHIP", "Provider leader PID was reused inside the provider tree")
+                # A reused PID replaces the exited member's record, so the new
+                # descendant keeps its own identity and is signalled too.
+                self._remember(run_id, p, leader["ownership"], replace=reused)
                 owned.add(p["pid"])
                 anchored_sessions.add(p["sid"])
                 changed = True
 
     def _members(self, run_id: str) -> list[Json]:
-        import json
         return [json.loads(r[0]) for r in self.store.db.execute(
             f"SELECT identity FROM {self._member_table} WHERE run_id=?", (run_id,))]
 
@@ -220,11 +266,11 @@ class ProcessRegistry:
         if expected["boot_id"] != boot_id():
             return False
         self._assert_owner(expected)
-        current = identity(expected["pid"])
-        if current is None or current["state"] == "Z":
+        current = observed(expected["pid"])
+        if current is None or exited(expected, current):
             return False
         if not same_process(expected, current) or current["uid"] != os.getuid():
-            raise KiraError("PROCESS_OWNERSHIP", "Process identity changed; no signal sent")
+            raise IdentityChanged("PROCESS_OWNERSHIP", "Process identity changed; no signal sent")
         if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
             raise KiraError("PROCESS_OWNERSHIP", "Identity-safe process signalling unavailable")
         try:
@@ -232,11 +278,11 @@ class ProcessRegistry:
         except ProcessLookupError:
             return False
         try:
-            checked = identity(expected["pid"])
-            if checked is None:
+            checked = observed(expected["pid"])
+            if checked is None or exited(expected, checked):
                 return False
             if not same_process(expected, checked):
-                raise KiraError("PROCESS_OWNERSHIP", "Process changed while acquiring pidfd")
+                raise IdentityChanged("PROCESS_OWNERSHIP", "Process changed while acquiring pidfd")
             self._assert_owner(expected)
             try:
                 signal.pidfd_send_signal(descriptor, sig)
@@ -262,8 +308,7 @@ class ProcessRegistry:
                         or ownership.get("kind", "run") != self.kind
                         or not isinstance(origin, dict) or origin.get("pid_namespace") != namespace):
                     return False
-                current = identity(record["pid"])
-                if current is not None and (not same_process(record, current) or current["state"] != "Z"):
+                if not exited(record, observed(record["pid"])):
                     return False
             sessions = {record["sid"] for record in records}
             return not any(p["uid"] == leader["uid"] and p["sid"] in sessions and p["state"] != "Z"
@@ -290,15 +335,14 @@ class ProcessRegistry:
             for sig, pause in ((signal.SIGTERM, 0.3), (signal.SIGKILL, 0.1)):
                 await self.observe(run_id)
                 for member in reversed(self._members(run_id)):
-                    self._signal(member, sig)
+                    # Members are independent: one that changed uid, process
+                    # group or session stays unconfirmed, the others are signalled.
+                    with contextlib.suppress(IdentityChanged):
+                        self._signal(member, sig)
                 await asyncio.sleep(pause)
             await self.observe(run_id)
             for member in self._members(run_id):
-                if member["boot_id"] != boot_id():
-                    continue
-                current = identity(member["pid"])
-                if current is not None and (not same_process(member, current)
-                                             or current["state"] != "Z"):
+                if member["boot_id"] == boot_id() and not exited(member, observed(member["pid"])):
                     raise KiraError("PROCESS_OWNERSHIP", "Provider cleanup not confirmed")
             self._stopped(run_id)
             return True

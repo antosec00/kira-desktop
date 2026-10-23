@@ -98,22 +98,8 @@ def build_inside() -> None:
         "packaging/kira-desktop.service": "usr/lib/systemd/user/kira-desktop.service",
         "LICENSE": "usr/share/doc/kira-desktop/copyright",
     }
-    for filename in ("README.md", "README.en.md",
-                     "docs/it/GUIDA_UTENTE.md", "docs/it/INSTALLAZIONE.md", "docs/it/PROVIDER.md",
-                     "docs/it/PERMESSI_E_SICUREZZA.md", "docs/it/BROWSER_E_COMPUTER.md", "docs/it/CHAT_E_STRUMENTI.md",
-                     "docs/it/CONTESTO_E_MEMORIA.md", "docs/it/TEAM.md", "docs/it/OBIETTIVI_AUTONOMI.md",
-                     "docs/it/RICERCA.md", "docs/it/ANIMA_E_CONOSCENZA.md", "docs/it/ASPETTO_E_LINGUA.md",
-                     "docs/it/ARCHITETTURA.md", "docs/it/CONTRATTI.md", "docs/it/LICENZE_TERZE_PARTI.md",
-                     "docs/en/USER_GUIDE.md", "docs/en/INSTALLATION.md", "docs/en/PROVIDERS.md",
-                     "docs/en/PERMISSIONS_AND_SECURITY.md", "docs/en/BROWSER_AND_COMPUTER.md", "docs/en/CHAT_AND_TOOLS.md",
-                     "docs/en/CONTEXT_AND_MEMORY.md", "docs/en/TEAMS.md", "docs/en/AUTONOMOUS_GOALS.md",
-                     "docs/en/RESEARCH.md", "docs/en/SOUL_AND_KNOWLEDGE.md", "docs/en/APPEARANCE_AND_LANGUAGE.md",
-                     "docs/en/ARCHITECTURE.md", "docs/en/CONTRACTS.md", "docs/en/THIRD_PARTY_LICENSES.md"):
-        if (ROOT / filename).is_file():
-            relative = Path(filename)
-            if relative.parts[0] == "docs":
-                relative = Path(*relative.parts[1:])
-            placements[filename] = f"usr/share/doc/kira-desktop/{relative.as_posix()}"
+    noble = runpy.run_path(str(ROOT / "scripts/build_deb.py"))
+    placements.update(noble["documentation_placements"]())
     for source, target_filename in placements.items():
         target_path = stage / target_filename
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,11 +126,11 @@ def build_inside() -> None:
         f"Package: kira-desktop\nVersion: {VERSION}\nArchitecture: amd64\n"
         "Maintainer: Kira Desktop contributors <kira@example.invalid>\n"
         f"Installed-Size: {size}\nDepends: {dependencies()}\n"
-        "Section: devel\nPriority: optional\nX-Kira-Target: resolute\n"
-        "Description: Native durable workspace for Ollama and Codex agents\n"
+        f"Section: devel\nPriority: optional\nHomepage: {noble['HOMEPAGE']}\n"
+        "X-Kira-Target: resolute\n"
+        "Description: Native desktop harness for AI projects, chats, tools and agents\n"
         " Python 3.14 and bundled Qt 6.11.2, Ubuntu 26.04 LTS target.\n")
-    for path in [*stage.rglob("*"), stage]:
-        os.utime(path, (epoch, epoch), follow_symlinks=False)
+    noble["normalize_stage"](stage, epoch)
     artifact = output / f"kira-desktop_{VERSION}_amd64.deb"
     temporary = artifact.with_suffix(".deb.building")
     run("dpkg-deb", "--root-owner-group", "-Zxz", "-z3", "--build", str(stage), str(temporary))

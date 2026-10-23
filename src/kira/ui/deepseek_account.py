@@ -25,16 +25,18 @@ class DeepSeekAccountController(QObject):
         self._connected = False
         self._phase = "idle"
         self._error = ""
+        # Kept apart from the service's login error, which every status refresh
+        # replaces: a browser that could not open stays reported while pending.
+        self._browser_error = ""
         self._busy = False
         self._proxy_enabled = False
         self._proxy_url = "http://127.0.0.1:4000"
         self._proxy_configured = False
-        # [DEEPSEEK WEB] stato web
+        # DeepSeek Web keeps its own token state, independent of the account sign-in.
         self._web_connected = False
         self._web_busy = False
         self._web_error = ""
         self._web_status = ""
-        # [DEEPSEEK WEB] fine
         self._generation = 0
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -66,7 +68,6 @@ class DeepSeekAccountController(QObject):
     def proxyConfigured(self) -> bool:
         return self._proxy_configured
 
-    # [DEEPSEEK WEB] proprietà web
     @qt_property(bool, notify=changed)
     def webConnected(self) -> bool:
         return self._web_connected
@@ -87,7 +88,6 @@ class DeepSeekAccountController(QObject):
     @qt_property(str, notify=changed)
     def webStatus(self) -> str:
         return str(refresh_ui(self._web_status))
-    # [DEEPSEEK WEB] fine
 
     @qt_property(str, notify=changed)
     def statusText(self) -> str:
@@ -106,7 +106,7 @@ class DeepSeekAccountController(QObject):
 
     @qt_property(str, notify=changed)
     def error(self) -> str:
-        return str(refresh_ui(self._error))
+        return str(refresh_ui(self._error or self._browser_error))
 
     def _apply(self, result: Json) -> None:
         self._connected = result.get("connected") is True
@@ -119,6 +119,8 @@ class DeepSeekAccountController(QObject):
         self._phase = str(login.get("phase", "idle")) if isinstance(login, dict) else "idle"
         error = login.get("error", "") if isinstance(login, dict) else ""
         self._error = str(error) if isinstance(error, str) else ""
+        if not self.pending:
+            self._browser_error = ""
         if self.pending and self.workspace.connected:
             self._timer.start()
         else:
@@ -131,10 +133,8 @@ class DeepSeekAccountController(QObject):
             return
         if not self._busy:
             self._refresh_dsh()
-        # [DEEPSEEK WEB] anche lo stato web
         if not self._web_busy:
             self._refresh_web()
-        # [DEEPSEEK WEB] fine
 
     def _refresh_dsh(self) -> None:
         self._busy = True
@@ -158,7 +158,6 @@ class DeepSeekAccountController(QObject):
         self.workspace.client.request("backend.account", {"backend": "deepseek_account", "action": "status"},
                                       done, failed)
 
-    # [DEEPSEEK WEB] refresh web
     def _refresh_web(self) -> None:
         self._web_busy = True
         generation = self._generation
@@ -223,13 +222,13 @@ class DeepSeekAccountController(QObject):
             self.changed.emit()
 
         self.workspace.client.request("backend.discover", {"backend": "deepseek_web"}, done, failed)
-    # [DEEPSEEK WEB] fine
 
     @Slot()
     def login(self) -> None:
         if self._busy or not self.workspace.connected:
             return
         self._busy = True
+        self._browser_error = ""
         generation = self._generation
 
         def done(result: Json) -> None:
@@ -240,13 +239,15 @@ class DeepSeekAccountController(QObject):
             url = result.get("authorization_url", "")
             if isinstance(url, str) and QUrl(url).scheme() == "https":
                 def opened(outcome: BrowserOpenResult) -> None:
+                    if generation != self._generation:
+                        return
                     if not outcome.opened:
-                        self._error = tr("Impossibile aprire il browser per l'accesso DeepSeek.")
+                        self._browser_error = tr("Impossibile aprire il browser per l'accesso DeepSeek.")
                         self.changed.emit()
                     self.refresh()
                 self.workspace.browser.open(url, opened)
             else:
-                self._error = tr("DeepSeek non ha restituito un collegamento di accesso valido.")
+                self._browser_error = tr("DeepSeek non ha restituito un collegamento di accesso valido.")
                 self.changed.emit()
 
         def failed(error: Json) -> None:
@@ -299,7 +300,6 @@ class DeepSeekAccountController(QObject):
         self.workspace.client.request("backend.account", {"backend": "deepseek_account",
             "action": "configure_proxy", "url": url, "api_key": api_key, "enabled": enabled}, done, failed)
 
-    # [DEEPSEEK WEB] login web
     @Slot(str)
     def loginWeb(self, token: str) -> None:
         if self._web_busy or not self.workspace.connected:
@@ -368,7 +368,6 @@ class DeepSeekAccountController(QObject):
             {"backend": "deepseek_web", "action": "logout"},
             done, failed,
         )
-    # [DEEPSEEK WEB] fine
 
     def _mutate(self, action: str) -> None:
         if self._busy or not self.workspace.connected:

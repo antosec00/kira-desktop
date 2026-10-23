@@ -10,6 +10,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from kira.domain.contracts import Json, KiraError
+from kira.domain.providers import TEAM_BACKENDS
 from kira.domain.teams import (
     COORDINATOR_INSTRUCTIONS, DEFAULT_CONCURRENCY, DEFAULT_MAX_AGENTS, DEFAULT_ROUND_LIMIT,
     MAX_COMPLETION_ANCESTORS, MAX_MAILBOX_PAGE,
@@ -144,7 +145,7 @@ class Teams:
                         "goal": text(params.get("goal"), "goal", MAX_TEAM_GOAL_BYTES),
                         "mode": params.get("mode"), "backend": params.get("backend"),
                         "model": text(params.get("model"), "model", 200)}
-        if config["mode"] not in ("manual", "automatic") or config["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}:
+        if config["mode"] not in ("manual", "automatic") or config["backend"] not in TEAM_BACKENDS:
             raise KiraError("INVALID_ARGUMENT", "Teams require manual/automatic mode and a supported Kira provider")
         settings = params.get("settings", {})
         if not isinstance(settings, dict) or len(encode(settings).encode()) > 32_000:
@@ -428,11 +429,13 @@ class Teams:
         rows = self.store.db.execute("SELECT id,seq,sender_id,sender_name,recipient_id,content,created_at "
             "FROM team_messages WHERE team_id=? AND seq>? AND (recipient_id IN ('all',?) OR sender_id=?) "
             "ORDER BY seq LIMIT ?", (team_id, after, member_id, member_id, limit + 1)).fetchall()
-        result, size = [], 0
+        result: list[Json] = []
+        size = 0
         for row in rows[:limit]:
             message = dict(row)
             length = len(encode(message).encode())
-            if size + length > 48_000:
+            # Always deliver the first message: a heavily escaped one must not block the mailbox.
+            if result and size + length > 48_000:
                 break
             result.append(message)
             size += length
@@ -749,7 +752,14 @@ class Teams:
                           coordinator: bool, step: Json | None = None) -> Json:
         team = self.data.one(team_id)
         if self.stops[team_id].is_set():
-            raise asyncio.CancelledError
+            # A stop can arrive after this member was scheduled and before it
+            # starts: nothing ran, so its assignment is cancelled.
+            if step:
+                self.data.transaction(team_id, "step.state", {"step_id": step["id"], "member_id": member_id,
+                    "round_index": team["round_index"], "state": "cancelled"},
+                    lambda: self.store.db.execute("UPDATE team_steps SET state='cancelled',updated_at=? "
+                        "WHERE team_id=? AND round_index=? AND id=?", (now(), team_id, team["round_index"], step["id"])))
+            return {"id": None, "state": "cancelled", "error": None, "outcome": None}
         member = self.data.member(team_id, member_id)
         project = self.store.one("projects", team["project_id"])
         access = "read" if coordinator else (step or {})["access"]
@@ -980,11 +990,13 @@ class Teams:
                 self.data.state(team_id, "running", phase="assignments")
                 await self._round(team_id, plan["tasks"])
             if self.stops[team_id].is_set():
-                uncertain = self.store.db.execute("SELECT 1 FROM team_members WHERE team_id=? AND state='interrupted' LIMIT 1", (team_id,)).fetchone()
-                self.data.state(team_id, "interrupted" if uncertain else "cancelled", phase="stopped")
+                self._stopped(team_id)
         except asyncio.CancelledError:
             self.stops[team_id].set()
-            self.data.state(team_id, "interrupted", phase="stopped", error="Service stopped; no automatic replay")
+            if self.closing or self.service._closing:
+                self.data.state(team_id, "interrupted", phase="stopped", error="Service stopped; no automatic replay")
+            else:
+                self._stopped(team_id)
         except Exception as exc:
             self.data.state(team_id, "failed", error=self.service.redactor.text(str(exc)))
         finally:
@@ -1003,6 +1015,12 @@ class Teams:
             if hasattr(self.service, "assistant"):
                 await self.service.assistant.team_finished(team_id, clean)
 
+    def _stopped(self, team_id: str) -> None:
+        """Record a requested stop: cancelled, or interrupted when a member's outcome is uncertain."""
+        uncertain = self.store.db.execute("SELECT 1 FROM team_members WHERE team_id=? AND state='interrupted' LIMIT 1",
+                                          (team_id,)).fetchone()
+        self.data.state(team_id, "interrupted" if uncertain else "cancelled", phase="stopped")
+
     async def release_if_clean(self, team_id: str) -> bool:
         links = self.store.all("SELECT run_id FROM team_run_links WHERE team_id=?", (team_id,))
         for row in links:
@@ -1014,7 +1032,16 @@ class Teams:
         return True
 
     async def recover(self) -> None:
-        for row in self.store.all("SELECT id,state FROM team_runs"):
+        # Settled Teams (terminal, released, with confirmed cleanup and no open
+        # assignment) need no recovery work.
+        terminal = tuple(sorted(TEAM_TERMINAL_STATES))
+        for row in self.store.all("SELECT t.id,t.state FROM team_runs t WHERE t.state NOT IN "
+                "(" + ",".join("?" for _ in terminal) + ")"
+                " OR EXISTS (SELECT 1 FROM project_reservations p WHERE p.owner_kind='team' AND p.owner_id=t.id)"
+                " OR EXISTS (SELECT 1 FROM team_run_links l LEFT JOIN run_cleanup c ON c.run_id=l.run_id"
+                " WHERE l.team_id=t.id AND c.state IS NOT 'stopped')"
+                " OR EXISTS (SELECT 1 FROM team_steps s WHERE s.team_id=t.id AND s.state IN ('queued','running'))"
+                " OR EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.state='running')", terminal):
             if row["state"] not in TEAM_TERMINAL_STATES:
                 self.data.state(row["id"], "interrupted", phase="stopped", error="Service restarted; no assignments replayed")
             unfinished = self.store.db.execute("SELECT 1 FROM team_steps WHERE team_id=? AND state IN ('queued','running') LIMIT 1", (row["id"],)).fetchone()

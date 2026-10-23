@@ -38,10 +38,10 @@ WIRE_NAMESPACES = {"browser": BROWSER_WIRE_NAMESPACE, "computer": COMPUTER_WIRE_
 def computer_access_instructions() -> str:
     """Current Kira visual tools, enabled only when both operations are callable."""
     return (
-        "\nComputer di Kira provides native Kira-owned visual browser control through "
+        "\nKira's Computer provides native Kira-owned visual browser control through "
         "kira_computer.observe and kira_computer.act. It controls only this chat's isolated "
         "embedded browser, not the desktop or other applications. Use browser text tools for "
-        "efficient reading and Computer di Kira for visual interfaces, menus, canvas and dragging. "
+        "efficient reading and Kira's Computer for visual interfaces, menus, canvas and dragging. "
         "Observe first: locate targets in the actual screenshot, using its reported pixel dimensions "
         "and latest observation_id. Perform one action and inspect its returned screenshot before "
         "deciding the next action. Never guess coordinates from page text or an old screenshot. "

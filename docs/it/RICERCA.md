@@ -57,7 +57,7 @@ accettarla usa **Apri scheda**.
 | **Decisione** | Una scelta presa e il motivo |
 | **Questione aperta** | Una domanda senza ancora una risposta |
 
-Ogni scheda è **Aperta** o **Chiusa** e ha questi campi:
+Ogni scheda ha stato **Aperto** o **Chiuso** e questi campi:
 
 | Campo | Limite |
 | --- | --- |
@@ -79,8 +79,8 @@ valutazione positiva o negativa.
 
 ## Creare una scheda
 
-1. Premi **Nuova scheda**, scegli il tipo, scrivi il titolo e descrivi
-   l'obiettivo, la domanda, il tentativo o la conclusione nel corpo.
+1. Premi **Nuova scheda di ricerca**, scegli il tipo, scrivi il titolo e
+   descrivi l'obiettivo, la domanda, il tentativo o la conclusione nel corpo.
 2. Con **Collega una fonte**, scegli un'esecuzione del progetto (anche un
    incarico di un Team) e poi l'evento, il risultato o l'artefatto da
    collegare; **Tutte le esecuzioni** torna all'elenco. Lo stato osservato
@@ -188,29 +188,27 @@ un'interpretazione precedente. Una scheda non può collegarsi a sé stessa.
 
 La condivisione è **disattivata inizialmente** e si abilita per ogni progetto
 separatamente, in modo indipendente dalla condivisione degli estratti tra chat.
-Attivando **Condividi il registro con le chat del progetto** autorizzi Kira a
-fornire alle chat ordinarie del progetto le schede **accettate** e le fonti a
-esse esplicitamente collegate. Non autorizza la lettura di altre trascrizioni.
-**Leggi il contesto condiviso** mostra il testo esatto che viene preparato per
-il modello, con l'indicazione di eventuali tagli; leggerlo non avvia niente.
+Attivando **Condividi il registro con le chat del progetto** autorizzi
+l'assistente delle chat ordinarie del progetto a consultare le schede
+**accettate** e le fonti a esse esplicitamente collegate. Non autorizza la
+lettura di altre trascrizioni. **Leggi il contesto condiviso** mostra un
+riepilogo limitato delle schede accettate, con l'indicazione di eventuali
+tagli; leggerlo non avvia niente.
 
-Con la condivisione attiva:
-
-- tutti i provider ricevono il contesto delle schede accettate;
-- nelle chat con gli strumenti attivi (**Codex**, **OpenAI diretto · ChatGPT**,
-  **Claude Code · uso personale**) l'assistente può anche consultare l'elenco
-  delle schede accettate, leggere una fonte collegata e **proporre** nuove
-  schede, usando il modello, il ragionamento, l'account e i permessi della chat;
-- con **Ollama** e **DeepSeek** l'assistente riceve il contesto, ma il registro
-  si usa dall'interfaccia.
+Con la condivisione attiva, nelle chat con gli strumenti di Kira attivi (tutti i
+provider; con **Ollama** il modello deve supportare gli strumenti) l'assistente
+può, quando gli servono, elencare e cercare le schede accettate, leggerle
+insieme alle fonti collegate e **proporre** nuove schede, usando il modello, il
+ragionamento, l'account e i permessi della chat. Le schede non vengono aggiunte
+a ogni richiesta: l'assistente le legge con i suoi strumenti.
 
 Il modello non può accettare le proprie proposte, modificare schede esistenti,
 esprimere valutazioni, fornire esiti di controllo delle impronte o avviare
 esperimenti attraverso il registro. Una proposta può citare come fonti solo
 registrazioni dell'esecuzione in corso; per prove precedenti deve collegarsi a
 schede già accettate. Le chat dei Team non ricevono automaticamente questo
-accesso. Disattivare la condivisione ferma i nuovi invii, ma non ritira quanto il
-provider ha già ricevuto nella propria cronologia.
+accesso. Disattivare la condivisione toglie l'accesso dai turni successivi, ma
+non ritira quanto il provider ha già letto nella propria cronologia.
 
 ## Proposte dell'assistente
 
@@ -246,8 +244,8 @@ chiedono conferma e non cancellano le revisioni già conservate.
   riferimento, non una dimostrazione.
 - Le fonti possono essere solo registrazioni del progetto; non puoi allegare al
   registro testo libero come "prova" se non come corpo della scheda.
-- Il contesto condiviso è limitato per dimensione: le schede originali restano
-  sempre complete nel registro.
+- Il riepilogo del contesto condiviso è limitato per dimensione: le schede
+  originali restano sempre complete nel registro.
 
 Per come il modello usa gli strumenti del registro nelle chat vedi [Anima e
 conoscenza](ANIMA_E_CONOSCENZA.md); per collegare le esecuzioni dei Team come

@@ -103,7 +103,7 @@ async def test_same_chat_round_trip_bootstraps_new_codex_thread_once(app):
     await run(app, "Again", "fourth")
     assert "Portable conversation history" not in backend.contexts[-1].supplied_context
     assert service.store.db.execute("SELECT COUNT(*) FROM sessions WHERE project_id=?", (project["id"],)).fetchone()[0] == 1
-    assert [r["generation"] for r in service.store.all("SELECT generation FROM run_provider_bindings ORDER BY created_at")] == [0, 1, 2, 2]
+    assert [r["generation"] for r in service.store.all("SELECT generation FROM run_provider_bindings ORDER BY rowid")] == [0, 1, 2, 2]
 
 
 async def test_image_only_send_history_replay_and_export_without_base64(app, tmp_path):
@@ -121,8 +121,15 @@ async def test_image_only_send_history_replay_and_export_without_base64(app, tmp
     for row in service.store.all("SELECT payload FROM events"):
         assert "base64," not in encode(row)
     assert "base64," not in encode(snapshot)
-    with pytest.raises(KiraError):
+    # An empty prompt is admissible only with attachments, even for a known request identity.
+    with pytest.raises(KiraError, match="prompt") as empty:
         await service.dispatch("run.start", {"session_id": app[3]["id"], "prompt": "", "request_id": "image-only", "attachments": []})
+    assert empty.value.code == "INVALID_ARGUMENT"
+    # The selected images are part of the durable request identity.
+    other = await image(app, tmp_path)
+    with pytest.raises(KiraError) as changed:
+        await service.dispatch("run.start", {"session_id": app[3]["id"], "prompt": "", "request_id": "image-only", "attachments": [other["id"]]})
+    assert changed.value.code == "CONFLICT" and len(backend.contexts) == 2
 
 
 async def test_selected_image_modified_before_send_fails_without_creating_run(app, tmp_path):
@@ -132,8 +139,9 @@ async def test_selected_image_modified_before_send_fails_without_creating_run(ap
     path = service.paths.data / "image-attachments" / (attachment["id"] + ".png")
     path.chmod(0o600)
     path.write_bytes(b"changed")
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError, match="changed") as error:
         await run(app, "Look", "tampered", [attachment["id"]])
+    assert error.value.code == "INVALID_ATTACHMENT"
     assert backend.contexts == [] and service.store.all("SELECT * FROM runs") == []
 
 
@@ -149,11 +157,11 @@ async def test_direct_auth_await_cannot_admit_stale_provider(app, monkeypatch):
 
     monkeypatch.setattr(service.direct_accounts, "prepare", prepare)
     pending = asyncio.create_task(run(app, "Must not execute on wrong provider", "race"))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     await switch(app, "codex", "race-switch")
     release.set()
     with pytest.raises(KiraError, match="provider changed"):
-        await pending
+        await asyncio.wait_for(pending, 30)
     assert not service.store.all("SELECT * FROM runs")
 
 

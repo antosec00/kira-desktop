@@ -80,8 +80,13 @@ def context_card(context: dict[str, Any]) -> dict[str, Any]:
             row(tr("Soglia di compattazione"), count(policy.get("compact_threshold"))),
             row(tr("Ingresso dell’ultima richiesta misurata"), count(metrics.get("input_tokens"))),
             row(tr("Ultima stima del contesto"), count(None if partial else metrics.get("estimated_tokens")))]
-    note: str = tr("Automatico — massimo disponibile. Fonte: {source}. {verification} Lo spazio residuo non è misurato.",
-              source=source, verification=verification)
+    # DeepSeek keeps Kira-managed compaction; OpenAI direct plans on the catalog maximum.
+    if context.get("mode") == "automatic_kira" or context.get("backend") == "deepseek_account":
+        note: str = tr("Automatico — compattazione Kira. Fonte: {source}. {verification} Lo spazio residuo non è misurato.",
+                       source=source, verification=verification)
+    else:
+        note = tr("Automatico — massimo disponibile. Fonte: {source}. {verification} Lo spazio residuo non è misurato.",
+                  source=source, verification=verification)
     note += "\n" + tr("Stime e conteggi preliminari si riferiscono all’ultimo calcolo e possono non includere la risposta più recente.")
     if partial:
         rows.append(row(tr("Ultima stima della parte visibile"), count(metrics.get("visible_estimated_tokens"))))

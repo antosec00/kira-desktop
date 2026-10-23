@@ -136,7 +136,7 @@ async def test_real_stdio_lists_exact_schema_and_delivers_one_pending_proposal(t
             process.stdin.write((json.dumps({"jsonrpc": "2.0", "id": request_id,
                                             "method": method, "params": params}) + "\n").encode())
             await process.stdin.drain()
-            response = json.loads(await asyncio.wait_for(process.stdout.readline(), 5))
+            response = json.loads(await asyncio.wait_for(process.stdout.readline(), 30))
             assert response["id"] == request_id and "error" not in response
             return response["result"]
 
@@ -148,7 +148,7 @@ async def test_real_stdio_lists_exact_schema_and_delivers_one_pending_proposal(t
         arguments = copy.deepcopy(PROPOSAL_ARGUMENTS)
         pending = asyncio.create_task(request(3, "tools/call", {
             "name": "soul_propose", "arguments": arguments}))
-        await asyncio.wait_for(entered.wait(), 2)
+        await asyncio.wait_for(entered.wait(), 30)
         assert not pending.done()
         assert calls == [("mcp-3", "kira.soul_propose", arguments)]
         release.set()

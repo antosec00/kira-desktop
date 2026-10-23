@@ -22,6 +22,7 @@ from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 from kira.ui.ipc import LocalClient
 from kira.ui.team_models import TeamListModel
+from test_ui_support import settled_point
 
 
 def snapshot(team_id="team-a", *, state="running", seq=0, **overrides):
@@ -557,7 +558,8 @@ def test_local_client_routes_team_notifications_separately(qapp, qtbot, tmp_path
         peers[0].write(packet[split:])
         qtbot.waitUntil(lambda: team_events == [event])
         assert not ordinary_events
-        assert isinstance(QCoreApplication.sendEvent(client, QEvent(QEvent.Type.User)), bool)
+        # A frame split inside a UTF-8 character is not a protocol error.
+        assert client.compatible and not client._buffer
     finally:
         client.close()
         client.deleteLater()
@@ -775,6 +777,17 @@ def test_team_menus_have_literal_labels_visible_indicators_and_effective_contras
     def luminance(rgb):
         values = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in rgb]
         return sum(v * w for v, w in zip(values, (0.2126, 0.7152, 0.0722), strict=True))
+
+    def row_center(combo):
+        return json.loads(evaluate(combo, """
+            (function() {
+                const item = popup.opened ? popup.contentItem.itemAtIndex(0) : null;
+                if (!item || item.width <= 0 || item.height <= 0) return "null";
+                const p = item.mapToItem(null, item.width / 2, item.height / 2);
+                return JSON.stringify([p.x, p.y]);
+            })()
+        """))
+
     for name, label in expected.items():
         if name == "teamModelInput":
             QMetaObject.invokeMethod(editor, "open")
@@ -790,7 +803,8 @@ def test_team_menus_have_literal_labels_visible_indicators_and_effective_contras
         light, dark = sorted(map(luminance, indicator), reverse=True)
         assert (light + 0.05) / (dark + 0.05) >= 4.5
         evaluate(combo, "popup.open()")
-        qtbot.wait(30)
+        # The popup sizes itself over a few frames: use its first row once it stopped moving.
+        settled_point(qtbot, lambda: row_center(combo))
         for state in ("normal", "highlighted", "focus", "pressed"):
             evaluate(combo, """
                 (function() {
@@ -803,14 +817,8 @@ def test_team_menus_have_literal_labels_visible_indicators_and_effective_contras
             """ % ("TabFocusReason" if state == "focus" else "MouseFocusReason",
                    "true" if state == "highlighted" else "false"))
             if state == "pressed":
-                position = json.loads(evaluate(combo, """
-                    (function() {
-                        const item = popup.contentItem.itemAtIndex(0);
-                        const p = item.mapToItem(null, item.width / 2, item.height / 2);
-                        return JSON.stringify([p.x, p.y]);
-                    })()
-                """))
-                QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=QPoint(*map(int, position)))
+                QTest.mousePress(window, Qt.MouseButton.LeftButton,
+                                 pos=settled_point(qtbot, lambda: row_center(combo)))
             values = json.loads(evaluate(combo, """
                 (function() {
                     const item = popup.contentItem.itemAtIndex(0);

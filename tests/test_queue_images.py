@@ -11,6 +11,7 @@ import pytest
 import pytest_asyncio
 from PySide6.QtGui import QImage
 
+import kira.service.server as server_module
 from kira.domain.contracts import KiraError
 from kira.domain.paths import Paths
 from kira.service.server import Service
@@ -30,11 +31,12 @@ class Provider:
 
 
 async def until(predicate):
-    for _ in range(300):
-        if predicate():
-            return
-        await asyncio.sleep(.01)
-    raise AssertionError("Synthetic queued image did not settle")
+    try:
+        async with asyncio.timeout(30):
+            while not predicate():
+                await asyncio.sleep(.01)
+    except TimeoutError:
+        raise AssertionError("Synthetic queued image did not settle") from None
 
 
 @pytest_asyncio.fixture
@@ -92,11 +94,13 @@ async def test_image_only_queue_persists_lists_edits_and_dispatches_exact_ids(ru
 async def test_queue_retries_compare_attachment_ids_and_order(runtime):
     service, _, _, _, images = runtime
     ids = [image["id"] for image in images]
-    request = params(runtime, attachments=ids)
+    # A text prompt keeps the image-free retry valid, so every retry reaches the attachment comparison.
+    request = params(runtime, prompt="Compare the synthetic images", attachments=ids)
     await service.dispatch("queue.add", request)
     for changed in (ids[::-1], ids[:1], []):
-        with pytest.raises(KiraError):
+        with pytest.raises(KiraError) as error:
             await service.dispatch("queue.add", {**request, "attachments": changed})
+        assert error.value.code == "CONFLICT"
     assert len(service.store.all("SELECT * FROM prompt_queue")) == 1
 
 
@@ -131,7 +135,7 @@ async def test_queue_rejects_changed_provider_after_account_preparation(runtime,
 
     monkeypatch.setattr(service.direct_accounts, "prepare", prepare)
     pending = asyncio.create_task(service.dispatch("queue.add", params(runtime)))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     service.store.db.execute("UPDATE sessions SET backend='codex' WHERE id=?", (session["id"],))
     release.set()
     with pytest.raises(KiraError, match="provider changed"):
@@ -155,7 +159,7 @@ async def test_queue_concurrent_same_retry_is_idempotent_after_prepare(runtime, 
     monkeypatch.setattr(service.direct_accounts, "prepare", prepare)
     first = asyncio.create_task(service.dispatch("queue.add", params(runtime)))
     second = asyncio.create_task(service.dispatch("queue.add", params(runtime)))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     release.set()
     results = await asyncio.gather(first, second)
     assert results[0]["item"]["id"] == results[1]["item"]["id"]
@@ -169,8 +173,9 @@ async def test_bad_current_image_is_rejected_and_queued_substitution_pauses(runt
     saved = Path(unquote(urlsplit(images[0]["preview_url"]).path))
     saved.chmod(0o600)
     saved.write_bytes(b"modified after queue preview")
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch("queue.add", params(runtime, request_id="another-image"))
+    assert error.value.code == "INVALID_ATTACHMENT"
     await service.dispatch("queue.resume", {"project_id": project["id"]})
     await until(lambda: service.prompt_queue.paused(project["id"]))
     row = service.store.all("SELECT * FROM prompt_queue WHERE id=?", (item["id"],))[0]
@@ -205,7 +210,9 @@ async def test_recovery_keeps_saved_queue_images_but_requires_resume(runtime):
         await restored.close()
 
 
-async def test_claude_code_accepts_image_queue_like_the_direct_providers(runtime):
+async def test_claude_code_accepts_image_queue_like_the_direct_providers(runtime, monkeypatch):
+    # Queue admission never loads the optional Claude Code SDK; only chat creation checks it.
+    monkeypatch.setattr(server_module, "require_claude_code", lambda: None)
     service, _, project, _, _ = runtime
     session = (await service.dispatch("session.create", {"project_id": project["id"],
                 "backend": "claude_code", "model": "sonnet"}))["session"]

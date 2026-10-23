@@ -227,10 +227,6 @@ class AssistantController(QObject):
         return deepcopy(self._environment)
 
     @qt_property(str, notify=changed)
-    def environmentText(self) -> str:
-        return json.dumps(self._environment, ensure_ascii=False, indent=2, default=str)
-
-    @qt_property(str, notify=changed)
     def environmentSummary(self) -> str:
         if not self._environment:
             return self._error or tr("Caricamento del contesto…")

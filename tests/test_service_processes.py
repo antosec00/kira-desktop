@@ -76,6 +76,10 @@ def test_changed_identity_never_opens_pidfd_or_signals(registry, monkeypatch, ch
 
     monkeypatch.setattr(os, "pidfd_open", forbidden)
     monkeypatch.setattr(signal, "pidfd_send_signal", forbidden)
+    if "start_ticks" in changed:
+        # Another start time under the recorded PID: the recorded process exited.
+        assert owner._signal(expected, signal.SIGTERM) is False
+        return
     with pytest.raises(KiraError, match="identity changed"):
         owner._signal(expected, signal.SIGTERM)
 

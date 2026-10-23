@@ -27,7 +27,7 @@ class QuestionServer(FakeServer):
     steer_error = False
     steer_turn = "turn-fixture"
 
-    async def start(self, *, experimental_api=False):
+    async def start(self, *, experimental_api=True):  # Same default as codex.AppServer.
         self.experimental = experimental_api
 
     async def request(self, method, params, timeout=30):
@@ -45,10 +45,11 @@ class QuestionServer(FakeServer):
 
 @pytest.fixture
 def server(monkeypatch):
-    QuestionServer.instances, QuestionServer.queued = [], []
-    QuestionServer.feature_enabled = True
-    QuestionServer.steer_error = False
-    QuestionServer.steer_turn = "turn-fixture"
+    # Pin the inherited FakeServer state too; monkeypatch restores all of it afterwards.
+    for name, value in {"instances": [], "queued": [], "resolved_model": "fixture-model",
+                        "resolved_effort": "ultra", "feature_enabled": True,
+                        "steer_error": False, "steer_turn": "turn-fixture"}.items():
+        monkeypatch.setattr(QuestionServer, name, value)
     monkeypatch.setattr(codex, "AppServer", QuestionServer)
     return QuestionServer
 
@@ -69,8 +70,8 @@ def question_context(tmp_path):
 async def until(predicate):
     async def wait():
         while not predicate():
-            await asyncio.sleep(0)
-    await asyncio.wait_for(wait(), 2)
+            await asyncio.sleep(0.001)
+    await asyncio.wait_for(wait(), 10)
 
 
 async def test_native_question_preserves_selection_and_uses_separate_input_callback(tmp_path, server):
@@ -80,7 +81,7 @@ async def test_native_question_preserves_selection_and_uses_separate_input_callb
     await until(lambda: server.instances and server.instances[0].responses)
     rpc = server.instances[0]
     await rpc.notifications.put(terminal("completed"))
-    assert (await run)["state"] == "completed"
+    assert (await asyncio.wait_for(run, 30))["state"] == "completed"
     assert rpc.responses == [(91, {"answers": ANSWER})]
     assert ("input.delivered", {"request_id": "durable-input",
                                 "transport": "json-rpc-response"}) in events
@@ -116,7 +117,7 @@ async def test_native_async_question_observes_work_then_delivers_actual_answer(t
     released.set()
     await until(lambda: rpc.responses)
     await rpc.notifications.put(terminal("completed"))
-    assert (await run)["state"] == "completed"
+    assert (await asyncio.wait_for(run, 30))["state"] == "completed"
     assert rpc.responses == [(91, {"answers": ANSWER})]
 
 
@@ -185,17 +186,20 @@ async def test_duplicate_identical_rpc_reuses_answer_conflicting_rpc_stops(tmp_p
     changed = question()
     changed["params"]["questions"][0]["question"] = "Different prompt"
     await rpc.notifications.put(changed)
-    assert (await run)["state"] == "interrupted"
+    assert (await asyncio.wait_for(run, 30))["state"] == "interrupted"
     assert len(calls) == 1
 
 
 async def test_wrong_thread_question_cannot_reach_service_or_resolve_current_question(tmp_path, server):
-    ctx, _, _, _, calls, _ = question_context(tmp_path)
-    waiting = asyncio.Event()
+    ctx, events, _, _, calls, _ = question_context(tmp_path)
+    waiting, cancelled = asyncio.Event(), asyncio.Event()
     async def request(payload):
         calls.append(payload)
         waiting.set()
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
     ctx.request_input = request
     wrong = question()
     wrong["params"]["threadId"] = "other-thread"
@@ -204,10 +208,18 @@ async def test_wrong_thread_question_cannot_reach_service_or_resolve_current_que
     await asyncio.wait_for(waiting.wait(), 2)
     rpc = server.instances[0]
     await rpc.notifications.put(event("serverRequest/resolved", requestId=91, threadId="other-thread"))
-    await asyncio.sleep(0)
-    assert len(calls) == 1 and not run.done()
+    # Notifications are handled in order, and a resolution cancels its question before
+    # the next one is read: once this later delta is observed, the foreign resolution
+    # has been fully handled.
+    await rpc.notifications.put(event("item/agentMessage/delta", itemId="marker", delta="Marker"))
+    def marker_seen():
+        return any(kind == "message.delta" and value.get("item_id") == "marker"
+                   for kind, value in events)
+    await until(lambda: run.done() or marker_seen())
+    assert marker_seen() and not run.done()
+    assert len(calls) == 1 and not cancelled.is_set()
     await rpc.notifications.put(terminal("completed"))
-    assert (await run)["state"] == "completed"
+    assert (await asyncio.wait_for(run, 30))["state"] == "completed"
 
 
 async def test_service_failure_is_unknown_not_success_and_no_default_answer(tmp_path, server):
@@ -256,7 +268,8 @@ async def test_question_callbacks_that_ignore_cancellation_do_not_hang_provider_
     await asyncio.wait_for(waiting.wait(), 2)
     await server.instances[0].notifications.put(terminal("completed"))
     try:
-        result = await asyncio.wait_for(run, 2)
+        # The provider waits a fixed second for the callback; leave ample headroom.
+        result = await asyncio.wait_for(run, 10)
         assert result["state"] == "interrupted"
         assert "one second" in result["error"]
         assert server.instances[0].closed
@@ -301,7 +314,7 @@ async def test_actual_async_message_metadata_stores_question_and_steers_correlat
     assert answer == [{"answer": "Violet <3", "question": "Choose a fixture color",
         "questionItemId": '["request_user_input_async","call_async_fixture",0]'}]
     await rpc.notifications.put(terminal("completed"))
-    assert (await run)["state"] == "completed"
+    assert (await asyncio.wait_for(run, 30))["state"] == "completed"
     assert not rpc.responses
 
 

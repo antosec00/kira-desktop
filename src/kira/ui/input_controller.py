@@ -99,9 +99,9 @@ class InputController(QObject):
             return (tr("Richiesta non più attiva. Copia la domanda e l’eventuale risposta "
                     "per un nuovo turno.") + (tr("\nMotivo: ") + reason if reason else ""))
         if row.get("delivered"):
-            return tr("Risposta inoltrata al backend. L’uso da parte del modello non è confermato.")
+            return tr("Risposta inoltrata al provider. L’uso da parte del modello non è confermato.")
         if row.get("received"):
-            return tr("Risposta in inoltro al backend. La consegna non è ancora confermata.")
+            return tr("Risposta in inoltro al provider. La consegna non è ancora confermata.")
         if row.get("status") == "answered":
             return tr("Risposta salvata. In attesa di consegna al provider.")
         if row.get("blocking"):

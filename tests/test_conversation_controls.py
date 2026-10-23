@@ -43,11 +43,12 @@ class Provider:
 
 
 async def until(predicate):
-    for _ in range(300):
-        if predicate():
-            return
-        await asyncio.sleep(.01)
-    raise AssertionError("Expected service condition did not settle")
+    try:
+        async with asyncio.timeout(30):
+            while not predicate():
+                await asyncio.sleep(.01)
+    except TimeoutError:
+        raise AssertionError("Expected service condition did not settle") from None
 
 
 @pytest_asyncio.fixture
@@ -252,12 +253,18 @@ async def test_queue_validates_scope_limits_and_archived_chat(workbench_runtime,
     await service.dispatch("queue.pause", {"project_id": project["id"]})
     one = (await add(workbench_runtime, "one"))["item"]
     other = (await service.dispatch("project.create", {"name": "Other", "root": str(tmp_path)}))["project"]
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as foreign:
         await service.dispatch("queue.edit", {"project_id": other["id"], "item_id": one["id"], "prompt": "foreign"})
-    with pytest.raises(KiraError):
+    assert foreign.value.code == "NOT_FOUND"
+    with pytest.raises(KiraError) as oversized:
         await add(workbench_runtime, "too-large", "é" * 4001)
-    with pytest.raises(KiraError):
+    assert oversized.value.code == "INVALID_ARGUMENT"
+    with pytest.raises(KiraError) as incomplete:
         await service.dispatch("queue.reorder", {"project_id": project["id"], "item_ids": []})
+    assert incomplete.value.code == "CONFLICT"
+    with pytest.raises(KiraError, match="queued requests"):
+        await service.dispatch("session.archive", {"project_id": project["id"], "session_id": session["id"], "archived": True})
+    await service.dispatch("queue.remove", {"project_id": project["id"], "item_id": one["id"]})
     await service.dispatch("session.archive", {"project_id": project["id"], "session_id": session["id"], "archived": True})
     assert not (await service.dispatch("session.list", {"project_id": project["id"]}))["sessions"]
     assert (await service.dispatch("session.list", {"project_id": project["id"], "archived": True}))["sessions"][0]["archived"]
@@ -298,10 +305,12 @@ async def test_compaction_is_pending_until_terminal_provider_evidence_and_reserv
     service.store.db.execute("UPDATE sessions SET backend_ref='fixture-thread' WHERE id=?", (session["id"],))
     entered, release = asyncio.Event(), asyncio.Event()
     calls = []
+    bindings = []
     class Compactor:
         process = None
         async def manage_thread(self, action, saved, scope, params, **callbacks):
-            assert saved["model"] == session["model"] and scope["permission"] == "read_only"
+            # Checked in the test body: an assertion here would only fail the compaction.
+            bindings.append((saved["model"], scope["permission"]))
             self.process = await asyncio.create_subprocess_exec(sys.executable, "-c", "import time; time.sleep(60)", start_new_session=True)
             await callbacks["provider_started"](self.process.pid)
             calls.append(action)
@@ -315,7 +324,8 @@ async def test_compaction_is_pending_until_terminal_provider_evidence_and_reserv
     monkeypatch.setattr(service, "_backend", lambda backend: Compactor())
     params = {"project_id": project["id"], "session_id": session["id"], "request_id": "compact-once"}
     assert (await service.dispatch("session.compact", params))["status"] == "pending"
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
+    assert bindings == [(session["model"], "read_only")]
     assert (await service.dispatch("session.compact", params))["status"] == "pending"
     with pytest.raises(KiraError, match="active"):
         await service.dispatch("settings.update", {"codex_binary": "different-fixture-binary"})
@@ -340,7 +350,7 @@ async def test_settings_change_serializes_new_admission_during_provider_close(wo
             await release.wait()
     service._control_backends["codex"] = PreviousControl()
     change = asyncio.create_task(service.dispatch("settings.update", {"codex_binary": "fixture-new-binary"}))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     try:
         for method, params in (("run.start", {"session_id": session["id"], "request_id": "race", "prompt": "Fixture"}),
                                ("session.compact", {"project_id": project["id"], "session_id": session["id"], "request_id": "compact"}),
@@ -353,7 +363,7 @@ async def test_settings_change_serializes_new_admission_during_provider_close(wo
         assert (await service.dispatch("queue.list", {"project_id": project["id"]}))["items"][0]["status"] == "pending"
     finally:
         release.set()
-        await change
+        await asyncio.wait_for(change, 30)
     assert not service._settings_changing
     service.prompt_queue.kick(project["id"])
     await until(lambda: len(providers) == 1)

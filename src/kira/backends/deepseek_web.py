@@ -1,8 +1,8 @@
 """DeepSeek web (chat.deepseek.com) backend with PoW challenge solving.
 
 Uses the user's web session token (userToken) and solves the DeepSeekHashV1
-proof-of-work challenge via a bundled WASM module. This bypasses the paid
-API entirely and talks to the same endpoint the browser uses.
+proof-of-work challenge via a bundled WASM module. It talks to the session
+endpoint used by the web client instead of the account API.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from uuid import uuid4
 import httpx
 
 from kira.backends.client_tools import MAX_CLIENT_TOOL_BYTES, ClientToolBridge, validate_tools
-from kira.backends.ollama import StreamError
+from kira.backends.ollama import StreamError, cancellable
 from kira.domain.contracts import Backend, Json, KiraError, RunContext
 from kira.domain.questions import question_tool_specs, validate_request
 
@@ -42,6 +42,7 @@ MAX_POW_FIELD_CHARS = 1024
 # Raw SSE bytes per completion, including patches and reasoning text that the
 # visible-text limit does not count.
 MAX_STREAM_BYTES = 64 * 1024 * 1024
+MAX_ERROR_BODY_BYTES = 65_536
 _MAX_RECOVERY_CONTEXT_CHARS = 20_000
 _REMOTE_SESSION_PREFIX = "kira-deepseek-web:v1:"
 _PROMPT_BOOTSTRAP_VERSION = 3
@@ -51,7 +52,14 @@ _DSML_INVOKE_RE = re.compile(
 _DSML_PARAMETER_RE = re.compile(r"<\|DSML\|parameter\s+([^>]*)>(.*?)</\|DSML\|parameter>", re.S)
 _DSML_ATTRIBUTE_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_-]*)="([^"]*)"')
 DEFAULT_MODEL = "deepseek-v4-flash"
-VISION_MODELS = frozenset({DEFAULT_MODEL, "deepseek-reasoner"})
+REASONER_MODEL = "deepseek-reasoner"
+VISION_MODELS = frozenset({DEFAULT_MODEL, REASONER_MODEL})
+# Standard capability keys. Replies are delivered whole (no incremental text)
+# and usage is not reported; tools use Kira's text protocol.
+WEB_CAPABILITIES: Json = {"streaming": False, "tools": True, "cancellation": True, "resume": True,
+                          "usage": False, "images": True, "context_controls": False}
+# Provider-supplied response fragments kept per completion.
+MAX_STREAM_FRAGMENTS = 1024
 
 
 def _valid_message_id(value: Any) -> bool:
@@ -105,6 +113,26 @@ async def _bounded_lines(response: httpx.Response, limit: int) -> AsyncIterator[
         yield pending.rstrip(b"\r").decode("utf-8", "replace")
 
 
+async def _error_code_suffix(response: httpx.Response) -> str:
+    """Read at most 64 KiB of an error body and keep only its numeric provider code."""
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        body.extend(chunk[:MAX_ERROR_BODY_BYTES + 1 - len(body)])
+        if len(body) > MAX_ERROR_BODY_BYTES:
+            return ""
+    try:
+        payload = json.loads(body)
+    except (ValueError, RecursionError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    code = payload.get("code")
+    data = payload.get("data")
+    if code in (None, 0) and isinstance(data, dict):
+        code = data.get("biz_code")
+    return f" (code {code})" if type(code) is int and 0 < abs(code) < 10**12 else ""
+
+
 class PowSolver:
     """Load the DeepSeekHashV1 WASM module once and solve challenges."""
 
@@ -148,11 +176,11 @@ class PowSolver:
             raise KiraError("UNAVAILABLE", "WASM solver has an unsupported interface")
         self._engine = engine
         self._instance = instance
-        self._store = store          # <-- Salviamo lo store per le chiamate
+        # Every wasmtime call takes the store that owns the instance.
+        self._store = store
 
     def _write(self, text: str) -> tuple[int, int]:
         data = text.encode("utf-8")
-        # L'API di wasmtime richiede di passare lo store come primo argomento
         ptr = self._alloc(self._store, len(data))
         # Memory.write is bounds-checked; a raw data_ptr write would let a bad
         # allocator pointer corrupt Kira's own process memory.
@@ -165,10 +193,9 @@ class PowSolver:
     def _solve_sync(self, challenge: str, salt: str, expire_at: int, difficulty: int) -> int:
         ch_ptr, ch_len = self._write(challenge)
         salt_ptr, salt_len = self._write(salt)
-        # solve_pow richiede lo store come primo argomento
         result = self._solve(self._store, ch_ptr, ch_len, salt_ptr, salt_len, expire_at, difficulty)
-        
-        # Gestione del risultato come da esempio ufficiale
+        # The solver returns an unsigned 64-bit answer through a signed i64;
+        # all bits set means that no answer was found.
         if result < 0:
             result = result + 0x10000000000000000
         if result == 0xFFFFFFFFFFFFFFFF:
@@ -178,12 +205,16 @@ class PowSolver:
     async def solve(self, challenge: Json) -> str:
         algorithm = challenge.get("algorithm")
         if algorithm != POW_ALGORITHM:
-            raise DeepSeekWebError(f"Unsupported PoW algorithm: {algorithm}")
-        ch = str(challenge.get("challenge", ""))
-        salt = str(challenge.get("salt", ""))
-        expire_at = int(challenge.get("expire_at", 0))
-        difficulty = int(challenge.get("difficulty", 0))
-        if (not ch or not salt or len(ch) > MAX_POW_FIELD_CHARS or len(salt) > MAX_POW_FIELD_CHARS
+            raise DeepSeekWebError(f"Unsupported PoW algorithm: {str(algorithm)[:64]!r}")
+        ch = challenge.get("challenge")
+        salt = challenge.get("salt")
+        try:
+            expire_at = int(challenge.get("expire_at", 0))
+            difficulty = int(challenge.get("difficulty", 0))
+        except (TypeError, ValueError, OverflowError):
+            raise DeepSeekWebError("Invalid PoW challenge") from None
+        if (not isinstance(ch, str) or not isinstance(salt, str) or not ch or not salt
+                or len(ch) > MAX_POW_FIELD_CHARS or len(salt) > MAX_POW_FIELD_CHARS
                 or not 0 < expire_at < 2**63 or not 0 < difficulty < 2**53):
             raise DeepSeekWebError("Invalid PoW challenge")
 
@@ -199,6 +230,18 @@ class PowSolver:
             "target_path": challenge.get("target_path", "/api/v0/chat/completion"),
         }
         return _b64(json.dumps(payload, separators=(",", ":")).encode())
+
+
+def _cancelled() -> Json:
+    return {"state": "cancelled", "outcome": {"scope": "client_stream_closed",
+            "remote_generation_termination_confirmed": False}}
+
+
+def _unfinished_outcome(ctx: RunContext, tool_rounds: int, reason: str) -> Json:
+    """Outcome of a turn whose last response was unusable; no tool from it ran."""
+    return {"model": ctx.model or DEFAULT_MODEL, "provider": "deepseek_web",
+            "tool_rounds": tool_rounds, "tools_verified": False,
+            "done_reason": reason, "tool_execution": "not_started"}
 
 
 class DeepSeekWebBackend(Backend):
@@ -248,15 +291,14 @@ class DeepSeekWebBackend(Backend):
                         "error": "Web token rejected"}
             response.raise_for_status()
             models = [
-                {"id": DEFAULT_MODEL, "name": "DeepSeek V4 Flash (web)",
-                 "capabilities": {"tools": True, "vision": True, "images": True},
-                 "tools_metadata": True, "tools_verified": False},
-                {"id": "deepseek-reasoner", "name": "DeepSeek Reasoner (web)",
-                 "capabilities": {"tools": True, "vision": True, "images": True},
-                 "tools_metadata": True, "tools_verified": False},
+                {"id": model, "name": name,
+                 "capabilities": {**WEB_CAPABILITIES, "images": model in VISION_MODELS},
+                 "tools_metadata": True, "tools_verified": False}
+                for model, name in ((DEFAULT_MODEL, "DeepSeek V4 Flash (web)"),
+                                    (REASONER_MODEL, "DeepSeek Reasoner (web)"))
             ]
             return {"available": True, "models": models,
-                    "capabilities": {"tools": True, "vision": True, "images": True},
+                    "capabilities": dict(WEB_CAPABILITIES),
                     "account": self.accounts.status()}
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
@@ -280,9 +322,18 @@ class DeepSeekWebBackend(Backend):
         if response.status_code == 401:
             raise DeepSeekWebAuthError("Web token rejected during PoW challenge")
         response.raise_for_status()
-        payload = response.json()
-        data = payload.get("data", {}).get("biz_data", {})
-        challenge = data.get("challenge")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise DeepSeekWebError("DeepSeek returned an invalid PoW challenge response") from exc
+        data = payload.get("data") if isinstance(payload, dict) else None
+        code = payload.get("code") if isinstance(payload, dict) else None
+        if code in (None, 0) and isinstance(data, dict):
+            code = data.get("biz_code")
+        if code not in (None, 0):
+            raise DeepSeekWebError(f"DeepSeek rejected the PoW challenge request (code {str(code)[:32]})")
+        biz = data.get("biz_data") if isinstance(data, dict) else None
+        challenge = biz.get("challenge") if isinstance(biz, dict) else None
         if not isinstance(challenge, dict):
             raise DeepSeekWebError("DeepSeek returned an invalid PoW challenge")
         return await self._solver.solve(challenge)
@@ -621,6 +672,16 @@ class DeepSeekWebBackend(Backend):
         return attempts < MAX_TOOL_FORMAT_RETRIES
 
     async def run(self, ctx: RunContext) -> Json:
+        # Stop closes the client stream at once, as with the other HTTP
+        # providers; the site is not asked to end its own generation.
+        try:
+            return await cancellable(self._run(ctx), ctx.cancel)
+        except asyncio.CancelledError:
+            if not ctx.cancel.is_set():
+                raise
+            return _cancelled()
+
+    async def _run(self, ctx: RunContext) -> Json:
         token = self.accounts.token
         if not token:
             raise DeepSeekWebAuthError("Sign in with a DeepSeek web token before using this provider")
@@ -668,18 +729,18 @@ class DeepSeekWebBackend(Backend):
         try:
             while True:
                 if ctx.cancel.is_set():
-                    return {"state": "cancelled", "outcome": {"scope": "client_stream_closed",
-                            "remote_generation_termination_confirmed": False}}
+                    return _cancelled()
                 pow_header = await self._challenge(token, target_path)
                 if ctx.cancel.is_set():
-                    return {"state": "cancelled", "outcome": {"scope": "client_stream_closed",
-                            "remote_generation_termination_confirmed": False}}
+                    return _cancelled()
                 body: Json = {
                     "chat_session_id": session_id,
                     "parent_message_id": parent_message_id,
                     "prompt": current_prompt,
                     "ref_file_ids": list(pending_file_ids),
-                    "thinking_enabled": bool(ctx.settings.get("reasoning_effort")),
+                    # The web client's DeepThink mode is what makes the Reasoner model reason.
+                    "thinking_enabled": (ctx.model == REASONER_MODEL
+                                         or bool(ctx.settings.get("reasoning_effort"))),
                     "search_enabled": False,
                     "model": ctx.model or DEFAULT_MODEL,
                     "messages": messages,
@@ -688,32 +749,24 @@ class DeepSeekWebBackend(Backend):
                 if pending_file_ids:
                     body["model_type"] = "vision"
                 try:
-                    text, thinking, message_id = await self._stream_completion(
+                    text, message_id = await self._stream_completion(
                         ctx, token, target_path, pow_header, body, limit, tool_rounds,
                         hif_leim=hif_leim if pending_file_ids else "")
                 except DeepSeekWebIncompleteStreamError:
-                    final_text = (
-                        "DeepSeek ha interrotto la risposta prima di completarla. Kira non ha "
-                        "eseguito strumenti dalla risposta incompleta; gli eventuali risultati dei "
-                        "passaggi precedenti restano registrati. La chat remota è stata conservata: "
-                        "puoi chiedere di continuare."
-                    )
                     await ctx.emit("backend.notice", {
                         "message": "DeepSeek response ended early; preserving the remote chat for continuation"})
-                    await ctx.emit("message.completed", {
-                        "content": final_text, "item_id": f"web:{tool_rounds}"})
+                    # The next turn resumes from the last confirmed message of
+                    # this remote chat with a recovery note.
                     await ctx.emit("session.updated", {"backend_ref": self._remote_session_ref(
                         ctx, token, session_id, parent_message_id, context_fingerprint,
                         interrupted=True)})
-                    return {"state": "completed", "outcome": {
-                        "content": final_text, "model": ctx.model or DEFAULT_MODEL,
-                        "provider": "deepseek_web", "tool_rounds": tool_rounds,
-                        "tools_verified": False, "interrupted": True,
-                    }}
+                    return {"state": "interrupted", "error": (
+                        "DeepSeek Web ended the response before it was complete; no tool from that "
+                        "response was executed. The remote chat is kept: continue explicitly."),
+                        "outcome": _unfinished_outcome(ctx, tool_rounds, "incomplete_response")}
                 pending_file_ids.clear()
                 if ctx.cancel.is_set():
-                    return {"state": "cancelled", "outcome": {"scope": "client_stream_closed",
-                            "remote_generation_termination_confirmed": False}}
+                    return _cancelled()
                 for identity in tuple(pending_question_answers):
                     await ctx.emit("input.delivered", {"request_id": identity,
                                                         "transport": "deepseek-web-messages"})
@@ -735,6 +788,10 @@ class DeepSeekWebBackend(Backend):
                                      for alias, operation in question_aliases.items()})
                 try:
                     calls = self._parse_tool_calls(text, bool(schemas), name_aliases)
+                    # Unregistered names and non-object arguments are envelope
+                    # errors too: nothing ran, so they take the correction path.
+                    checked = [(call, self._validate_tool_call(call["name"], call["arguments"], schemas))
+                               for call in calls or []]
                 except DeepSeekWebError as exc:
                     if not self._is_repairable_tool_format_error(exc):
                         raise
@@ -744,40 +801,31 @@ class DeepSeekWebBackend(Backend):
                             "message": "DeepSeek tool-call format was invalid; requesting a correction"})
                         messages.append({"role": "assistant", "content": text})
                         current_prompt = (
-                            "Your previous response looked like a Kira tool call, but its envelope was "
-                            "invalid and no tool was executed. Retry with exactly one standalone JSON object "
-                            "shaped like {\"kira_tool_call\":{\"name\":\"EXACT_TOOL_NAME\","
-                            "\"arguments\":{}}}, using the schemas already in this chat. Escape quotes, "
-                            "backslashes and newlines inside JSON strings. Do not use DSML, Markdown fences "
-                            "or surrounding prose. If the request needs no tool, answer normally."
+                            "Your previous response looked like a Kira tool call, but Kira rejected it "
+                            "and no tool was executed. Reason: " + str(exc)[:300] + ". Retry with exactly "
+                            "one standalone JSON object shaped like {\"kira_tool_call\":{\"name\":"
+                            "\"EXACT_TOOL_NAME\",\"arguments\":{}}}, using only the registered tool names "
+                            "and schemas already in this chat. Escape quotes, backslashes and newlines "
+                            "inside JSON strings. Do not use DSML, Markdown fences or surrounding prose. "
+                            "If the request needs no tool, answer normally."
                         )
                         messages.append({"role": "user", "content": current_prompt})
                         continue
-                    final_text = (
-                        "DeepSeek ha restituito una chiamata agli strumenti in un formato non valido "
-                        "anche dopo due tentativi di correzione. Kira non ha eseguito alcuno strumento; "
-                        "puoi riprovare la richiesta."
-                    )
-                    await ctx.emit("message.completed", {
-                        "content": final_text, "item_id": f"web:{tool_rounds}"})
                     await ctx.emit("session.updated", {"backend_ref": self._remote_session_ref(
                         ctx, token, session_id, parent_message_id, context_fingerprint)})
-                    return {"state": "completed", "outcome": {
-                        "content": final_text, "model": ctx.model or DEFAULT_MODEL,
-                        "provider": "deepseek_web", "tool_rounds": tool_rounds,
-                        "tools_verified": False,
-                    }}
+                    return {"state": "interrupted", "error": (
+                        "DeepSeek Web returned an invalid tool call again after "
+                        f"{MAX_TOOL_FORMAT_RETRIES} correction requests; no tool from that response "
+                        "was executed. The remote chat is kept: continue explicitly."),
+                        "outcome": _unfinished_outcome(ctx, tool_rounds, "invalid_tool_call")}
                 tool_format_retries = 0
                 if calls is None:
                     await ctx.emit("message.completed", {
-                        "content": text, "item_id": f"web:{tool_rounds}",
-                        "thinking": thinking[:32_000],
-                    })
+                        "content": text, "item_id": f"web:{tool_rounds}"})
                     await ctx.emit("session.updated", {"backend_ref": self._remote_session_ref(
                         ctx, token, session_id, parent_message_id, context_fingerprint)})
                     return {"state": "completed", "outcome": {
-                        "content": text, "thinking": thinking,
-                        "model": ctx.model or DEFAULT_MODEL,
+                        "content": text, "model": ctx.model or DEFAULT_MODEL,
                         "provider": "deepseek_web", "tool_rounds": tool_rounds,
                         "tools_verified": False,
                     }}
@@ -789,8 +837,6 @@ class DeepSeekWebBackend(Backend):
                     raise DeepSeekWebError(
                         f"DeepSeek requested more than {MAX_TOOL_CALLS_PER_RESPONSE} tools in one response; none were executed")
 
-                checked = [(call, self._validate_tool_call(call["name"], call["arguments"], schemas))
-                           for call in calls]
                 invalid = any(problem is not None for _, problem in checked)
                 results: list[Json] = []
                 if invalid:
@@ -1201,11 +1247,11 @@ class DeepSeekWebBackend(Backend):
 
     async def _stream_completion(self, ctx: RunContext, token: str, target_path: str,
                                  pow_header: str, body: Json, limit: int,
-                                 round_index: int, *, hif_leim: str = "") -> tuple[str, str, str | int | None]:
+                                 round_index: int, *, hif_leim: str = "") -> tuple[str, str | int | None]:
+        """Return the visible reply and its message ID; private reasoning is discarded."""
         stream_trace = os.environ.get("KIRA_DEEPSEEK_WEB_TRACE") == "1"
         stream_state = DeepSeekWebStream(trace=stream_trace)
         text = ""
-        thinking = ""
         message_id_header_names: list[str] = []
         headers = {"Authorization": f"Bearer {token}", "x-ds-pow-response": pow_header,
                    "Content-Type": "application/json"}
@@ -1223,8 +1269,8 @@ class DeepSeekWebBackend(Backend):
                 await self.accounts.expire(token)
                 raise DeepSeekWebAuthError("Web token rejected during completion")
             if response.status_code >= 400:
-                raw = await response.aread()
-                raise DeepSeekWebError(f"HTTP {response.status_code}: {raw[:300]!r}")
+                raise DeepSeekWebError(f"DeepSeek web completion returned HTTP {response.status_code}"
+                                       + await _error_code_suffix(response))
             async for line in _bounded_lines(response, MAX_STREAM_BYTES):
                 if not line.startswith("data:"):
                     continue
@@ -1235,7 +1281,7 @@ class DeepSeekWebBackend(Backend):
                     event = json.loads(payload)
                 except ValueError:
                     continue
-                text, _, thinking = stream_state.apply(event)
+                text = stream_state.apply(event)
                 if len(text.encode("utf-8")) > limit:
                     raise DeepSeekWebError("Web response exceeded configured output limit")
         if stream_trace:
@@ -1246,11 +1292,14 @@ class DeepSeekWebBackend(Backend):
         if not text.strip() or not stream_state.finished:
             raise DeepSeekWebIncompleteStreamError(
                 "DeepSeek stream ended before a complete response; no tool was executed")
-        return text, thinking, stream_state.message_id
+        return text, stream_state.message_id
 
 
 class DeepSeekWebStream:
-    """Apply DeepSeek web fragment patches before emitting visible text deltas."""
+    """Apply DeepSeek web fragment patches and track the visible reply text.
+
+    Reasoning fragments are kept apart so that they never reach the reply.
+    """
 
     _THINK_TYPES = {"THINK", "THINKING", "REASONING", "ANALYSIS"}
 
@@ -1259,7 +1308,6 @@ class DeepSeekWebStream:
         self.has_fragments = False
         self.direct_text = ""
         self.direct_thinking = ""
-        self.emitted_text = ""
         self.finished = False
         self.message_id: str | int | None = None
         self.trace_enabled = trace
@@ -1270,6 +1318,11 @@ class DeepSeekWebStream:
     def _items(value: Any) -> list[Json]:
         values = value if isinstance(value, list) else [value]
         return [dict(item) for item in values[:128] if isinstance(item, dict)]
+
+    def _add(self, items: list[Json]) -> None:
+        if len(self.fragments) + len(items) > MAX_STREAM_FRAGMENTS:
+            raise DeepSeekWebError("DeepSeek web stream exceeded its response fragment limit")
+        self.fragments.extend(items)
 
     def _fragment_index(self, raw: str) -> int:
         if raw == "-1":
@@ -1285,7 +1338,7 @@ class DeepSeekWebStream:
         if path == prefix:
             self.has_fragments = True
             if operation in {"APPEND", "ADD"}:
-                self.fragments.extend(self._items(value))
+                self._add(self._items(value))
             elif operation in {"REPLACE", "SET"}:
                 self.fragments = self._items(value)
             return True
@@ -1298,20 +1351,23 @@ class DeepSeekWebStream:
             return True
         raw_index = parts[0]
         if len(parts) == 1 and raw_index == "-1" and operation in {"APPEND", "ADD"}:
-            self.fragments.extend(self._items(value))
+            self._add(self._items(value))
             return True
 
         index = self._fragment_index(raw_index)
         if raw_index == "-1" and index < 0 and len(parts) > 1:
-            self.fragments.append({"type": "TEXT", "content": ""})
+            self._add([{"type": "TEXT", "content": ""}])
             index = len(self.fragments) - 1
         if index < 0 and raw_index != "-1":
             return True
         if index < 0:
-            self.fragments.extend(self._items(value))
+            self._add(self._items(value))
             return True
-        while len(self.fragments) <= index:
-            self.fragments.append({})
+        # The index comes from the provider: a patch past the end grows the
+        # list only within the fragment limit.
+        if index >= MAX_STREAM_FRAGMENTS:
+            raise DeepSeekWebError("DeepSeek web stream referenced an out-of-range response fragment")
+        self._add([{} for _ in range(index + 1 - len(self.fragments))])
         fragment = self.fragments[index]
 
         if len(parts) == 1:
@@ -1340,7 +1396,7 @@ class DeepSeekWebStream:
                 previous = fragment.get("content", "")
                 fragment["content"] = (previous if isinstance(previous, str) else "") + value
             else:
-                self.fragments.append({"type": "TEXT", "content": value})
+                self._add([{"type": "TEXT", "content": value}])
             return
         self.direct_text += value
 
@@ -1350,7 +1406,7 @@ class DeepSeekWebStream:
                 if str(fragment.get("type", "")).upper() not in self._THINK_TYPES:
                     fragment["content"] = value
                     return
-            self.fragments.append({"type": "TEXT", "content": value})
+            self._add([{"type": "TEXT", "content": value}])
             return
         self.direct_text = value
 
@@ -1484,9 +1540,10 @@ class DeepSeekWebStream:
             record("response", response)
         return shapes
 
-    def apply(self, event: Any) -> tuple[str, str, str]:
+    def apply(self, event: Any) -> str:
+        """Apply one stream event and return the visible reply text so far."""
         if not isinstance(event, dict):
-            return self._texts()[0], "", self._texts()[1]
+            return self._texts()[0]
 
         self.event_count += 1
         response = event.get("response")
@@ -1502,7 +1559,7 @@ class DeepSeekWebStream:
         if self.finished and not (isinstance(event_path, str)
                                   and (event_path.startswith("response/fragments")
                                        or event_path in {"response/message_id", "response/id"})):
-            return self._texts()[0], "", self._texts()[1]
+            return self._texts()[0]
 
         response = event.get("response")
         snapshot = response.get("fragments") if isinstance(response, dict) else None
@@ -1541,8 +1598,4 @@ class DeepSeekWebStream:
                                "fragment_types": [str(fragment.get("type", ""))[:24]
                                                   for fragment in self.fragments[:12]],
                                "visible_chars": len(text), "thinking_chars": len(thinking)})
-        piece = ""
-        if text.startswith(self.emitted_text):
-            piece = text[len(self.emitted_text):]
-        self.emitted_text = text
-        return text, piece, thinking
+        return text

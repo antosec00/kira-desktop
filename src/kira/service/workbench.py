@@ -79,17 +79,58 @@ def _private(path: str) -> bool:
         or part.lower().endswith((".pem", ".key", ".p12", ".pfx")) for part in parts)
 
 
+def _filter_drivers(root: Path, env: dict[str, str]) -> set[str] | None:
+    """Name every configured clean/smudge filter driver, or None if unknown.
+
+    Reading configuration runs no project code; running a filter does.
+    """
+    try:
+        listing = subprocess.run(
+            ["git", "--no-pager", "config", "--includes", "--null", "--name-only",
+             "--get-regexp", r"^filter\."],
+            cwd=root, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=5,
+            check=False, start_new_session=True)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if listing.returncode == 1 and not listing.stdout:
+        return set()
+    if listing.returncode:
+        return None
+    drivers = set()
+    for raw in listing.stdout.split(b"\0"):
+        name = raw.decode("utf-8", "surrogateescape")
+        if name.count(".") >= 2:
+            drivers.add(name[len("filter."):].rsplit(".", 1)[0])
+    return drivers
+
+
 def _git(root: Path, args: list[str], *, input_data: bytes = b"",
          maximum: int = MAX_GIT_OUTPUT) -> tuple[int, bytes, bool]:
     """Bound output/time and disable Git helpers that can execute project code."""
     env = {key: value for key, value in os.environ.items()
            if not key.startswith("GIT_") and key not in {"PAGER", "GIT_PAGER"}}
     env.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0", LC_ALL="C")
+    # Filter drivers from repository or user configuration run commands during
+    # status/diff. Neutralize each one through environment-scoped configuration,
+    # which needs no quoting even for unusual driver names.
+    drivers = _filter_drivers(root, env)
+    if drivers is None:
+        return 128, b"", False
+    overrides = [(f"filter.{driver}.{key}", value) for driver in sorted(drivers)
+                 for key, value in (("clean", ""), ("smudge", ""), ("process", ""),
+                                    ("required", "false"))]
+    env["GIT_CONFIG_COUNT"] = str(len(overrides))
+    for index, (key, value) in enumerate(overrides):
+        env[f"GIT_CONFIG_KEY_{index}"] = key
+        env[f"GIT_CONFIG_VALUE_{index}"] = value
     # check-ignore stdin already names literal paths and rejects pathspec magic.
     path_mode = [] if args[0] == "check-ignore" else ["--literal-pathspecs"]
+    # Rename detection is forced on: hiding a renamed private file (".env" moved to
+    # an ordinary name) must not depend on the user's own Git configuration.
     argv = ["git", "--no-pager", *path_mode, "-c", "core.fsmonitor=false", "-c",
             "core.untrackedCache=false", "-c", "diff.external=", "-c",
-            "core.hooksPath=/dev/null", "-c", "core.quotePath=false", *args]
+            "core.hooksPath=/dev/null", "-c", "core.quotePath=false", "-c", "status.renames=true",
+            "-c", "diff.renames=true", *args]
     with tempfile.TemporaryFile() as source:
         source.write(input_data)
         source.seek(0)
@@ -433,18 +474,30 @@ class Workbench:
             archived = params.get("archived")
             if not isinstance(archived, bool):
                 raise KiraError("INVALID_ARGUMENT", "archived must be a boolean")
+            # An archived chat starts no work, so its waiting requests would only
+            # fail later and pause the whole project queue.
+            if archived and self.store.db.execute(
+                    "SELECT 1 FROM prompt_queue WHERE session_id=? AND status IN ('pending','starting') LIMIT 1",
+                    (session["id"],)).fetchone():
+                raise KiraError("BUSY", "Remove this chat's queued requests before archiving it")
             timestamp = now()
-            self.store.db.execute(
-                "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES (?,?,?,?) "
-                "ON CONFLICT(session_id) DO UPDATE SET archived=excluded.archived,updated_at=excluded.updated_at",
-                (session["id"], int(archived), timestamp, timestamp))
-            if archived:
-                # Restoring an archived chat must not resurrect prior AI authority.
+            self.store.db.execute("BEGIN IMMEDIATE")
+            try:
                 self.store.db.execute(
-                    "UPDATE studio_grants SET enabled=0,generation=generation+1,"
-                    "updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
-                    (timestamp, project["id"], session["id"]),
-                )
+                    "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES (?,?,?,?) "
+                    "ON CONFLICT(session_id) DO UPDATE SET archived=excluded.archived,updated_at=excluded.updated_at",
+                    (session["id"], int(archived), timestamp, timestamp))
+                if archived:
+                    # Restoring an archived chat must not resurrect prior AI authority.
+                    self.store.db.execute(
+                        "UPDATE studio_grants SET enabled=0,generation=generation+1,"
+                        "updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
+                        (timestamp, project["id"], session["id"]),
+                    )
+                self.store.db.execute("COMMIT")
+            except BaseException:
+                self.store.db.execute("ROLLBACK")
+                raise
             return {"session": self._session(session)}
         previous = self._goal(session["id"])["goal"]
         if "objective" not in params and "status" not in params:
@@ -556,14 +609,17 @@ class Workbench:
             yield ("## Retained activity\n\nThe following records preserve the committed event log. "
                    "Artifact paths are references; their files are not embedded or read. "
                    "Any recorded truncation remains part of the original event.\n\n")
+            # Records are redacted as structures before encoding, so every JSON
+            # block stays valid; text redaction of encoded JSON is not relied on.
             goal = self._goal(session["id"])["goal"]
             if goal is not None:
-                yield "### Current user-defined objective\n\n```json\n" + encode(goal) + "\n```\n\n"
+                yield ("### Current user-defined objective\n\n```json\n"
+                       + encode(self.redactor.clean(goal)) + "\n```\n\n")
             events = self.store.db.execute(
                 "SELECT e.* FROM events e JOIN runs r ON r.id=e.run_id "
                 "WHERE r.session_id=? ORDER BY r.created_at,r.rowid,e.seq", (session["id"],))
             for event in events:
-                yield "```json\n" + encode(self.store.record(event)) + "\n```\n\n"
+                yield "```json\n" + encode(self.redactor.clean(self.store.record(event))) + "\n```\n\n"
 
     def _export(self, session: Json, project: Json) -> Json:
         directory = private_directory(self.paths.data / "exports")

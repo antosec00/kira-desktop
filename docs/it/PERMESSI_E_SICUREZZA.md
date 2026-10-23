@@ -30,11 +30,13 @@ controlla sempre i file e i risultati.
 ## I quattro permessi di progetto
 
 Ogni progetto ha un permesso che vale per tutte le sue chat. Lo scegli quando
-crei il progetto e lo puoi cambiare in **Memoria del progetto**, nella barra
-della chat, con **Salva** quando nel progetto non c'è lavoro attivo. In
-**Impostazioni → Lavoro → Permessi dei nuovi progetti** scegli la preselezione
-per i progetti che creerai; quelli esistenti mantengono la loro scelta. Kira non
-promuove mai un progetto a un permesso più ampio da sola.
+crei il progetto e lo puoi cambiare nella finestra **Memoria e istruzioni del
+progetto** (**Azioni → Permessi del progetto**, oppure **Memoria del progetto →
+Modifica note del progetto** dalla barra della chat), con **Salva** quando nel
+progetto non c'è lavoro attivo. In **Impostazioni → Lavoro → Permessi dei nuovi
+progetti** scegli la preselezione per i progetti che creerai; quelli esistenti
+mantengono la loro scelta. Kira non promuove mai un progetto a un permesso più
+ampio da sola.
 
 | Permesso | Strumenti di file di Kira | Comandi | Con Codex |
 | --- | --- | --- | --- |
@@ -52,6 +54,10 @@ Alcune precisazioni importanti:
   toccare qualsiasi cosa il tuo utente possa toccare: la cartella del progetto
   limita gli strumenti di file di Kira, non i comandi. Scegli questo permesso
   solo per progetti di cui ti fidi davvero.
+- Fuori da **Accesso completo**, lo strumento di scrittura di Kira rifiuta con
+  `PATH_DENIED` i percorsi dentro `.git`: i metadati Git contengono hook e filtri
+  che Git esegue poi con il tuo utente. Con **Host fidato** i comandi restano
+  comunque liberi di modificarli.
 - Le politiche di Codex limitano scritture e rete secondo il suo runtime, ma non
   promettono che solo la cartella del progetto sia leggibile. Codex tratta
   **Host fidato** e **Accesso completo** allo stesso modo; la differenza fra i
@@ -65,15 +71,15 @@ Alcune precisazioni importanti:
 
 Nessun messaggio, file, percorso o risultato di strumento può alzare il
 permesso. Se il modello chiede un permesso in più, Kira lo nega: l'unico modo di
-ampliarlo è la tua scelta esplicita in **Memoria del progetto**.
+ampliarlo è la tua scelta esplicita in **Memoria e istruzioni del progetto**.
 
 ## Accesso completo
 
 **Accesso completo** serve quando il lavoro deve toccare file fuori dalla
 cartella del progetto: una cartella vicina, la tua configurazione, una cartella
 condivisa. Lo scegli come gli altri permessi: nel modulo del nuovo progetto, in
-**Memoria del progetto** per un progetto esistente, oppure come preferenza per
-i progetti futuri.
+**Memoria e istruzioni del progetto** per un progetto esistente, oppure come
+preferenza per i progetti futuri.
 
 Con questo permesso gli strumenti di file accettano:
 
@@ -97,9 +103,17 @@ Alcune protezioni valgono in ogni modalità, anche con accesso completo:
   contenuto attuale (tramite il suo hash). Se il file è cambiato nel frattempo,
   per esempio perché lo hai modificato in un editor, la scrittura viene
   rifiutata e il modello deve rileggerlo.
-- La creazione di un file nuovo è atomica e fallisce se il file esiste già.
+- La creazione di un file nuovo fallisce se il file esiste già e crea anche le
+  cartelle mancanti lungo il percorso (mai attraverso collegamenti simbolici). È
+  atomica, tranne sui file system senza collegamenti fisici (FAT, exFAT), dove il
+  contenuto viene scritto sul posto. Un file non UTF-8 valido viene letto con
+  caratteri sostitutivi e lo strumento di scrittura non può sovrascriverlo.
 - Gli strumenti di file non seguono i collegamenti simbolici e rifiutano i
   file speciali.
+- I comandi ricevono un ambiente ridotto (solo `PATH`, `HOME`, `LANG`,
+  `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER` e `LOGNAME`: niente credenziali
+  dei provider né variabili di proxy) e creano i file con i permessi consueti
+  (umask 022).
 - Letture, ricerche e output dei comandi hanno limiti di dimensione; le
   troncature sono segnalate.
 
@@ -144,12 +158,12 @@ permesso.
 
 - **Azioni nel browser integrato.** Clic, digitazione e tasti dell'agente nel
   browser (e le azioni visive di Computer di Kira) richiedono **Esegui**, un
-  progetto scrivibile e il tuo consenso. Nella finestra di conferma scegli
-  **Consenti una volta**, che autorizza solo quell'azione, oppure **Consenti
-  sempre in questa chat**, che vale per quella chat finché non lo revochi. Il
-  consenso non si estende alle altre chat, non autorizza comandi sull'host e
-  non può essere concesso dal testo di una pagina web. I dettagli sono in
-  [Browser e Computer di Kira](BROWSER_E_COMPUTER.md).
+  progetto scrivibile e il tuo consenso. Nella finestra **Decisione richiesta**
+  scegli **Consenti una volta**, che autorizza solo quell'azione, **Consenti
+  sempre in questa chat**, che vale per quella chat finché non lo revochi,
+  oppure **Rifiuta**. Il consenso non si estende alle altre chat, non autorizza
+  comandi sull'host e non può essere concesso dal testo di una pagina web. I
+  dettagli sono in [Browser e Computer di Kira](BROWSER_E_COMPUTER.md).
 - **Login manuale.** Quando l'agente apre un sito per farti accedere, inserisci
   le credenziali direttamente nel browser dentro Kira e premi **Ho finito**. Il
   modello non vede i campi dei moduli e non riceve quello che digiti.
@@ -174,19 +188,23 @@ aumentano i permessi del progetto.
   scegli Cartella, Terminale ed Editor del progetto e premi **Apri strumenti
   salvati**: Kira apre le applicazioni nella cartella del progetto senza
   ripetere i comandi delle vecchie esecuzioni.
-- **Ctrl+K** cerca progetti e azioni native: aprire la cartella, il terminale,
-  l'editor o il browser di sistema, avviare una ricerca web nel browser di
-  sistema, acquisire una schermata, aprire le impostazioni, il monitor di
-  sistema, gli aggiornamenti o il backup.
+- **Ctrl+K** cerca progetti e azioni native: aprire la cartella, il terminale o
+  l'editor del progetto, aprire Firefox o avviarvi una ricerca Google, acquisire
+  una schermata, aprire le impostazioni, il monitor di sistema, gli
+  aggiornamenti o il backup dei file.
 - **Schermate** acquisisce esplicitamente lo schermo completo e conserva il file
   tra i risultati del progetto, registrandolo solo dopo che il PNG è completo.
 
-Le azioni native usano eseguibili e argomenti fissi, con un ambiente ripulito.
-Quello che scrivi non sceglie un eseguibile arbitrario né un frammento di
-shell. Se un'applicazione manca o non c'è una sessione grafica, Kira lo
-segnala. **Apertura richiesta** significa che la richiesta è stata consegnata
-all'applicazione, non che una finestra sia diventata visibile: un'applicazione
-lanciata in questo modo può restare aperta anche dopo la chiusura di Kira.
+Le azioni native usano applicazioni fisse di KDE Plasma e del desktop Linux:
+Dolphin (cartella), Konsole (terminale), Kate (editor), Firefox, Spectacle
+(schermate), le impostazioni e il monitor di sistema di Plasma, Discover
+(aggiornamenti) e Déjà Dup (backup dei file). Kira le avvia con argomenti fissi e
+un ambiente ripulito: quello che scrivi non sceglie un eseguibile arbitrario né
+un frammento di shell. Se un'applicazione manca o non c'è una sessione grafica,
+Kira lo segnala. **Apertura richiesta** significa che la richiesta è stata
+consegnata all'applicazione, non che una finestra sia diventata visibile:
+un'applicazione lanciata in questo modo può restare aperta anche dopo la
+chiusura di Kira.
 
 ## Riga di comando e IPC locale
 
@@ -197,14 +215,17 @@ Il comando installato è `kira-desktop`, disponibile anche con il nome breve
 ```sh
 kira-desktop diagnostics
 kira-desktop rpc project.list
+kira-desktop rpc project.export '{"project_id": "ID"}'
 kira-desktop actions --project ID
 kira-desktop workspace ID --open
 ```
 
-Sostituisci `ID` con un identificatore restituito da `project.list`. Leggere la
-diagnostica o i metadati dei progetti non avvia nessuna inferenza; aprire uno
-spazio di lavoro è una richiesta di lancio nativo esplicita, come dal pulsante
-**Riprendi**.
+Sostituisci `ID` con un identificatore restituito da `project.list`.
+`project.export` restituisce l'intero progetto in JSON (chat, richieste,
+messaggi, artefatti e metadati); se è troppo grande per la risposta, lo salva in
+`exports/` nella cartella dati e ne stampa il percorso. Leggere la diagnostica o
+i metadati dei progetti non avvia nessuna inferenza; aprire uno spazio di lavoro
+è una richiesta di lancio nativo esplicita, come dal pulsante **Riprendi**.
 
 L'interfaccia, il servizio e la riga di comando parlano attraverso un socket
 Unix privato (`$XDG_RUNTIME_DIR/kira/service.sock`, con permessi 0600, in una
@@ -225,13 +246,21 @@ Tutti i dati di Kira restano in locale, nelle cartelle del tuo utente:
   database SQLite `kira.sqlite3` sotto `$HOME/.local/share/kira/`;
 - artefatti, allegati, immagini, schermate, diagnostica ed esportazioni nelle
   sottocartelle dello stesso percorso;
-- preferenze grafiche e bozze in `$HOME/.config/kira/`;
-- stato e log in `$HOME/.local/state/kira/`.
+- preferenze grafiche, bozze e accessi ai provider gestiti da Kira in
+  `$HOME/.config/kira/`;
+- stato, log e bozze di Anima, Ricerca e strumenti di progetto in
+  `$HOME/.local/state/kira/`.
 
-I file privati sono creati con permessi 0600. Kira non invia telemetria: non ci
-sono statistiche d'uso, segnalazioni automatiche di errori o aggiornamenti
-scaricati in silenzio. L'unico traffico di rete è quello verso i provider che
-hai collegato e verso i siti che apri nel browser integrato.
+Questi sono i percorsi predefiniti; variabili XDG e `KIRA_HOME` li cambiano come
+descritto in [Installazione](INSTALLAZIONE.md). I file privati sono creati con
+permessi 0600. I file e le cartelle che gli strumenti e i comandi di Kira creano
+nei tuoi progetti hanno invece i permessi consueti (0644 e 0755).
+
+Kira non invia telemetria: non ci sono statistiche d'uso, segnalazioni
+automatiche di errori o aggiornamenti scaricati in silenzio. Il traffico di rete
+va soltanto ai provider che hai collegato, ai siti aperti nel browser integrato
+(da te o dall'agente, comprese le ricerche Google di `browser.search`) e, quando
+lo esegui tu, al download del motore con `kira-desktop browser-install`.
 
 ### Credenziali
 
@@ -244,9 +273,10 @@ Ogni provider gestisce le proprie credenziali con il flusso ufficiale:
   stanno nella cartella privata `openai-chatgpt/` sotto la configurazione di
   Kira (`$HOME/.config/kira/` o `config/` dentro `KIRA_HOME`), con permessi
   0600. Sono escluse da database, eventi, contesto, esportazioni e diagnostica.
-- **DeepSeek Account** e **DeepSeek Web** conservano i rispettivi token in file
-  privati del profilo; non compaiono nello stato né nelle impostazioni
-  esportate.
+- **DeepSeek Account** e **DeepSeek Web** conservano i rispettivi token nelle
+  cartelle private `deepseek-account/` (insieme alla chiave DeeperSeeker) e
+  `deepseek-web/` sotto la configurazione di Kira; non compaiono nello stato né
+  nelle impostazioni esportate.
 - **Claude Code · uso personale** usa l'accesso che hai già fatto in Claude
   Code: Kira non legge né conserva quelle credenziali e non ha un proprio
   pulsante di accesso.
@@ -271,18 +301,24 @@ su un server remoto, quel server riceve lo stesso contesto.
 
 Kira registra privatamente le credenziali dei provider che gestisce e le
 sostituisce quando compaiono letteralmente nelle ricevute, per esempio per un
-comando che le stampa per errore. Questa redazione riconosce solo alcune forme
-di dati sensibili: non trova una chiave trasformata, una password di terzi o un
+comando che le stampa per errore. Oscura anche il valore di un nome di
+credenziale (`TOKEN`, `GITHUB_TOKEN`, `password`, `api_key`, `secret`,
+`Authorization`, `Cookie`) seguito da `:` o `=`: un valore tra virgolette viene
+oscurato a qualsiasi lunghezza, uno senza virgolette da otto caratteri
+(`token: 5` resta visibile). Questa redazione riconosce solo alcune forme di
+dati sensibili: non trova una chiave trasformata, una password di terzi o un
 segreto che non conosce. Trattala come una rete di sicurezza, non come una
 garanzia.
 
 Per lo stesso motivo, controlla sempre un'esportazione prima di condividerla:
-**Esporta chat in Markdown** e l'esportazione JSON del progetto contengono i
-contenuti originali dei file letti e degli output dei comandi. Il rapporto di
-`kira-desktop diagnostics` e la diagnostica locale nelle **Impostazioni** sono
-filtrati con una lista di campi ammessi, ma il filtro non garantisce la
-rimozione di ogni dettaglio privato: leggi il rapporto prima di allegarlo a una
-segnalazione.
+**Esporta chat in Markdown** (anche dal pulsante **Esporta** della barra in
+alto) contiene i contenuti originali dei file letti e degli output dei comandi
+registrati nella chat, e l'esportazione JSON del progetto
+(`kira-desktop rpc project.export`) contiene i messaggi e gli esiti completi di
+tutte le chat. Il rapporto di `kira-desktop diagnostics` e la diagnostica locale
+nelle **Impostazioni** sono filtrati con una lista di campi ammessi, ma il
+filtro non garantisce la rimozione di ogni dettaglio privato: leggi il rapporto
+prima di allegarlo a una segnalazione.
 
 ## Pagine web e file come dati non fidati
 

@@ -179,7 +179,7 @@ Item {
                 }
                 Text {
                     objectName: "assistantTeamProgress"
-                    text: qsTr("%1 membri · %2/%3 incarichi completati").arg(panel.current.members_count || 0).arg(panel.current.completed_steps || 0).arg(panel.current.total_steps || 0)
+                    text: (panel.current.members_count === 1 ? qsTr("%1 membro · %2/%3 incarichi completati") : qsTr("%1 membri · %2/%3 incarichi completati")).arg(panel.current.members_count || 0).arg(panel.current.completed_steps || 0).arg(panel.current.total_steps || 0)
                     Layout.fillWidth: true; wrapMode: Text.Wrap
                     font: appearance.uiFont; color: appearance.colors.muted; textFormat: Text.PlainText
                 }

@@ -60,7 +60,7 @@ use **Open record**.
 | **Decision** | A choice made and the reason |
 | **Open issue** | A question without an answer yet |
 
-Every record is **Open** or **Closed** and has these fields:
+Every record has status **Open** or **Closed** and these fields:
 
 | Field | Limit |
 | --- | --- |
@@ -111,7 +111,7 @@ A source is a reference to something Kira has recorded in the project:
   tool outcome or a model message);
 - a recorded **artifact** (a file produced or saved by a run).
 
-Only the durable, public records of the project can be sources: the
+Only what Kira recorded durably and publicly in the project can be a source: the
 provider's native context, the browser's temporary frames, the text you type
 during a manual check and credentials never are. Runs from another project are
 rejected.
@@ -190,29 +190,26 @@ interpretation. A record cannot link to itself.
 
 Sharing is **off initially** and is enabled for each project separately,
 independently of the sharing of excerpts between chats. By turning on **Share
-the registry with project chats** you authorize Kira to supply the project's
-ordinary chats with the **accepted** records and the sources explicitly linked
-to them. It does not authorize reading other transcripts. **Read shared
-context** shows the exact text that is prepared for the model, with an
-indication of any cuts; reading it starts nothing.
+the registry with project chats** you authorize the assistant in the project's
+ordinary chats to consult the **accepted** records and the sources explicitly
+linked to them. It does not authorize reading other transcripts. **Read shared
+context** shows a bounded summary of the accepted records, with an indication
+of any cuts; reading it starts nothing.
 
-With sharing on:
-
-- all providers receive the context of the accepted records;
-- in chats with tools enabled (**Codex**, **Direct OpenAI · ChatGPT**,
-  **Claude Code · personal use**) the assistant can also consult the list of
-  accepted records, read a linked source and **propose** new records, using
-  the chat's model, reasoning, account and permissions;
-- with **Ollama** and **DeepSeek** the assistant receives the context, but the
-  registry is used from the interface.
+With sharing on, in chats with Kira's tools enabled (every provider; with
+**Ollama** the model must support tools), the assistant can, when it needs
+them, list and search the accepted records, read them and their linked sources
+and **propose** new records, using the chat's model, reasoning, account and
+permissions. The records are not added to every request: the assistant reads
+them with its tools.
 
 The model cannot accept its own proposals, edit existing records, express
 assessments, supply hash check outcomes or start experiments through the
-registry. A proposal can cite as sources only records of the run in progress;
-for earlier proof it must link to already accepted records. Team chats do not
-automatically receive this access. Turning sharing off stops new submissions,
-but does not withdraw what the provider has already received in its own
-history.
+registry. A proposal can cite as sources only what the run in progress
+recorded; for earlier proof it must link to already accepted records. Team
+chats do not automatically receive this access. Turning sharing off removes the
+access from later turns, but does not withdraw what the provider has already
+read in its own history.
 
 ## Assistant proposals
 
@@ -247,10 +244,10 @@ delete the revisions already stored.
   you ask.
 - There is no formal verification: an assessment is your judgment and a source
   is a reference, not a demonstration.
-- Sources can only be project records; you cannot attach free text to the
-  registry as "proof" except as the body of a record.
-- The shared context is limited in size: the original records always stay
-  complete in the registry.
+- Sources can only be things Kira recorded in the project; you cannot attach
+  free text to the registry as "proof" except as the body of a record.
+- The summary of the shared context is limited in size: the original records
+  always stay complete in the registry.
 
 For how the model uses the registry tools in chats see [Soul and
 knowledge](SOUL_AND_KNOWLEDGE.md); to link Team runs as sources see

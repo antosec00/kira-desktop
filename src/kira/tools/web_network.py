@@ -11,18 +11,83 @@ import hmac
 import ipaddress
 import secrets
 import socket
+import time
 from collections.abc import Awaitable, Callable
 from urllib.parse import SplitResult, urlsplit
 
 MAX_HEADERS = 32768
 MAX_CONNECTIONS = 32
-MAX_SESSION_BYTES = 128 * 1024 * 1024
 MAX_CONNECTION_BYTES = 32 * 1024 * 1024
+# The network budget restarts with every navigation Kira or the user requests
+# and otherwise rolls over per window, bounding traffic a page makes by itself.
+BUDGET_WINDOW = 300.0
+MAX_WINDOW_REQUESTS = 3000
+MAX_WINDOW_BYTES = 128 * 1024 * 1024
+# A relayed connection closes after this long without data in either direction.
+IDLE_TIMEOUT = 60.0
+NETWORK_BUDGET_MESSAGE = (
+    "Kira's network limits for this browser blocked or cut some requests, so the page may be "
+    "incomplete. The budget restarts with the next navigation and every five minutes.")
 Resolver = Callable[[str, int], Awaitable[list[str]]]
 
 
 class PublicWebError(ValueError):
     """A destination cannot be used by the public-web browser."""
+
+
+class NetworkBudgetExhausted(PublicWebError):
+    """Kira's request or transfer allowance for the browser is used up."""
+
+
+class NetworkBudget:
+    """Request and transfer allowance shared by one browser's route and proxy.
+
+    ``reset`` starts a fresh allowance for an explicit navigation; otherwise the
+    counters roll over every BUDGET_WINDOW seconds. ``limited`` records that a
+    limit blocked or cut traffic since the last explicit navigation.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._window = clock()
+        self.requests = 0
+        self.bytes = 0
+        self.limited = False
+
+    def reset(self) -> None:
+        self._window = self._clock()
+        self.requests = 0
+        self.bytes = 0
+        self.limited = False
+
+    def _roll(self) -> None:
+        if self._clock() - self._window >= BUDGET_WINDOW:
+            self._window = self._clock()
+            self.requests = 0
+            self.bytes = 0
+
+    def request(self) -> bool:
+        self._roll()
+        if self.requests >= MAX_WINDOW_REQUESTS:
+            self.limited = True
+            return False
+        self.requests += 1
+        return True
+
+    def transfer(self, size: int) -> bool:
+        self._roll()
+        self.bytes += size
+        if self.bytes > MAX_WINDOW_BYTES:
+            self.limited = True
+            return False
+        return True
+
+    def accepts_connection(self) -> bool:
+        self._roll()
+        if self.bytes >= MAX_WINDOW_BYTES:
+            self.limited = True
+            return False
+        return True
 
 
 def public_address(value: str) -> bool:
@@ -108,7 +173,7 @@ class PublicWebProxy:
         self._resolver = resolver
         self._server: asyncio.Server | None = None
         self._tasks: set[asyncio.Task[None]] = set()
-        self.bytes_transferred = 0
+        self.budget = NetworkBudget()
         self.denied_requests = 0
         self.port = 0
 
@@ -122,7 +187,7 @@ class PublicWebProxy:
                 "password": self.password, "bypass": "<-loopback>"}
 
     def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        if len(self._tasks) >= MAX_CONNECTIONS or self.bytes_transferred >= MAX_SESSION_BYTES:
+        if len(self._tasks) >= MAX_CONNECTIONS or not self.budget.accepts_connection():
             writer.close()
             return
         task = asyncio.create_task(self._serve(reader, writer))
@@ -212,8 +277,11 @@ class PublicWebProxy:
             connected = True
             await self._relay(reader, writer, remote_reader, upstream)
         except (ValueError, OSError, TimeoutError, asyncio.IncompleteReadError,
-                asyncio.LimitOverrunError):
-            self.denied_requests += 1
+                asyncio.LimitOverrunError) as exc:
+            # A relayed connection that resets or times out was not denied;
+            # only refusals and Kira's own transfer limits count.
+            if not connected or isinstance(exc, NetworkBudgetExhausted):
+                self.denied_requests += 1
             if not connected and not writer.is_closing():
                 writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n"
                              b"Content-Length: 0\r\n\r\n")
@@ -228,24 +296,36 @@ class PublicWebProxy:
 
     async def _relay(self, client: asyncio.StreamReader, client_out: asyncio.StreamWriter,
                      remote: asyncio.StreamReader, remote_out: asyncio.StreamWriter) -> None:
+        loop = asyncio.get_running_loop()
         transferred = 0
+        active = loop.time()
 
         async def copy(source: asyncio.StreamReader, destination: asyncio.StreamWriter) -> None:
-            nonlocal transferred
-            while data := await asyncio.wait_for(source.read(65536), 30):
+            nonlocal transferred, active
+            while data := await source.read(65536):
+                active = loop.time()
                 transferred += len(data)
-                self.bytes_transferred += len(data)
-                if transferred > MAX_CONNECTION_BYTES or self.bytes_transferred > MAX_SESSION_BYTES:
-                    raise PublicWebError("Browser network transfer limit reached")
+                if transferred > MAX_CONNECTION_BYTES:
+                    self.budget.limited = True
+                    raise NetworkBudgetExhausted("Browser connection transfer limit reached")
+                if not self.budget.transfer(len(data)):
+                    raise NetworkBudgetExhausted("Browser network budget exhausted")
                 destination.write(data)
                 await destination.drain()
+                active = loop.time()
 
         tasks = [asyncio.create_task(copy(client, remote_out)),
                  asyncio.create_task(copy(remote, client_out))]
         try:
-            done, _ = await asyncio.wait(tasks, timeout=90, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                task.result()
+            # Streams such as WebSockets and server-sent events stay open while
+            # either direction transfers data; an idle connection closes quietly.
+            while (remaining := active + IDLE_TIMEOUT - loop.time()) > 0:
+                done, _ = await asyncio.wait(tasks, timeout=remaining,
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if done:
+                    for task in done:
+                        task.result()
+                    return
         finally:
             for task in tasks:
                 task.cancel()

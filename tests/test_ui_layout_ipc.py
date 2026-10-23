@@ -17,6 +17,7 @@ from kira.domain.paths import Paths
 from kira.service.server import Service
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
+from test_ui_support import SERVICE_WAIT_MS
 
 MODEL = "synthetic-layout-model"
 EFFORT = "high"
@@ -57,7 +58,7 @@ class LayoutBackend:
 
 
 async def spin(app, condition):
-    async with asyncio.timeout(8):
+    async with asyncio.timeout(SERVICE_WAIT_MS / 1000):
         while not condition():
             app.processEvents()
             await asyncio.sleep(.01)
@@ -98,7 +99,7 @@ def close_desktop(desktop):
 async def test_compact_layout_grouping_details_and_draft_survive_gui_reopen(qapp, tmp_path):
     """Layout choices never repeat a provider turn or alter recorded tool results."""
     with tempfile.TemporaryDirectory(prefix="kira-layout-ipc-") as directory, \
-            patch.dict(os.environ, {"XDG_CACHE_HOME": str(Path(directory) / "cache")}):
+            patch.dict(os.environ, {"KIRA_HOME": directory, "XDG_CACHE_HOME": str(Path(directory) / "cache")}):
         base = Path(directory)
         paths = Paths(*(base / part for part in ("config", "data", "state", "runtime")))
         backend = LayoutBackend()

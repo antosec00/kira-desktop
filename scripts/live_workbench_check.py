@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated real-provider qualification of the 0.4 chat controls.
+"""Isolated real-provider qualification of the chat controls (queue, guidance, compaction).
 
 Requires explicit --model and --effort. At most three ordinary turns and one
 native compaction are requested. Existing authentication is used only by the

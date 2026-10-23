@@ -149,9 +149,9 @@ async def test_real_service_images_are_tool_evidence_not_user_attachments(fixtur
     assert any(e["type"] == "artifact.created" and e["payload"]["kind"] == "browser_screenshot" for e in events)
     assert "data:image" not in encode(events)
     raw = service.store.db.execute("SELECT items FROM direct_context_states").fetchone()
-    # The private checkpoint contains identifiers, not pixel blobs.
-    if raw:
-        assert "data:image" not in str(raw[0])
+    # The private checkpoint exists and contains identifiers, not pixel blobs.
+    assert raw is not None
+    assert "data:image" not in str(raw[0])
     owned = service.contexts.data._assets(session["id"])
     assert len(owned) == 1
     snapshot = await service.dispatch("session.web.get", {"project_id": project["id"], "session_id": session["id"]})

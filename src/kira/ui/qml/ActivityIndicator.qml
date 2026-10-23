@@ -18,6 +18,7 @@ RowLayout {
         return (hours > 0 ? pad(hours) + ":" : "") + pad(Math.floor(elapsedSeconds / 60) % 60) + ":" + pad(elapsedSeconds % 60)
     }
     readonly property bool animating: activityStatus.animating
+    KFormat { id: kformat }
     spacing: 7
     function updateElapsed() {
         elapsedSeconds = isFinite(startedMilliseconds) ? Math.max(0, Math.floor((Date.now() - startedMilliseconds) / 1000)) : 0
@@ -65,8 +66,9 @@ RowLayout {
         font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
         Accessible.name: qsTr("Tempo trascorso dall’avvio della richiesta: %1").arg(text)
         KToolTip {
+            id: elapsedTip
             visible: elapsedHover.containsMouse
-            text: qsTr("Tempo trascorso dall’avvio della richiesta") + "\n" + indicator.startedAt
+            text: qsTr("Tempo trascorso dall’avvio della richiesta") + "\n" + kformat.timestamp(indicator.startedAt)
         }
         MouseArea { id: elapsedHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
     }

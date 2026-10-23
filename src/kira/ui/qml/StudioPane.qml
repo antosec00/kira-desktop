@@ -36,7 +36,8 @@ Rectangle {
                 text: pane.studio.expanded ? "↙" : "↗"
                 subtle: true
                 implicitWidth: 34
-                toolTipText: qsTr("Espandi o affianca Studio")
+                toolTipText: pane.studio.expanded ? qsTr("Affianca alla chat") : qsTr("Espandi Studio")
+                Accessible.name: toolTipText
                 onClicked: pane.studio.toggleExpanded()
             }
             KButton {
@@ -45,6 +46,7 @@ Rectangle {
                 subtle: true
                 implicitWidth: 34
                 toolTipText: qsTr("Nascondi Studio senza eliminare il lavoro")
+                Accessible.name: toolTipText
                 onClicked: pane.studio.hideStudio()
             }
         }
@@ -55,6 +57,7 @@ Rectangle {
             objectName: "studioError"
             visible: pane.studio.error.length > 0
             text: pane.studio.error
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: appearance.colors.danger
@@ -145,7 +148,7 @@ Rectangle {
                     id: captionInput
                     objectName: "studioCaption"
                     Layout.fillWidth: true
-                    text: "Ambra mi manchi"
+                    text: ""
                     maximumLength: 90
                     placeholderText: qsTr("Scrivi il testo del poster")
                     selectByMouse: true
@@ -239,6 +242,8 @@ Rectangle {
                 Layout.fillWidth: true
                 KButton {
                     objectName: "studioMoveLeft"
+                    toolTipText: qsTr("Sposta il testo a sinistra")
+                    Accessible.name: toolTipText
                     text: "←"
                     subtle: true
                     enabled: !pane.studio.busy && pane.studio.revision > 0
@@ -246,6 +251,8 @@ Rectangle {
                 }
                 KButton {
                     objectName: "studioMoveRight"
+                    toolTipText: qsTr("Sposta il testo a destra")
+                    Accessible.name: toolTipText
                     text: "→"
                     subtle: true
                     enabled: !pane.studio.busy && pane.studio.revision > 0
@@ -253,6 +260,8 @@ Rectangle {
                 }
                 KButton {
                     objectName: "studioMoveUp"
+                    toolTipText: qsTr("Sposta il testo in alto")
+                    Accessible.name: toolTipText
                     text: "↑"
                     subtle: true
                     enabled: !pane.studio.busy && pane.studio.revision > 0
@@ -260,6 +269,8 @@ Rectangle {
                 }
                 KButton {
                     objectName: "studioMoveDown"
+                    toolTipText: qsTr("Sposta il testo in basso")
+                    Accessible.name: toolTipText
                     text: "↓"
                     subtle: true
                     enabled: !pane.studio.busy && pane.studio.revision > 0
@@ -298,9 +309,11 @@ Rectangle {
                 Item { Layout.fillWidth: true }
             }
             Label {
+                objectName: "studioExportPath"
                 visible: pane.studio.exportPath.length > 0
                 Layout.fillWidth: true
                 text: qsTr("PNG salvato in: %1").arg(pane.studio.exportPath)
+                textFormat: Text.PlainText
                 color: appearance.colors.muted
                 wrapMode: Text.WrapAnywhere
             }

@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING, Any
 
 from kira.domain.contracts import HOST_PERMISSIONS, WRITE_PERMISSIONS, Json, KiraError
 from kira.domain.project_tools import (
-    MAX_RESULT_BYTES, MAX_SOURCE_BYTES, action_schemas, bounded_json, canonical,
-    fields, integer, project_tool_specs, registration_example, text, validate_action, validate_value,
+    MAX_RESULT_BYTES, MAX_SOURCE_BYTES, MAX_TOOL_OUTPUT_BYTES, MAX_TOOL_SECONDS, action_schemas,
+    bounded_json, canonical, fields, integer, project_tool_specs, registration_example, text,
+    validate_action, validate_value,
 )
 from kira.service.processes import ProcessRegistry
 from kira.service.project_context import ProjectChats
@@ -157,7 +158,8 @@ class ProjectTools:
                             "tests": "1–3 cases: {name,arguments,expected}; exact JSON comparison",
                             "runtime": "Python standard library; one JSON object on stdin, one JSON value on stdout",
                             "schema_types": ["object", "array", "string", "integer", "number", "boolean", "null"],
-                            "limits": {"source_bytes": MAX_SOURCE_BYTES, "timeout_seconds": 60, "output_bytes": 32768}},
+                            "limits": {"source_bytes": MAX_SOURCE_BYTES, "timeout_seconds": MAX_TOOL_SECONDS,
+                                       "output_bytes": MAX_TOOL_OUTPUT_BYTES}},
                         "example": {"action": "run", "payload": {"tool_id": "returned-id", "revision": 1, "arguments": {}}}}
                     if selected in {None, "register"}:
                         result["registration_example"] = registration_example()
@@ -217,7 +219,8 @@ class ProjectTools:
         parts = tools._parts(payload["source_path"])
         # Use the existing descriptor-relative no-symlink boundary. read_file's
         # replacement decoding is unsuitable for an immutable executable hash.
-        with tools._directory(parts[:-1]) as parent:
+        # Like read_file, a traverse-only parent directory is enough.
+        with tools._directory(parts[:-1], readable=False) as parent:
             source, _ = tools._read(parent, parts[-1])
         source.decode("utf-8", "strict")
         if not source or hashlib.sha256(source).hexdigest() != payload["expected_sha256"]:

@@ -8,11 +8,12 @@ reports are welcome and handled with care.
 
 ## Reporting a vulnerability
 
-Please do **not** open a public issue for security problems.
-
-- Use GitHub's private vulnerability reporting on this repository
-  (*Security → Report a vulnerability*), or
-- contact the maintainer through the GitHub profile of the repository owner.
+Please do **not** open a public issue for security problems. Use GitHub's
+private vulnerability reporting: in the repository's **Security** tab press
+**Report a vulnerability**, or open
+<https://github.com/antosec00/kira-desktop/security/advisories/new> directly.
+The report stays visible only to you and to the repository's maintainers until
+an advisory is published.
 
 Include the version (`kira-desktop --version`), the provider involved, the
 project permission in use and a reproduction that does not contain your own
@@ -23,8 +24,7 @@ will be published with a note in the next release.
 
 | Version | Supported |
 | --- | --- |
-| Latest release on `main` | Yes |
-| Development line `dev/<version>` | Best effort; development versions must not be installed over an active user profile |
+| Latest published release (Releases page, `main` branch) | Yes |
 | Older releases | No |
 
 ## What Kira protects, in short

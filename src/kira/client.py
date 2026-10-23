@@ -14,6 +14,17 @@ from kira import __version__
 from kira.domain.contracts import IPC_VERSION, MAX_FRAME_BYTES, KiraError
 from kira.domain.paths import Paths
 
+SYSTEMD_UNIT = Path("/usr/lib/systemd/user/kira-desktop.service")
+INSTALLED_ROOT = "/opt/kira-desktop/"
+INSTALLED_LAUNCHER = Path(INSTALLED_ROOT) / "launcher.py"
+START_POLLS = 100
+START_POLL_SECONDS = 0.1
+
+
+def running_installed_package() -> bool:
+    """True for the code installed by the package, not for a source checkout."""
+    return str(__file__).startswith(INSTALLED_ROOT)
+
 
 class Client:
     def __init__(self, paths: Paths | None = None):
@@ -25,15 +36,28 @@ class Client:
         self.team_events: asyncio.Queue[dict] = asyncio.Queue(maxsize=4096)
         self._reader_task: asyncio.Task | None = None
 
-    async def connect(self) -> dict:
+    async def connect(self, *, same_version: bool = True) -> dict:
+        """Connect and handshake; the protocol must match, and the version unless relaxed.
+
+        ``same_version=False`` is only for stopping a service of another
+        version, which still enforces its own idle checks.
+        """
         self.reader, self.writer = await asyncio.open_unix_connection(
             str(self.paths.socket), limit=MAX_FRAME_BYTES
         )
         self._reader_task = asyncio.create_task(self._read())
-        hello = await self.request("hello")
-        if hello.get("version") != IPC_VERSION or hello.get("app_version") != __version__:
+        try:
+            hello = await self.request("hello")
+            if hello.get("version") != IPC_VERSION:
+                raise KiraError("VERSION_MISMATCH", "The running Kira service uses an incompatible protocol")
+            if same_version and hello.get("app_version") != __version__:
+                raise KiraError("VERSION_MISMATCH", (
+                    f"The running Kira service is version {hello.get('app_version')} and this is "
+                    f"{__version__}: stop the old service with `kira-desktop stop-service` "
+                    "after active work finishes"))
+        except BaseException:
             await self.close()
-            raise KiraError("VERSION_MISMATCH", "Stop the old service after active work finishes")
+            raise
         return hello
 
     async def _read(self) -> None:
@@ -107,7 +131,7 @@ class Client:
 
 
 async def ensure_service(paths: Paths | None = None) -> None:
-    """Start the installed systemd unit or a detached development service, then verify hello."""
+    """Start the installed systemd unit or a detached background service, then verify hello."""
     paths = paths or Paths.from_env()
     paths.ensure()
 
@@ -123,9 +147,11 @@ async def ensure_service(paths: Paths | None = None) -> None:
 
     if await available():
         return
-    unit_exists = Path("/usr/lib/systemd/user/kira-desktop.service").exists()
     systemd_started = False
-    if unit_exists and not os.environ.get("KIRA_HOME") and paths == Paths.from_env():
+    # The packaged unit runs the packaged code: a source checkout or a KIRA_HOME
+    # profile always starts its own detached service with the same environment.
+    if (running_installed_package() and SYSTEMD_UNIT.exists()
+            and not os.environ.get("KIRA_HOME") and paths == Paths.from_env()):
         try:
             process = await asyncio.create_subprocess_exec(
                 "systemctl", "--user", "start", "kira-desktop.service",
@@ -143,16 +169,18 @@ async def ensure_service(paths: Paths | None = None) -> None:
             log_path.replace(paths.state / "service.previous.log")
         log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
         try:
-            installed = Path("/opt/kira-desktop/launcher.py")
-            command = (["/usr/bin/python3", "-I", str(installed), "service"]
-                       if installed.exists() and str(__file__).startswith("/opt/kira-desktop/")
+            command = (["/usr/bin/python3", "-I", str(INSTALLED_LAUNCHER), "service"]
+                       if INSTALLED_LAUNCHER.exists() and running_installed_package()
                        else [sys.executable, "-m", "kira.service.server"])
             subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log_fd, stderr=log_fd,
                              start_new_session=True, close_fds=True)
         finally:
             os.close(log_fd)
-    for _ in range(100):
+    for _ in range(START_POLLS):
         if await available():
             return
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(START_POLL_SECONDS)
+    if systemd_started:
+        raise ConnectionError("Kira service did not start. Inspect its log with "
+                              "`journalctl --user -u kira-desktop.service`")
     raise ConnectionError(f"Kira service did not start. Inspect {paths.state / 'service.log'}")

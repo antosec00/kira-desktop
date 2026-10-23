@@ -28,7 +28,7 @@ ColumnLayout {
             text: qsTr("Nascondi"); subtle: true
             implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
             onClicked: workspace.setUiPreference("show_reasoning_summaries", false)
-            toolTipText: qsTr("Puoi riattivarli da Impostazioni · Conversazione")
+            toolTipText: qsTr("Puoi riattivarli da Impostazioni · Lavoro")
         }
     }
     Text {

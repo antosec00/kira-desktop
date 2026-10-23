@@ -181,6 +181,22 @@ def test_image_draft_removal_and_limits_preserve_other_chat_data(view):
     assert len(DraftStore(workspace.paths.config).images[("project", "chat")]) == 3
 
 
+def visual_item(root, name):
+    if root.objectName() == name:
+        return root
+    for child in root.childItems():
+        if found := visual_item(child, name):
+            return found
+    return None
+
+
+def close_engine(engine, window):
+    window.setProperty("closeConfirmed", True)
+    window.close()
+    engine.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def test_real_composer_previews_and_removes_images_with_literal_names(view, qtbot, qtlog):
     from PySide6.QtCore import QMetaObject
     from kira.ui.app import create_engine
@@ -192,34 +208,24 @@ def test_real_composer_previews_and_removes_images_with_literal_names(view, qtbo
     engine = create_engine(workspace)
     assert engine.rootObjects()
     window = engine.rootObjects()[0]
-    window.resize(880, 620)
-    qtbot.wait(80)
-
-    def item(root, name):
-        if root.objectName() == name:
-            return root
-        for child in root.childItems():
-            if found := item(child, name):
-                return found
-        return None
-
-    preview = item(window.contentItem(), "imageThumbnail_" + row["id"])
-    assert preview and preview.property("source").toString() == row["preview_url"]
-    assert item(window.contentItem(), "sendButton").property("enabled")
-    chip = item(window.contentItem(), "draftImageAttachments")
-    assert chip.width() > 0 and chip.height() == 92
-    engine.rootContext().contextProperty("localization").setLanguage("en")
-    qtbot.wait(20)
-    remove = item(window.contentItem(), "removeImage_" + row["id"])
-    assert remove.property("text") == "Remove"
-    QMetaObject.invokeMethod(remove, "clicked")
-    assert not workspace.draftImages
-    assert not any(call[0] in {"run.start", "queue.add"} for call in calls)
-    assert not any("ReferenceError" in r.message or "binding loop" in r.message.lower() for r in qtlog.records)
-    window.setProperty("closeConfirmed", True)
-    window.close()
-    engine.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    try:
+        window.resize(880, 620)
+        qtbot.wait(80)
+        preview = visual_item(window.contentItem(), "imageThumbnail_" + row["id"])
+        assert preview and preview.property("source").toString() == row["preview_url"]
+        assert visual_item(window.contentItem(), "sendButton").property("enabled")
+        chip = visual_item(window.contentItem(), "draftImageAttachments")
+        assert chip.width() > 0 and chip.height() == 92
+        engine.rootContext().contextProperty("localization").setLanguage("en")
+        qtbot.wait(20)
+        remove = visual_item(window.contentItem(), "removeImage_" + row["id"])
+        assert remove.property("text") == "Remove"
+        QMetaObject.invokeMethod(remove, "clicked")
+        assert not workspace.draftImages
+        assert not any(call[0] in {"run.start", "queue.add"} for call in calls)
+        assert not any("ReferenceError" in r.message or "binding loop" in r.message.lower() for r in qtlog.records)
+    finally:
+        close_engine(engine, window)
 
 
 @pytest.mark.parametrize("backend", ["codex", "ollama", "openai_chatgpt", "claude_code"])
@@ -243,39 +249,36 @@ def test_real_clipboard_routes_direct_images_and_preserves_other_provider_paths(
 
     monkeypatch.setattr(workspace.client, "request", request)
     engine = create_engine(workspace)
-    engine.rootContext().contextProperty("attachmentInputs")._wsl = False
     window = engine.rootObjects()[0]
-    from PySide6.QtCore import QObject
-    prompt = window.findChild(QObject, "prompt")
-    prompt.setProperty("text", "Literal draft")
-    prompt.setProperty("cursorPosition", len("Literal draft"))
-    prompt.forceActiveFocus()
-    qtbot.wait(20)
-    image = QImage(8, 12, QImage.Format.Format_RGB32)
-    image.fill(0xff225588)
-    mime = QMimeData()
-    mime.setImageData(image)
-    QGuiApplication.clipboard().setMimeData(mime)
-    QTest.keyClick(window, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
-    qtbot.waitUntil(lambda: not prompt.property("attachmentBusy"))
-    if backend in {"openai_chatgpt", "claude_code"}:
-        assert prompt.property("text") == "Literal draft"
-        assert len(workspace.draftImages) == 1
-        assert any(call[0] == "attachment.import" for call in calls)
-    else:
-        assert prompt.property("text").startswith("Literal draft\n")
-        assert not workspace.draftImages
-        assert not any(call[0] == "attachment.import" for call in calls)
-    assert not any(call[0] in {"run.start", "queue.add"} for call in calls)
-    QGuiApplication.clipboard().clear()
-    window.setProperty("closeConfirmed", True)
-    window.close()
-    engine.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    try:
+        engine.rootContext().contextProperty("attachmentInputs")._wsl = False
+        prompt = window.findChild(QObject, "prompt")
+        prompt.setProperty("text", "Literal draft")
+        prompt.setProperty("cursorPosition", len("Literal draft"))
+        prompt.forceActiveFocus()
+        qtbot.wait(20)
+        image = QImage(8, 12, QImage.Format.Format_RGB32)
+        image.fill(0xff225588)
+        mime = QMimeData()
+        mime.setImageData(image)
+        QGuiApplication.clipboard().setMimeData(mime)
+        QTest.keyClick(window, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+        qtbot.waitUntil(lambda: not prompt.property("attachmentBusy"))
+        if backend in {"openai_chatgpt", "claude_code"}:
+            assert prompt.property("text") == "Literal draft"
+            assert len(workspace.draftImages) == 1
+            assert any(call[0] == "attachment.import" for call in calls)
+        else:
+            assert prompt.property("text").startswith("Literal draft\n")
+            assert not workspace.draftImages
+            assert not any(call[0] == "attachment.import" for call in calls)
+        assert not any(call[0] in {"run.start", "queue.add"} for call in calls)
+    finally:
+        QGuiApplication.clipboard().clear()
+        close_engine(engine, window)
 
 
 def test_image_only_history_and_queue_show_thumbnail_metadata(view, qtbot):
-    from PySide6.QtCore import QObject
     from PySide6.QtQml import QQmlEngine, QQmlExpression
     from kira.ui.app import create_engine
 
@@ -287,31 +290,21 @@ def test_image_only_history_and_queue_show_thumbnail_metadata(view, qtbot):
         "prompt": "", "mode": "execute", "attachments": [row]}]
     engine = create_engine(workspace)
     window = engine.rootObjects()[0]
-    qtbot.wait(80)
-
-    def item(root, name):
-        if root.objectName() == name:
-            return root
-        for child in root.childItems():
-            if found := item(child, name):
-                return found
-        return None
-
-    historical = item(window.contentItem(), "imageThumbnail_" + row["id"])
-    assert historical and historical.property("source").toString() == row["preview_url"]
-    assert historical.isVisible()
-    dialog = window.findChild(QObject, "workbenchDialog")
-    expression = QQmlExpression(QQmlEngine.contextForObject(dialog), dialog, 'openSection("queue")')
-    expression.evaluate()
-    assert not expression.hasError()
-    request = next(call for call in reversed(calls) if call[0] == "queue.list")
-    request[2]({"paused": True, "items": [{"id": "queued", "session_id": "chat", "status": "pending",
-        "prompt": "", "mode": "execute", "attachments": [row]}]})
-    qtbot.wait(50)
-    queued = item(window.contentItem(), "queueImages_queued")
-    assert queued and queued.isVisible() and queued.height() > 0
-    assert item(queued, "imageThumbnail_" + row["id"]).property("source").toString() == row["preview_url"]
-    window.setProperty("closeConfirmed", True)
-    window.close()
-    engine.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    try:
+        qtbot.wait(80)
+        historical = visual_item(window.contentItem(), "imageThumbnail_" + row["id"])
+        assert historical and historical.property("source").toString() == row["preview_url"]
+        assert historical.isVisible()
+        dialog = window.findChild(QObject, "workbenchDialog")
+        expression = QQmlExpression(QQmlEngine.contextForObject(dialog), dialog, 'openSection("queue")')
+        expression.evaluate()
+        assert not expression.hasError()
+        request = next(call for call in reversed(calls) if call[0] == "queue.list")
+        request[2]({"paused": True, "items": [{"id": "queued", "session_id": "chat", "status": "pending",
+            "prompt": "", "mode": "execute", "attachments": [row]}]})
+        qtbot.wait(50)
+        queued = visual_item(window.contentItem(), "queueImages_queued")
+        assert queued and queued.isVisible() and queued.height() > 0
+        assert visual_item(queued, "imageThumbnail_" + row["id"]).property("source").toString() == row["preview_url"]
+    finally:
+        close_engine(engine, window)

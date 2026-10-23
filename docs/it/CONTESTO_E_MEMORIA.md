@@ -14,35 +14,38 @@ composto da:
 
 - le **istruzioni del progetto**, scritte da te in **Memoria e istruzioni del
   progetto**;
-- la **Memoria del progetto**, il JSON che curi tu (sezione 2);
+- un riferimento alla **Memoria del progetto**, il JSON che curi tu (sezione 2),
+  che il modello legge con gli strumenti di consultazione quando serve;
 - le **Note importanti della chat** che hai conservato (sezione 4);
 - l'**obiettivo salvato** della chat, finché è attivo (vedi
   [Chat e strumenti](CHAT_E_STRUMENTI.md));
 - gli **estratti dalle altre chat** dello stesso progetto, se abilitati
   (sezione 3);
-- il **nucleo dell'Anima** scelta per la chat (identità, filosofia e
-  preferenze, fino a 1.200 byte; vedi
-  [Anima e conoscenza](ANIMA_E_CONOSCENZA.md));
+- il **nucleo dell'Anima** scelta per la chat (nome, filosofia fino a 1.200
+  byte e preferenze; vedi [Anima e conoscenza](ANIMA_E_CONOSCENZA.md));
 - l'identità comune di Kira, con le capacità e i permessi effettivi del turno;
 - il **contesto portabile** della conversazione, quando il provider non
   mantiene un proprio thread o quando hai cambiato provider nella stessa chat
   (sezione 5).
 
-Istruzioni e note sono input vincolante, fornito per intero. Il materiale
-ampio (memoria del progetto estesa, registro di Ricerca, manuale di Kira,
-catalogo degli strumenti, cronologia della chat) è invece raggiungibile dal
-modello con ricerche e letture a pagine (sezione 8), così da non riempire il
-contesto con ciò che non serve. Un'ancora compatta ricorda al modello la
-richiesta corrente e l'eventuale obiettivo salvato; una richiesta storica non
-diventa mai un obiettivo permanente, e una tua correzione successiva prevale.
+Istruzioni e note sono input vincolante, fornito per intero. Il materiale ampio
+(memoria del progetto, registro di Ricerca, manuale di Kira, catalogo degli
+strumenti, cronologia della chat) è invece raggiungibile dal modello con
+ricerche e letture a pagine (sezione 8), così da non riempire il contesto con
+ciò che non serve: un modello senza strumenti non lo vede. I membri di un Team
+ricevono la memoria del progetto per intero. Un'ancora compatta ricorda al
+modello la richiesta corrente e l'eventuale obiettivo salvato; una richiesta
+storica non diventa mai un obiettivo permanente, e una tua correzione successiva
+prevale.
 
 Per vedere esattamente ciò che Kira ha aggiunto all'ultima esecuzione apri
-**Contesto fornito da Kira** (nel pannello **Dettagli**, oppure con
-**Contesto inviato** in **Memoria e istruzioni del progetto**): mostra il
-contributo di Kira, con il pulsante **Copia contesto**. Il prompt interno del provider può contenere
-altro contesto non osservabile e questa vista non espone il ragionamento
-privato del modello. Dal pannello **Ricerca**, **Leggi il contesto condiviso**
-mostra la parte del registro che le chat del progetto ricevono.
+**Contesto fornito da Kira** (nel pannello **Dettagli**, oppure con **Contesto
+inviato** in **Memoria e istruzioni del progetto**): mostra il contributo di
+Kira, con il pulsante **Copia contesto**. Il prompt interno del provider può
+contenere altro contesto non osservabile e questa vista non espone il
+ragionamento privato del modello. Dal pannello **Ricerca**, **Leggi il contesto
+condiviso** mostra le schede accettate che l'assistente può consultare con i
+suoi strumenti; non vengono aggiunte al contesto fornito.
 
 ## 2. Memoria del progetto
 
@@ -52,9 +55,9 @@ passo**. Lo modifichi da **Memoria e istruzioni del progetto** e lo salvi con
 **Salva**; **Esporta JSON** lo scrive in un file.
 
 Mantieni separate le **ipotesi** dalle **conclusioni** e collega ogni
-conclusione a un file, a un evento o a un artefatto: il testo che scrivi qui
-viene dato al modello come contesto, non come fatto verificato, e nulla di ciò
-che inserisci diventa automaticamente una conclusione confermata. È la memoria
+conclusione a un file, a un evento o a un artefatto: il modello legge questo
+testo come contesto, non come fatto verificato, e nulla di ciò che inserisci
+diventa automaticamente una conclusione confermata. È la memoria
 curata da te: il modello la legge, ma non la riscrive da solo.
 
 Le istruzioni e la memoria del progetto sono comuni a tutte le chat del
@@ -98,9 +101,10 @@ vincolo o un dettaglio e premere **Conserva nota**. Le note sono fornite al
 modello per intero a ogni turno, anche dopo una compattazione, e con qualunque
 provider; **Rimuovi** elimina una nota senza toccare i messaggi originali. Il
 numero e la dimensione delle note hanno limiti visibili al salvataggio: nessuna
-nota viene scartata in silenzio.
+nota viene scartata in silenzio. Puoi aggiungere o rimuovere note quando nel
+progetto non c'è lavoro in corso né richieste in coda.
 
-Che cosa distingue i tre strumenti:
+Che cosa distingue questi strumenti:
 
 | Strumento | Ambito | Chi lo scrive |
 | --- | --- | --- |
@@ -146,8 +150,9 @@ Il diretto usa un **contesto persistente** gestito da Kira per ogni chat,
 account e modello, ricostruito dai messaggi originali e conservato tra i
 riavvii. L'impostazione è **Automatico — massimo disponibile**: Kira pianifica
 le richieste sulla finestra più grande dichiarata dal catalogo per quel modello
-e riserva il **18 %** della finestra per risposta, ragionamento e strumenti,
-più un **3 %** di margine quando il catalogo dichiara un limite di uscita.
+e riserva il **18 %** della finestra per risposta, ragionamento e strumenti;
+quando il catalogo dichiara un limite di uscita, la riserva è quel limite più
+un **3 %** della finestra, se è maggiore.
 Una capacità assente resta sconosciuta e la sola dichiarazione del catalogo non
 prova che una richiesta grande quanto la finestra funzioni su quel collegamento.
 
@@ -182,7 +187,9 @@ Con DeepSeek la modalità è **Automatico — compattazione Kira**: il server no
 accorcia la cronologia, lo fa Kira. Prima di ogni richiesta stima la pressione
 sulla finestra e la calibra con i token d'ingresso riportati nelle risposte.
 La soglia è il minore tra l'**80 %** della finestra del modello e la finestra
-meno il limite di uscita meno **65.536 token** di margine. La compattazione
+meno una riserva per il limite di uscita più **65.536 token** di margine; la
+riserva non supera mai metà della finestra, così i modelli con finestre piccole
+ne conservano almeno metà per l'ingresso. La compattazione
 piega le esecuzioni più vecchie e mantiene verbatim almeno il **16 %** più
 recente della finestra utile. La sintesi usa il modello e l'account DeepSeek
 selezionati, **senza strumenti e senza ragionamento**, a blocchi, convalida i
@@ -206,15 +213,15 @@ contesto** riportata da Claude Code.
 ## 6. Contesto e memoria: compattare
 
 Apri **Contesto e memoria** dal pulsante **Contesto** sotto la chat, da
-**Gestisci chat** o dal pannello **Uso**. Con OpenAI diretto e DeepSeek,
+**Gestisci chat** o dal pannello **Uso**. Con OpenAI diretto e DeepSeek Account,
 **Compatta ora** avvia una compattazione esplicita: richiede una **chat
 inattiva** e una **coda vuota** (completa o rimuovi le richieste in attesa,
-anche se la coda è in pausa). Durante l'operazione il pulsante della chat
-mostra **Compattazione…** e il pannello aggiorna lo stato finché è aperto;
-chiuderlo non annulla nulla. La compattazione usa il modello selezionato, può
-consumare quota del piano e aggiungere attesa, e non modifica i file del
-progetto. Se la conferma manca, premi **Aggiorna**: Kira conserva l'identità
-della richiesta e non ripete un'inferenza da sola.
+anche se la coda è in pausa). Durante l'operazione il pulsante della chat mostra
+**Compattazione…** e il pannello aggiorna lo stato finché è aperto; chiuderlo
+non annulla nulla. La compattazione usa il modello selezionato, può consumare
+quota del piano e aggiungere attesa, e non modifica i file del progetto. Se la
+conferma manca, premi **Aggiorna**: Kira conserva l'identità della richiesta e
+non ripete un'inferenza da sola.
 
 Se la risposta della compattazione nativa non è utilizzabile (indice o formato
 che il lettore locale non accetta), Kira mostra **Recupero del contesto**,

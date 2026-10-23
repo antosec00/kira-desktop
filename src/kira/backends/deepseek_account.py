@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import functools
 import hashlib
 import hmac
 import json
@@ -26,7 +27,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from kira import __version__
-from kira.backends.deepseek_context import MAX_DEEPSEEK_OUTPUT_TOKENS
+from kira.backends.deepseek_context import MAX_DEEPSEEK_OUTPUT_TOKENS, context_policy
 from kira.backends.ollama import (
     CAPABILITIES, DISCOVERY_TIMEOUT, MAX_DISCOVERY_BYTES, MAX_MODELS, OllamaBackend, StreamError,
     _json_size, _model_name,
@@ -37,6 +38,8 @@ PLATFORM = "https://platform.deepseek.com"
 API = "https://api.deepseek.com"
 AUTH_TIMEOUT = 600.0
 MAX_AUTH_BYTES = 65_536
+PNG_DATA_URL = "data:image/png;base64,"
+MAX_IMAGE_BASE64_CHARS = 12_000_000
 DEEPSEEK_CAPABILITIES = {**CAPABILITIES, "tools": True, "context_controls": True}
 BUILTIN_MODEL_CATALOG: tuple[Json, ...] = (
     {"id": "deepseek-flash", "name": "DeepSeek V4.1 Flash", "context_window": 1_000_000,
@@ -205,7 +208,8 @@ class DeepSeekAccount:
             if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
                     or info.st_mode & 0o077 or info.st_nlink != 1):
                 raise KiraError("UNSAFE_PATH", "DeepSeek credential file must be private and user-owned")
-            with os.fdopen(fd, "rb") as stream:
+            # The finally clause owns the descriptor; it is closed exactly once.
+            with os.fdopen(fd, "rb", closefd=False) as stream:
                 raw = stream.read(MAX_AUTH_BYTES + 1)
             value = json.loads(raw)
             if (len(raw) > MAX_AUTH_BYTES or not isinstance(value, dict)
@@ -239,7 +243,7 @@ class DeepSeekAccount:
             if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
                     or info.st_mode & 0o077 or info.st_nlink != 1):
                 raise KiraError("UNSAFE_PATH", "DeeperSeeker credentials must be private and user-owned")
-            with os.fdopen(fd, "rb") as stream:
+            with os.fdopen(fd, "rb", closefd=False) as stream:
                 raw = stream.read(MAX_AUTH_BYTES + 1)
             value = json.loads(raw)
             if (len(raw) > MAX_AUTH_BYTES or not isinstance(value, dict)
@@ -451,8 +455,9 @@ class DeepSeekAccount:
                           f"Content-Length: {len(body)}\r\nCache-Control: no-store\r\n"
                           "Connection: close\r\n\r\n").encode("ascii") + body)
             await writer.drain()
-        except (ValueError, UnicodeError, asyncio.IncompleteReadError, TimeoutError):
-            writer.write(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 12\r\nConnection: close\r\n\r\nInvalid login")
+        except (ValueError, UnicodeError, asyncio.IncompleteReadError, asyncio.LimitOverrunError,
+                TimeoutError):
+            writer.write(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 13\r\nConnection: close\r\n\r\nInvalid login")
             with contextlib.suppress(Exception):
                 await writer.drain()
         finally:
@@ -564,7 +569,8 @@ class DeepSeekAccounts:
         if self._auth is None:
             self._auth = DeepSeekAccount(
                 self.service.paths.config / "deepseek-account",
-                protect_secrets=self.service.redactor.set_provider_values)
+                protect_secrets=functools.partial(self.service.redactor.set_provider_values,
+                                                  owner="deepseek_account"))
         return self._auth
 
     def busy(self) -> bool:
@@ -611,15 +617,22 @@ class DeepSeekAccounts:
             self.changing = False
 
     async def prepare(self) -> None:
+        """Admit DeepSeek work unless account access is changing.
+
+        Active and queued DeepSeek work never blocks admission (the queue calls
+        this for its own 'starting' item); busy() guards only account mutations.
+        """
+        if self.changing:
+            raise KiraError("BUSY", "DeepSeek account settings are changing")
         if self.service.backend_factory is not None and self._auth is None:
             return
+        if self.auth.pending is not None:
+            raise KiraError("BUSY", "Finish or cancel DeepSeek sign-in before starting DeepSeek work")
         if self.auth.proxy_enabled:
             if not self.auth.proxy_api_key:
                 raise KiraError("AUTH_REQUIRED", "Configure the DeeperSeeker API key in Kira settings")
         elif not self.auth.token:
             raise KiraError("AUTH_REQUIRED", "Sign in with your DeepSeek account before using this provider")
-        if self.busy():
-            raise KiraError("BUSY", "DeepSeek account settings are changing")
 
     async def close(self) -> None:
         if self._auth is not None:
@@ -680,7 +693,8 @@ class DeepSeekAccountBackend(OllamaBackend):
                     raise DeepSeekAuthError("DeepSeek provider credentials changed during discovery")
             models = []
             for name, detail in self._details.items():
-                verified = self._probed.get(name, False)
+                probe = self._probe_outcome("deepseek_account", name, detail)
+                verified = probe == "passed"
                 info = detail.get("model_info", {})
                 effort = info.get("effort", {}) if isinstance(info, dict) else {}
                 levels = effort.get("supported_levels", []) if isinstance(effort, dict) else []
@@ -690,7 +704,7 @@ class DeepSeekAccountBackend(OllamaBackend):
                     "capabilities": {**DEEPSEEK_CAPABILITIES, "tools": verified,
                                      "images": "vision" in detail["capabilities"]},
                     "tools_metadata": "tools" in detail["capabilities"],
-                    "tools_verified": verified, "tool_probe": "passed" if verified else "not_run",
+                    "tools_verified": verified, "tool_probe": probe,
                     "context_window": detail.get("context_window"),
                     "max_output_tokens": detail.get("max_output_tokens"),
                     "supported_reasoning_efforts": levels if isinstance(levels, list) else [],
@@ -776,31 +790,24 @@ class DeepSeekAccountBackend(OllamaBackend):
         token = self.account.proxy_api_key if proxy else self.account.token
         if not token:
             raise DeepSeekAuthError("Configure provider credentials before using this provider")
-        messages, system = _anthropic_messages(body.get("messages", []), ctx.image_inputs if ctx else {})
-        current_images = ctx.image_inputs.get(ctx.run_id, []) if ctx else []
-        if current_images:
-            model_detail = self._details.get(ctx.model, {}) if ctx else {}
+        source = body.get("messages", [])
+        if ctx is not None and ctx.image_inputs.get(ctx.run_id):
+            model_detail = self._details.get(ctx.model, {})
             if "vision" not in model_detail.get("capabilities", []):
                 raise StreamError("The selected DeepSeek model does not accept image inputs")
-            last_user = next((item for item in reversed(messages) if item.get("role") == "user"), None)
-            if last_user is None:
-                raise StreamError("DeepSeek image inputs have no matching user turn")
-            for image in current_images:
-                if (not isinstance(image, dict) or image.get("type") != "input_image"
-                        or image.get("detail") != "auto" or not isinstance(image.get("image_url"), str)
-                        or not image["image_url"].startswith("data:image/png;base64,")):
-                    raise StreamError("DeepSeek received an invalid Kira image attachment")
-                data = image["image_url"].split(",", 1)[1]
-                if len(data) > 12_000_000:
-                    raise StreamError("DeepSeek image attachment exceeds its request limit")
-                last_user["content"].append({"type": "image", "source": {
-                    "type": "base64", "media_type": "image/png", "data": data}})
+            source = _bind_active_prompt(source, ctx)
+        messages, system = _anthropic_messages(source, ctx.image_inputs if ctx else {})
         if body.get("format"):
             system += "\nReturn one JSON object matching this schema, with no surrounding text: " + json.dumps(body["format"])
         requested_output = body.get("max_tokens", MAX_DEEPSEEK_OUTPUT_TOKENS)
         if type(requested_output) is not int or requested_output <= 0:
             raise StreamError("DeepSeek max_tokens must be a positive integer")
         request_cap = min(requested_output, MAX_DEEPSEEK_OUTPUT_TOKENS)
+        # The context policy admits input only below the window minus its
+        # reserve, so output capped at that reserve always fits beside it.
+        policy = context_policy(self._details.get(body["model"], {}))
+        if policy["context_window"]:
+            request_cap = min(request_cap, max(1, policy["reserved_tokens"]))
         request: Json = {"model": body["model"], "max_tokens": request_cap,
                          "messages": messages, "stream": True}
         if ctx:
@@ -942,6 +949,11 @@ class DeepSeekAccountBackend(OllamaBackend):
         for index, block in sorted(blocks.items()):
             if block.get("type") != "tool_use":
                 continue
+            if stop_reason == "max_tokens":
+                # A response cut at its output cap may end inside any call, and
+                # a call without input deltas would otherwise run with {}.
+                incomplete_tool_input = True
+                continue
             arguments = block.get("input", {})
             if block.get("partial_json"):
                 try:
@@ -968,6 +980,50 @@ class DeepSeekAccountBackend(OllamaBackend):
                           "max_output_tokens": request["max_tokens"],
                           "tool_input_incomplete": incomplete_tool_input}
         return message, terminal
+
+
+def _png_block(data: str) -> Json:
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
+
+
+def _attachment_image_block(image: Any) -> Json:
+    """Convert one Kira-normalized PNG attachment into a Messages image block."""
+    if (not isinstance(image, dict) or image.get("type") != "input_image"
+            or image.get("detail") != "auto" or not isinstance(image.get("image_url"), str)
+            or not image["image_url"].startswith(PNG_DATA_URL)):
+        raise StreamError("DeepSeek received an invalid Kira image attachment")
+    data = image["image_url"][len(PNG_DATA_URL):]
+    if len(data) > MAX_IMAGE_BASE64_CHARS:
+        raise StreamError("DeepSeek image attachment exceeds its request limit")
+    return _png_block(data)
+
+
+def _tool_image_block(image: Any) -> Json:
+    """Convert a browser/Computer tool image (bare base64 PNG or data URL) into a block."""
+    data = image[len(PNG_DATA_URL):] if isinstance(image, str) and image.startswith(PNG_DATA_URL) else image
+    if not isinstance(data, str) or not data or len(data) > MAX_IMAGE_BASE64_CHARS:
+        raise StreamError("DeepSeek received an invalid or oversized Kira tool image")
+    try:
+        base64.b64decode(data, validate=True)
+    except ValueError as exc:
+        raise StreamError("DeepSeek received an invalid Kira tool image") from exc
+    return _png_block(data)
+
+
+def _bind_active_prompt(source: Any, ctx: RunContext) -> list[Json]:
+    """Attach this run's images to its own request, never to later tool results.
+
+    The active request is the latest user message without a recorded run
+    identity whose text is this run's prompt; history items carry their run.
+    """
+    if not isinstance(source, list):
+        raise StreamError("Invalid provider message history")
+    for index in range(len(source) - 1, -1, -1):
+        message = source[index]
+        if (isinstance(message, dict) and message.get("role") == "user"
+                and "run_id" not in message and message.get("content") == ctx.prompt):
+            return [*source[:index], {**message, "run_id": ctx.run_id}, *source[index + 1:]]
+    raise StreamError("DeepSeek image inputs have no matching user turn")
 
 
 def _anthropic_messages(source: Any, image_inputs: dict[str, list[Json]]) -> tuple[list[Json], str]:
@@ -1021,30 +1077,17 @@ def _anthropic_messages(source: Any, image_inputs: dict[str, list[Json]]) -> tup
             elif identity in candidates:
                 candidates.remove(identity)
             value = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-            tool_blocks: list[Json] = [{"type": "tool_result", "tool_use_id": identity, "content": value}]
             images = message.get("images", [])
-            for image in images if isinstance(images, list) else []:
-                if not isinstance(image, str) or not image.startswith("data:image/png;base64,"):
-                    continue
-                tool_blocks[0]["content"] = [{"type": "text", "text": value}, {
-                    "type": "image", "source": {"type": "base64", "media_type": "image/png",
-                                                   "data": image.split(",", 1)[1]}}]
-            append("user", tool_blocks)
+            image_blocks = [_tool_image_block(image) for image in images] if isinstance(images, list) else []
+            result_content: str | list[Json] = (
+                [{"type": "text", "text": value}, *image_blocks] if image_blocks else value)
+            append("user", [{"type": "tool_result", "tool_use_id": identity, "content": result_content}])
         elif role == "user":
             if isinstance(content, str):
                 user_blocks: list[Json] = [{"type": "text", "text": content}] if content else []
                 identity = message.get("run_id")
                 images = image_inputs.get(identity, []) if isinstance(identity, str) else []
-                for image in images:
-                    if (not isinstance(image, dict) or image.get("type") != "input_image"
-                            or image.get("detail") != "auto" or not isinstance(image.get("image_url"), str)
-                            or not image["image_url"].startswith("data:image/png;base64,")):
-                        raise StreamError("DeepSeek history contains an invalid Kira image attachment")
-                    data = image["image_url"].split(",", 1)[1]
-                    if len(data) > 12_000_000:
-                        raise StreamError("DeepSeek historical image exceeds its request limit")
-                    user_blocks.append({"type": "image", "source": {
-                        "type": "base64", "media_type": "image/png", "data": data}})
+                user_blocks.extend(_attachment_image_block(image) for image in images)
                 if user_blocks:
                     append("user", user_blocks)
     if not result or result[-1]["role"] != "user":

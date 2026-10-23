@@ -15,6 +15,28 @@ MAX_BROWSER_FRAME = 1024 * 1024
 MAX_VIEW_IMAGE = 500 * 1024
 BROWSER_TIMEOUT = 45.0
 MAX_BROWSER_RESULT = 60 * 1024 - 1024
+# Chromium commits this document after a navigation fails to load.
+ERROR_PAGE_PREFIX = "chrome-error://"
+ERROR_PAGE_MESSAGE = (
+    "The tab shows Chromium's error page because a navigation failed (the address was blocked, "
+    "unreachable or invalid); it has no page content. Navigate to another address, go back or "
+    "select another tab.")
+
+
+class BrowserErrorPage(ValueError):
+    """The current tab shows Chromium's own page for a failed navigation."""
+
+
+class BrowserStartError(RuntimeError):
+    """The worker could not initialize; the message is fixed public text."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def is_error_page(url: str) -> bool:
+    return url.startswith(ERROR_PAGE_PREFIX)
 
 
 def validate_browser_action(action: str, args: Json) -> None:
@@ -184,7 +206,8 @@ class BrowserSession:
             })
             if not result.get("ok"):
                 error = result.get("error", {})
-                raise RuntimeError(str(error.get("message", "Browser initialization failed")))
+                raise BrowserStartError(str(error.get("code", "browser_unavailable")),
+                                        str(error.get("message", "Browser initialization failed")))
         except BaseException:
             await self.close()
             raise

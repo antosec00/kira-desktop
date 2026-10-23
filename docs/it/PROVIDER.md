@@ -104,11 +104,24 @@ Il catalogo di Ollama dichiara se un modello «supporta gli strumenti», ma la
 dichiarazione non basta. La prima volta che una chat chiede strumenti a un
 modello, Kira esegue una breve verifica senza effetti: chiede al modello di
 restituire un valore casuale tramite una chiamata di funzione e controlla che
-la risposta sia una chiamata valida con quel valore esatto. Se la verifica
-riesce, gli strumenti vengono attivati per quel modello finché il servizio
-resta in esecuzione; se fallisce, il modello resta disponibile per la sola
-conversazione e la chat mostra un avviso «solo chat». Le ricevute della chat
-registrano l'esito della verifica.
+la risposta sia una chiamata valida con quel valore esatto. L'esito vale per
+quel modello su quell'endpoint finché il servizio resta in esecuzione; la
+verifica si ripete se il modello viene aggiornato o cambia l'impostazione di
+ragionamento della chat. Se riesce, gli strumenti vengono attivati; se il
+modello risponde senza la chiamata attesa, resta disponibile per la sola
+conversazione e la chat lo segnala con l'avviso
+`Chat-only mode: tool capability was not verified`. Un errore di connessione
+durante la verifica interrompe il turno con il suo messaggio, e la verifica si
+ripete al turno successivo. L'esito resta tra gli eventi registrati
+dell'esecuzione.
+
+Nella pagina **Modelli** la scheda del modello mostra **Strumenti verificati**
+quando la verifica è già riuscita per quel modello su quell'endpoint da quando
+il servizio è in esecuzione; un modello aggiornato torna a **Supporto strumenti
+dichiarato · verifica al primo uso** finché non viene verificato di nuovo. La
+pagina legge solo gli esiti registrati e non esegue verifiche. Verifica e
+scheda funzionano allo stesso modo con DeepSeek Account, che usa questo ciclo di
+strumenti.
 
 Con gli strumenti verificati e **Strumenti** attivo nella chat, il modello riceve
 gli strumenti Kira consentiti dal contesto: file e comandi secondo i permessi del
@@ -137,7 +150,7 @@ concreto. Questo migliora il comportamento dei modelli locali ma non può
 forzarli: la chiamata resta una decisione del modello. Un testo che dice «ho
 eseguito il comando» senza una ricevuta corrispondente non è un'esecuzione.
 
-### Contesto, finestra e pensiero interno
+### Contesto, finestra e ragionamento interno
 
 Ollama riceve una finestra recente e limitata della cronologia, con
 l'indicazione di quanto è stato omesso. Un modello con strumenti verificati può
@@ -153,16 +166,17 @@ In **Dettagli** trovi due opzioni che si salvano nella chat:
   consumano più memoria e possono rallentare o impedire il caricamento del
   modello. Dopo averla cambiata, controlla in **Uso e risorse** il contesto
   effettivamente caricato e la memoria usata da Ollama.
-- **Pensiero interno del modello**: predefinito, disattivato o attivato. Kira non
-  mostra né salva il testo del pensiero interno; resta nello scambio in memoria
-  del turno e viene rimosso dai messaggi conservati.
+- **Ragionamento interno del modello**: predefinito, disattivato o attivato.
+  Kira non mostra né salva il testo del ragionamento interno; resta nello scambio
+  in memoria del turno e viene rimosso dai messaggi conservati.
 
-Con il pensiero attivo e una cronologia lunga, un modello locale può impiegare
-alcuni minuti a elaborare il prompt prima di produrre il primo frammento. Kira
-attende fino a 600 secondi (dieci minuti) senza ricevere dati prima di
-interrompere la richiesta; il limite riguarda l'attesa tra un aggiornamento e il
-successivo, non la durata totale del turno. **Ferma** resta sempre disponibile e
-un'interruzione per inattività viene riportata con la sua causa.
+Con il ragionamento attivo e una cronologia lunga, un modello locale può
+impiegare alcuni minuti a elaborare il prompt prima di produrre il primo
+frammento. Kira attende fino a 600 secondi (dieci minuti) senza ricevere dati
+prima di interrompere la richiesta; il limite riguarda l'attesa tra un
+aggiornamento e il successivo, non la durata totale del turno. **Ferma** resta
+sempre disponibile e un'interruzione per inattività viene riportata con la sua
+causa.
 
 ### Recupero dall'errore «No user query found in messages»
 
@@ -190,6 +204,9 @@ applica ad altri errori del server.
 - I cataloghi molto grandi o i proxy che comprimono le risposte possono essere
   rifiutati (Kira richiede risposte non compresse e limita la dimensione dei
   metadati); l'errore è visibile e nessun endpoint viene cambiato.
+- Un errore restituito da Ollama riporta, insieme al codice HTTP, il testo del
+  server, per esempio quando il modello richiede più memoria di sistema di quella
+  disponibile.
 
 **Ferma** chiude il flusso verso Ollama e cancella il lavoro locale avviato da
 Kira; non garantisce che il server smetta subito di generare.
@@ -206,7 +223,8 @@ vengono aggiunte alla prossima richiesta al modello, dopo la risposta o lo
 strumento già in corso.
 
 Ollama non fornisce un riepilogo pubblico del ragionamento: il pannello
-**Riepilogo del ragionamento** lo indica e non mostra il pensiero interno grezzo.
+**Riepilogo del ragionamento** lo indica e non mostra il ragionamento interno
+grezzo.
 
 ## Codex
 
@@ -371,13 +389,12 @@ un output di strumento non li mostri in chiaro.
 L'utilizzo condivide la disponibilità del tuo piano e i limiti specifici
 assegnati all'app Kira. Si gestiscono su
 [ChatGPT → Impostazioni → Utilizzo](https://chatgpt.com/settings/usage); in Kira
-**Gestisci utilizzo**, **Utilizzo del piano ↗** e **Copia collegamento** portano
-alla stessa pagina. L'integrazione non espone quote settimanali o crediti: Kira
-non li deduce dai token delle risposte e non li sostituisce con i dati
-dell'account Codex. Un errore di limite dell'app
-(`subscription_sharing_usage_limit_exceeded`) viene mostrato con evidenza e non
-significa che l'intero piano sia esaurito né indica un orario di ripristino.
-Kira non passa mai a una chiave API a pagamento.
+**Utilizzo del piano ↗** e **Copia collegamento** portano alla stessa pagina.
+L'integrazione non espone quote settimanali o crediti: Kira non li deduce dai
+token delle risposte e non li sostituisce con i dati dell'account Codex. Un
+errore di limite dell'app (`subscription_sharing_usage_limit_exceeded`) viene
+mostrato con evidenza e non significa che l'intero piano sia esaurito né indica
+un orario di ripristino. Kira non passa mai a una chiave API a pagamento.
 
 Al primo uso compare un avviso che puoi chiudere; la scelta viene ricordata nelle
 preferenze private dell'interfaccia.
@@ -464,10 +481,11 @@ Termina prima il lavoro diretto e svuota o completa la coda.
 
 ## DeepSeek Account (sperimentale)
 
-DeepSeek Account usa il tuo account DeepSeek con l'accesso del DeepSeek Harness
-come riferimento di protocollo. L'inferenza avviene su `api.deepseek.com`; gli
-strumenti sono di Kira. È un'integrazione sperimentale che segue un progetto in
-rapida evoluzione.
+DeepSeek Account usa l'accesso con il tuo account DeepSeek, con il flusso del
+DeepSeek Harness come riferimento di protocollo: non devi inserire una chiave
+API, tranne in modalità DeeperSeeker (vedi più avanti). L'inferenza avviene su
+`api.deepseek.com`; gli strumenti sono di Kira. È un'integrazione sperimentale
+che segue un progetto in rapida evoluzione.
 
 ### Accesso
 
@@ -482,16 +500,18 @@ interrompe un accesso in corso.
 Leggi l'avviso nel pannello prima di accedere: lo scambio dell'account può
 creare sulla piattaforma DeepSeek una chiave gestita che il logout locale
 potrebbe non revocare. **Disconnetti da Kira** elimina il grant locale e chiede
-a DeepSeek di chiudere la sessione dell'account, ma non può garantire la revoca
-di quella chiave: controllala nel tuo account DeepSeek.
+a DeepSeek di chiudere la sessione dell'account senza verificarne l'esito; non
+apre il logout del sito e non può garantire la revoca di quella chiave:
+controllala nel tuo account DeepSeek.
 
 ### Strumenti, immagini e contesto
 
-Il provider usa lo stesso ciclo di strumenti di Kira descritto per Ollama:
-file, comandi, browser, Computer di Kira, domande, Team, Ricerca e obiettivi,
-con le verifiche di permesso e approvazione del servizio. Una vecchia preferenza
-«strumenti disattivati» salvata per Ollama non disattiva gli strumenti di
-DeepSeek. Il pensiero interno del modello viene scartato e non mostrato.
+Il provider usa lo stesso ciclo di strumenti di Kira descritto per Ollama,
+compresa la verifica al primo uso: file, comandi, browser, Computer di Kira,
+domande, Team, Ricerca e obiettivi, con le verifiche di permesso e approvazione
+del servizio. Con DeepSeek gli strumenti di Kira restano sempre attivi:
+l'opzione **Strumenti** disattivata in una chat non li spegne. Il ragionamento
+interno del modello viene scartato e non mostrato.
 
 Le immagini allegate vengono inviate solo se il modello selezionato nel catalogo
 dichiara la visione; i modelli solo testo rifiutano le immagini.
@@ -521,16 +541,17 @@ DeeperSeeker invece dell'account. Inserisci l'**Indirizzo DeeperSeeker** (per
 esempio `http://127.0.0.1:4000`) e la **Chiave API DeeperSeeker**, poi premi
 **Salva connessione DeeperSeeker**. La chiave viene salvata in un file privato
 del profilo, con permessi riservati al tuo utente, e non viene più mostrata né
-inclusa nello stato o nelle impostazioni esportate. L'indirizzo deve essere HTTP
-o HTTPS, senza credenziali, query o frammenti; tieni l'istanza su loopback a
-meno che l'accesso remoto non sia protetto deliberatamente. Il proxy deve
-essere già avviato e raggiungibile dal servizio Kira.
+inclusa nello stato o nelle impostazioni esportate. L'indirizzo deve usare
+HTTPS, oppure HTTP semplice solo su questo computer (`127.0.0.1`, `::1` o
+`localhost`), senza credenziali, query o frammenti: l'istanza riceve la chiave e
+tutto il contesto della chat. Il proxy deve essere già avviato e raggiungibile
+dal servizio Kira.
 
 Kira legge il catalogo dal proxy e invia le richieste al suo endpoint
 messaggi. Strumenti, permessi e contesto restano gestiti da Kira; il supporto
 alle immagini e le capacità di contesto vengono presi dal catalogo del proxy
-quando presenti. Disattiva l'opzione e salva per tornare all'accesso con
-l'account.
+quando presenti. Per tornare all'account togli la spunta da **Usa DeeperSeeker**
+e premi **Disattiva DeeperSeeker**; la chiave salvata resta nel profilo.
 
 ## DeepSeek Web (sperimentale)
 
@@ -548,9 +569,10 @@ Kira lo salva in un file privato del profilo, lo verifica con
 `chat.deepseek.com` e mostra l'esito. Il token viene inviato solo a quell'origine.
 
 Poi scegli il provider **DeepSeek Web · sperimentale** e uno dei due modelli
-esposti: **DeepSeek V4 Flash (web)** oppure **DeepSeek Reasoner (web)**. Il
-catalogo è definito in Kira perché il sito non offre un elenco modelli
-interrogabile.
+esposti: **DeepSeek V4 Flash (web)** oppure **DeepSeek Reasoner (web)**.
+**DeepSeek Reasoner (web)** attiva la modalità di ragionamento del sito
+(DeepThink); **DeepSeek V4 Flash (web)** no. Il catalogo è definito in Kira
+perché il sito non offre un elenco modelli interrogabile.
 
 Questo provider non usa l'accesso PKCE di DeepSeek Account, non usa
 DeeperSeeker e non chiama l'API dell'account: le due integrazioni sono
@@ -563,13 +585,15 @@ con un protocollo testuale: il modello scrive una chiamata JSON in un formato
 rigido, una per messaggio, e Kira la analizza prima di eseguire qualsiasi cosa.
 Sono accettati anche gli involucri DSML di DeepSeek e un singolo blocco di codice
 Markdown corrispondente; la prosa attorno alla chiamata viene rifiutata. Se la
-chiamata è malformata, Kira chiede una correzione fino a due volte di seguito;
-una chiamata valida azzera il contatore. Ogni esecuzione passa da permessi,
-modalità e approvazioni di Kira.
+chiamata è malformata o indica uno strumento non registrato, Kira chiede una
+correzione fino a due volte di seguito; una chiamata valida azzera il contatore.
+Se resta non valida dopo due correzioni, il turno termina come interrotto senza
+eseguire strumenti di quella risposta e la chat remota viene conservata. Ogni
+esecuzione passa da permessi, modalità e approvazioni di Kira.
 
-Sono disponibili browser e ricerca web (testuali), strumenti del progetto, file,
-comandi e domande. Il **Computer di Kira** non è disponibile. Team e obiettivi
-autonomi non sono supportati con questo provider.
+Sono disponibili browser (screenshot compresi) e ricerca web, strumenti del
+progetto, file, comandi e domande. Il **Computer di Kira** non è disponibile.
+Team e obiettivi autonomi non sono supportati con questo provider.
 
 ### Immagini
 
@@ -590,13 +614,19 @@ corrente, e rinnova l'avvio completo se cambiano istruzioni, memoria del
 progetto, modalità, permessi, impostazioni o strumenti disponibili. Le
 continuazioni del ciclo strumenti inviano solo i nuovi risultati.
 
-Se il flusso si interrompe prima di una risposta completa, o se il servizio Kira
-si ferma durante un turno, la continuazione riparte dall'ultimo messaggio
-confermato nella stessa chat remota: il modello riceve un estratto della
-richiesta interrotta e degli strumenti già completati, con l'istruzione di non
-ripeterli. Se il riferimento remoto manca o non corrisponde ad account e
-modello, Kira apre una nuova chat remota partendo dalla cronologia locale,
-senza indovinare quale thread usare.
+Se il sito termina la risposta prima che sia completa, il turno termina come
+interrotto (la coda va in pausa), nessuno strumento di quella risposta viene
+eseguito e la chat remota viene conservata. Alla richiesta successiva, come dopo
+un arresto del servizio Kira durante un turno, la continuazione riparte
+dall'ultimo messaggio confermato nella stessa chat remota: il modello riceve un
+estratto della richiesta interrotta e degli strumenti già completati, con
+l'istruzione di non ripeterli. Se il riferimento remoto manca o non corrisponde
+ad account e modello, Kira apre una nuova chat remota, senza indovinare quale
+thread usare. Parte dalle istruzioni di Kira, dal contesto del progetto e dalla
+richiesta corrente; i messaggi precedenti restano nella cronologia di Kira.
+
+**Ferma** annulla subito la richiesta in corso e il turno viene registrato come
+annullato.
 
 ### Scollegare
 
@@ -618,13 +648,16 @@ uv sync --frozen --extra claude-code
 uv run kira-desktop
 ```
 
-Un `uv sync` senza `--extra claude-code` rimuove di nuovo il supporto.
+Un `uv sync` senza `--extra claude-code` rimuove di nuovo il supporto. L'extra
+contiene anche l'eseguibile di Claude Code, che Kira usa per primo; se manca,
+usa `claude` nel `PATH`.
 
 Kira non ha un pulsante di accesso per Claude Code e non legge, salva o
 inoltra le sue credenziali. Se l'elenco dei modelli segnala che Claude Code non è
-collegato, apri un terminale, esegui `claude`, usa `/login`, poi premi
-**Aggiorna** in **Modelli**. Il catalogo e i livelli di sforzo vengono letti da
-Claude Code senza inviare alcun prompt; lo stato mostra solo il nome del piano.
+collegato, apri un terminale, esegui `claude` (Claude Code installato a parte,
+che condivide lo stesso accesso), usa `/login`, poi premi **Aggiorna** in
+**Modelli**. Il catalogo e i livelli di sforzo vengono letti da Claude Code
+senza inviare alcun prompt; lo stato mostra solo il nome del piano.
 
 **Non distribuire una build di Kira con questo provider attivo.** I termini di
 Anthropic chiedono a chi costruisce prodotti sull'Agent SDK di usare
@@ -768,12 +801,14 @@ accesso e permesso del piano prima di confermare.
 
 **Solo modello o ragionamento:** cambiare modello o livello di ragionamento
 all'interno dello stesso provider e account è una modifica di configurazione:
-il riferimento nativo (thread Codex, sessione Claude Code, chat remota DeepSeek
-Web) resta lo stesso. Il ragionamento viene conservato se il nuovo modello lo
-supporta, altrimenti torna al valore predefinito del provider. Le opzioni
-specifiche di un provider (livello di servizio Codex, **Contesto richiesto** di
-Ollama) restano con quel provider e tornano quando lo riselezioni; le
-impostazioni condivise degli strumenti valgono per tutti.
+il riferimento nativo (thread Codex, sessione Claude Code) resta lo stesso.
+DeepSeek Web mantiene la chat remota quando cambia solo il livello di
+ragionamento e ne apre una nuova quando cambia il modello, perché ogni chat
+remota è legata al proprio modello. Il ragionamento viene conservato se il nuovo
+modello lo supporta, altrimenti torna al valore predefinito del provider. Le
+opzioni specifiche di un provider (livello di servizio Codex, **Contesto
+richiesto** di Ollama) restano con quel provider e tornano quando lo
+riselezioni; le impostazioni condivise degli strumenti valgono per tutti.
 
 Dopo un cambio di provider o account, il consenso **Consenti sempre le azioni
 dell'agente in questa chat** torna alla conferma per azione.
@@ -791,7 +826,8 @@ stai consultando: non cambia il provider della chat.
 | Codex | Finestre di quota, percentuali, ripristino, crediti letti dall'account Codex (**Aggiorna**) | Token dell'ultimo rapporto del provider |
 | OpenAI diretto | Account della chat e link **Utilizzo del piano ↗**; nessuna quota esposta | Token registrati negli ultimi sette giorni per questo profilo |
 | Ollama | Nessun account | Token, durate e contesto caricato dall'ultima risposta; RAM/VRAM del modello se Ollama le riporta |
-| DeepSeek Account / Web | Nessuna quota esposta | Token riportati dalle risposte |
+| DeepSeek Account | Nessuna quota esposta | Token riportati dalle risposte |
+| DeepSeek Web | Nessuna quota esposta | Nessuna: il sito non riporta conteggi di token |
 | Claude Code | Finestre di 5 ore e settimanale comunicate da Claude Code, uso extra | Token del turno e dell'ultima richiesta, finestra del modello |
 
 Il riepilogo distingue sempre **ultima richiesta**, **totali della
@@ -842,7 +878,7 @@ quello corrente.
 | --- | --- |
 | Codex | Sì |
 | OpenAI diretto · ChatGPT | Sì |
-| Ollama | No (il pensiero interno grezzo resta escluso) |
+| Ollama | No (il ragionamento interno grezzo resta escluso) |
 | DeepSeek Account / Web | No |
 | Claude Code · uso personale | No |
 

@@ -8,6 +8,7 @@ from PySide6.QtTest import QTest
 
 from kira.ui.controller import Workspace
 from kira.ui.preferences import read_preferences
+from test_ui_support import wait_laid_out, wait_opened
 import test_ui_settings_pane as settings
 import test_ui_teams as team_tests
 import test_ui_workbench as wb
@@ -61,8 +62,9 @@ def test_new_project_permission_is_explicit_and_preserves_old_defaults(ui, qtbot
     old = deepcopy(workspace.project)
     workspace.setUiPreference("default_permission", permission)
     wb.evaluate(window, "performAction('new_project')")
-    qtbot.wait(40)
     choice = window.findChild(QObject, "newProjectPermission")
+    wait_opened(qtbot, window.findChild(QObject, "newProjectDialog"), choice,
+                window.findChild(QObject, "createProjectButton"))
     assert choice.property("count") == 4 and choice.property("currentIndex") == index
     choose(choice, index)
     window.findChild(QObject, "projectNameInput").setProperty("text", "Synthetic new project")
@@ -81,12 +83,14 @@ def test_existing_project_full_access_requires_save_and_preserves_other_choices(
     workspace._project.update(permission="trusted_host", instructions="Keep literal instructions")
     workspace.changed.emit()
     wb.evaluate(window, "performAction('permissions')")
-    qtbot.wait(40)
+    dialog = window.findChild(QObject, "projectPermissionDialog")
     choice = window.findChild(QObject, "projectPermissionChoice")
+    wait_opened(qtbot, dialog, choice)
     assert choice.property("currentIndex") == 2
     choose(choice, 3)
     description = window.findChild(QObject, "projectPermissionDescription")
     assert "fuori dal progetto" in description.property("text")
+    wait_laid_out(qtbot, description)
     assert description.height() >= description.property("contentHeight")
     assert not [call for call in calls if call[0] == "project.update"]
     assert workspace.project["permission"] == "trusted_host"
@@ -96,11 +100,10 @@ def test_existing_project_full_access_requires_save_and_preserves_other_choices(
                           "memory": {}, "permission": "full_access"}
     request[2]({"project": {**workspace.project, "permission": "full_access"}})
     assert workspace.project["permission"] == "full_access"
-    dialog = window.findChild(QObject, "projectPermissionDialog")
     QMetaObject.invokeMethod(dialog, "close")
-    qtbot.wait(30)
+    qtbot.waitUntil(lambda: not dialog.property("visible"))
     wb.evaluate(window, "performAction('permissions')")
-    qtbot.wait(30)
+    wait_opened(qtbot, dialog, choice)
     assert choice.property("currentIndex") == 3
     assert workspace.selectedModel == "explicit-model" and workspace.selectedEffort == "ultra"
 

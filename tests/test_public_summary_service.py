@@ -170,7 +170,7 @@ async def test_summary_authoritative_replacement_is_sanitized_and_private_fields
     emit = backend.contexts[-1].emit
     await emit("reasoning.summary.delta", payload(content="Earlier short preview"))
     await emit("reasoning.summary.completed", payload(
-        content="Authoritative replacement " + CANARY + "; password=x.", complete=True,
+        content="Authoritative replacement " + CANARY + "; password=fixture-inline.", complete=True,
         reasoning=PRIVATE, analysis=PRIVATE, encrypted_content=PRIVATE,
         provider_messages=[{"role": "assistant", "content": PRIVATE}],
         raw={"nested": {"analysis": PRIVATE}}))

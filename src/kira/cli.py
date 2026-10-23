@@ -3,12 +3,58 @@
 import argparse
 import asyncio
 import json
+import sys
 import uuid
+from typing import Any
 
 from kira import __version__
+from kira.domain.contracts import KiraError
+
+DOCTOR_BACKENDS = ("ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
+                   "claude_code")
 
 
-def main() -> int:
+def error_report(exc: BaseException) -> dict[str, Any]:
+    """A stable machine-readable error; an exception without text still says what failed."""
+    if isinstance(exc, KiraError):
+        code, fallback = exc.code, "The Kira service rejected the request"
+    elif isinstance(exc, TimeoutError):
+        code, fallback = "TIMEOUT", "The Kira service did not answer in time"
+    elif isinstance(exc, (ConnectionError, FileNotFoundError)):
+        code, fallback = "UNAVAILABLE", "The Kira service is not reachable"
+    elif isinstance(exc, PermissionError):
+        code, fallback = "PERMISSION_DENIED", "Permission denied"
+    elif isinstance(exc, (ValueError, TypeError)):
+        code, fallback = "INVALID_ARGUMENT", "Invalid value"
+    else:
+        code, fallback = "FAILED", "The command failed"
+    return {"code": code, "message": str(exc) or fallback}
+
+
+def print_error(exc: BaseException) -> int:
+    print(json.dumps({"error": error_report(exc)}, ensure_ascii=False), file=sys.stderr)
+    return 1
+
+
+async def stop_service() -> dict[str, Any]:
+    """Ask a running service of any version to stop; never start one to stop it."""
+    from kira.client import Client
+
+    client = Client()
+    try:
+        hello = await client.connect(same_version=False)
+    except (FileNotFoundError, ConnectionRefusedError):
+        return {"stopping": False, "running": False, "message": "Kira service is not running"}
+    try:
+        result = dict(await client.request("service.shutdown"))
+    finally:
+        await client.close()
+    if hello.get("app_version") != __version__:
+        result["service_version"] = hello.get("app_version")
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="kira-desktop")
     parser.add_argument("--version", action="version", version=f"Kira Desktop {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -26,53 +72,70 @@ def main() -> int:
     workspace.add_argument("project_id")
     workspace.add_argument("--open", action="store_true", help="Request the saved native tools")
     workspace.add_argument("--request-id", help="Reuse an explicit ID to reconcile a prior open request")
-    sub.add_parser("stop-service", help="Stop an idle service safely before an upgrade")
+    sub.add_parser("stop-service", help="Stop an idle service safely before an upgrade, "
+                   "including a service of another version")
     sub.add_parser("browser-install", help="Download Kira's isolated Chromium engine for the selected profile")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "browser-install":
         from kira.tools.browser_install import install_browser
-        return install_browser()
+        try:
+            return install_browser()
+        except (KiraError, OSError, RuntimeError, ValueError) as exc:
+            return print_error(exc)
     if args.command == "service":
         from kira.service.server import main as service_main
         service_main()
         return 0
+    # Reject malformed arguments before any service is started.
+    params: dict[str, Any] = {}
+    if args.command == "rpc":
+        try:
+            params = json.loads(args.params)
+        except json.JSONDecodeError as exc:
+            rpc.error(f"params must be a JSON object: {exc.msg}")
+        if not isinstance(params, dict):
+            rpc.error("params must be a JSON object")
+    if args.command == "workspace" and args.request_id and not args.open:
+        workspace.error("--request-id requires --open")
     if args.command in {"rpc", "doctor", "stop-service", "diagnostics", "actions", "workspace"}:
         from kira.client import Client, ensure_service
 
         async def invoke() -> dict:
+            if args.command == "stop-service":
+                return await stop_service()
             await ensure_service()
             async with Client() as client:
                 if args.command == "doctor":
-                    return {"service": await client.request("hello"),
-                            "resources": await client.request("system.resources"),
-                            "ollama": await client.request("backend.discover", {"backend": "ollama"}),
-                            "codex": await client.request("backend.discover", {"backend": "codex"}),
-                            "openai_chatgpt": await client.request("backend.discover", {"backend": "openai_chatgpt"})}
-                if args.command == "stop-service":
-                    return await client.request("service.shutdown")
+                    report = {"service": await client.request("hello"),
+                              "resources": await client.request("system.resources")}
+                    for backend in DOCTOR_BACKENDS:
+                        # One unavailable provider must not hide the others.
+                        try:
+                            report[backend] = await client.request("backend.discover",
+                                                                   {"backend": backend})
+                        except (KiraError, OSError) as exc:
+                            report[backend] = {"available": False, "error": error_report(exc)}
+                    return report
                 if args.command == "diagnostics":
                     return await client.request("diagnostics.export" if args.export
                                                 else "system.diagnostics")
                 if args.command == "actions":
-                    params = {"query": args.query}
+                    parameters = {"query": args.query}
                     if args.project:
-                        params["project_id"] = args.project
-                    return await client.request("desktop.actions", params)
+                        parameters["project_id"] = args.project
+                    return await client.request("desktop.actions", parameters)
                 if args.command == "workspace":
                     parameters = {"project_id": args.project_id}
                     if args.open:
                         parameters["request_id"] = args.request_id or str(uuid.uuid4())
-                    elif args.request_id:
-                        raise ValueError("--request-id requires --open")
                     return await client.request("workspace.launch" if args.open else "workspace.get",
                                                 parameters)
-                return await client.request(args.method, json.loads(args.params))
+                return await client.request(args.method, params)
 
         try:
             print(json.dumps(asyncio.run(invoke()), indent=2, ensure_ascii=False))
         except Exception as exc:
-            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
-            return 1
+            return print_error(exc)
         return 0
     from kira.ui.app import main as ui_main
     return ui_main() or 0

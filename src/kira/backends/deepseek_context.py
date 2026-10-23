@@ -55,7 +55,9 @@ def context_policy(catalog: Json) -> Json:
     window = min(catalog_window, 262_144) if catalog_window and fallback else catalog_window
     output_limit = min(MAX_DEEPSEEK_OUTPUT_TOKENS,
                        positive_integer(catalog.get("max_output_tokens")) or MAX_DEEPSEEK_OUTPUT_TOKENS)
-    reserve = min(max(1, window - 1), output_limit + HEADROOM_TOKENS) if window else 0
+    # Output plus headroom, bounded to half the window so that small windows
+    # keep a usable input budget; windows of 256K tokens or more are unaffected.
+    reserve = min(output_limit + HEADROOM_TOKENS, window // 2) if window else 0
     threshold = (max(1, min(math.floor(window * 0.8), window - reserve)) if window else None)
     return {"context_window": window,
         "default_context_window": positive_integer(catalog.get("context_window")),
@@ -352,9 +354,21 @@ class DeepSeekContext:
                 "output_tokens": terminal.get("eval_count")})
 
     async def complete(self, turn: list[Json]) -> None:
-        self.items.extend(_public_turn(turn, self.ctx.run_id))
+        public = _public_turn(turn, self.ctx.run_id)
+        self.items.extend(public)
         self.state["items"] = self.items
+        known = set(self.source_ids)
         await self._save("response_complete")
+        # This save moves the archive cursor past the run, so its original
+        # records are never paged again. Link the persisted turn to the sources
+        # the service indexed for it: summaries may cite only those.
+        current = [source for source in self.state.get("source_ids", [])
+                   if isinstance(source, str) and source not in known]
+        if public and current:
+            for item in self.items[-len(public):]:
+                item["_source_ids"] = list(current)
+            self.source_ids.update(current)
+            await self._save("response_complete")
 
     async def compact_now(self) -> Json:
         self.fixed_messages, self.tools = [], []

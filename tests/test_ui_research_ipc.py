@@ -3,8 +3,6 @@
 import json
 import os
 import sqlite3
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -14,6 +12,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QMetaObject, QObject
 
 from kira.domain.paths import Paths
 from kira.ui.app import create_engine
+from test_ui_support import SERVICE_WAIT_MS, isolated_service_environment, start_service, stop_service
 from kira.ui.controller import Workspace
 
 FIXTURE = Path(__file__).parent / "fixtures/research_service.py"
@@ -60,7 +59,7 @@ def clicked(window, name):
 
 
 def wait_research(qtbot, research):
-    qtbot.waitUntil(lambda: not research.busy, timeout=5000)
+    qtbot.waitUntil(lambda: not research.busy, timeout=SERVICE_WAIT_MS)
     assert not research.error, research.error
 
 
@@ -74,33 +73,32 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
         original = "Original synthetic evidence: literal <marker> Ω and criterion=7."
         dependency = project / "input.txt"
         dependency.write_text(original, encoding="utf-8")
-        monkeypatch.setenv("XDG_CACHE_HOME", str(home / "cache"))
+        environment = isolated_service_environment(monkeypatch, home, KIRA_TEST_RESEARCH_CONTROL=control)
         monkeypatch.setenv("QML_DISK_CACHE_PATH", str(home / "cache/qml"))
-        environment = {**os.environ, "KIRA_HOME": str(home), "KIRA_TEST_RESEARCH_CONTROL": str(control)}
         with (home / "service.log").open("w+", encoding="utf-8") as log:
-            process = subprocess.Popen([sys.executable, str(FIXTURE)], env=environment, stdout=log, stderr=log)
+            process = start_service([FIXTURE], environment, log)
             desktops = []
             try:
-                qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=5000)
+                qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=SERVICE_WAIT_MS)
                 assert process.poll() is None, (home / "service.log").read_text()
                 desktop = open_desktop(paths)
                 desktops.append(desktop)
                 workspace, _, window, research = desktop
-                qtbot.waitUntil(lambda: workspace.connected and bool(workspace.models), timeout=5000)
+                qtbot.waitUntil(lambda: workspace.connected and bool(workspace.models), timeout=SERVICE_WAIT_MS)
                 workspace.createProject("Synthetic research IPC", str(project), "", "read_only")
-                qtbot.waitUntil(lambda: bool(workspace.project) and not workspace.sessionsLoading, timeout=5000)
+                qtbot.waitUntil(lambda: bool(workspace.project) and not workspace.sessionsLoading, timeout=SERVICE_WAIT_MS)
                 project_id = workspace.project["id"]
                 workspace.setModel("synthetic-research-model")
                 workspace.setEffort("high")
                 prompt = visual_item(window.contentItem(), "prompt")
                 prompt.setProperty("text", "Read the one synthetic source file")
                 send = visual_item(window.contentItem(), "sendButton")
-                qtbot.waitUntil(send.isEnabled)
+                qtbot.waitUntil(send.isEnabled, timeout=SERVICE_WAIT_MS)
                 QMetaObject.invokeMethod(send, "clicked")
                 calls_path = control / "provider-calls.jsonl"
-                qtbot.waitUntil(lambda: calls_path.exists() and not workspace.busy, timeout=5000)
+                qtbot.waitUntil(lambda: calls_path.exists() and not workspace.busy, timeout=SERVICE_WAIT_MS)
                 qtbot.waitUntil(lambda: any("Synthetic research source retained." in row["body"]
-                                           for row in workspace.transcript.rows), timeout=5000)
+                                           for row in workspace.transcript.rows), timeout=SERVICE_WAIT_MS)
                 calls = [json.loads(line) for line in calls_path.read_text().splitlines()]
                 assert len(calls) == 1 and calls[0]["read_result"]["ok"]
                 run_id, session_id = calls[0]["run_id"], workspace.sessionId
@@ -110,7 +108,7 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
 
                 clicked(window, "projectResearchButton")
                 dialog = window.findChild(QObject, "researchDialog")
-                qtbot.waitUntil(lambda: dialog.property("visible") and not research.busy, timeout=5000)
+                qtbot.waitUntil(lambda: dialog.property("visible") and not research.busy, timeout=SERVICE_WAIT_MS)
                 assert research.report["settings"]["enabled"] is False
                 clicked(window, "researchNew")
                 title = "Synthetic conclusion <literal> Ω"
@@ -143,7 +141,7 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
                 research.setField("reassess", True)
                 research.setField("reason", "Explicit user assessment of this fixture only")
                 clicked(window, "researchSave")
-                qtbot.waitUntil(lambda: research.editor["existing"] and not research.busy, timeout=5000)
+                qtbot.waitUntil(lambda: research.editor["existing"] and not research.busy, timeout=SERVICE_WAIT_MS)
                 assert not research.error, research.error
                 record_id = research.editor["record_id"]
                 assert research.editor["expected_revision"] == 1
@@ -153,7 +151,7 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
                 dependency.write_text("Changed synthetic input: criterion=9", encoding="utf-8")
                 research.recheck()
                 qtbot.waitUntil(lambda: research.history["detail"].get("assessment") == "needs_recheck"
-                                and not research.busy, timeout=5000)
+                                and not research.busy, timeout=SERVICE_WAIT_MS)
                 assert research.history["detail"]["revision"] == 2
                 research.reloadRecord()
                 wait_research(qtbot, research)
@@ -163,7 +161,7 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
                 research.setField("body", corrected)
                 research.setField("reason", "The declared input changed; preserve the earlier interpretation")
                 clicked(window, "researchSave")
-                qtbot.waitUntil(lambda: research.editor["expected_revision"] == 3 and not research.busy, timeout=5000)
+                qtbot.waitUntil(lambda: research.editor["expected_revision"] == 3 and not research.busy, timeout=SERVICE_WAIT_MS)
                 research.openHistory()
                 wait_research(qtbot, research)
                 assert [row["revision"] for row in research.history["revisions"]] == [3, 2, 1]
@@ -190,13 +188,13 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
                 reopened = open_desktop(paths)
                 desktops.append(reopened)
                 workspace, _, window, research = reopened
-                qtbot.waitUntil(lambda: workspace.connected, timeout=5000)
+                qtbot.waitUntil(lambda: workspace.connected, timeout=SERVICE_WAIT_MS)
                 workspace.openProject(project_id)
-                qtbot.waitUntil(lambda: workspace.sessionId == session_id and not workspace.sessionsLoading, timeout=5000)
+                qtbot.waitUntil(lambda: workspace.sessionId == session_id and not workspace.sessionsLoading, timeout=SERVICE_WAIT_MS)
                 assert visual_item(window.contentItem(), "prompt").property("text") == chat_draft
                 clicked(window, "projectResearchButton")
                 dialog = window.findChild(QObject, "researchDialog")
-                qtbot.waitUntil(lambda: dialog.property("visible") and not research.busy, timeout=5000)
+                qtbot.waitUntil(lambda: dialog.property("visible") and not research.busy, timeout=SERVICE_WAIT_MS)
                 assert research.editor["record_id"] == record_id
                 assert research.editor["body"] == research_draft
                 assert research.editor["expected_revision"] == 3
@@ -220,9 +218,4 @@ def test_real_gui_research_evidence_recheck_correction_and_restart(qapp, qtbot, 
             finally:
                 for desktop in desktops:
                     close_desktop(desktop)
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+                stop_service(process)

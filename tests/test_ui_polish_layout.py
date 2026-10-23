@@ -1,7 +1,5 @@
 """Real QML evidence for motion visibility and compact, persistent editing."""
 
-from pathlib import Path
-
 import pytest
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
@@ -9,6 +7,13 @@ from PySide6.QtTest import QTest
 from test_ui_clean_layout import active_run, bounds, clean_ui, evaluate, visual_item
 
 __all__ = ["clean_ui"]
+
+
+def assert_renders(window):
+    image = window.grabWindow()
+    ratio = window.devicePixelRatio()
+    assert not image.isNull()
+    assert (image.width(), image.height()) == (round(window.width() * ratio), round(window.height() * ratio))
 
 
 def emit(workspace, kind, payload):
@@ -154,14 +159,12 @@ def test_paused_team_and_running_chat_have_distinct_status_and_sidebar_accessibi
     workspace.transcript.setToolGroupExpanded(2, True)
     workspace.setUiPreference("resume_hint_visible", False)
     qtbot.wait(70)
-    # Only synthetic preview material is written in the ignored build directory.
-    preview = Path("build/visual-polish-previews")
-    preview.mkdir(parents=True, exist_ok=True)
-    window.grabWindow().save(str(preview / "main-wide.png"))
+    # The wide and the narrow, large-font presentations both render; nothing is written to disk.
+    assert_renders(window)
     window.resize(880, 620)
     appearance = engine.rootContext().contextProperty("appearance")
     appearance.setOption("ui_size", 18)
     appearance.setOption("content_size", 18)
     workspace.setUiPreference("resume_hint_visible", False)
     qtbot.wait(70)
-    window.grabWindow().save(str(preview / "main-narrow-18.png"))
+    assert_renders(window)

@@ -78,10 +78,10 @@ def test_exact_answers_no_preselection_and_duplicate_submit(view):
     row["received"] = True
     inputs.refresh()
     assert "in inoltro" in inputs.statusText
-    assert "inoltrata al backend" not in inputs.statusText
+    assert "inoltrata al provider" not in inputs.statusText
     row["delivered"] = True
     inputs.refresh()
-    assert "inoltrata al backend" in inputs.statusText
+    assert "inoltrata al provider" in inputs.statusText
     assert "non è confermato" in inputs.statusText
 
 

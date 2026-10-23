@@ -27,7 +27,8 @@ provider ha già ricevuto.
 
 Nel campo di scrittura puoi usare questi comandi, che Kira interpreta come
 comandi dell'applicazione e non invia al provider; `/obbiettivo` e `/goal` sono
-alias equivalenti.
+alias equivalenti, e con ciascuno dei tre valgono anche le forme inglesi
+`status`, `pause` e `resume`, per esempio `/goal pause`.
 
 | Comando | Effetto |
 | --- | --- |
@@ -38,10 +39,11 @@ alias equivalenti.
 | `/obiettivo riprendi` | Riattiva un obiettivo fermo dopo i controlli necessari |
 
 Invia il comando senza immagini allegate (i file restano nella bozza); non è
-disponibile in una chat archiviata. Il limite di cicli predefinito è **0:
-nessun limite**. Un valore positivo è un tetto facoltativo, non una promessa che
-l'obiettivo sarà raggiunto entro quel numero; non c'è un limite di tempo
-implicito. Il pannello mostra **Cicli: N · senza limite** oppure **Cicli:
+disponibile in una chat archiviata. Dall'interfaccia e con `/obiettivo` un
+obiettivo parte senza limite di cicli e senza un limite di tempo implicito. Un
+tetto si imposta solo con il metodo IPC `goal.start` (`max_cycles`, vedi
+[Contratti](CONTRATTI.md)) e non promette che l'obiettivo sia raggiunto entro
+quel numero. Il pannello mostra **Cicli: N · senza limite** oppure **Cicli:
 N/limite**.
 
 ## Che cosa fa un ciclo
@@ -89,14 +91,15 @@ A ogni ciclo il modello registra un punto di controllo con riepilogo, prossimo
 passo e una decisione: continuare, completato o bloccato. Per dichiarare il
 completamento deve motivarlo con risultati registrati nel progetto (eventi,
 artefatti, esiti di strumenti) oppure, per un obiettivo puramente di scrittura,
-con un elaborato testuale esplicito; prove prese da altri progetti non valgono.
-Il completamento viene applicato solo dopo che il turno è terminato con successo
-e la pulizia è confermata: un turno fallito non trasforma una conclusione
-proposta in un successo. Lo stato **Obiettivo completato · valutazione del
-modello** dice esattamente questo: Kira controlla provenienza, esecuzione e
-coerenza delle registrazioni, ma non può garantire che il modello abbia capito
-tutto o che ogni requisito reale sia soddisfatto. Verifica i risultati prima di
-considerare chiuso il lavoro.
+con un elaborato testuale esplicito; prove prese da altri progetti non valgono,
+e nemmeno le copie delle chiamate agli strumenti Kira registrate anche da Codex
+e Claude Code. Il completamento viene applicato solo dopo che il turno è
+terminato con successo e la pulizia è confermata: un turno fallito non trasforma
+una conclusione proposta in un successo. Lo stato **Obiettivo completato ·
+valutazione del modello** dice esattamente questo: Kira controlla provenienza,
+esecuzione e coerenza delle registrazioni, ma non può garantire che il modello
+abbia capito tutto o che ogni requisito reale sia soddisfatto. Verifica i
+risultati prima di considerare chiuso il lavoro.
 
 ## Blocchi, pausa e ripresa
 
@@ -153,8 +156,9 @@ strumenti gestiti da Kira usati da DeepSeek Account.
   riepilogo tra un ciclo e l'altro poggia su qualcosa di rileggibile.
 - **Controlla `/obiettivo stato`.** Se vedi **Serve un cambiamento per
   proseguire**, aggiungi indicazioni nella chat e riprendi.
-- **Usa il limite di cicli come freno.** Un limite basso ti fa rileggere i
-  progressi prima di spendere altra quota del provider; una chat, un obiettivo.
+- **Rileggi i progressi a intervalli.** Metti in pausa con `/obiettivo pausa`
+  per controllare i progressi prima di spendere altra quota del provider; una
+  chat, un obiettivo.
 
 Per i Team e la loro risposta automatica vedi [Team](TEAM.md); per gli altri
 controlli della chat vedi [Chat e strumenti](CHAT_E_STRUMENTI.md).

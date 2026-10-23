@@ -144,11 +144,13 @@ def test_rendering_is_bounded_and_cache_is_evicted(renderer):
     html = renderer.render("x" * (MAX_SOURCE + 1000))
     assert plain(html).count("x") == MAX_SOURCE
     assert "visualizzazione limitata" in plain(html)
+    # Cache keys are (style, bounded source) pairs; the bounded source ends with the limit notice.
+    assert any(source.startswith("x" * MAX_SOURCE) for _, source in renderer._cache)
     for index in range(MAX_CACHE_ENTRIES + 5):
         renderer.render(f"{index}: " + "é" * 40_000)
         assert renderer._cache_bytes <= MAX_CACHE_BYTES
         assert len(renderer._cache) <= MAX_CACHE_ENTRIES
-    assert "x" * MAX_SOURCE not in renderer._cache
+    assert not any(source.startswith("x" * MAX_SOURCE) for _, source in renderer._cache)
     repeated_markup = "`a` " * (MAX_SOURCE // 4)
     assert len(renderer.render(repeated_markup)) <= MAX_OUTPUT
 

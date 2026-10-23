@@ -22,15 +22,16 @@ GUI (PySide6/QML)  →  private Unix socket  →  asyncio service  →  provider
   requests, receives responses and events, and presents them.
 - Only the service writes SQLite. Every state change is recorded in the
   database before being published to clients.
-- Providers (Ollama, Codex, OpenAI direct, DeepSeek, Claude Code) receive a
+- Providers (Ollama, Codex, Direct OpenAI, DeepSeek, Claude Code) receive a
   `RunContext` from the service and use its callbacks to emit events, execute
   tools and request approvals. A provider has no direct access to the database
   or the GUI.
 - Every dictionary that crosses a boundary is JSON. IDs are opaque UUID
   strings; timestamps are ISO 8601 in UTC.
 
-The socket lives in `$XDG_RUNTIME_DIR/kira/service.sock` (or in `runtime/`
-under `KIRA_HOME`): the folder has `0700` permissions, the socket `0600`, and a
+The socket lives in `$XDG_RUNTIME_DIR/kira/service.sock` (with `KIRA_HOME`, in
+`runtime/` under that folder; without `XDG_RUNTIME_DIR`, in `runtime/` under the
+state folder): the folder has `0700` permissions, the socket `0600`, and a
 process lock guarantees a single service per data profile.
 
 ### Main entities
@@ -38,7 +39,7 @@ process lock guarantees a single service per data profile.
 | Entity | Fields |
 | --- | --- |
 | Project | `id, name, root, instructions, permission, created_at, updated_at, memory` |
-| Session (chat) | `id, project_id, backend, model, settings, backend_ref, created_at`; the title is stored in `settings.chat_title` and never reaches the model; `archived` is a derived flag |
+| Session (chat) | `id, project_id, backend, model, settings, backend_ref, created_at`; the title is stored in `settings.chat_title` and is not sent with the chat's own requests (other chats' titles appear in cross-chat excerpts); `archived` is a derived flag |
 | Run | `id, session_id, request_id, prompt, state, created_at, updated_at, error, outcome, last_seq` |
 
 Every run also exposes derived metadata: `source` (`user`, `team_followup`,
@@ -100,17 +101,23 @@ input before producing effects, and always follows the same rule:
 
 This applies to every method that accepts `request_id` (runs, queue, guidance,
 forks, provider switches, Teams, goals, native actions, Research, project
-tools, Soul, context notes, assistant). The GUI stores pending identities
-before sending the RPC, so an application restart can verify the outcome
-instead of generating a duplicate.
+tools, Soul, context notes, assistant). For chat requests (runs, queue,
+guidance, forks, provider switches, goals, compactions, context notes,
+assistant) and for Soul, Research and project tool changes, the GUI stores the
+pending identity before sending the RPC, so an application restart can verify
+its outcome instead of generating a duplicate. Team commands and native
+launches keep their identity only while the window is open: after a restart,
+check **Activity** or the Team view before repeating them.
 
 ## 2. IPC protocol
 
 ### Frames
 
 The channel carries newline-delimited UTF-8 JSON. Every frame (request,
-response or notification) must fit in **1 MiB** including the terminator; a
-larger frame is rejected and the client disconnected.
+response or notification) must fit in **1 MiB** including the terminator. A
+larger request closes the connection; a response or notification that would
+exceed the limit is replaced by an `OUTPUT_LIMIT` error, and an oversized
+browser frame is discarded.
 
 ```json
 {"version": 1, "id": "c1", "method": "run.start", "params": {"...": "..."}}
@@ -122,12 +129,14 @@ larger frame is rejected and the client disconnected.
 ```
 
 - `version` is the protocol version. A value different from the service's is
-  rejected **before** any mutation.
+  rejected with `INCOMPATIBLE_VERSION` **before** any mutation.
 - `id` correlates response and request and is chosen by the client; it has
   nothing to do with the durable `request_id` in the parameters.
-- Notifications (`event`, `team_event`, `browser_event`) have no `id` and
-  reach only the clients that subscribed (`run.subscribe`, `team.subscribe`,
-  `session.browser.watch`).
+- Notifications (`event`, `team_event`, `browser_event`) have no `id`. `event`
+  and `team_event` reach only the clients that subscribed (`run.subscribe`,
+  `team.subscribe`); `browser_event` frames reach only the clients watching
+  that browser (`session.browser.watch`), while browser state changes reach
+  every connected desktop, so it can show a browser opened by the agent.
 
 ### Handshake
 
@@ -150,20 +159,26 @@ refuses to continue if `app_version` does not match its own. The
   by fixed IDs, never by shell text.
 - Recurring errors: `INVALID_ARGUMENT`, `NOT_FOUND`, `CONFLICT` (identity
   reused with a different input), `BUSY` (active work or settings being
-  updated), `ARCHIVED`, `MANAGED_RUN` (session of a Team), `UNAVAILABLE`,
-  `UNSAFE_PATH`, `QUEUE_FULL`, `SHUTTING_DOWN`.
-- While `settings.update` is in progress, `run.start`, `team.*`, `goal.start`,
-  `session.switch/configure/fork/compact` and the `backend.*` methods respond
-  `BUSY`. During shutdown every method that starts work responds
-  `SHUTTING_DOWN`.
+  updated), `ARCHIVED`, `MANAGED_RUN` (session of a Team), `UNSUPPORTED`
+  (feature not available with that provider or in that chat),
+  `PERMISSION_DENIED`, `UNAVAILABLE`, `UNSAFE_PATH`, `QUEUE_FULL`,
+  `OUTPUT_LIMIT`, `SHUTTING_DOWN`. The transport also uses `INVALID_REQUEST`
+  (invalid frame), `METHOD_NOT_FOUND` and `INTERNAL_ERROR`.
+- While `settings.update` is in progress, `run.start`, `team.start`,
+  `team.resume`, `goal.start`, `goal.resume`, `assistant.resume`,
+  `session.switch/configure/fork/compact`, another `settings.update` and the
+  `backend.*` methods respond `BUSY`. During shutdown every method that starts
+  work, native launches included (`desktop.launch`, `workspace.launch`),
+  responds `SHUTTING_DOWN`.
 
 ### Slow consumers
 
-Every client has an outgoing queue of 128 messages. If the queue fills up the
-client is disconnected: it can never block the service's durable writes. On
-reconnection it catches up with `run.subscribe {after_seq}` (and
-`team.subscribe`), deduplicating by `(run_id, seq)`. Browser frames
-(`browser_event`) do not go through this queue: only the latest one is kept.
+Every client has an outgoing queue of 128 messages. If the queue fills up, or a
+frame cannot be written within 5 seconds or encoded, the client is
+disconnected: it can never block the service's durable writes. On reconnection
+it catches up with `run.subscribe {after_seq}` (and `team.subscribe`),
+deduplicating by `(run_id, seq)`. Browser images (`browser_event` frames) do
+not go through this queue: only the latest one is kept.
 
 ## 3. IPC methods
 
@@ -178,32 +193,32 @@ Convention: `method {parameters} → {result}`; `?` marks an optional field.
 | `project.update` | `{project_id, name?, instructions?, permission?, memory?, share_session_summaries?}` → `{project}` | A permission change is rejected while work is active. `share_session_summaries` is an atomic flag in the project memory. |
 | `project.snapshot` | `{project_id}` → `{project, sessions:[], runs:[], artifacts:[], messages:[]}` | Every run includes `last_seq`; messages have `run_id, role, content` and, for the assistant, `item_id` and `complete`. The payload is limited to 700 KB with previews and flagged omissions. |
 | `project.context` | `{project_id, session_id?}` → `{content, sources, truncated, enabled, chars}` | Shows the block of excerpts from other chats that Kira will supply on the next turn. |
-| `project.files` | `{project_id, query?, limit?}` → `{files:[], truncated, scanned, gitignore, limits:{entries, depth, matches}}` | Search contained in the root for `@` mentions; `limit` 1–200 (40), `query` up to 1,000 characters; at most 10,000 entries and depth 32 explored. |
-| `project.changes` | `{project_id, path?}` → `{diff, truncated, ...}` | Staged/unstaged/untracked Git changes as inert text; runs no hooks or external drivers; response limited to 650 KB. |
-| `project.export` | `{project_id}` → `{text}` or `{path, format:"json", bytes}` | Up to 700 KB the JSON is inline; beyond that it is written to `exports/` in the data folder and the client copies it to the chosen destination. No truncation of the transcript. |
+| `project.files` | `{project_id, query?, limit?}` → `{files:[], truncated, scanned, gitignore, limits:{entries, depth, matches}}` | Search contained in the root for `@` mentions; `limit` 1–200 (40), `query` up to 1,000 UTF-8 bytes; at most 10,000 entries and depth 32 explored. |
+| `project.changes` | `{project_id, path?}` → `{diff, truncated, ...}` | Staged/unstaged/untracked Git changes as inert text; runs no hooks, filters or external drivers; response limited to 650 KB. |
+| `project.export` | `{project_id}` → `{text}` or `{path, format:"json", bytes}` | Up to 700 KB the JSON is inline; beyond that it is written to `exports/` in the data folder and the response gives its path. No truncation of the transcript. The interface does not offer it: use `kira-desktop rpc project.export '{"project_id": "…"}'`. |
 
 ### Sessions and chats
 
 | Method | Parameters → result | Rules |
 | --- | --- | --- |
-| `session.create` | `{project_id, backend, model, settings?, handoff?, title?, soul_id?}` → `{session}` | `title` up to 120 characters; `soul_id` binds the Soul before the first message. |
+| `session.create` | `{project_id, backend, model, settings?, handoff?, title?, soul_id?}` → `{session}` | `title` up to 120 characters; `soul_id` binds the Soul before the first message. Settings the provider does not use are not saved (some are rejected with `UNSUPPORTED_SETTING`, for example `num_ctx` with DeepSeek or Claude Code); malformed values are rejected. |
 | `session.list` | `{project_id, offset?, limit?, archived?}` → `{sessions, has_more, next_offset}` | Ordinary chats only, most recent first; `limit` ≤ 200, page ≤ 700 KB; `archived` defaults to `false`. |
-| `session.snapshot` | `{project_id, session_id}` → `{session, runs, artifacts, messages, ...}` | Last 60 runs in chronological order, at most 200 artifacts, 700 KB. |
+| `session.snapshot` | `{project_id, session_id}` → `{session, runs, artifacts, history_truncated}` | Last 60 runs in chronological order, at most 200 artifacts, 700 KB. |
 | `session.rename` | `{project_id, session_id, title}` → `{session}` | Owned ordinary chats only; does not touch the provider thread. |
-| `session.archive` | `{project_id, session_id, archived}` → `{session}` | Requires an inactive chat; an archived chat starts no work but remains readable and exportable. |
-| `session.export` | `{project_id, session_id}` → `{text}` or `{path, ...}` | Full Markdown: transcript, accepted guidance, partial streams, activity, goal. Team chats and other users' chats are rejected. |
+| `session.archive` | `{project_id, session_id, archived}` → `{session}` | Requires a project with no active work and, to archive, no queued requests of the chat; an archived chat starts no work but remains readable and exportable. |
+| `session.export` | `{project_id, session_id}` → `{text}` or `{path, ...}` | Full Markdown: transcript, accepted guidance, partial streams, activity, goal. Team chats and chats of other projects are rejected. |
 | `session.fork` | `{project_id, session_id, request_id, through_run_id?, title?}` → `{session, mode:"native"\|"copied_context", ...}` | `through_run_id` must be a completed turn; Codex requires a recorded native turn boundary, otherwise it forks only from the end. The copied context is limited to 8,000,000 UTF-8 bytes, the excerpt supplied to the model to 100,000 characters. Does not undo file changes. |
-| `session.configure` | `{project_id, session_id, model, reasoning_effort?, num_ctx?, think?}` → `{session}` | Same provider, inactive chat (even with a paused queue). `reasoning_effort` omitted = unchanged, `""` = default; `num_ctx` 0 removes the override; `think` accepts the Ollama values or `null`. |
+| `session.configure` | `{project_id, session_id, model, reasoning_effort?, num_ctx?, think?}` → `{session}` | Same provider; requires a project with no active work and no queued requests, even when the queue is paused. `reasoning_effort` omitted = unchanged, `""` = default (DeepSeek Web neither uses nor saves it); `num_ctx` (Ollama only) ∈ 0, 32,768, 131,072, 262,144, where 0 removes the override; `think` (Ollama only) accepts `true`, `false`, `low`, `medium`, `high` or `null`. |
 | `session.providers` | `{project_id, session_id}` → `{session, current_generation, providers:[{backend, model, reasoning_effort, account_id, used, current}], transitions:[...], transitions_truncated}` | Read-only; up to 100 recent generations. |
-| `session.switch` | `{project_id, session_id, request_id, backend, model, reasoning_effort, account_id?}` → `{session, current_generation, replayed, switch:{request_id, generation, backend, model, account_id, changed, transitioned}}` | `reasoning_effort` is required even when empty; `account_id` only for OpenAI direct. Requires an inactive chat with no queues, Teams or reservations. A repetition returns the original receipt plus the **current** session. |
+| `session.switch` | `{project_id, session_id, request_id, backend, model, reasoning_effort, account_id?}` → `{session, current_generation, replayed, switch:{request_id, generation, backend, model, account_id, changed, transitioned}}` | `reasoning_effort` is required even when empty (DeepSeek Web does not save it); `account_id` only for Direct OpenAI. Settings the new provider does not use are not carried over. Requires an inactive chat with no queues, Teams or reservations. A repetition returns the original receipt plus the **current** session. |
 | `session.compact` | `{project_id, session_id, request_id}` → `{operation}` | Native compaction (Codex) of an inactive chat; completion requires the provider's terminal outcome. |
-| `session.context` | `{project_id, session_id}` → `{policy, measures, memory, notes, operation}` | Public state of the context managed by Kira for OpenAI direct and DeepSeek Account: capacity, estimates, generated memory, important notes, latest receipt. |
-| `session.context.pin` / `.unpin` | `{project_id, session_id, request_id, content}` / `{..., note_id}` | Important user notes, supplied verbatim on every turn. |
-| `session.context.compact` | `{project_id, session_id, request_id}` → `{operation}` | Explicit context maintenance, only on an inactive chat; reserves the project root. |
+| `session.context` | `{project_id, session_id}` → `{backend, model, account_id, provider_generation, mode, policy, metrics, memory:{pins, summary, sources}, status, operation, revision, has_state, error}` | Public state of the chat's context. With Direct OpenAI and DeepSeek Account, where Kira manages the context, it includes capacity, estimates, generated memory and the latest receipt; the important notes are in `memory.pins`. |
+| `session.context.pin` / `.unpin` | `{project_id, session_id, request_id, content}` / `{..., note_id}` | Important user notes, supplied verbatim on every turn. They require an unarchived chat (`ARCHIVED`), no active work in the project or an overlapping one and no queued requests (`BUSY`). |
+| `session.context.compact` | `{project_id, session_id, request_id}` → `{context, operation}` | Explicit context maintenance with Direct OpenAI and DeepSeek Account, only on an inactive chat with no queued requests; reserves the project root. |
 | `session.history.search` | `{project_id, session_id, query, limit?, before_id?}` → `{results, ...}` | Literal Unicode search in the chat's original archive; bounded pages. |
 | `session.history.read` | `{project_id, session_id, source_id, offset?, limit?}` → `{content, next_offset, ...}` | Paginated reading of an original record, up to 32,000 characters per page. |
 | `session.web.get` | `{project_id, session_id}` → `{settings, browser}` | Web preferences and state/preview of the chat's browser. |
-| `session.web.update` | `{project_id, session_id, web_search?, browser_enabled?, browser_persistent?, browser_action_approval?, expected_generation?}` → `{settings, browser}` | `web_search` ∈ `live\|cached\|disabled` (OpenAI direct only); `browser_action_approval` alone (`ask\|always`) is allowed even during a turn and, with `expected_generation`, cannot grant consent to a retired generation; the other preferences require an inactive chat. |
+| `session.web.update` | `{project_id, session_id, web_search?, browser_enabled?, browser_persistent?, browser_action_approval?, expected_generation?}` → `{settings, browser}` | `web_search` ∈ `live\|cached\|disabled` (Direct OpenAI only); `browser_action_approval` alone (`ask\|always`) is allowed even during a turn and, with `expected_generation`, cannot grant consent to a retired generation; the other preferences require an inactive chat. |
 | `session.browser.open` / `.close` | `{project_id, session_id}` | Opens or closes the chat's browser actor; closing waits for the verified cleanup of the process. |
 | `session.browser.watch` / `.unwatch` | `{project_id, session_id}` → `{input_stream_id, ...}` | Subscribes the client to `browser_event` frames; the input stream is bound to client and actor and dies with the connection. |
 | `session.browser.command` | `{project_id, session_id, stream_id, sequence, request_id, action, arguments}` | Manual input (mouse, keys, text, copy) during **Take control**. `sequence` is monotonic; the last 128 receipts plus a high-water mark reject duplicate, stale or uncertain input. The command must refer to the displayed `surface_id`. |
@@ -238,7 +253,9 @@ finished ones, with abbreviated prompt and error. At most 64 unfinished items
 per project, each up to 8,000 UTF-8 bytes (JSON escaping included). A removed
 identity remains as a tombstone and cannot be resurrected. The queue proceeds
 after a confirmed completion and stops on its own after an error, a
-cancellation or a service restart. Editing or removing an item never cancels
+cancellation or a service restart. A start refused only by the current state
+(`BUSY`, `ARCHIVED`, `SHUTTING_DOWN`) leaves the request waiting in the paused
+queue, with the reason in `error`. Editing or removing an item never cancels
 an operation already sent to the provider.
 
 ### Questions
@@ -300,8 +317,9 @@ Snapshot of a Team:
 
 ```
 {id, project_id, goal, mode, state, phase, round_index, round_limit, concurrency,
- backend, model, settings, parent_team_id, created_at, updated_at, last_seq,
- summary, error, pause_reason, scheduling, completion_basis?,
+ max_agents, backend, model, settings, parent_team_id, created_at, updated_at, last_seq,
+ summary, error, pause_reason, scheduling,
+ completion_evidence:{worker_assignments_completed, basis, coordinator_only_conclusion},
  members:[{id, name, role, instructions, access, state, run_id?, last_output?}],
  steps:[{id, member_id, title, instructions, access, depends_on, state, run_id?, round_index, error?}],
  messages:[{id, seq, sender_id, sender_name, recipient_id, content, created_at}],
@@ -314,7 +332,7 @@ continuation starts further work. Approval pages show at most 64 identities at
 a time; the GUI can decline or cancel from a truncated preview, but not
 approve.
 
-Coordinator output (a single JSON object constrained by its structure):
+Coordinator output (a single JSON object constrained by the schema):
 
 ```
 {decision:"continue"|"completed"|"needs_input", summary:string,
@@ -336,18 +354,18 @@ pauses it with `no_progress`.
 
 | Method | Parameters → result |
 | --- | --- |
-| `assistant.snapshot` | `{project_id, session_id}` → `{capability, environment, delegations:[...], followups:[...]}` |
+| `assistant.snapshot` | `{project_id, session_id}` → `{environment, delegations:[...], followups:[...], omitted_count}` |
 | `assistant.cancel` | `{project_id, session_id, delegation_id}` → `{delegation}` |
 | `assistant.message` | `{project_id, session_id, delegation_id, request_id, recipient_id, content}` → `{message}` |
-| `assistant.resume` | `{project_id, session_id, delegation_id, request_id, instruction?, round_limit?}` → `{delegation}` |
+| `assistant.resume` | `{project_id, session_id, delegation_id, request_id, round_limit?}` → `{delegation}` |
 
 Every identity is verified against the current ordinary chat. The snapshot
-exposes capability and scope (`environment.conversation` explains any
-read-only lane alongside a Team), a bounded list of recent delegations with
-their effective `round_limit` and the automatic-reply receipts (`followups`,
-states `armed, pending, running, completed, failed, interrupted, cancelled,
-suppressed`). Snapshot ≤ 650 KB; the GUI keeps at most 128 pending intents
-without eviction.
+exposes capability and scope (`environment.capabilities`;
+`environment.conversation` explains any read-only lane alongside a Team), a
+bounded list of recent delegations with their effective `round_limit` and the
+automatic-reply receipts (`followups`, states `armed, pending, running,
+completed, failed, interrupted, cancelled, suppressed`). Snapshot ≤ 650 KB;
+the GUI keeps at most 128 pending intents without eviction.
 
 ### Research
 
@@ -364,7 +382,7 @@ All methods require `project_id`.
 | `research.source.read` | `{project_id, source, offset?, limit?}` → `{content, offset, next_offset, has_more, source, provenance, availability, integrity}` | Up to 16,000 characters requested per page. |
 | `research.dependencies.capture` | `{project_id, paths}` → `{dependencies:[{path, sha256}]}` | Bounded reads; neither writes nor modifies records. |
 | `research.recheck` | `{project_id, request_id, record_id, expected_revision}` → `{project_id, record, operation}` | The outcome is computed by the service. |
-| `research.context` | `{project_id}` → `{content, sources, enabled, truncated, ...}` | What chats receive when sharing is enabled. |
+| `research.context` | `{project_id}` → `{project_id, enabled, content, records:[{id, revision}], truncated}` | Bounded preview of the accepted records the assistant can read with its tools; it is not added to the model's context. |
 
 A record has `id, project_id, revision, kind` (`objective, hypothesis,
 experiment, observation, decision, issue`), `title, body, scope, criteria,
@@ -395,11 +413,13 @@ URLs. Reads start neither inference nor programs. A project tool is a UTF-8
 Python script already present in the project, registered with its expected
 SHA-256 hash; the revision is immutable and includes source, description,
 input/output definitions, declared tests and limits. It receives a JSON object
-on stdin and returns a JSON object on stdout; stderr is bounded; the
-environment is the standard library with the cwd in the project. Registering
-requires **Execute** and `project_write` or higher; testing and running always
-require **Execute** and `trusted_host`/`full_access`. A modified file does not
-replace the registered revision.
+on stdin (also readable as `sys.stdin.buffer` or descriptor 0) and writes on
+stdout a single JSON value matching `output_schema`; stderr is bounded; the
+environment is the standard library with the cwd in the project, and the files
+it creates use umask 022. Registering requires **Execute** and `project_write`
+or higher; testing and running always require **Execute** and
+`trusted_host`/`full_access`. A modified file does not replace the registered
+revision.
 
 ### Identity (Soul)
 
@@ -423,11 +443,13 @@ All mutations require `request_id`; those on an existing profile also
 | `soul.history` / `soul.rollback` | `{soul_id, offset?, limit?}` / `{request_id, soul_id, expected_revision, target_revision}` |
 | `soul.archive` | `{request_id, soul_id, expected_revision}` |
 | `soul.source` | `{soul_id, source_id, project_id, session_id, offset?, limit?}` |
-| `soul.export` / `soul.import` | `{soul_id}` / `{request_id, profile}` (`kira-soul-v1` format, core only) |
+| `soul.export` / `soul.import` | `{soul_id}` / `{request_id, profile}` (`kira-soul-v1` format: name, core, learning mode and preferences, without lessons, sources or revisions) |
 
 The learning modes are `manual`, `suggest` (default) and `adaptive`. Changing
 a chat's identity requires an inactive project and a paused autonomous goal,
-and retires the provider generation while keeping its settings. The service
+retires the provider generation while keeping its settings and closes the
+chat's browser (`BUSY` while the browser is under manual control,
+`BROWSER_CLEANUP` while an earlier browser cleanup is unconfirmed). The service
 freezes the revision and hash of the capsule at the admission of each turn:
 later changes apply from the following turn.
 
@@ -436,8 +458,8 @@ later changes apply from the following turn.
 | Method | Parameters → result | Rules |
 | --- | --- | --- |
 | `backend.discover` | `{backend, account_id?}` → `{available, models:[{id, name, capabilities, ...}], capabilities, account?, error?}` | `backend` ∈ `ollama, codex, openai_chatgpt, deepseek_account, deepseek_web, claude_code`; `account_id` only for `openai_chatgpt`. No automatic model change. |
-| `backend.login` | `{backend, account_id?}` → login information | Starts the explicit login: Codex (optional), OpenAI direct (OAuth PKCE with a local listener), DeepSeek Account, DeepSeek Web. |
-| `backend.account` | `{backend, action, account_id?, ...}` → state | OpenAI direct: `status, select, logout, cancel`; DeepSeek Account: `status, login, cancel, logout`; DeepSeek Web: `status, login` (with `token`), `logout`. Credentials stay in the private profile, never in SQLite, in events or in exports. |
+| `backend.login` | `{backend, account_id?}` → login information | Starts the explicit login: Codex (optional), Direct OpenAI (OAuth PKCE with a local listener), DeepSeek Account. DeepSeek Web has no login flow (`INVALID_ARGUMENT`): its token is saved with `backend.account` `login`. |
+| `backend.account` | `{backend, action, account_id?, ...}` → state | Direct OpenAI: `status, login, select, logout, cancel`; DeepSeek Account: `status, login, cancel, logout, configure_proxy` (`url`, `api_key`, `enabled` for DeeperSeeker); DeepSeek Web: `status, login` (with `token`), `logout`, where `login` and `logout` answer `BUSY` while DeepSeek Web work is active or queued. Credentials stay in the private profile, never in SQLite, in events or in exports. An unsafe or invalid credential store does not stop the service from starting and makes only that provider unavailable; for DeepSeek Web, `status` answers `UNSAFE_PATH` or `CREDENTIAL_STORE` until the token is saved again. |
 | `backend.usage` | `{backend, account_id?}` → reported limits and local measurements | `backend` ∈ `codex, openai_chatgpt, ollama, claude_code`; read-only, no inference and no billing changes; at most 10,000 recent usage events examined. |
 | `settings.get` / `settings.update` | `{}` / `{ollama_url?, codex_binary?, tool_timeout?, max_output_bytes?, max_tool_rounds?}` → `{settings}` | Rejected with `BUSY` while there is active work or reservations. No automatic endpoint or model change. |
 | `system.resources` | `{}` → `{memory, gpus:[], platform}` | Unknown values are `null`. |
@@ -479,7 +501,7 @@ in a scope separate from the service and stay open when Kira closes.
 | Method | Parameters → result | Rules |
 | --- | --- | --- |
 | `database.backup` | `{}` → `{path}` | Consistent copy through the SQLite backup API. |
-| `service.shutdown` | `{}` → `{stopping:true}` | Only with no active runs and no browser under manual control; otherwise `BUSY`. |
+| `service.shutdown` | `{}` → `{stopping:true, pending_cleanup_projects?, message?}` | Only with no active work (runs, Teams, automatic continuations, context maintenance, chat branches or compactions) and no browser under manual control; otherwise `BUSY`, naming it. Unconfirmed provider or browser cleanup does not block the stop: the reply lists the affected projects in `pending_cleanup_projects`, and the next start checks them again. |
 
 ## 4. Events
 
@@ -499,7 +521,7 @@ implicitly.
 
 | Type | Payload | Notes |
 | --- | --- | --- |
-| `run.state` | `{state, error?, outcome?}` | The initial event also records `backend, model, reasoning_effort`. |
+| `run.state` | `{state, error?, outcome?}` | The `running` event also records `backend, model, reasoning_effort` and the run's derived metadata. |
 | `message.user` | `{content, attachments?:[metadata], source?}` | `source:"steer"` for a consumed batch of guidance. |
 | `message.delta` | `{content, item_id?}` | Incremental assistant text. |
 | `message.completed` | `{content?, item_id?}` | Finished message; snapshots and exports keep `item_id` and `complete`. |
@@ -516,7 +538,6 @@ implicitly.
 | `input.requested` / `input.answered` / `input.received` / `input.delivered` / `input.closed` / `input.delivery_failed` | form, answer, recovery, delivery | `input.delivered.transport` ∈ `turn/steer`, `json-rpc-response`, `responses-http`, `ollama-chat`, `claude-code-mcp`; delivery does not prove that the model used the answer. |
 | `steering.requested` / `.submitted` / `.accepted` / `.failed` | identity and delivery state | The result reports `queued, submitted, provider_accepted, not_delivered, unknown`. |
 | `team.delegation` | `{delegation_id, team_id, goal, state, source:"kira_service", summary?, error?, counts}` | Coalesced progress of the delegation on the originating run. |
-| `team.followup` | receipt of the automatic reply | Present in the events of manual Teams with `origin_session_id`. |
 | `goal.state` | public state of the autonomous goal | Emitted on the goal's latest run. |
 | `reasoning.summary.delta` / `.completed` / `.status` | `{item_id, provider, source:"provider_summary", content?}` / `{..., status, reason?}` | Public summary offered by the provider; 64 parts, 65,536 bytes and 256 ID characters per run. |
 
@@ -533,8 +554,9 @@ of envelope (`schema_version, team_id, seq, type, timestamp, payload`). Types:
 `member.activity` (reference to the run and the sequence, without duplicating
 the stream), `team.message`, `team.message.supplied` (`member_id, run_id,
 message_ids, via:"read_messages"|"assignment_context"`, plus the provider's
-`call_id`), `team.approval`, `team.result`, `team.followup`. The detailed tool
-events stay in each member's ordinary run.
+`call_id`), `team.approval`, `team.result`, `team.followup` (receipt of the
+automatic reply, for Teams with an originating chat). The detailed tool events
+stay in each member's ordinary run.
 
 ### `browser_event`
 
@@ -550,11 +572,13 @@ discarded.
 
 Before durable publication, the service keeps bounded state per run and per
 item: 64 open items, identifiers up to 256 characters and 65,536 aggregated
-pending characters. Recognized inline assignments (for example `TOKEN=…`) and
-known sensitive prefixes are redacted even when the remainder is not yet
-available; registered provider credentials are redacted wherever they appear.
-A terminal outcome sanitizes the remaining queues. It is not a universal
-detector of unknown secrets.
+pending characters. A credential name (`TOKEN`, `GITHUB_TOKEN`, `password`,
+`api_key`, `secret`, `Authorization`, `Cookie`) followed by `:` or `=` is
+recognized even when the remainder is not yet available: a quoted value is
+redacted at any length, an unquoted one from eight characters (`token: 5`
+stays visible). Registered provider credentials are redacted wherever they
+appear. A terminal outcome sanitizes the remaining queues. It is not a
+universal detector of unknown secrets.
 
 ## 5. Provider interface
 
@@ -573,9 +597,11 @@ class Backend(Protocol):
 ```
 
 Reference constructors: `OllamaBackend(endpoint="http://127.0.0.1:11434")`
-(the default is `ollama_url` from the settings) and `CodexBackend(binary="codex")`. OpenAI direct and DeepSeek
-receive the service's account manager; Claude Code receives the runtime folder
-for its own MCP relay.
+(the default is `ollama_url` from the settings) and
+`CodexBackend(binary="codex")`. Direct OpenAI and DeepSeek receive the
+service's account manager; Claude Code receives the private runtime folder,
+where it writes its own launcher, and receives Kira's tools from an MCP server
+inside the service process.
 
 ### `RunContext`
 
@@ -598,7 +624,7 @@ for its own MCP relay.
 | `provider_started(pid)` | callback | Registers the child process before inference, for cleanup and recovery. |
 | `register_control(handler)` | callback | Registers native control operations (Codex steering, compaction). |
 | `guidance(kind, payload)` | callback | Boundary for user guidance in providers with a service-managed inbox. |
-| `context_state`, `context_save`, `context_page`, `context_catalog` | state and callbacks | Durable context managed by Kira (OpenAI direct, DeepSeek Account). |
+| `context_state`, `context_save`, `context_page`, `context_catalog` | state and callbacks | Durable context managed by Kira (Direct OpenAI, DeepSeek Account). |
 | `tool_image(ref)` | callback | Retrieves the pixels of a screenshot owned by the service. |
 
 ### Result of `run`
@@ -616,23 +642,26 @@ cancellation, resume, usage, images, context_controls`, plus `steering,
 planning, native_fork, native_compaction` where relevant. An unverified
 capability is `false` or clearly marked as metadata. The catalog keeps
 `context_window`, `max_context_window` and `max_output_tokens` separate; a
-listed model does not prove that the account is entitled to use it. For
-Ollama the browser tools are offered only if the model passes a side-effect-free
-check on first use, and screenshots and Computer only if `/api/show` declares
-image input.
+listed model does not prove that the account is entitled to use it. With
+Ollama and DeepSeek Account, Kira's tools are offered only if the model passes
+a side-effect-free check on first use, whose outcome applies to that model on
+that endpoint for as long as the service keeps running; screenshots and
+Computer only if the model declares image input (with Ollama, through
+`/api/show`).
 
 ### Base tools
 
 | Tool | Arguments | Rules |
 | --- | --- | --- |
-| `list_files` | `{path?:"."}` | Contained in the root (or outside it, with Full access). |
-| `search_files` | `{query, path?:"."}` | Reports its own limits: 1,000 entries, 100 matches, depth 32, 16 MiB examined. |
-| `read_file` | `{path}` | Returns content and `sha256`. |
-| `write_file` | `{path, content, expected_sha256?:string\|null}` | Requires the expected hash of the existing content; `null` means "create only". Requires a write permission. |
-| `run_command` | `{argv:string[], timeout?:number}` | Explicit `argv`, cwd in the root, no implicit shell; requires `trusted_host` or `full_access`. Process groups belong to Kira: timeouts and cancellation terminate descendants with bounded escalation. |
+| `list_files` | `{path?:"."}` | Contained in the root (or outside it, with Full access). Kinds `file`, `directory`, `symlink`, `special`; a name that is not valid UTF-8 is shown with `\xNN` escapes and `undecodable:true` and cannot be addressed by the file tools. |
+| `search_files` | `{query, path?:"."}` | Reports its own limits: 1,000 entries, 100 matches, depth 32, 16 MiB examined; it does not enter `.git`, `.venv` or `node_modules`. Files over the size limit and unreadable or vanished files or folders are skipped, counted (`skipped_large`, `skipped_unreadable`, the first 20 in `skipped`) and set `truncated`. |
+| `read_file` | `{path}` | Returns content and `sha256`. A file that is not valid UTF-8 is returned with replacement characters and `lossy:true` (`encoding:"non_utf8"`); devices, FIFOs and sockets are refused without being opened. |
+| `write_file` | `{path, content, expected_sha256?:string\|null}` | Requires the expected hash of the existing content; `null` means "create only" and also creates the missing parent folders (listed in `created_directories`). Refuses with `UNSUPPORTED` to replace a file that is not valid UTF-8. New files 0644, new folders 0755. Requires a write permission; paths inside `.git` require **Full access**. |
+| `run_command` | `{argv:string[], timeout?:number}` | Explicit `argv`, cwd in the root, no implicit shell; requires `trusted_host` or `full_access`. `timeout` can only shorten **Tool timeout (seconds)**. The command receives only `PATH`, `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER`, `LOGNAME` (plus `PYTHONUNBUFFERED=1`) and umask 022. Process groups belong to Kira: timeouts and cancellation terminate descendants with bounded escalation; a process that leaves the group while keeping the output open is reported with `detached_pipe_holder:true`. |
 
 Results are `{ok:bool, ...}`; a rejected input produces a structured
-`{ok:false, error:{code, message}}`.
+`{ok:false, error:{code, message}}`. An unexpected failure is `TOOL_ERROR`, a
+time limit `TIMEOUT`; every `tool.started` is followed by `tool.completed`.
 
 ### Default limits
 
@@ -660,15 +689,15 @@ matches the requested one):
 
 Plan, Review and Recap always require `read-only`.
 
-**OpenAI direct, Ollama, DeepSeek Account**: tools are executed by the service
-through `execute_tool`, so the policy is an allowlist. In read-only mode the
-model receives `list_files`, `search_files`, `read_file`; with a write
-permission `write_file` is added; with `trusted_host` or `full_access`
-`run_command` is added. The service re-checks the permission on every call: a
-name outside the allowlist is rejected even if the model invokes it. Browser
-and Computer actions that modify a page additionally require **Execute**, a
-writable project and the user's consent (single action or the chat's `always`
-policy).
+**Direct OpenAI, Ollama, DeepSeek Account, DeepSeek Web**: tools are executed
+by the service through `execute_tool`, so the policy is an allowlist. In
+read-only mode the model receives `list_files`, `search_files`, `read_file`;
+with a write permission `write_file` is added; with `trusted_host` or
+`full_access` `run_command` is added. The service re-checks the permission on
+every call: a name outside the allowlist is rejected even if the model invokes
+it. Browser and Computer actions that modify a page additionally require
+**Execute**, a writable project and the user's consent (single action or the
+chat's `always` policy); DeepSeek Web does not receive Computer.
 
 **Claude Code · personal use**: Kira starts the unmodified Claude Code binary
 with `permission_mode:"dontAsk"` and an `allowed_tools` list derived from the
@@ -689,10 +718,10 @@ which no argument can change. Recognized namespaces: `team`, `kira`,
 | Namespace and tool | Arguments | Notes |
 | --- | --- | --- |
 | `kira.environment` | `{}` | Current capabilities, scope and state reported by the service. |
-| `kira.team_delegate` | `{goal, brief, mode, members?, max_agents?, concurrency?, round_limit?}` | Only in **Execute** with tools enabled; one accepted delegation per originating run; the Team starts after the turn completes and is cleaned up. |
+| `kira.team_delegate` | `{goal, brief, mode, members?, max_agents?, concurrency?, round_limit?}` | Only in **Execute** with tools enabled and a provider that runs Teams (`codex`, `openai_chatgpt`, `ollama`, `deepseek_account`); one accepted delegation per originating run; the Team starts after the turn completes and is cleaned up. |
 | `kira.team_status` | `{delegation_id?}` | Without an ID: lightweight recent summary. |
 | `kira.team_message` | `{delegation_id, recipient_id, content}` | Sender `assistant`; does not restart a finished Team. |
-| `kira.team_resume` | `{delegation_id, instruction?, round_limit?}` | Continuation queued after the turn; source Team finished and cleaned up. |
+| `kira.team_resume` | `{delegation_id, instruction?, round_limit?}` | Same providers as `kira.team_delegate`; continuation queued after the turn; source Team finished and cleaned up. |
 | `kira.help_search` | `{query, scope?, limit?, cursor?}` | `scope` ∈ `all\|app\|capabilities\|chat\|project\|tools\|soul`. |
 | `kira.help_read` | `{ref, offset?, limit?}` | Recognized references only. |
 | `kira.project_tools` | `{action, payload}` | `action` ∈ `describe\|search\|read\|register\|test\|run`. |
@@ -701,27 +730,32 @@ which no argument can change. Recognized namespaces: `team`, `kira`,
 | `goal.status` | `{}` | Autonomous goal, checkpoints and recent references. |
 | `goal.checkpoint` | `{status:"continue"\|"completed"\|"blocked", summary, next_step, deliverable?}` and `evidence:[{run_id, seq}]` (required) | Only with a writable lane; `summary` ≤ 6,000, `next_step` ≤ 3,000, `deliverable` ≤ 12,000 characters, at most 24 references to recorded events (taken from `goal.status`); completion applies after the successful turn. |
 | `team.send_message` | `{recipient_id, content}` | Team members; ≤ 8,000 bytes; starts nobody. |
-| `team.read_messages` | `{after_seq?:0, limit?:20}` | Pages of up to 50 messages within 64 KiB; includes scheduling facts. |
+| `team.read_messages` | `{after_seq?:0, limit?:20}` | Pages of up to 50 messages within 48,000 bytes (the first message is always delivered); includes scheduling facts. |
 | `kira_history.search` / `kira_history.read` | `{query, limit?, before_id?}` / `{source_id, offset?, limit?}` | Original archive of the current chat; results ≤ 32,000 bytes, reads ≤ 32,000 characters. |
 | `questions.request_input` / `questions.read_input` | `{blocking, questions:[1–3]}` / `{request_id, wait}` | Persistent questions; a pending answer is not an approval. |
 | `browser.search`, `navigate`, `snapshot`, `find`, `click`, `type`, `press`, `scroll`, `screenshot`, `tabs`, `select_tab`, `close_tab`, `back`, `close`, `manual_login` | see `src/kira/domain/web.py` | Only the run's browser actor; `click/type/press` require consent; no arbitrary JavaScript or selectors. |
 | `computer.observe` / `computer.act` | `{}` / `{observation_id, action, ...}` | `action` ∈ `click, double_click, move, scroll, type, key, drag, wait`; every action consumes the observation and returns a new one; 32 cycles per run. |
 
-Wire names: OpenAI direct and DeepSeek use `kira_browser.*` and
-`kira_computer.*` (because `browser` and `computer` are namespaces reserved by
-the provider); Ollama receives flat `browser__*` and `computer__*` functions;
-Claude Code sees `mcp__kira__browser__*` and `mcp__kira__computer__*`. Durable
-events always use `browser.*` and `computer.*`. Only the typed definitions and
-the identity fields of the calls are translated; user text, results and opaque
-provider state stay unchanged.
+Wire names: Direct OpenAI uses `kira_browser.*` and `kira_computer.*` (because
+`browser` and `computer` are namespaces reserved by the provider); Ollama,
+DeepSeek Account and DeepSeek Web receive flat `<namespace>__<tool>`
+functions, such as `browser__navigate` and `computer__act` (DeepSeek Web
+without Computer); Claude Code sees `mcp__kira__browser__*` and
+`mcp__kira__computer__*`; Codex receives, on the `kira` MCP server, the
+`kira.*` tools under their own names (for example `help_search`) and the goal
+tools as `goal__status` and `goal__checkpoint`. Durable events always use
+`browser.*` and `computer.*`. Only the typed definitions and the identity
+fields of the calls are translated; user text, results and opaque provider
+state stay unchanged.
 
 Common limits: 64 KiB per definition, arguments and result of every call; a
-deduplication cache of 2,048 calls and 8 MiB per run; 60 s timeout per call.
+deduplication cache of 2,048 calls and 8 MiB per run; 60 s timeout per call,
+except browser, Computer and project tools, which use their own deadlines.
 Codex receives these tools through a private per-run MCP relay (`0700` folder,
 `0600` descriptor and socket, opaque capability kept out of prompt,
 configuration and events, peer UID verification).
 
-## 7. Limits and numeric bounds
+## 7. Numeric limits
 
 | Area | Limit |
 | --- | --- |
@@ -733,19 +767,19 @@ configuration and events, peer UID verification).
 | Queue | 64 unfinished items per project, 8,000 bytes each |
 | Guidance (`run.steer`) | 32,000 bytes per message; 128 per run; consumed batch ≤ 32 messages / 256 KiB |
 | Questions | 16 requests per run, 1–3 questions, 6 choices, 64 KiB per form, 16 KiB of answers, ID `[A-Za-z0-9_.:-]{1,128}` |
-| Teams | 1–12 members, concurrency 1–8, rounds 0–10,000 (3), 24 tasks per plan, goal 64,000 bytes, name 100, role 400, instructions 8,000, message 8,000 bytes, 50 messages per page, 64 approvals per page, 32 continuation links |
+| Teams | 1–12 members, concurrency 1–8, rounds 0–10,000 (3), 24 tasks per plan, goal 64,000 bytes, name 100, role 400, instructions 8,000, message 8,000 bytes, 50 messages and 48,000 bytes per page, 64 approvals per page, 32 continuation links |
 | Autonomous goals | `max_cycles` 0 = unlimited; checkpoint 6,000/3,000/12,000 characters, 24 references |
 | Research | title 200, body 8,000, scope/criteria/limitations 2,000, procedure 4,000 characters; 8 sources, 8 dependencies, 8 links; 48 KiB per record; list 20 (max 30); source pages 16,000 characters; dependencies read up to 4 MiB |
 | Soul | name 96 bytes, core 1,200, preference 160, capsule 3,072; 512 active lessons and 512 proposals per identity; score −2…2 |
 | Knowledge and history | `kira_history` results 32,000 bytes, reads 32,000 characters, internal page 8 MiB |
-| Client tools | 64 KiB per definition/arguments/result; 2,048 calls and 8 MiB of cache; 60 s |
-| Browser | 2 workers, 4 tabs per worker, 8 embedded frames, 80 element references; screenshots up to 1600×1200, 2 MiB, 16 per run; 2 recent images in context; view frames 10 fps / 500 KiB; 128 input receipts; 32 Computer cycles per run, drag 2–32 points, wait ≤ 1,500 ms; HTTP/HTTPS only on 80/443 through a local proxy |
+| Client tools | 64 KiB per definition/arguments/result; 2,048 calls and 8 MiB of cache; 60 s (except browser, Computer and project tools) |
+| Browser | 2 workers, 4 tabs per worker, 8 embedded frames, 80 element references; screenshots up to 1600×1200, 2 MiB, 16 per run; 2 recent images in context; view frames 10 fps / 500 KiB; 128 input receipts; 32 Computer cycles per run, drag 2–32 points, wait ≤ 1,500 ms; HTTP/HTTPS only on 80/443 through a local proxy; 32 simultaneous connections and 32 MiB per connection; 3,000 requests and 128 MiB per budget, which restarts with every requested navigation and otherwise every five minutes; connections closed after 60 s without traffic |
 | Images | 4 per message, 32 MiB and 32 million pixels per source, 8 MiB per PNG, 16 MiB per message; direct request ≤ 32 MiB |
 | File references | 64 files and 16,384 path characters per import |
 | GUI drafts (`composer.json`) | 2 MiB, 100 drafts, 262,144 bytes per entry, 200 sent messages in history; `ui.json` 16 KiB, 32 projects with last chat |
 | Cross-chat context | 5 chats, 400 request and 800 response characters per source, 6,000 total |
 | Ollama context | 8 recent runs, 32,000 bytes; with explicit `num_ctx` 2× the value within 4,096–64,000 bytes |
-| Direct context | 18 % reserve (+3 % with reported `max_output_tokens`); DeepSeek: threshold min(80 % of window, window − output − 65,536), most recent 16 % verbatim, output 65,536 tokens, summaries 8,192 |
+| Direct context | reserve max(18 % of the window, `max_output_tokens` + 3 % of the window) when `max_output_tokens` is reported and smaller than the window, otherwise 18 %; DeepSeek: threshold min(80 % of window, window − min(output + 65,536, 50 % of window)), most recent 16 % verbatim, output up to 65,536 tokens and at most half of the window, summaries 8,192 |
 | Reasoning summaries | 64 parts, 65,536 bytes, 256-character IDs |
 | Stream sanitization | 64 open items, 256-character IDs, 65,536 pending characters |
 | Assistant Markdown | transformed only in the GUI; no remote resource loaded by the rendering; local links only with an explicit click and verification of the current project |

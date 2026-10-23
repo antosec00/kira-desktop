@@ -125,7 +125,10 @@ async def test_direct_no_tools_receives_only_user_level_persona(tmp_path, person
     finally:
         await backend.close()
     assert len(requests) == 1 and not effects
-    assert not snapshots or persona not in json.dumps(snapshots[-1]["items"])
+    if durable:
+        assert snapshots and persona not in json.dumps(snapshots[-1]["items"])
+    else:
+        assert not snapshots
 
 
 async def test_direct_freezes_admitted_capsule_across_tool_rounds(tmp_path):

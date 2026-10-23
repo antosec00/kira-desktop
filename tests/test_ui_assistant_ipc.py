@@ -2,8 +2,6 @@
 
 import json
 import os
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -15,6 +13,7 @@ from PySide6.QtTest import QTest
 from kira.domain.paths import Paths
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
+from test_ui_support import SERVICE_WAIT_MS, isolated_service_environment, start_service, stop_service
 
 FIXTURE = Path(__file__).parent / "fixtures/assistant_service.py"
 MODEL = "synthetic-assistant-model"
@@ -82,24 +81,21 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
         project = home / "synthetic-project"
         project.mkdir()
         (project / "evidence.txt").write_text("SYNTHETIC_EVIDENCE_MARKER\n")
-        monkeypatch.setenv("XDG_CACHE_HOME", str(home / "cache"))
-        environment = {**os.environ, "KIRA_HOME": str(home), "CODEX_HOME": str(home / "codex"),
-                       "KIRA_TEST_ASSISTANT_CONTROL": str(control)}
+        environment = isolated_service_environment(monkeypatch, home, KIRA_TEST_ASSISTANT_CONTROL=control)
         with (home / "service.log").open("w+", encoding="utf-8") as log:
-            process = subprocess.Popen([sys.executable, "-I", str(FIXTURE)], env=environment,
-                                       stdout=log, stderr=log)
+            process = start_service([FIXTURE], environment, log)
             desktops = []
             try:
-                qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=5000)
+                qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=SERVICE_WAIT_MS)
                 assert process.poll() is None
                 desktop = open_desktop(paths)
                 desktops.append(desktop)
                 view, _, window = desktop
-                qtbot.waitUntil(lambda: view.connected, timeout=5000)
+                qtbot.waitUntil(lambda: view.connected, timeout=SERVICE_WAIT_MS)
                 view.setBackend("codex")
-                qtbot.waitUntil(lambda: bool(view.models), timeout=5000)
+                qtbot.waitUntil(lambda: bool(view.models), timeout=SERVICE_WAIT_MS)
                 view.createProject("Synthetic assistant IPC", str(project), "", "read_only")
-                qtbot.waitUntil(lambda: bool(view.project) and not view.sessionsLoading, timeout=5000)
+                qtbot.waitUntil(lambda: bool(view.project) and not view.sessionsLoading, timeout=SERVICE_WAIT_MS)
                 project_id = view.project["id"]
                 view.setModel(MODEL)
                 view.setEffort("xhigh")
@@ -107,17 +103,17 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 prompt = visual_item(window.contentItem(), "prompt")
                 send = visual_item(window.contentItem(), "sendButton")
                 prompt.setProperty("text", "Organize a synthetic review with a coordinator and reviewer")
-                qtbot.waitUntil(send.isEnabled, timeout=5000)
+                qtbot.waitUntil(send.isEnabled, timeout=SERVICE_WAIT_MS)
                 QMetaObject.invokeMethod(send, "clicked")
-                qtbot.waitUntil(lambda: (control / "delegation-requested").exists(), timeout=7000)
-                qtbot.waitUntil(lambda: len(team_cards(view)) == 1, timeout=5000)
+                qtbot.waitUntil(lambda: (control / "delegation-requested").exists(), timeout=SERVICE_WAIT_MS)
+                qtbot.waitUntil(lambda: len(team_cards(view)) == 1, timeout=SERVICE_WAIT_MS)
                 original_session, original_run = view.sessionId, view.activeRunId
                 delegation_id = (control / "delegation-requested").read_text()
                 assert original_session and original_run
                 assert window.property("page") == 0
                 assert team_cards(view)[0]["toolId"] == delegation_id
                 assert not team_cards(view)[0]["command"]
-                qtbot.waitUntil(lambda: view.assistant.current.get("state") == "pending", timeout=5000)
+                qtbot.waitUntil(lambda: view.assistant.current.get("state") == "pending", timeout=SERVICE_WAIT_MS)
                 assert visual_item(window.contentItem(), "assistantInlineNotice").isVisible()
                 open_team_details(qtbot, window)
                 assert visual_item(window.contentItem(), "assistantPendingHandoff").isVisible()
@@ -128,8 +124,8 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 view.flushDrafts()
 
                 (control / "release-origin").touch()
-                qtbot.waitUntil(lambda: (control / "reviewer-started").exists(), timeout=7000)
-                qtbot.waitUntil(lambda: bool(view.assistant.current.get("team_id")), timeout=5000)
+                qtbot.waitUntil(lambda: (control / "reviewer-started").exists(), timeout=SERVICE_WAIT_MS)
+                qtbot.waitUntil(lambda: bool(view.assistant.current.get("team_id")), timeout=SERVICE_WAIT_MS)
                 team_id = view.assistant.current["team_id"]
                 assert (control / (original_run + ".closed")).exists()
                 assert view.sessionId == original_session and view.draftText == draft
@@ -137,15 +133,15 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 assert view.selectedModel == MODEL and view.selectedEffort == "xhigh"
 
                 (control / "release-reviewer").touch()
-                qtbot.waitUntil(lambda: view.assistant.current.get("state") == "completed", timeout=10000)
-                qtbot.waitUntil(lambda: len(team_cards(view)) == 1 and RESULT in team_cards(view)[0]["body"], timeout=5000)
+                qtbot.waitUntil(lambda: view.assistant.current.get("state") == "completed", timeout=SERVICE_WAIT_MS)
+                qtbot.waitUntil(lambda: len(team_cards(view)) == 1 and RESULT in team_cards(view)[0]["body"], timeout=SERVICE_WAIT_MS)
                 assert view.assistant.current["cleanup_confirmed"]
                 # The completed Team produces a distinct, real ordinary response.
                 # It is discovered through the service snapshot and subscribed by Qt IPC.
-                qtbot.waitUntil(lambda: (control / "followup-started").exists(), timeout=10000)
+                qtbot.waitUntil(lambda: (control / "followup-started").exists(), timeout=SERVICE_WAIT_MS)
                 followup_id = (control / "followup-started").read_text()
                 qtbot.waitUntil(lambda: view.assistant.followup.get("state") == "running"
-                                and followup_id in view._runs, timeout=5000)
+                                and followup_id in view._runs, timeout=SERVICE_WAIT_MS)
                 assert view.assistant.current["state"] == "completed"
                 assert view._runs[followup_id]["source"] == "team_followup"
                 assert view._runs[followup_id]["related_team_id"] == team_id
@@ -154,7 +150,7 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 assert view.draftText == prompt.property("text") == draft
                 received = {}
                 assert view.client.request("run.events", {"run_id": followup_id}, received.update)
-                qtbot.waitUntil(lambda: bool(received), timeout=5000)
+                qtbot.waitUntil(lambda: bool(received), timeout=SERVICE_WAIT_MS)
                 assert any(event["type"] == "backend.notice"
                            and event["payload"].get("source") == "team_followup" for event in received["events"])
                 assert not any(event["type"] == "message.user" for event in received["events"])
@@ -164,9 +160,9 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 click_visible(window, "assistantTeamDetailsClose")
                 (control / "release-followup").touch()
                 qtbot.waitUntil(lambda: view.assistant.followup.get("state") == "completed"
-                                and not view.busy, timeout=10000)
+                                and not view.busy, timeout=SERVICE_WAIT_MS)
                 qtbot.waitUntil(lambda: any(row["kind"] == "assistant" and row["runId"] == followup_id
-                                           and row["body"] == FOLLOWUP for row in view.transcript.rows), timeout=5000)
+                                           and row["body"] == FOLLOWUP for row in view.transcript.rows), timeout=SERVICE_WAIT_MS)
                 assert not view.assistant.active and not view.busy
                 assert view.sessionId == original_session and prompt.property("text") == draft
                 assert window.property("page") == 0
@@ -182,18 +178,18 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 reopened = open_desktop(paths)
                 desktops.append(reopened)
                 view, _, window = reopened
-                qtbot.waitUntil(lambda: view.connected, timeout=5000)
+                qtbot.waitUntil(lambda: view.connected, timeout=SERVICE_WAIT_MS)
                 view.openProject(project_id)
-                qtbot.waitUntil(lambda: view.sessionId == original_session and not view.sessionsLoading, timeout=5000)
-                qtbot.waitUntil(lambda: view.assistant.current.get("state") == "completed", timeout=5000)
-                qtbot.waitUntil(lambda: len(team_cards(view)) == 1 and RESULT in team_cards(view)[0]["body"], timeout=5000)
+                qtbot.waitUntil(lambda: view.sessionId == original_session and not view.sessionsLoading, timeout=SERVICE_WAIT_MS)
+                qtbot.waitUntil(lambda: view.assistant.current.get("state") == "completed", timeout=SERVICE_WAIT_MS)
+                qtbot.waitUntil(lambda: len(team_cards(view)) == 1 and RESULT in team_cards(view)[0]["body"], timeout=SERVICE_WAIT_MS)
                 assert view.assistant.current["delegation_id"] == delegation_id
                 assert team_cards(view)[0]["command"] == team_id
                 assert view.draftText == draft
-                qtbot.waitUntil(lambda: view.assistant.followup.get("state") == "completed", timeout=5000)
+                qtbot.waitUntil(lambda: view.assistant.followup.get("state") == "completed", timeout=SERVICE_WAIT_MS)
                 assert view.assistant.followup["run_id"] == followup_id
                 qtbot.waitUntil(lambda: any(row["kind"] == "assistant" and row["runId"] == followup_id
-                                           and row["body"] == FOLLOWUP for row in view.transcript.rows), timeout=5000)
+                                           and row["body"] == FOLLOWUP for row in view.transcript.rows), timeout=SERVICE_WAIT_MS)
                 assert not any(row["kind"] == "user" and row["runId"] == followup_id for row in view.transcript.rows)
                 assert visual_item(window.contentItem(), "prompt").property("text") == draft
                 assert window.property("page") == 0
@@ -219,12 +215,7 @@ def test_chat_ipc_managed_team_result_draft_and_reopen(qapp, qtbot, monkeypatch)
                 (control / "release-followup").touch()
                 for desktop in desktops:
                     close_desktop(desktop)
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+                stop_service(process)
 
 
 def test_delegation_replayed_after_empty_snapshot_refreshes_assistant(qapp, qtbot, tmp_path, monkeypatch):

@@ -51,12 +51,15 @@ class FixtureDesktop:
 
 @pytest_asyncio.fixture
 async def workspace(monkeypatch, tmp_path):
+    # Every service start builds its launcher; patch the class so no start or
+    # restart in these tests can reach the real native desktop launcher.
+    fixture = FixtureDesktop()
+    monkeypatch.setattr("kira.service.workspace.Desktop", lambda: fixture)
     with tempfile.TemporaryDirectory(prefix="kira-workspace-") as directory:
         monkeypatch.setenv("KIRA_HOME", directory)
         service = Service(Paths.from_env())
         await service.start()
-        fixture = FixtureDesktop()
-        service.workspaces.desktop = fixture
+        assert service.workspaces.desktop is fixture
         project = (await service.dispatch("project.create", {"root": str(tmp_path), "name": "Workspace fixture"}))["project"]
         try:
             yield service, fixture, project
@@ -78,7 +81,7 @@ async def test_preferences_resume_and_file_freshness_survive_restart(workspace):
     run, _ = service.store.create_run(session["id"], "unfinished-fixture", "fixture prompt")
     await service.close()
     await service.start()
-    service.workspaces.desktop = fixture
+    assert service.workspaces.desktop is fixture
     state = await service.dispatch("workspace.get", params)
     assert state["tools"] == ["terminal"] and state["next_step"] == "Review evidence"
     assert state["resume"]["last_run"]["id"] == run["id"]
@@ -138,7 +141,7 @@ async def test_native_request_is_durable_idempotent_and_conflicting_reuse_reject
         await service.dispatch("desktop.launch", {**params, "action_id": "project.terminal"})
     await service.close()
     await service.start()
-    service.workspaces.desktop = fixture
+    assert service.workspaces.desktop is fixture
     assert await service.dispatch("desktop.launch", params) == first
     assert len(fixture.calls) == 1
 
@@ -163,7 +166,7 @@ async def test_partial_workspace_crash_preserves_confirmed_and_unknown_without_r
         await service.dispatch("workspace.launch", params)
     await service.close()
     await service.start()
-    service.workspaces.desktop = fixture
+    assert service.workspaces.desktop is fixture
     await service.dispatch("workspace.update", {"project_id": project["id"], "tools": ["editor"]})
     duplicate = await service.dispatch("workspace.launch", params)
     assert [result["status"] for result in duplicate["results"]] == ["requested", "unknown", "unknown"]

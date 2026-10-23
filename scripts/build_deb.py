@@ -19,6 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+HOMEPAGE = "https://github.com/antosec00/kira-desktop"
 DEPENDS = (
     "python3 (>= 3.12), python3 (<< 3.13), libc6 (>= 2.39), libstdc++6, libgcc-s1, "
     "libglib2.0-0t64, libegl1, libgl1, libopengl0, libfontconfig1, libdbus-1-3, "
@@ -54,9 +55,32 @@ def remove_local_install_provenance(library: Path) -> None:
         direct_url.unlink()
 
 
+def documentation_placements() -> dict[str, str]:
+    """Ship the documentation with its repository layout so relative links keep working."""
+    sources = ["README.md", "README.en.md", "CONTRIBUTING.md", "CONTRIBUTING.en.md",
+               "SECURITY.md", "SECURITY.en.md", "CODE_OF_CONDUCT.md", "LICENSE", "docs/README.md"]
+    for folder, pattern in (("docs/it", "*.md"), ("docs/en", "*.md"), ("docs/images", "*.png")):
+        sources += sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / folder).glob(pattern))
+    missing = [name for name in sources if not (ROOT / name).is_file()]
+    if missing:
+        raise SystemExit("Missing documentation: " + ", ".join(missing))
+    return {name: f"usr/share/doc/kira-desktop/{name}" for name in sources}
+
+
+def normalize_stage(stage: Path, epoch: int) -> None:
+    """Give every staged path the same modes and timestamp on any builder."""
+    for path in [*stage.rglob("*"), stage]:
+        if not path.is_symlink():
+            executable = path.is_dir() or path.stat().st_mode & 0o111
+            path.chmod(0o755 if executable else 0o644)
+        os.utime(path, (epoch, epoch), follow_symlinks=False)
+
+
 def build() -> None:
     if sys.version_info[:2] != (3, 12):
         raise SystemExit("Build with Ubuntu 24.04 /usr/bin/python3 (3.12)")
+    # A developer's own uv configuration (for example another index) must not apply.
+    os.environ["UV_NO_CONFIG"] = "1"
     stage = ROOT / "build/deb"
     if stage.exists():
         shutil.rmtree(stage)
@@ -68,7 +92,14 @@ def build() -> None:
     run("uv", "pip", "install", "--python", "/usr/bin/python3", "--target", str(lib),
         "--require-hashes", "--only-binary", ":all:", "--link-mode", "copy",
         "-r", "packaging/requirements.lock.txt")
-    run("uv", "build", "--wheel", "--out-dir", "build/wheels")
+    # Build the wheel with the same hash-locked build backend as the resolute target.
+    build_environment = ROOT / "build/deb-build-env"
+    run("uv", "venv", "--python", "/usr/bin/python3", "--clear", str(build_environment))
+    build_python = str(build_environment / "bin/python")
+    run("uv", "pip", "install", "--python", build_python, "--require-hashes", "--only-binary",
+        ":all:", "--requirement", "packaging/resolute/build-requirements.lock.txt")
+    run("uv", "build", "--wheel", "--no-build-isolation", "--python", build_python,
+        "--out-dir", "build/wheels")
     wheel = ROOT / f"build/wheels/kira_desktop-{VERSION}-py3-none-any.whl"
     run("uv", "pip", "install", "--python", "/usr/bin/python3", "--target", str(lib),
         "--no-deps", "--link-mode", "copy", str(wheel))
@@ -91,22 +122,7 @@ def build() -> None:
         "LICENSE": "usr/share/doc/kira-desktop/copyright",
         "packaging/requirements.lock.txt": "usr/share/doc/kira-desktop/requirements.lock.txt",
     }
-    for filename in ("README.md", "README.en.md",
-                     "docs/it/GUIDA_UTENTE.md", "docs/it/INSTALLAZIONE.md", "docs/it/PROVIDER.md",
-                     "docs/it/PERMESSI_E_SICUREZZA.md", "docs/it/BROWSER_E_COMPUTER.md", "docs/it/CHAT_E_STRUMENTI.md",
-                     "docs/it/CONTESTO_E_MEMORIA.md", "docs/it/TEAM.md", "docs/it/OBIETTIVI_AUTONOMI.md",
-                     "docs/it/RICERCA.md", "docs/it/ANIMA_E_CONOSCENZA.md", "docs/it/ASPETTO_E_LINGUA.md",
-                     "docs/it/ARCHITETTURA.md", "docs/it/CONTRATTI.md", "docs/it/LICENZE_TERZE_PARTI.md",
-                     "docs/en/USER_GUIDE.md", "docs/en/INSTALLATION.md", "docs/en/PROVIDERS.md",
-                     "docs/en/PERMISSIONS_AND_SECURITY.md", "docs/en/BROWSER_AND_COMPUTER.md", "docs/en/CHAT_AND_TOOLS.md",
-                     "docs/en/CONTEXT_AND_MEMORY.md", "docs/en/TEAMS.md", "docs/en/AUTONOMOUS_GOALS.md",
-                     "docs/en/RESEARCH.md", "docs/en/SOUL_AND_KNOWLEDGE.md", "docs/en/APPEARANCE_AND_LANGUAGE.md",
-                     "docs/en/ARCHITECTURE.md", "docs/en/CONTRACTS.md", "docs/en/THIRD_PARTY_LICENSES.md"):
-        if (ROOT / filename).exists():
-            relative = Path(filename)
-            if relative.parts[0] == "docs":
-                relative = Path(*relative.parts[1:])
-            placements[filename] = f"usr/share/doc/kira-desktop/{relative.as_posix()}"
+    placements.update(documentation_placements())
     for source, target in placements.items():
         target_path = stage / target
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,16 +147,19 @@ def build() -> None:
         f"Package: kira-desktop\nVersion: {VERSION}\nArchitecture: amd64\n"
         "Maintainer: Kira Desktop contributors <kira@example.invalid>\n"
         f"Installed-Size: {size}\nDepends: {DEPENDS}\n"
-        "Section: devel\nPriority: optional\n"
-        "Description: Native durable workspace for Ollama, Codex and OpenAI agents\n"
+        f"Section: devel\nPriority: optional\nHomepage: {HOMEPAGE}\n"
+        "Description: Native desktop harness for AI projects, chats, tools and agents\n"
         " Python 3.12 and bundled Qt 6.11.2, Ubuntu 24.04 LTS baseline.\n"
     )
     # No maintainer scripts: installs/upgrades/removals never touch active work or user data.
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     artifact = dist / f"kira-desktop_{VERSION}_amd64.deb"
-    os.environ.setdefault("SOURCE_DATE_EPOCH", "1791417600")
-    run("dpkg-deb", "--root-owner-group", "-Zxz", "-z3", "--build", str(stage), str(artifact))
+    epoch = int(os.environ.setdefault("SOURCE_DATE_EPOCH", "1791417600"))
+    normalize_stage(stage, epoch)
+    temporary = artifact.with_suffix(".deb.building")
+    run("dpkg-deb", "--root-owner-group", "-Zxz", "-z3", "--build", str(stage), str(temporary))
+    temporary.replace(artifact)
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     (dist / "SHA256SUMS").write_text(f"{digest}  {artifact.name}\n")
     print(f"Built {artifact} ({artifact.stat().st_size / 1024**2:.1f} MiB)")

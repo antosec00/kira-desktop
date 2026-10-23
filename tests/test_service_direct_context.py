@@ -43,7 +43,6 @@ class Transport:
         self.requests = []
         self.compactions = 0
         self.tool_requested = False
-        self.native_on_main = False
         self.wrote = False
 
     def __call__(self, request):
@@ -75,10 +74,7 @@ class Transport:
             self.wrote = True
             return response([{"type": "function_call", "call_id": "write-exact-once", "namespace": "files",
                 "name": "write_file", "arguments": json.dumps({"path": "result.txt", "content": "verified", "expected_sha256": None})}])
-        items = [message("Synthetic completed response")]
-        if self.native_on_main:
-            items.append({"type": "compaction", "id": "auto", "encrypted_content": "private-opaque-fixture"})
-        return response(items)
+        return response([message("Synthetic completed response")])
 
 
 @pytest_asyncio.fixture
@@ -167,14 +163,36 @@ async def test_native_manual_compaction_is_durable_idempotent_and_not_a_chat_run
 
 
 async def test_compaction_and_restart_do_not_execute_completed_tool_twice(context_service):
-    service, transport, project, session, _ = context_service
+    service, transport, project, session, factory = context_service
     transport.tool_requested = True
     await run(service, session, "Write one synthetic file", "write-once")
     assert (Path(project["root"]) / "result.txt").read_text() == "verified"
-    before = service.store.db.execute("SELECT COUNT(*) FROM events WHERE type='tool.completed' AND json_extract(payload,'$.name')='write_file'").fetchone()[0]
-    await run(service, session, "Continue without repeating writes", "second")
-    after = service.store.db.execute("SELECT COUNT(*) FROM events WHERE type='tool.completed' AND json_extract(payload,'$.name')='write_file'").fetchone()[0]
+    writes = "SELECT COUNT(*) FROM events WHERE type='tool.completed' AND json_extract(payload,'$.name')='write_file'"
+    before = service.store.db.execute(writes).fetchone()[0]
+    params = {"project_id": project["id"], "session_id": session["id"], "request_id": "compact-after-write"}
+    await service.dispatch("session.context.compact", params)
+    if task := service.contexts.tasks.get(params["request_id"]):
+        await asyncio.wait_for(asyncio.shield(task), 30)
+    compacted = await service.dispatch("session.context.compact", params)
+    assert compacted["operation"]["status"] == "completed", compacted["operation"]
+    assert compacted["operation"]["compacted"] is True and transport.compactions == 1
+    fold = next(body for path, body in transport.requests if path.endswith("/responses") and not body.get("tools")
+                and body.get("context_management", [{}])[0].get("compact_threshold") == 1000)
+    assert any(item.get("name") == "write_file" for item in fold["input"])
+    paths = service.paths
+    await service.close()
+    restored = Service(paths, backend_factory=factory)
+    await restored.start()
+    try:
+        await run(restored, session, "Continue without repeating writes", "second")
+        # The restarted turn resumes from the compacted durable state.
+        main = [body for path, body in transport.requests if path.endswith("/responses")][-1]
+        assert any(item.get("type") == "compaction" for item in main["input"])
+        after = restored.store.db.execute(writes).fetchone()[0]
+    finally:
+        await restored.close()
     assert before == after == 1
+    assert (Path(project["root"]) / "result.txt").read_text() == "verified"
 
 
 async def test_history_tools_are_registered_and_own_chat_scoped(context_service):
@@ -188,8 +206,9 @@ async def test_history_tools_are_registered_and_own_chat_scoped(context_service)
     text = await service.dispatch("session.history.read", {"project_id": project["id"], "session_id": session["id"], "source_id": source})
     assert text["content"] == "Exact original source"
     other = (await service.dispatch("session.create", {"project_id": project["id"], "backend": "codex", "model": "fixture-model"}))["session"]
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError, match="does not belong to this chat") as error:
         await service.dispatch("session.history.read", {"project_id": project["id"], "session_id": other["id"], "source_id": source})
+    assert error.value.code == "NOT_FOUND"
 
 
 async def test_empty_manual_compaction_has_no_inference_or_fake_success(context_service):

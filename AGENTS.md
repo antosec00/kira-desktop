@@ -60,9 +60,10 @@ Mark application UI text for translation and update the bundled catalogs.
 Preserve literal user/provider/tool content and identifiers when localizing.
 See `docs/it/SVILUPPO.md` for catalog ownership and language-extension checks.
 
-Branches: `main` holds the latest published release; `dev/<version>` is the
-active development line; `release/<version>` branches are retained copies of
-published releases. Mock providers and isolated profiles are the default for
-tests; `KIRA_HOME` does not isolate Codex credentials or shared-account quotas.
-Installing different application code, changing dependencies or migrating the
-active profile requires verified idle state and a consistent backup.
+Branches: `main` holds the latest published release and is the only branch of
+the public repository; the maintainer develops on `dev/<version>` and keeps
+`release/<version>` copies of published releases outside it. Mock providers and
+isolated profiles are the default for tests; `KIRA_HOME` does not isolate Codex
+credentials or shared-account quotas. Installing different application code,
+changing dependencies or migrating the active profile requires verified idle
+state and a consistent backup.

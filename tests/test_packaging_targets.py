@@ -1,4 +1,4 @@
-"""Keep the experimental platform's writable paths and ABI contract separate."""
+"""Keep each package target's writable paths, ABI contract and contents consistent."""
 
 import csv
 import json
@@ -67,3 +67,22 @@ def test_package_metadata_excludes_local_builder_paths_and_keeps_public_provenan
             [record.relative_to(tmp_path).as_posix(), "", ""],
         ]
     assert public_provenance.exists()
+
+
+def test_application_and_package_versions_agree():
+    import tomllib
+
+    from kira import __version__
+
+    assert __version__ == tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+
+
+def test_packaged_documentation_keeps_repository_layout_for_relative_links():
+    placements = NOBLE["documentation_placements"]()
+    assert placements["README.md"] == "usr/share/doc/kira-desktop/README.md"
+    assert placements["docs/it/GUIDA_UTENTE.md"] == "usr/share/doc/kira-desktop/docs/it/GUIDA_UTENTE.md"
+    assert placements["docs/en/DEVELOPMENT.md"] == "usr/share/doc/kira-desktop/docs/en/DEVELOPMENT.md"
+    assert "docs/images/chat-dark.png" in placements and "LICENSE" in placements
+    italian = {Path(name).name for name in placements if name.startswith("docs/it/")}
+    english = {Path(name).name for name in placements if name.startswith("docs/en/")}
+    assert len(italian) == len(english) == len(list((ROOT / "docs/it").glob("*.md")))

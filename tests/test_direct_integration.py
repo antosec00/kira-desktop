@@ -6,6 +6,7 @@ import json
 import secrets
 import sys
 import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -312,11 +313,12 @@ async def test_owned_oauth_credentials_are_masked_if_host_tool_echoes_them(tmp_p
     with tempfile.TemporaryDirectory(prefix="kira-direct-mask-") as directory:
         monkeypatch.setenv("KIRA_HOME", directory)
         credential_file = Paths.from_env().config / "openai-chatgpt/accounts.json"
+        tool_results = []
 
         class EchoProvider:
             async def run(self, ctx):
                 command = "from pathlib import Path; print(Path(" + repr(str(credential_file)) + ").read_text())"
-                await ctx.execute_tool("run_command", {"argv": [sys.executable, "-c", command]})
+                tool_results.append(await ctx.execute_tool("run_command", {"argv": [sys.executable, "-c", command]}))
                 await ctx.emit("message.delta", {"content": "Visible: synthetic-access-"})
                 await ctx.emit("message.delta", {"content": "0; confirmed"})
                 await ctx.emit("message.completed", {"content": "Visible: synthetic-access-0; confirmed"})
@@ -324,6 +326,22 @@ async def test_owned_oauth_credentials_are_masked_if_host_tool_echoes_them(tmp_p
 
             async def close(self):
                 pass
+
+        def assert_echo_masked(service, run_id):
+            # The credential file must really be echoed: a failed tool would make
+            # the absence checks below vacuous.
+            assert len(tool_results) == 1
+            returned = tool_results.pop()
+            assert returned["ok"] is True and returned["exit_code"] == 0, returned
+            completed = [event["payload"]["result"] for event in service.store.events(run_id)["events"]
+                         if event["type"] == "tool.completed"]
+            assert len(completed) == 1 and completed[0]["exit_code"] == 0
+            for output in (returned["stdout"], completed[0]["stdout"]):
+                assert account_id in output
+                for field in ("access_token", "refresh_token", "id_token"):
+                    assert f'"{field}": "[REDACTED]"' in output
+            artifact = Path(completed[0]["artifact"]).read_text()
+            assert account_id in artifact and "[REDACTED]" in artifact
 
         service = Service(Paths.from_env(), backend_factory=lambda *_: EchoProvider())
         await service.start()
@@ -338,6 +356,7 @@ async def test_owned_oauth_credentials_are_masked_if_host_tool_echoes_them(tmp_p
                 "request_id": "mask-canaries", "prompt": "Test synthetic secret masking"}))["run"]
             await asyncio.wait_for(service.tasks[run["id"]], 5)
             assert service.store.one("runs", run["id"])["state"] == "completed"
+            assert_echo_masked(service, run["id"])
             recorded = json.dumps(service.store.all("SELECT * FROM events"))
             recorded += "".join(path.read_text() for path in service.paths.artifacts.rglob("*.txt"))
             for field in ("access_token", "refresh_token", "id_token"):
@@ -357,6 +376,7 @@ async def test_owned_oauth_credentials_are_masked_if_host_tool_echoes_them(tmp_p
                 "request_id": "after-restart-canaries", "prompt": "Echo synthetic credential file"}))["run"]
             await asyncio.wait_for(restarted.tasks[run["id"]], 5)
             assert restarted.store.one("runs", run["id"])["state"] == "completed"
+            assert_echo_masked(restarted, run["id"])
             recorded = json.dumps(restarted.store.all("SELECT * FROM events"))
             recorded += "".join(path.read_text() for path in restarted.paths.artifacts.rglob("*.txt"))
             for field in ("access_token", "refresh_token", "id_token"):

@@ -9,6 +9,41 @@ from kira.domain.contracts import KiraError
 from kira.tools.runner import CommandRunner
 
 
+def process_state(pid):
+    """Return the /proc state letter, or None once the process is gone.
+
+    A reaped process can vanish between an existence check and the read, so
+    both outcomes of that race mean the same thing here.
+    """
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+async def wait_until_exited(pid, timeout=10):
+    """Closed pipes precede the kernel's exit bookkeeping, so allow it to finish."""
+    async with asyncio.timeout(timeout):
+        while process_state(pid) not in {None, "Z", "X"}:
+            await asyncio.sleep(0.01)
+
+
+def publish_pid(name, value):
+    """Child-side code that writes a pid file atomically for the polling test."""
+    return (f"import os,pathlib; pathlib.Path({name + '.tmp'!r}).write_text(str({value})); "
+            f"os.replace({name + '.tmp'!r}, {name!r})")
+
+
+async def read_pid(path, timeout=30):
+    """Wait for a complete pid file; an absent or partial file is not an answer yet."""
+    async with asyncio.timeout(timeout):
+        while True:
+            try:
+                return int(path.read_text())
+            except (FileNotFoundError, ValueError):
+                await asyncio.sleep(0.01)
+
+
 async def test_literal_argv_no_shell_and_capture_both_streams(tmp_path):
     result = await CommandRunner().run(tmp_path, {"argv": [sys.executable, "-c",
         "import sys; print(sys.argv[1]); print('stderr fixture',file=sys.stderr)", "$(touch unwanted)"]}, asyncio.Event())
@@ -35,45 +70,37 @@ async def test_timeout_reports_failure_and_signal(tmp_path):
 
 
 async def test_exited_parent_with_inherited_pipes_does_not_wait_for_tool_timeout(tmp_path):
-    code = ("import subprocess,sys,pathlib; "
+    code = ("import subprocess,sys; "
             "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
-            "pathlib.Path('child.pid').write_text(str(p.pid))")
+            + publish_pid("child.pid", "p.pid"))
     result = await asyncio.wait_for(CommandRunner(timeout=30).run(tmp_path,
         {"argv": [sys.executable, "-c", code]}, asyncio.Event()), 4)
     assert result["exit_code"] == 0 and not result["timeout"]
     assert result["background_processes_terminated"] and not result["ok"]
     assert result["duration_seconds"] < 4
     pid = int((tmp_path / "child.pid").read_text())
-    status = Path(f"/proc/{pid}/stat")
-    assert not status.exists() or status.read_text().split(")", 1)[1].strip().split()[0] == "Z"
+    await wait_until_exited(pid)
 
 
 async def test_cancellation_terminates_owned_descendant(tmp_path):
     cancel = asyncio.Event()
     child_code = "import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(60)"
-    code = ("import subprocess,sys,time,pathlib; "
+    code = ("import subprocess,sys,time; "
             f"p=subprocess.Popen([sys.executable,'-c',{child_code!r}]); "
-            "pathlib.Path('child.pid').write_text(str(p.pid)); time.sleep(60)")
+            + publish_pid("child.pid", "p.pid") + "; time.sleep(60)")
     work = asyncio.create_task(CommandRunner().run(tmp_path, {"argv": [sys.executable, "-c", code]}, cancel))
-    async with asyncio.timeout(5):
-        while not (tmp_path / "child.pid").exists():
-            await asyncio.sleep(0.01)
-    child_pid = int((tmp_path / "child.pid").read_text())
+    child_pid = await read_pid(tmp_path / "child.pid")
     await asyncio.sleep(0.1)
     cancel.set()
-    result = await asyncio.wait_for(work, 5)
+    result = await asyncio.wait_for(work, 30)
     assert result["cancelled"] and not result["ok"]
-    status = Path(f"/proc/{child_pid}/stat")
-    assert not status.exists() or status.read_text().split(")", 1)[1].strip().split()[0] == "Z"
+    await wait_until_exited(child_pid)
 
 
 async def test_cancelling_python_task_still_terminates_process(tmp_path):
-    code = "import pathlib,os,time; pathlib.Path('pid').write_text(str(os.getpid())); time.sleep(60)"
+    code = publish_pid("pid", "os.getpid()") + "; import time; time.sleep(60)"
     work = asyncio.create_task(CommandRunner().run(tmp_path, {"argv": [sys.executable, "-c", code]}, asyncio.Event()))
-    async with asyncio.timeout(5):
-        while not (tmp_path / "pid").exists():
-            await asyncio.sleep(0.01)
-    pid = int((tmp_path / "pid").read_text())
+    pid = await read_pid(tmp_path / "pid")
     work.cancel()
     with pytest.raises(asyncio.CancelledError):
         await work

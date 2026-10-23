@@ -176,11 +176,11 @@ async def test_running_admission_snapshot_and_next_turn_metadata(configured):
     with pytest.raises(KiraError) as caught:
         await service.dispatch("session.configure", params(project, chat))
     assert caught.value.code == "BUSY"
-    await asyncio.gather(*list(service.tasks.values()))
+    await asyncio.wait_for(asyncio.gather(*list(service.tasks.values())), 30)
     assert backend.contexts[0].session["model"] == "fixture-original"
     await service.dispatch("session.configure", params(project, chat, reasoning_effort=""))
     second = (await service.dispatch("run.start", {"session_id": chat["id"], "request_id": "second", "prompt": "Second synthetic turn"}))["run"]
-    await asyncio.gather(*list(service.tasks.values()))
+    await asyncio.wait_for(asyncio.gather(*list(service.tasks.values())), 30)
     assert backend.contexts[1].session["id"] == chat["id"]
     assert backend.contexts[1].session["backend_ref"] == "synthetic-native-thread"
     assert backend.contexts[1].session["model"] == "fixture-next"

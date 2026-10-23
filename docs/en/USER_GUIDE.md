@@ -48,11 +48,10 @@ service. The service runs one autonomous job at a time for each project.
 ### The model reasons, Kira executes
 
 The model (the one you choose among the connected **providers**: Ollama, Codex,
-OpenAI direct, DeepSeek, Claude Code) decides what to do and writes the
+Direct OpenAI, DeepSeek, Claude Code) decides what to do and writes the
 responses. Kira provides the tools — reading and writing files, commands,
 browser, memory, teams — and runs them within the permissions you gave the
-project. The model used to build Kira does not dictate which model you must use
-inside the app: the choice is yours, for every chat.
+project. The choice of model is yours, chat by chat.
 
 ### Tool receipts are the proof of what happened
 
@@ -62,8 +61,8 @@ by the service and the original data. Receipts are the source to consult to
 know what was really done. Text from the model saying "I ran the command" is a
 narrative: it must be compared with the receipts. In the same way, the
 **Completed** status of a request confirms that the turn has ended, not that
-the result is correct: for that there remain responses, receipts, artifacts and
-your own verification.
+the result is correct: to judge that, rely on responses, receipts, artifacts
+and your own verification.
 
 ![The Kira window with the conversation in the center and the sidebar](../images/chat-dark.png)
 
@@ -72,22 +71,22 @@ your own verification.
 ### Starting Kira
 
 If you installed the package, open **Kira Desktop** from the applications menu
-or run from any folder:
+(on Windows with WSL also from the Start menu) or run from any folder:
 
 ```sh
-kira-desktop
+kira
 ```
 
-The short name `kira` does the same. `kira-desktop --version` prints the
-installed version. In WSL a working graphical session is required, for example
-WSLg.
+`kira` is the short name of `kira-desktop`: the two commands are equivalent.
+`kira --version` prints the installed version. In WSL a working graphical
+session is required, for example WSLg.
 
 To start from the source code, open a terminal in the root of the repository
 (where `pyproject.toml` is):
 
 ```sh
 uv sync --frozen
-uv run kira-desktop
+uv run kira
 ```
 
 This mode requires `uv` and a supported Python environment. The folder you
@@ -97,11 +96,11 @@ in the interface. Requirements, packages, profiles and data paths are in
 
 ### Getting started
 
-On first launch Kira shows a **Getting started** guide that introduces
-projects, chats, providers and permissions. You can bring it back at any time
-from the sidebar. The **The next step** hint above the conversation closes with
-**Hide**; Kira remembers the choice and you can show it again from
-**Settings → Work**.
+On first launch the start screen offers **How Kira works**, which opens the
+**Getting started** guide: project folder and permissions, provider and model,
+resuming work. You can open it at any time with **Getting started** in the
+sidebar. The **Next step** hint above the conversation closes with **Hide**;
+Kira remembers the choice and you can show it again from **Settings → Work**.
 
 ### Creating your first project
 
@@ -109,8 +108,8 @@ from the sidebar. The **The next step** hint above the conversation closes with
    folder with **Browse…**. You can add project-specific instructions: the
    model receives them on every turn.
 2. Choose the permissions from the table below and press **Create project**.
-   You can change them later from **Project memory**, when there is no active
-   work in the project.
+   You can change them later from **Actions → Project permissions**, when there
+   is no active work in the project.
 
 | Permission | What it allows |
 | --- | --- |
@@ -130,13 +129,13 @@ the details are in [Permissions and security](PERMISSIONS_AND_SECURITY.md).
 ### Connecting a provider
 
 Open **Models** in the sidebar. The providers are a row of buttons: **Ollama**,
-**Codex**, **Direct OpenAI · ChatGPT**, **DeepSeek Account**, **DeepSeek Web**
-and **Claude Code · personal use**. Below, a line reports the provider status
-with a colored dot (green connected, amber to be connected or without models,
-red unavailable) and the action to take, if any, for example **Sign in with
-Codex** or **Continue with ChatGPT**. Press **Refresh** to re-read the catalog,
-then choose a model with **Use model** and, when the model declares it, a
-reasoning level.
+**Codex**, **Direct OpenAI · ChatGPT**, **DeepSeek Account**,
+**DeepSeek Web · experimental** and **Claude Code · personal use**. Below, a
+line reports the provider status with a colored dot (green connected, amber to
+be connected or without models, red unavailable) and the action to take, if
+any, for example **Sign in with Codex** or **Continue with ChatGPT**. Press
+**Refresh** to re-read the catalog, then choose a model with **Use model** and,
+when the model declares it, a reasoning level.
 
 ![The Models page with the providers and the model cards](../images/models.png)
 
@@ -167,9 +166,9 @@ button, the project name and the chat title. On the right:
 | **Research** | The [Project research](#project-research) registry. It carries the number of proposals to review. |
 | **Resume** | **Resume work**: last outcome, interrupted activities, next step and saved tools (**Ctrl+Shift+R**). |
 | **Actions** | **Quick actions**, the searchable list of all functions (**Ctrl+Shift+P**). |
-| **Export** | The chat export. |
+| **Export** | Saving the selected chat as Markdown, like **Export chat as Markdown**. |
 | **Details** | The project details panel; Kira remembers whether you keep it open. |
-| **Project** | The project settings. |
+| **Project** | A new project (**Ctrl+N**). |
 | Theme switch | Switches between light and dark theme. |
 
 When the window is narrow the buttons show only the icon: hover over them with
@@ -193,8 +192,8 @@ of other projects.
 ### The composer and the chips
 
 The composer starts compact and grows with the text; long text scrolls while
-keeping selection and cursor. Above the field a row of chips gathers the
-commands:
+keeping selection and cursor. Below the field, in the same card, a row of
+chips gathers the commands:
 
 - the **attachment** chip (**Attach**) picks files and images;
 - **Files** opens the project file search (like typing `@`);
@@ -202,30 +201,35 @@ commands:
 - the **model** chip, which summarizes the chosen provider and model and opens
   the **Provider, model and reasoning** window.
 
-On the right you find **Queue** (with the number of waiting requests), **Chat
-tools** (the menu with history, goal, changes and chat management), **Queue**
-and **Send** (**Ctrl+Enter**). If the chat column is narrower than 700 px the
-two groups arrange themselves on two rows and the queue button shows only the
-number.
+On the right you find **Queue** with the number of waiting requests, which
+opens the queue; **Chat tools** (**⋯**), which opens **Quick actions** for
+history, goal, changes and chat management; **Queue** without a number, which
+appears while work is in progress and adds a separate request; **Send**
+(**Ctrl+Enter**). If the chat column is narrower than 820 px, **Files** shows
+only its icon and the queue button only the number; below 700 px the two
+groups arrange themselves on two rows.
 
 ### The Provider, model and reasoning window
 
 Press the model chip: a window opens above the field with provider, model,
-reasoning level, session, the tools switch, the provider status text and
-**Refresh**. The conversation does not move. **Esc** or a click outside closes
-it. You can also open it while the agent is working: model, session and
-permissions of the current turn remain those chosen at the start and the
-change applies from the next request. With **Open the model options with the
-chat** (in **Settings → Work**) the window appears on its own every time you
-enter a chat.
+reasoning level (for the providers that offer it), session, the provider
+status text and **Refresh models**. With Ollama there is also **Tools**, which
+is chosen for new chats: in a chat already saved it stays locked. The
+conversation does not move. **Esc** or a click outside closes it. You can open
+it while the agent works to check the choices, but provider, model and
+reasoning can be changed only when no work is running in the project; the
+current turn keeps the model, session and permissions chosen at its start.
+With **Open the model options with the chat** (in **Settings → Work**) the
+window appears on its own every time you enter a chat.
 
 ![The Provider, model and reasoning window open above the composer](../images/model-popover.png)
 
 ### The tool tray
 
-Below the composer there is a row of icons: **Files**, **Usage**, **Context**,
-**Knowledge**, **Browser**, **Memory**, **Soul**, **Team**, **Questions** and
-the web settings. **Labels** shows the names next to the icons and remembers
+Below the composer there is a row of icons: **Files**, **Usage**,
+**Context and memory**, **Knowledge**, **Browser**, **Project memory**,
+**Soul** (or the name of the identity in use), **Team**, **Questions** and
+**Web settings**. **Labels** shows the names next to the icons and remembers
 the choice (also in **Settings → Work**). **Questions** carries the number of
 expected answers; **Team** shows its status when it is paused, has an
 assignment or is active. These buttons stay reachable even with the browser
@@ -272,19 +276,22 @@ Dots and symbols accompany every operation and every request:
 
 | Color | Meaning |
 | --- | --- |
-| Pulsing light blue | Activity in progress |
+| Pulsing theme accent color (amber in the Kira theme) | Activity in progress |
 | Green with check mark | Operation confirmed by the service |
 | Red | Recorded error |
 | Amber | Waiting, paused or uncertain outcome |
 | Gray | Queued, cancelled or unknown status |
 
-The labels remain readable even without telling the colors apart. Green
-concerns the recorded outcome of the operation: it does not certify that the
-goal was reached. If a request finishes but a tool failed, Kira shows **Request
-finished** and the number of failed operations. The Team has its own status
-(for example **Paused** in amber) independent of the chat's. Only an activity
-that is really in progress pulses; the pulsing stops when the window is hidden,
-with **Reduce motion** enabled or when the row leaves the view.
+The labels remain readable even without telling the colors apart. In the Kira
+theme an activity in progress and a wait have similar tints: the pulsing, the
+symbol and the label tell them apart. Green concerns the recorded outcome of
+the operation: it does not certify that the goal was reached. If a request
+finishes but a tool failed, Kira shows **Request finished** and the number of
+failed operations. The Team has its own status (for example **Paused** in
+amber) independent of the chat's. Only an activity that is really in progress
+pulses; the pulsing stops when the window is hidden, when animations are
+reduced (**Reduce motion** in **Settings → Appearance**) or when the row leaves
+the view.
 
 ### The activity line and elapsed time
 
@@ -324,31 +331,37 @@ context compaction (see [Context and memory](#context-and-memory)).
   is in progress.
 - While a turn is active in the same chat, the button becomes
   **Send guidance**: the text is added to the work in progress without
-  stopping the tool already started. Guidance is text only, up to 32,000 bytes; attachments
-  require a separate request. With OpenAI direct, DeepSeek Account and Ollama
-  the guidance enters the next call to the model, after the current response
-  or tool; with Codex Kira uses its send-to-active-turn, when available.
-  Operations of a group not yet started may be postponed to take the
-  correction into account. The chat distinguishes waiting, sending, confirmed
-  receipt and outcome to verify: the provider's confirmation does not prove
-  that the model has already applied the guidance, so check the response and
-  the receipts. Model, reasoning and permissions of the turn remain those
-  chosen at the start.
-- **Queue** saves a separate request for a later turn. If another chat is
-  working, the message stays destined for the selected chat and does not
-  modify the other's work.
-- **Stop** asks the service to cancel the current turn and waits for the
-  outcome. Asking for the interruption is not proof that it happened: watch the
-  status. **Stop** also pauses the continuations of an autonomous goal and
-  cancels the automatic responses on Team results still pending for that chat.
+  stopping the tool already started. Guidance is text only, up to 32,000
+  bytes; attachments require a separate request. With Direct OpenAI, DeepSeek
+  Account and Ollama the guidance enters the next call to the model, after the
+  current response or tool; with Codex Kira uses its own delivery to the active
+  turn, when available. With DeepSeek Web and Claude Code guidance is not
+  available: use **Queue**. Operations of a group not yet started may be
+  postponed to take the correction into account. The chat distinguishes
+  waiting, sending, confirmed receipt and outcome to verify: the provider's
+  confirmation does not prove that the model has already applied the guidance,
+  so check the response and the receipts. Model, reasoning and permissions of
+  the turn remain those chosen at the start.
+- **Queue** appears while work is in progress and saves a separate request for
+  a later turn. If another chat is working, the message stays addressed to the
+  selected chat and does not modify the other's work.
+- **Stop** asks the service to cancel the current turn of the selected chat
+  and waits for the outcome; to stop another chat's work, open that chat.
+  Asking for the interruption is not proof that it happened: watch the status.
+  **Stop** also pauses the continuations of an autonomous goal and cancels the
+  automatic responses on Team results still pending for that chat.
 
-Kira privately keeps the identity of every request before sending it:
-reopening the window or switching chats does not turn it into a new operation
-and an uncertain outcome is not repeated automatically. If you really want to
-proceed with a distinct request after an uncertain outcome, first check chat,
-queue and **Activity**; **Manage chat → Allow new separate requests…** asks for
-confirmation, sends nothing and enables a new request that might duplicate a
-previous effect.
+Before sending, Kira privately keeps the identity of the chat's requests
+(sends, queue, guidance, branches, provider switches, goals, compactions,
+context notes, Team messages and resumes from the chat) and of the changes to
+Soul, Research and project tools: reopening the window or switching chats does
+not turn them into new operations and an uncertain outcome is not repeated
+automatically. Team commands and native launches keep their identity only while
+the window is open: after a restart, check **Activity** or the Team view before
+repeating them. If you really want to proceed with a distinct request after an
+uncertain outcome, first check chat, queue and **Activity**; **Manage chat →
+Allow new separate requests…** asks for confirmation, sends nothing and
+enables a new request that might duplicate a previous effect.
 
 ### Attaching files and images
 
@@ -362,8 +375,8 @@ the text.
 
 Images reach the model as **visual content** with **Direct OpenAI · ChatGPT**,
 **DeepSeek Account** (only with the models that declare image support in the
-catalog), **DeepSeek Web** (DeepSeek V4 Flash web and DeepSeek Reasoner web)
-and **Claude Code · personal use** (up to four PNGs). With **Codex** and
+catalog), **DeepSeek Web** (with both of its models) and
+**Claude Code · personal use** (up to four PNGs). With **Codex** and
 **Ollama**, **Attach** and paste insert the local path of the file into the
 message, even for images: the model receives text, not pixels.
 
@@ -427,12 +440,12 @@ appears: keep the text before leaving, because Kira does not silently delete
 other drafts to make room. The recovery concerns the chat field, not the app's
 other temporary editors.
 
-**Sent message history** (from **Quick actions**) searches the last 200
-messages confirmed by the service for the current project. **Reuse in draft**
-inserts the text without sending it. **Clear local project history** deletes
-only this reusable list: conversations and drafts remain. To make room for the
-drafts Kira may first remove the oldest entries of this list; the conversation
-history stays in the database.
+**Sent message history** (from **Quick actions**) searches among the last 200
+messages confirmed by the service, across all projects, and shows those of the
+current project. **Reuse in draft** inserts the text without sending it. **Clear
+local project history** deletes only this reusable list: conversations and
+drafts remain. To make room for the drafts Kira may first remove the oldest
+entries of this list; the conversation history stays in the database.
 
 ## Reading results
 
@@ -466,9 +479,10 @@ individual rows; errors and unconfirmed outcomes remain visible even when
 collapsed. Inside a row, a long output first shows a few lines: **Show all**
 opens the available text and **Collapse** closes it again; **Copy** always
 copies the complete content. For very large outputs use **Export** or the
-artifacts. **Data** opens the event details; **Artifacts** opens the files
-recorded as results. Not every file created by Codex commands automatically
-becomes an artifact: you can also inspect the folder with **Open folder**.
+artifacts. **Data** opens the event details; the files recorded as results are
+in **Files** (**Project artifacts**). Not every file created by Codex commands
+automatically becomes an artifact: you can also inspect the folder with
+**Open folder** in the project **Details**.
 
 Opening a row keeps the reading position and suspends automatic scrolling;
 **Latest updates** goes back to the bottom and re-enables it. While you read
@@ -480,11 +494,12 @@ and then directly presents the latest messages.
 
 ### Activity
 
-**Activity** in the sidebar gathers all the runs of the projects: for each one
-an excerpt of the request, the start time and the outcome time (with the
-**UTC** time zone indicated), any error, **Details** (identifier, request and
-event information) and **Open chat**. Every run has its own final status:
-several **Completed** rows refer to different requests, not to repeated work.
+**Activity** in the sidebar gathers the runs of the open project (up to the
+500 most recent, excluding those of Team members): for each one the status,
+the start time in the computer's time zone, an excerpt of the request, any
+error, **Details** (identifiers, request, times in UTC and event information)
+and **Open chat**. Every run has its own final status: several **Completed**
+rows refer to different requests, not to repeated work.
 
 ### The error box
 
@@ -502,7 +517,7 @@ model: before retrying, check the actions already performed.
 
 ### The reasoning summary
 
-When the provider supplies it (Codex and OpenAI direct), **Reasoning summary**
+When the provider supplies it (Codex and Direct OpenAI), **Reasoning summary**
 appears below the chat: a compact preview that you can expand and select, with
 the indication of the provider and of any incomplete parts. You can also
 consult the summaries of earlier runs of the same chat. It is the provider's
@@ -521,10 +536,11 @@ keeping the chosen model and reasoning level. The chat is saved on the first
 send and takes its title from the first request; **⋯** next to the name lets
 you rename it. Kira remembers the last chat opened for each project.
 
-**Manage chat → Archive chat** hides an inactive chat from the main list while
-keeping history and references. In **Archived chats** you can open, export or
-restore it; restore it before sending new messages. Archived chats do not feed
-new shared memory excerpts.
+**Manage chat → Archive chat** hides from the main list an inactive chat with
+no queued requests, keeping history and references. In **Archived chats** you
+can open or restore it; a chat opened from there can be exported, but it must
+be restored before sending new messages. Archived chats do not feed new shared
+memory excerpts.
 
 ### Continue from here
 
@@ -535,21 +551,21 @@ the files. With Codex branching is native: intermediate points require a
 boundary recorded by the provider and for less recent chats only the end may
 be available; the earlier context stays with the provider and the branch's
 local history starts from the new requests, with **Open original chat** in the
-banner to re-read the earlier messages. With Ollama Kira explicitly copies the
-textual context, within the declared limits.
+banner to re-read the earlier messages. With the other providers Kira
+explicitly copies the recorded textual context, within the declared limits.
 
 ### Exporting and copying
 
-**Export chat as Markdown** saves the whole persisted conversation with its
-receipts, even when the view shows only a part of it: it includes the guidance
-added during the work and the partial outputs kept. Artifact paths remain
-references, the files are not embedded. The export of a branch contains what
-Kira recorded in that branch: for the original history export the starting
-chat too. Automatic redaction recognizes only some forms of sensitive data:
-always check an export before sharing it. **Copy last response** copies the
-text of the last visible completed response; **Ctrl+Shift+C** copies the
-conversation. The project also has a JSON export of the memory (**Export
-JSON**).
+**Export chat as Markdown** (also with **Export** in the top bar) saves the
+whole persisted conversation with its receipts, even when the view shows only a
+part of it: it includes the guidance added during the work and the partial
+outputs kept. Artifact paths remain references, the files are not embedded. The
+export of a branch contains what Kira recorded in that branch: for the original
+history export the starting chat too. Automatic redaction recognizes only some
+forms of sensitive data: always check an export before sharing it. **Copy last
+response** copies the text of the last visible completed response;
+**Ctrl+Shift+C** copies the conversation. The project memory is saved as JSON
+with **Export JSON** in **Project memory and instructions**.
 
 ### The queue
 
@@ -574,16 +590,17 @@ request; **Pause goal**, **Resume goal** and **Mark completed** regulate its
 status without replacing **Stop** for a turn already started.
 
 To let Kira carry the goal forward on its own, write `/obiettivo` followed by
-the desired result (`/obbiettivo` and `/goal`, the English alias, also work) or
-choose **Start autonomously** in the panel. Kira proceeds in cycles, keeps a
-progress summary, waits for Team results and consults the history when it
-needs details; the default limit is 0, that is no cycle limit. `/obiettivo
-stato`, `/obiettivo pausa` and `/obiettivo riprendi` show the progress, stop
-the following cycles and reactivate a stopped goal; the command without text
-opens the controls. After a restart or an uncertain outcome Kira keeps the
-progress and asks for an explicit resume. Completion is an assessment by the
-model, justified by recorded results or by a deliverable: it can be wrong.
-Everything else is in [Autonomous goals](AUTONOMOUS_GOALS.md).
+the desired result (`/obbiettivo` and `/goal` also work) or choose **Start
+autonomously** in the panel. Kira proceeds in cycles, keeps a progress summary,
+waits for Team results and consults the history when it needs details, with no
+cycle limit. `/obiettivo stato`, `/obiettivo pausa` and `/obiettivo riprendi`
+show the progress, stop the following cycles and reactivate a stopped goal; the
+English forms `status`, `pause` and `resume` work with each of the three command
+words, for example `/goal pause`. The command without text opens the controls.
+After a restart or an uncertain outcome Kira keeps the progress and asks for an
+explicit resume. Completion is an assessment by the model, justified by recorded
+results or by a deliverable: it can be wrong. Everything else is in
+[Autonomous goals](AUTONOMOUS_GOALS.md).
 
 ### Persistent questions
 
@@ -594,7 +611,7 @@ own. You can close the box and reopen it with **Questions** or
 **Ctrl+Shift+Q**: the question remains available even if new messages scroll
 by. Asynchronous questions let the agent continue; blocking ones wait.
 
-Kira distinguishes a **saved**, **forwarding** and **forwarded to the backend**
+Kira distinguishes a **saved**, **forwarding** and **forwarded to the provider**
 answer; the last status does not guarantee that the model has already used it.
 If the turn ends or the send fails, the question is closed: copy question and
 answer into a new turn. Sent questions and answers survive reconnection; free
@@ -606,37 +623,44 @@ become a form.
 
 ### Project memory
 
-**Memory** in the tray (or **Project memory**) opens an editable JSON with
-goal, decisions, questions and next step, shared by all the chats of the
-project, and the project permissions field (editable and savable with **Save**
-when the project is free). Keep assumptions and conclusions separate and point
-to files, events or other proof: the text you write does not automatically
-become a verified conclusion. **Export JSON** saves it.
+**Project memory** in the tray shows the excerpts Kira takes from the
+project's other chats, with the **Use excerpts from this project's other chats**
+switch. **Edit project notes** opens **Project memory and instructions** (also
+from **Actions → Project permissions**): instructions, project permission
+(editable when there is no active work in the project) and an editable JSON
+with goal, decisions, questions and next step, shared by all the chats of the
+project; **Save** records the changes. The model consults the memory with its
+tools when it needs it: it is not attached to every request, while Team
+members receive it in full. Keep assumptions and conclusions separate and
+point to files, events or other proof: the text you write does not
+automatically become a verified conclusion. **Export JSON** saves the memory.
 
 ### Excerpts from the other chats
 
-To the curated memory Kira adds short excerpts from the other chats of the
-same project, with references: at most five chats and 6,000 additional
-characters. Earlier responses are context, not verified facts. Chats from other
-projects are not retrieved, nor are new excerpts from archived chats, and the
-excerpts do not cross different identities (Soul). You can disable new sends;
-those already received by the provider may remain in the conversation. File
-permissions do not change.
+With every request Kira adds short excerpts from the other chats of the same
+project, with references: at most five chats and 6,000 additional characters.
+Earlier responses are context, not verified facts. Chats from other projects are
+not retrieved, nor are new excerpts from archived chats, and the excerpts do not
+cross different identities (Soul). You can disable new sends; those already
+received by the provider may remain in the conversation. File permissions do not
+change.
 
 ### Important chat notes
 
-In **Context** you find **Important chat notes**: write a constraint or a
-detail and press **Keep note**. Notes are separate from the model's summary,
-stay in the initial context of every turn and survive compaction; **Remove**
-deletes the note without touching the messages. They are available with all
-providers and do not replace the project instructions or the shared memory.
+In **Context and memory** you find **Important chat notes**: write a
+constraint or a detail and press **Keep note**. Notes are separate from the
+model's summary, stay in the initial context of every turn and survive
+compaction; **Remove** deletes the note without touching the messages. You can
+add or remove notes while no work is running in the project and no requests
+are queued. They are available with all providers and do not replace the
+project instructions or the shared memory.
 
 ### Context and memory: compaction
 
 **Context and memory** (from the tray, from **Manage chat** or from the
 **Usage** panel) shows how Kira prepares the context for the model.
 
-With **OpenAI direct** the mode is **Automatic — maximum available**: Kira uses
+With **Direct OpenAI** the mode is **Automatic — maximum available**: Kira uses
 the maximum declared by the catalog and reserves space for response and tools.
 The box distinguishes **Reported default window** and **Catalog-reported
 maximum** (provider values), **Window used by Kira**, **Space reserved for
@@ -646,9 +670,9 @@ and, if available, **Last provider preflight count**. Estimate and count
 describe the last available calculation, not the next send. Cached tokens
 still occupy context; cumulative totals do not indicate the free space.
 
-With **DeepSeek** the mode is **Automatic — Kira compaction**: Kira estimates
-the pressure before sending, calibrates it with the tokens reported by the
-provider, keeps the recent exchanges and uses the selected DeepSeek model to
+With **DeepSeek Account** the mode is **Automatic — Kira compaction**: Kira
+estimates the pressure before sending, calibrates it with the tokens reported by
+the provider, keeps the recent exchanges and uses the selected DeepSeek model to
 summarize the earlier ones, without tools. The summary consumes account quota.
 
 Before exhausting the budget, even during a job with tools, Kira prepares a
@@ -662,14 +686,14 @@ Kira shows **Recovering context** and attempts a summary with the same model;
 if that fails too, the earlier context remains available and the error is
 reported. No command is repeated to rebuild the result.
 
-**Compact now** starts an explicit compaction with the chat idle (finish the
-work and complete or remove the queued requests). It may use plan resources
-and add waiting time; it does not modify files. Closing the panel does not
-cancel the operation. For **Codex**, **Manage chat → Compact context** asks the
-provider to compact its conversation, with confirmation and the chat idle;
-Kira keeps its own history. If Codex reports a native goal of its own still
-open, Kira may refuse resume or compaction. None of these operations promises
-a quantity of tokens saved.
+With Direct OpenAI and DeepSeek Account, **Compact now** starts an explicit
+compaction with the chat idle (finish the work and complete or remove the queued
+requests). It may use plan resources and add waiting time; it does not modify
+files. Closing the panel does not cancel the operation. For **Codex**, **Manage
+chat → Compact context** asks the provider to compact its conversation, with
+confirmation and the chat idle; Kira keeps its own history. If Codex reports a
+native goal of its own still open, Kira may refuse resume or compaction. None of
+these operations promises a quantity of tokens saved.
 
 **Automatically generated memory** lists decisions, constraints, results and
 open questions kept by the compaction; every entry is a statement by the
@@ -682,21 +706,23 @@ memory](CONTEXT_AND_MEMORY.md).
 
 ### Context supplied by Kira
 
-**Context supplied by Kira** shows what Kira actually added to the last run:
-project instructions, memory, notes, excerpts and goal. The provider may use
-other internal context that is not visible; this view does not expose the
+**Context supplied by Kira** (in **Details**, or **Supplied context** in
+**Project memory and instructions**) shows what Kira actually added to the
+last run: project instructions, Soul, notes, excerpts, goal and the list of
+sources the model can consult, such as the project memory. The provider may
+use other internal context that is not visible; this view does not expose the
 model's private reasoning.
 
-### Ollama: requested context and thinking
+### Ollama: requested context and internal reasoning
 
 Ollama receives a recent, limited window of the chat, with an indication of
 the omitted content; a model with verified tools can retrieve the rest. In
-**Details → Requested context** you choose for this chat the model's default
-value or **32K**, **128K** or **256K**: larger windows consume more memory and
-can slow the model down, and the available RAM/VRAM may prevent loading the
-highest values. In **Details** you also choose the internal thinking (default,
-disabled or enabled); Kira does not show the model's internal text. With
-thinking enabled and a long history Ollama can take a few minutes before
+**Details → Requested context** you choose for this chat **Ollama default** or
+**32K**, **128K** or **256K**: larger windows consume more memory and can slow
+the model down, and the available RAM/VRAM may prevent loading the highest
+values. In **Details** you also choose the **Model internal reasoning**
+(default, off or on); Kira does not show the model's internal text. With
+internal reasoning on and a long history Ollama can take a few minutes before
 sending data: Kira waits up to ten minutes between one update and the next
 before interrupting, a limit on the wait, not on the total duration.
 
@@ -732,8 +758,9 @@ authentication files. If the command is not found, set the absolute path in
 **Settings → Connections → Codex executable**. Codex uses its own native
 tools, its own sandbox and its own compaction; its policies limit writes and
 network according to the runtime and do not promise that only the project
-folder is readable. The session configuration notice does not appear in the
-chat but remains in the full export.
+folder is readable. The session configuration notice and other routine
+provider acknowledgements do not appear in the chat; they remain among the
+run's recorded events.
 
 **Direct OpenAI · ChatGPT.** In **Models** or **Settings → Connections →
 ChatGPT accounts** press **Continue with ChatGPT**, authorize Kira in the
@@ -749,12 +776,16 @@ from the ChatGPT settings.
 **DeepSeek Account (experimental).** In **Models → DeepSeek Account** press
 **Sign in with DeepSeek**: Kira opens the system browser and keeps the grant in
 the local profile. Read the notice in the panel: the flow may create a managed
-key on the platform that the local logout might not revoke. **Sign out from
-Kira** deletes the local grant and sends you to the site's logout.
-Alternatively **Use DeeperSeeker** connects a local proxy instance (address,
-for example `http://127.0.0.1:4000`, and API key, saved and no longer shown);
-the proxy must already be running. The provider uses Kira's tools with the same
-permission and approval checks.
+key on the platform that the local logout might not revoke.
+**Disconnect from Kira** deletes the local grant and asks the platform to end
+the session without waiting for confirmation; it does not open the site's
+logout, so sign out of the site too if needed. Alternatively
+**Use DeeperSeeker** connects a DeeperSeeker proxy instance (an HTTPS address,
+or plain HTTP only on this computer, for example `http://127.0.0.1:4000`, and
+an API key, saved and no longer shown); the proxy must already be running. To
+go back to the account, clear **Use DeeperSeeker** and press
+**Disable DeeperSeeker**; the saved key stays in the profile. The provider uses
+Kira's tools with the same permission and approval checks.
 
 **DeepSeek Web (experimental).** In **Models** paste the `userToken` into the
 **DeepSeek Web · direct access** panel: Kira keeps it in the private profile
@@ -783,23 +814,25 @@ disabled: memory is managed by Kira.
 ### Changing provider or model in the same chat
 
 From the model chip you can change model and reasoning level without creating
-another chat: it applies from the next request; history, draft and the
-provider's conversation reference remain. The reasoning is kept if the new
-model supports it, otherwise it goes back to the provider's default value.
+another chat, when no work is running in the project: it applies from the next
+request; history, draft and the provider's conversation reference remain
+(DeepSeek Web, however, opens a new remote chat when the model changes). The
+reasoning is kept if the new model supports it, otherwise it goes back to the
+provider's default value.
 
 To change provider, choose the new one in the same window: Kira shows model,
-reasoning and, for direct, the account, and asks **Continue in this chat**. It
-offers again the last choices saved for that provider; the first time you must
-choose a model and no model is substituted if the saved one is not available.
-The switch keeps title, history, text and images of the draft and starts
-nothing. Kira prepares the portable context for the new provider within
+reasoning and, for Direct OpenAI, the account, and asks **Continue in this
+chat**. It offers again the last choices saved for that provider; the first time
+you must choose a model and no model is substituted if the saved one is not
+available. The switch keeps title, history, text and images of the draft and
+starts nothing. Kira prepares the portable context for the new provider within
 declared limits, without transferring the hidden internal state of the previous
-model; going back to Codex the hand-over is prepared again. Wait for the work
-to finish and complete or remove the queued requests before switching.
+model; going back to Codex the hand-over is prepared again. Wait for the work to
+finish and complete or remove the queued requests before switching.
 
 ### Usage and resources
 
-**Usage** in the tray opens **Measured usage and resources**: last request,
+**Usage** in the tray opens **Usage and resources**: last request,
 conversation totals, context capacity and observed RAM/GPU resources. The
 usage shown is the provider's last report, not an invented total across
 sessions; a missing value stays **Not available** and zero appears only when it
@@ -810,15 +843,16 @@ the computer's resources do not indicate the consumption of a remote model.
 **Account usage** (from **Usage** or **Manage usage**) shows the data of the
 selected provider; the selector is for consulting and does not change the
 chat's provider. For **Codex**: remaining percentages, period, reset date and
-credits, with the date of the reading and **Refresh**. For **OpenAI direct**:
+credits, with the date of the reading and **Refresh**. For **Direct OpenAI**:
 the chat's account and the locally recorded tokens; the connection does not
 expose quotas, so **Open ChatGPT** goes to the plan page and **Copy link**
 copies its address (check that the browser is signed in to the same account).
 For **Claude Code**: the session window (5 hours) and the weekly one with the
-available percentage, reset time and extra usage, as Claude Code communicates
+remaining percentage, reset time and extra usage, as Claude Code communicates
 them during runs; without a recent turn the measure remains that of the last
-run. Below the chat a line summarizes **Claude plan · session X% · week Y%**
-with **Details**; **Open claude.ai** goes to the usage page.
+run. Below the chat a line summarizes the share already used,
+**Claude plan · session X% · week Y%**, with **Details**; **Open claude.ai**
+goes to the usage page.
 
 ## Integrated browser and Kira's Computer
 
@@ -851,14 +885,14 @@ draft. The **⚙** icon opens the chat's web options. The agent can open the
 browser on its own when needed: a request such as "read this link" is enough. A
 network ban in the project instructions continues to apply.
 
-With OpenAI direct the chat tools must be enabled and in the web options you
+With Direct OpenAI the chat tools must be enabled and in the web options you
 choose the search hosted by OpenAI among **Live access**, **Indexed content**
 and **Search disabled** (it depends on the model and the account; a refusal is
 shown without changing model). With the other providers search uses
-`browser.search` in the isolated browser. Sources appear as links in the
-responses and the operations in **Activity**; if the provider confirms a web
-operation without reporting its details, Kira leaves them unavailable. Sources
-are not invented.
+`browser.search`, which opens Google's results in Kira's isolated browser.
+Sources appear as links in the responses and the operations in **Activity**;
+if the provider confirms a web operation without reporting its details, Kira
+leaves them unavailable. Sources are not invented.
 
 ### Consent to actions
 
@@ -868,9 +902,9 @@ with write permission and your consent: **Allow once** authorizes the single
 action, **Always allow in this chat** all those of the chat. The same choice is
 in **⚙ → Always allow the agent's actions in this chat**, is saved immediately
 even during the work, covers browser and Kira's Computer and the browser bar
-shows **actions allowed**. The consent remains after a restart, does not
-extend to other chats and goes back to per-action if you change provider or
-account or create a branch. Disabling it does not undo actions already
+shows **actions allowed**. The consent remains after a restart and does not
+extend to other chats; if you change provider or account or create a branch,
+Kira asks again for each action. Disabling it does not undo actions already
 performed. Manual login, passkeys and project commands keep their own
 confirmations.
 
@@ -879,7 +913,7 @@ confirmations.
 **Take control** gives you mouse and keyboard in the **Full browser** view
 (which also includes Chromium's dialogs); the agent's actions wait with
 **Waiting for browser · your control**. **Return to Kira** lets it continue;
-**Stop** interrupts the request. Kira does not take the browser back nor
+**Stop** interrupts the request. Kira neither takes the browser back nor
 repeats operations on its own. What you type in the browser does not enter the
 draft.
 
@@ -889,9 +923,11 @@ site, ask Kira for a **manual login**: enter passwords and codes directly in
 the site inside the panel and press **Done**; **Keep control** leaves the
 browser to you. Do not write credentials in the chat. To keep the sign-in even
 after closing the browser, first enable **Keep the browser profile for this
-chat** in the web options: profiles are separate per chat and account, and
-disabling retention does not delete those already saved. Session-only cookies
-may still disappear on close.
+chat** in the web options: the profile is distinct per chat, account and
+provider, and the chat uses it again whenever it returns to that provider and
+account. Disabling retention does not delete the profile already saved: it
+remains available if you enable it again. Session-only cookies may still
+disappear on close.
 
 ### Closing and limits
 
@@ -930,7 +966,7 @@ tasks, the members carry them out and write to each other through a message
 box managed by Kira. Independent analyses proceed in parallel; file changes
 are made by one member at a time. Roles indicate responsibilities, but the
 effective permissions remain those of the project and a reader always uses
-read only. It works with Codex, OpenAI direct, Ollama and DeepSeek Account; the
+read only. It works with Codex, Direct OpenAI, Ollama and DeepSeek Account; the
 details are in [Teams](TEAMS.md).
 
 ### From the Team view
@@ -942,28 +978,32 @@ instructions and access of every member; the coordinator is included) or
 proposes the tasks and starts the team). All the members use the model and
 reasoning chosen for the team. The total goes from 1 to 12 members with at
 most 8 simultaneous tasks; the default coordination limit is 3 cycles (0 = no
-limit) and reaching it pauses the team while keeping the outcomes. **Save
-without starting** keeps the configuration.
+limit) and reaching it pauses the team while keeping the outcomes.
+**Start team** starts the team: a configuration that is not started is not
+saved.
 
 The coordinator must assign concrete tasks before the members start; a message
 in the box alone does not start work. Kira does not conclude a multi-member
 Team without recorded outcomes from the collaborators: if the coordinator
 closes too early, Kira asks for a correction of the plan within the cycle limit
-and, if that is not enough, pauses the Team with a reason. Historical
-conclusions without member outcomes are marked **Conclusion needs review**.
+and, if that is not enough, pauses the Team with a reason. A Team concluded
+without recorded member outcomes is flagged **Conclusion needs review**.
 
 ### From the chat
 
-With tools enabled you can ask directly in the chat, for example: "Organize a
-team of three members: a coordinator, a test analyst and an independent
-reviewer, read only". The team inherits the chat's model, reasoning and
-permissions and receives goal, deliverable, decisions and references to the
-proof, not the whole history. The assistant records the delegation, the turn
-ends, the team starts and the chat shows the progress with a **TEAM** card. At
-the end, for Teams started or resumed from the chat, Kira answers on its own
-in the conversation distinguishing the completed tasks from the verification
-of the goal; it starts no other Teams and the queued requests take precedence.
-**Plan**, **Review** and **Recap** do not start delegations.
+With Codex, Direct OpenAI, Ollama or DeepSeek Account and tools enabled you can
+ask for a Team directly in the chat (with Ollama the model must support tools),
+for example: "Organize a team of three members: a coordinator, a test analyst
+and an independent reviewer, read only". Claude Code and DeepSeek Web do not
+run Teams, so their chats cannot request one. The team inherits the chat's
+model, reasoning and permissions and receives goal, deliverable, decisions and
+references to the proof, not the whole history. The assistant records the
+delegation, the turn ends, the team starts and the chat shows the progress
+with a **TEAM** card. At the end, for Teams started or resumed from the chat,
+Kira answers on its own in the conversation distinguishing the completed tasks
+from the verification of the goal; it starts no other Teams and the queued
+requests take precedence. **Plan**, **Review** and **Recap** do not start
+delegations.
 
 ### Conversing during the Team
 
@@ -980,9 +1020,9 @@ A+** for the text and **− / +** to expand an event.
 **Stop team** asks for all the tasks to be halted: wait for the confirmation.
 Closing the window lets the service keep working; shutting down WSL or the
 system can interrupt it. After an interruption Kira shows the preserved state
-and asks for an explicit continuation: **Resume team** or **Continue team**
-(from the Team view or from the **Team** panel in the chat), or the sentence
-"Resume the Team using the previous results". The resume keeps model,
+and asks for an explicit continuation: **Resume** in the Team view,
+**Resume team** or **Continue team** in the chat's **Team** panel, or the
+sentence "Resume the Team using the previous results". The resume keeps model,
 reasoning, account, constraints and results and does not repeat operations
 with an uncertain outcome; duplicate requests do not create copies. A change
 of model, account, permissions or an archived chat prevents an automatic
@@ -1012,24 +1052,26 @@ recorded with **Capture file hashes** and checked with **Recheck registered
 files**.
 
 Sharing with the chats is disabled at the start: **Share the registry with
-project chats** authorizes sending the accepted records and access to the
-linked sources, and **Read shared context** shows the prepared text. With
-tools enabled the assistant can consult the registry and propose records, but
-not accept its own proposals. The registry's drafts are separate from the chat
-draft and survive a restart. Everything else is in [Research](RESEARCH.md).
+project chats** authorizes the assistant to consult the accepted records and the
+linked sources with its tools, and **Read shared context** shows a summary of
+them; the records are not added to every request. With tools enabled the
+assistant can consult the registry and propose records, but not accept its own
+proposals. The registry's drafts are separate from the chat draft and survive a
+restart. Everything else is in [Research](RESEARCH.md).
 
 ## Kira's Soul and Knowledge and tools
 
 ### Kira's Soul
 
-Press **Soul** in the tray or open **Settings → Work → My Kiras**. Create an
-identity with name, philosophy and way of collaborating, press **Save
-identity** and **Use in this chat**. You can have several Kiras, for example
-one for study and one for design; in the new chat choose the identity before
-the first message and the choice remains even if you close and reopen the
-window. The short core (up to 1,200 UTF-8 bytes) is given to the model on every
-turn, even after compaction; the more extensive memories are searched when
-needed. A specific request always prevails over general preferences.
+Press **Soul** in the tray or open **Settings → Work → My Kiras**. Describe an
+identity with name, philosophy and way of collaborating, press **Create
+identity** (then **Save identity** for changes) and **Use in this chat**. You
+can have several Kiras, for example one for study and one for design; in a new
+chat choose the identity with **Use in the new chat** before the first message,
+and the choice remains even if you close and reopen the window. The short core
+(up to 1,200 UTF-8 bytes) is given to the model on every turn, even after
+compaction; the more extensive memories are searched when needed. A specific
+request always prevails over general preferences.
 
 Choose how it should evolve: **Manual** (you edit identity and preferences
 yourself), **Suggestions** (Kira proposes lessons that you read in **What it
@@ -1041,15 +1083,16 @@ explicit preferences on its own). In Adaptive mode a message made only of
 ```
 
 updates the preference; the keys are `tono`, `dettaglio`, `collaborazione`
-and `lingua` (their English canonical names are `tone`, `detail`,
-`collaboration` and `language`). In Suggestions the command produces a
+and `lingua` (the English names `tone`, `detail`, `collaboration` and
+`language` also work). In Suggestions the command produces a
 proposal; in Manual it does nothing. Free text never becomes a rule on its own.
 **Helpful / Not helpful** influences the order of the memories; **Forget**
 excludes a lesson; **Evolution** shows the revisions and lets you restore one.
 **Copy profile**, **Import profile** and **Duplicate** transfer core and
 preferences without memories; **Archive** deactivates a Kira while keeping its
 data. To change identity in an existing chat, finish the work and pause any
-goal. Details in [Soul and Knowledge](SOUL_AND_KNOWLEDGE.md).
+goal; the change also closes the chat's browser, keeping a retained profile.
+Details in [Soul and Knowledge](SOUL_AND_KNOWLEDGE.md).
 
 ### Knowledge and tools
 
@@ -1063,31 +1106,35 @@ context; guides, reference memory and catalogs are read on request, in limited
 pages.
 
 In the **Tools** tab you see the project's tools with revisions, contracts and
-recorded tests. You can disable one or add to the draft a request to use or
-test it (the button does not send). When a capability is missing, you can ask
-Kira to prepare a reusable tool: a Python script that receives and returns
-JSON. Registration keeps an exact copy of the code; later changes require a
-new revision and new tests. Creating and registering require **Execute** and
-project write; testing and running require **Trusted host**, because the code
-acts as your user. The tests verify the declared cases, not every external
-effect. No dependencies are installed and no credentials are imported.
+recorded tests. You can disable one or add to the draft a request to use or test
+it (the button does not send). When a capability is missing, you can ask Kira to
+prepare a reusable tool: a Python script that receives and returns JSON.
+Registration keeps an exact copy of the code; later changes require a new
+revision and new tests. Creating and registering require **Execute** and project
+write; testing and running require **Execute** and **Trusted host** or **Full
+access**, because the code acts as your user. The tests verify the declared
+cases, not every external effect. No dependencies are installed and no
+credentials are imported.
 
 ## Workspace and native actions
 
 ### Resume work
 
 **Resume** in the top bar (**Ctrl+Shift+R**) opens **Resume work**: the last
-recorded outcome, the interrupted activities and an editable **Next step**
-note. Choose Folder, Terminal and Editor, save and press **Open saved tools**:
-Konsole uses the project folder and Kate opens a new session in the same
-folder. This action opens applications without repeating the commands of old
-runs. Interrupted operations are never repeated automatically.
+recorded outcome, the interrupted activities and an editable **Next step** note.
+Choose **Folder**, **Terminal** and **Editor**, press **Save changes** and then
+**Open saved tools**: Dolphin opens the project folder, Konsole starts in that
+folder and Kate opens a new session with the same working folder. This action
+opens applications without repeating the commands of old runs. Interrupted
+operations are never repeated automatically.
 
 ### Ctrl+K
 
-**Ctrl+K** searches projects and native actions: opening applications,
-settings, system monitor, updates and backups, or doing a web search in the
-system browser. A missing application or an unavailable graphical session is
+**Ctrl+K** searches projects and native actions, which use fixed KDE Plasma
+and Firefox applications: the project's folder, terminal and editor (Dolphin,
+Konsole, Kate), Firefox, Plasma settings, System Monitor, Discover for
+updates, Déjà Dup for backups, a screenshot with Spectacle and a Google search
+in Firefox. A missing application or an unavailable graphical session is
 reported; "Launch requested" means that the request was sent to the
 application. The boundaries of native actions are in [Permissions and
 security](PERMISSIONS_AND_SECURITY.md).
@@ -1185,15 +1232,17 @@ the warning.
 
 Project files stay in the folders you chose. Everything else lives in your
 user's paths, separate from the app sources. Without `KIRA_HOME` Kira uses the
-XDG variables of your environment and, if they are missing, these paths:
+XDG variables of your environment and, if they are missing or empty, these
+paths:
 
 | Content | Default path |
 | --- | --- |
 | Database `kira.sqlite3`, `artifacts/`, `attachments/`, `image-attachments/`, `captures/`, `diagnostics/`, `exports/`, `browser-engine/`, `browser-profiles/`, `browser-temporary/` | `$HOME/.local/share/kira/` |
-| Appearance preferences | `$HOME/.config/kira/ui.json` |
+| Interface preferences | `$HOME/.config/kira/ui.json` |
 | Chat drafts and reusable history | `$HOME/.config/kira/composer.json` |
+| Drafts and pending identities of Soul, Research and project tools | `composer.json` in `$HOME/.local/state/kira/souls-ui/`, `research-ui/` and `knowledge-ui/` |
 | Service state and logs | `$HOME/.local/state/kira/` |
-| Private communication with the service | `$XDG_RUNTIME_DIR/kira/service.sock` |
+| Private communication with the service | `$XDG_RUNTIME_DIR/kira/service.sock` (without `XDG_RUNTIME_DIR`: `$HOME/.local/state/kira/runtime/service.sock`) |
 
 Setting `KIRA_HOME` to an absolute path outside the sources, Kira groups
 everything in `config/`, `data/`, `state/` and `runtime/` inside that folder;
@@ -1206,22 +1255,22 @@ check that they remain accessible. Profiles and paths are in
 ### Database backup
 
 **Settings → Local data → Back up database** (or `kira-desktop rpc
-database.backup`) creates a consistent copy of the SQLite database. It does
-not include attachments, artifacts, preferences, drafts, browser profiles or
-the project folders: to keep everything you also need a copy of the profile
-files, with the service stopped. Do not copy the SQLite file alone while the
-service is running: confirmed data may still be in the WAL. Test the restore on
-a separate copy before replacing the current data.
+database.backup`) creates a consistent copy of the SQLite database. It does not
+include attachments, artifacts, preferences, drafts, browser profiles or the
+project folders: to keep everything you also need a copy of the profile's data,
+configuration and state folders, with the service stopped. Do not copy the
+SQLite file alone while the service is running: confirmed data may still be in
+the WAL. Test the restore on a separate copy before replacing the current data.
 
 ### Updates at a glance
 
 Before updating: finish the work, pause the queue, close the browser, make the
-backup, close the window and run `kira-desktop stop-service` (from source `uv
-run kira-desktop stop-service`), which refuses to stop if there are active
-runs. After the update Kira updates the database on its own after a consistent
-backup; an older version does not open a newer database, so going back
-requires the backup made beforehand. The complete procedure is in
-[Installation](INSTALLATION.md).
+backup, close the window and run `kira-desktop stop-service` (from source
+`uv run kira-desktop stop-service`), which refuses to stop while work is in
+progress or a browser is under your control, and says why. After the update
+Kira updates the database on its own after a consistent backup; an older
+version does not open a newer database, so going back requires the backup made
+beforehand. The complete procedure is in [Installation](INSTALLATION.md).
 
 ## Keyboard shortcuts
 
@@ -1268,14 +1317,15 @@ had already been performed, so as not to duplicate them.
 **The draft is not saved.**
 The **Draft not saved** warning indicates that the drafts file has reached a
 limit (2 MiB overall, 100 drafts, 262,144 bytes per text) or is not writable.
-Copy the text outside Kira before closing, then free space with **Clear local
-project history** or by reducing the other drafts.
+Copy the text outside Kira before closing, then shorten or delete the other
+drafts and remove the images you do not need; clearing the sent message history
+does not help, because Kira already discards it on its own to make room.
 
 **The browser asks for consent on every click.**
 That is the default behavior. Open **⚙** in the browser and enable **Always
 allow the agent's actions in this chat**, or choose **Always allow in this
-chat** in the popup. It applies only to that chat and goes back to per-action
-if you change provider, account or create a branch.
+chat** in the popup. It applies only to that chat; if you change provider or
+account or create a branch, Kira asks again for each action.
 
 **Dragging from Windows does not work.**
 It depends on WSLg. Copy the files in File Explorer with Ctrl+C and paste them
@@ -1284,7 +1334,7 @@ the preview before sending.
 
 **I attached an image but the model does not see it.**
 With Codex and Ollama images arrive as a textual path. Images as visual
-content require OpenAI direct, DeepSeek Account (vision models), DeepSeek Web
+content require Direct OpenAI, DeepSeek Account (vision models), DeepSeek Web
 or Claude Code, and a model that supports them: Kira warns if the selected
 model does not support images.
 
@@ -1309,21 +1359,21 @@ a successful response confirms that. For Codex also check **Codex executable**
 in **Settings → Connections**.
 
 **Ollama is extremely slow or does not respond.**
-With thinking enabled and a long history it can take minutes before sending
-data; Kira waits up to ten minutes between one update and the next. Reduce
-**Requested context** in **Details** or disable thinking; check in Ollama that
-the chosen model and context fit in memory.
+With internal reasoning on and a long history it can take minutes before
+sending data; Kira waits up to ten minutes between one update and the next.
+Reduce **Requested context** in **Details** or turn internal reasoning off;
+check in Ollama that the chosen model and context fit in memory.
 
 **I want to change the project permissions but the field is locked.**
-Permissions are changed in **Project memory** only when there is no active
-work in the project: wait for the end of the turn or use **Stop**, then
-**Save**.
+Permissions are changed in **Actions → Project permissions** only when there is
+no active work in the project: wait for the end of the turn or use **Stop**,
+then **Save**.
 
 **Where do screenshots and attachments end up? Does the backup include them?**
 In `$HOME/.local/share/kira/` (`captures/`, `attachments/`,
 `image-attachments/`, `artifacts/`). **Back up database** copies only the
-database: for a complete backup also copy that folder, with the service
-stopped.
+database: for a complete backup also copy that folder and the configuration
+and state folders, with the service stopped.
 
 **Kira restarted and a Team or a goal is stopped.**
 That is intentional: after an interruption Kira does not repeat operations

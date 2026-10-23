@@ -261,9 +261,15 @@ async def test_failed_summary_retains_prior_checkpoint_and_original_evidence(rec
     transport.summary_failure = failure
     run_id = await start(service, session, "unsuccessful-recovery")
     result = await settled(service, run_id)
-    assert result["state"] in {"failed", "interrupted"}
+    # Each case must end for its own cause, never for an unrelated fixture
+    # assertion that the service records as an ordinary failed run.
     if failure == "protocol":
+        assert result["state"] == "interrupted", result
         assert result["outcome"]["maintenance_phase"] == "memory_summary"
+        assert result["outcome"]["source"] == "kira_output_validation"
+    else:
+        assert result["state"] == "failed", result
+        assert result["error"] == "Context memory contains an ungrounded or invalid source claim"
     assert [phase for phase, _ in transport.calls] == ["native", "summary"]
     assert state(service, session) == before["context"]
     assert checkpoints(service) == before["checkpoints"]
@@ -285,9 +291,12 @@ async def test_auth_quota_transport_and_cancel_do_not_start_fallback(recovery_se
         await asyncio.wait_for(transport.native_started.wait(), 5)
         await service.dispatch("run.cancel", {"run_id": run_id})
     result = await settled(service, run_id)
-    assert result["state"] in {"failed", "interrupted", "cancelled"}
+    expected = {401: "failed", 429: "failed", "transport": "interrupted", "cancel": "cancelled"}
+    assert result["state"] == expected[failure], result
     if failure in {401, 429}:
         assert result["outcome"]["maintenance_phase"] == "native_fold"
+    elif failure == "transport":
+        assert "connection interrupted" in result["error"]
     assert [phase for phase, _ in transport.calls] == ["native"]
     assert state(service, session) == before["context"]
     assert not transport.summary_started.is_set()

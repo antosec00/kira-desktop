@@ -132,11 +132,12 @@ def read_preferences(directory: Path) -> dict[str, object]:
 
 
 def write_preferences(directory: Path, value: dict[str, object]) -> None:
+    """Atomic private write; diagnostics are English keys the interface explains."""
     if directory.is_symlink():
-        raise ValueError("La cartella delle preferenze non può essere un collegamento.")
+        raise ValueError("Preferences directory must not be a symlink")
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if directory.stat().st_uid != os.getuid():
-        raise PermissionError("La cartella delle preferenze non appartiene al tuo utente.")
+        raise PermissionError("Preferences directory must belong to this user")
     directory.chmod(0o700)
     descriptor, temporary = tempfile.mkstemp(prefix=".ui-", dir=directory)
     try:

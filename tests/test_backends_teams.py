@@ -68,7 +68,8 @@ class TeamServer:
         self.closed = False
         self.instances.append(self)
 
-    async def start(self, *, experimental_api=False):
+    async def start(self, *, experimental_api=True):
+        # Same default as the production AppServer.start.
         self.experimental = experimental_api
         self.started = True
 
@@ -286,8 +287,10 @@ async def test_structured_planner_preserves_final_text_and_needs_no_experimental
     result = await codex.CodexBackend().run(ctx)
     assert result["outcome"]["final_text"] == final and not calls
     rpc = server.instances[0]
-    assert not rpc.experimental
-    assert dict(rpc.requests)["turn/start"]["outputSchema"] == ctx.output_schema
+    requests = dict(rpc.requests)
+    # A planner registers no dynamic (experimental) tools on its thread.
+    assert "dynamicTools" not in requests["thread/start"]
+    assert requests["turn/start"]["outputSchema"] == ctx.output_schema
 
 
 async def test_structured_output_does_not_use_commentary_as_final_text(tmp_path, server):

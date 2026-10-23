@@ -9,6 +9,15 @@ Rectangle {
     radius: 12
     color: appearance.colors.surfaceAlt
     border.color: appearance.colors.border
+    // An unsaved checkbox choice (null follows the saved mode). It lasts until the
+    // saved mode matches it; hiding the pane discards it.
+    property var pendingProxy: null
+    readonly property bool proxySelected: pendingProxy === null ? deepseekAccount.proxyEnabled : pendingProxy
+    onVisibleChanged: if (!visible) pendingProxy = null
+    Connections {
+        target: deepseekAccount
+        function onChanged() { if (pane.pendingProxy === deepseekAccount.proxyEnabled) pane.pendingProxy = null }
+    }
 
     ColumnLayout {
         id: content
@@ -22,8 +31,9 @@ Rectangle {
             id: useProxy
             objectName: "deepseekUseProxy"
             text: qsTr("Usa DeeperSeeker")
-            checked: deepseekAccount.proxyEnabled
+            checked: pane.proxySelected
             enabled: workspace.connected && !deepseekAccount.busy
+            onToggled: pane.pendingProxy = checked
         }
         ColumnLayout {
             visible: useProxy.checked
@@ -59,6 +69,15 @@ Rectangle {
             }
         }
 
+        // Switching back to the account keeps the saved proxy key for later use.
+        KButton {
+            objectName: "deepseekProxyDisable"
+            text: qsTr("Disattiva DeeperSeeker")
+            primary: true
+            visible: !useProxy.checked && deepseekAccount.proxyEnabled
+            enabled: workspace.connected && !deepseekAccount.busy
+            onClicked: deepseekAccount.configureProxy(deepseekAccount.proxyUrl, "", false)
+        }
         Rectangle { visible: !useProxy.checked; Layout.fillWidth: true; implicitHeight: 1; color: appearance.colors.border }
         ReadText { visible: !useProxy.checked; text: qsTr("Kira usa il flusso account PKCE del DeepSeek Harness e conserva il grant nel profilo locale."); Layout.fillWidth: true; color: appearance.colors.muted }
         ReadText { visible: !useProxy.checked; text: qsTr("Nota: il logout in Kira rimuove il grant locale, ma potrebbe non revocare un’eventuale chiave gestita da DSH sulla piattaforma."); Layout.fillWidth: true; color: appearance.colors.warning }

@@ -65,18 +65,23 @@ async def test_disconnect_fails_pending_mutation_instead_of_claiming_success(pat
 
 
 async def test_version_mismatch_before_commands(paths):
+    after_hello = asyncio.get_running_loop().create_future()
+
     async def handler(reader, writer):
         request = json.loads(await reader.readline())
         writer.write(json.dumps({"version": 1, "id": request["id"],
                                 "result": {"version": 1, "app_version": "99.0.0"}}).encode() + b"\n")
         await writer.drain()
-        assert await reader.read() == b""
+        # An assertion inside a server callback is only logged, so hand the bytes to the test.
+        after_hello.set_result(await reader.read())
         writer.close()
 
     server = await asyncio.start_unix_server(handler, str(paths.socket))
     async with server:
         with pytest.raises(KiraError, match="old service"):
             await Client(paths).connect()
+        # The client closed its side without sending any command after the hello.
+        assert await asyncio.wait_for(after_hello, 10) == b""
 
 
 def test_private_directories_and_no_symlink_store(paths, tmp_path):

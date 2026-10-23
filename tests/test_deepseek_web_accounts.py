@@ -8,12 +8,15 @@ import pytest
 
 from kira.domain.contracts import KiraError
 from kira.service.deepseek_web_accounts import DeepSeekWebAccounts
+from kira.service.storage import Store
 
 
 def service(tmp_path):
     values = []
-    redactor = SimpleNamespace(set_provider_values=values.extend)
-    return SimpleNamespace(paths=SimpleNamespace(config=tmp_path), redactor=redactor), values
+    redactor = SimpleNamespace(
+        set_provider_values=lambda registered, owner: values.extend(registered))
+    store = Store(tmp_path / "kira.sqlite3")
+    return SimpleNamespace(paths=SimpleNamespace(config=tmp_path), redactor=redactor, store=store), values
 
 
 @pytest.mark.asyncio
@@ -30,20 +33,27 @@ async def test_web_token_login_rejects_header_breaking_values(tmp_path):
     assert stored.stat().st_mode & 0o777 == 0o600
 
 
-def test_web_token_load_tightens_mode_and_ignores_invalid_records(tmp_path):
+def test_web_token_load_accepts_only_private_valid_records(tmp_path):
     directory = tmp_path / "deepseek-web"
     directory.mkdir(mode=0o700)
     stored = directory / "token.json"
     stored.write_text(json.dumps({"version": 1, "token": "synthetic-token"}))
+    stored.chmod(0o600)
+    owner, values = service(tmp_path)
+    assert DeepSeekWebAccounts(owner).token == "synthetic-token" and values == ["synthetic-token"]
+    # A readable copy is reported and never loaded or silently tightened.
     stored.chmod(0o644)
     owner, values = service(tmp_path)
-    assert DeepSeekWebAccounts(owner).token == "synthetic-token"
-    assert stored.stat().st_mode & 0o777 == 0o600 and values == ["synthetic-token"]
+    accounts = DeepSeekWebAccounts(owner)
+    assert accounts.token == "" and values == [] and accounts.error.code == "UNSAFE_PATH"
+    assert stored.stat().st_mode & 0o777 == 0o644
+    stored.chmod(0o600)
     stored.write_text(json.dumps({"version": 1, "token": "bad\ntoken"}))
-    assert DeepSeekWebAccounts(service(tmp_path)[0]).token == ""
+    invalid = DeepSeekWebAccounts(service(tmp_path)[0])
+    assert invalid.token == "" and invalid.error.code == "CREDENTIAL_STORE"
     os.link(stored, tmp_path / "second-link.json")
-    with pytest.raises(KiraError):
-        DeepSeekWebAccounts(service(tmp_path)[0])
+    linked = DeepSeekWebAccounts(service(tmp_path)[0])
+    assert linked.token == "" and linked.error.code == "UNSAFE_PATH"
 
 
 @pytest.mark.parametrize("url", ["http://127.0.0.1:4000", "http://localhost:4000", "http://[::1]:4000",

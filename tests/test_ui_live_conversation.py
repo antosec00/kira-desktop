@@ -411,7 +411,7 @@ def test_service_followup_notice_is_not_a_human_message_and_preserves_original_p
                "content": "Recorded Team result payload"}
     emit(workspace, "backend.notice", payload)
     row = workspace.transcript.rows[-1]
-    assert row["kind"] == "notice" and row["title"] == "BACKEND"
+    assert row["kind"] == "notice" and row["title"] == "AVVISO"
     assert row["body"] == "Kira sta preparando la risposta sui risultati del Team"
     assert '"Recorded Team result payload"' in row["raw"]
     assert not any(r["kind"] == "user" for r in workspace.transcript.rows)

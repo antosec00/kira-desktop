@@ -159,9 +159,16 @@ ApplicationWindow {{ visible: true; width: {size[0]}; height: {size[1]}
     assert engine.rootObjects()
     window = engine.rootObjects()[0]
     try:
-        qtbot.wait(100)
+        def laid_out():
+            dialog = window.findChild(QObject, "usageDialog")
+            controls = [window.findChild(QObject, name)
+                        for name in ("usageDialogClose", "usageClose", "usageRawToggle", "usageScroll")]
+            return (dialog is not None and dialog.property("opened")
+                    and all(item is not None and item.property("height") > 0 for item in controls))
+
+        # Layouts are polished on a later frame; slow runners need more than a fixed delay.
+        qtbot.waitUntil(laid_out, timeout=5000)
         dialog = window.findChild(QObject, "usageDialog")
-        assert dialog is not None
         assert not dialog.property("rawVisible")
         # The shared panel falls back to a centered dialog in this isolated
         # fixture. Check its usable geometry rather than an old fixed margin.
@@ -197,12 +204,13 @@ ApplicationWindow {{ visible: true; width: {size[0]}; height: {size[1]}
         assert content.contains(bounds(toggle))
         assert content.contains(bounds(scroll))
         evaluate(toggle, "clicked()")
-        qtbot.wait(30)
         assert dialog.property("rawVisible")
+        copy_button = window.findChild(QObject, "usageCopy")
+        qtbot.waitUntil(lambda: copy_button.isVisible() and copy_button.property("height") > 0,
+                        timeout=5000)
         text = window.findChild(QObject, "usageRawText")
         assert text.property("visible")
         assert json.dumps(USAGE) in text.property("text")
-        copy_button = window.findChild(QObject, "usageCopy")
         assert content.contains(bounds(copy_button))
         evaluate(copy_button, "clicked()")
         assert workspace.copied == dialog.property("originalText")

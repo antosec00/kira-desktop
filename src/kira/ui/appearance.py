@@ -7,7 +7,7 @@ import math
 from copy import deepcopy
 from typing import Any
 
-from PySide6.QtCore import SLOT, QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import SLOT, QCoreApplication, QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtDBus import (
     QDBusConnection,
     QDBusMessage,
@@ -28,6 +28,10 @@ from kira.ui.preferences import (
 from kira.ui.qt_properties import qt_property
 
 _STYLE_KEYS = {"shared", "light", "dark"}
+# Sliders and spin boxes change these continuously. The first change is saved at
+# once; further changes within the pause are applied live and saved together.
+_CONTINUOUS_OPTIONS = {"contrast", "ui_size", "content_size", "code_size"}
+_PERSIST_DELAY_MS = 300
 _THEMES = {
     # Kira: anthracite ground, warm off-white in light mode, amber accent after the mascot.
     "kira": {
@@ -221,6 +225,14 @@ class Appearance(QObject):
         self._config: dict[str, Any] = {}
         self._colors: dict[str, str] = {}
         self._legacy_motion = False
+        self._unsaved = False
+        self._persist_timer = QTimer(self)
+        self._persist_timer.setSingleShot(True)
+        self._persist_timer.setInterval(_PERSIST_DELAY_MS)
+        self._persist_timer.timeout.connect(self.flush)
+        application = QCoreApplication.instance()
+        if application is not None:
+            application.aboutToQuit.connect(self.flush)
         self._motion = _MotionPortal(self)
         self._motion.changed.connect(self._system_motion_changed)
         self._families = sorted(family for family in QFontDatabase.families() if valid_font_family(family))
@@ -231,6 +243,11 @@ class Appearance(QObject):
         self._preferences_changed()
 
     def _preferences_changed(self) -> None:
+        if self._unsaved:
+            # Another preference was saved first: write the newer live appearance
+            # with it instead of letting the older saved one replace it.
+            self.flush()
+            return
         preferences = self._workspace.uiPreferences
         value = preferences.get("appearance")
         config = deepcopy(value if valid_appearance(value) else APPEARANCE_DEFAULTS)
@@ -350,10 +367,23 @@ class Appearance(QObject):
             self._error = error
             self.changed.emit()
 
+    @Slot()
+    def flush(self) -> None:
+        """Save live continuous changes now; a failure restores the saved appearance."""
+        self._persist_timer.stop()
+        if not self._unsaved:
+            return
+        self._unsaved = False
+        if not self._persist(deepcopy(self._config)):
+            self._config = {}
+            self._preferences_changed()
+
     def _persist(self, config: dict[str, Any]) -> bool:
         if not valid_appearance(config):
             self._set_error(tr("Configurazione dell’aspetto non valida."))
             return False
+        # This save carries every live change; its own notification must not flush again.
+        self._unsaved = False
         motion = config["motion"]
         reduced = (self._motion.reduced if motion == "system" else self._legacy_motion
                    if motion == "legacy" else motion == "on")
@@ -378,7 +408,15 @@ class Appearance(QObject):
         if key == "separate" and value is False and config["separate"]:
             config["shared"] = deepcopy(self.style)
         config[key] = value
-        self._persist(config)
+        if key in _CONTINUOUS_OPTIONS and self._persist_timer.isActive():
+            if config != self._config:
+                self._config = config
+                self._unsaved = True
+                self._refresh()
+            self._persist_timer.start()
+            return
+        if self._persist(config) and key in _CONTINUOUS_OPTIONS:
+            self._persist_timer.start()
 
     @Slot(str, str)
     def setStyle(self, key: str, value: str) -> None:

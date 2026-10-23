@@ -12,6 +12,7 @@ from kira.domain.contracts import Json, KiraError
 PROJECT_TOOL_NAMES = frozenset({"kira.project_tools"})
 PROJECT_TOOL_CALL_TIMEOUT = 240
 MAX_TOOL_SECONDS = 60
+MAX_TOOL_OUTPUT_BYTES = 32768
 MAX_TEST_CASES = 3
 ACTIONS = frozenset({"describe", "search", "read", "register", "test", "run"})
 MAX_SOURCE_BYTES = 256 * 1024
@@ -177,7 +178,8 @@ def validate_manifest(value: Any) -> Json:
         "input_schema": validate_schema(value["input_schema"]),
         "output_schema": validate_schema(value["output_schema"]),
         "timeout_seconds": integer(value.get("timeout_seconds", 10), "timeout_seconds", 1, MAX_TOOL_SECONDS),
-        "max_output_bytes": integer(value.get("max_output_bytes", 16384), "max_output_bytes", 1024, 32768)}
+        "max_output_bytes": integer(value.get("max_output_bytes", 16384), "max_output_bytes", 1024,
+                                    MAX_TOOL_OUTPUT_BYTES)}
     if result["input_schema"]["type"] != "object":
         raise KiraError("INVALID_ARGUMENT", "Project tool input must be a JSON object")
     tests = value["tests"]
@@ -221,7 +223,8 @@ def manifest_schema() -> Json:
                         "expected": {"description": "Matches output_schema; at most 8192 bytes. Exact JSON comparison."}},
                     "required": ["name", "arguments", "expected"]}},
             "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_TOOL_SECONDS, "default": 10},
-            "max_output_bytes": {"type": "integer", "minimum": 1024, "maximum": 32768, "default": 16384}},
+            "max_output_bytes": {"type": "integer", "minimum": 1024, "maximum": MAX_TOOL_OUTPUT_BYTES,
+                                 "default": 16384}},
         "required": ["name", "description", "input_schema", "output_schema", "tests"],
         "description": "At most 32768 UTF-8 bytes total. Unique nonblank test names. Finite JSON only."}
 

@@ -19,8 +19,8 @@ flowchart LR
   GUI --> Composer[Composer drafts and history]
   Service --> DB[(SQLite in WAL mode)]
   Service --> Artifacts[Artifacts, attachments and private captures]
-  Service --> Ollama[Ollama: native API] & OpenAI[OpenAI direct: Responses HTTP/SSE]
-  Service --> DSAccount[DeepSeek Account: API with key] & DSWeb[DeepSeek Web: web session]
+  Service --> Ollama[Ollama: native API] & OpenAI[Direct OpenAI: Responses HTTP/SSE]
+  Service --> DSAccount[DeepSeek Account: account sign-in] & DSWeb[DeepSeek Web: web session]
   Service --> Codex[Managed Codex App Server] & Claude[Claude Code via Agent SDK]
   Service --> Browser[Browser worker: Chromium on a private Xvfb display]
   Ollama & OpenAI & DSAccount & DSWeb -->|validated requests| Tools[Kira tools: files, commands, browser, Computer]
@@ -39,13 +39,14 @@ system service and no active "linger".
 
 Providers fall into two families:
 
-- **Ollama, OpenAI direct, DeepSeek Account and DeepSeek Web** perform inference
+- **Ollama, Direct OpenAI, DeepSeek Account and DeepSeek Web** perform inference
   while Kira runs a small tool loop of its own: the model asks for a tool, the
-  service validates the request, executes it and returns the result. OpenAI
-  direct uses an OAuth manager in the service and a Responses HTTP/SSE transport
-  without going through Codex App Server; DeepSeek Account uses an API key;
-  DeepSeek Web reuses a web session and solves the proof-of-work challenge with
-  a WebAssembly module executed in wasmtime. Credential files are private
+  service validates the request, executes it and returns the result. Direct
+  OpenAI uses an OAuth manager in the service and a Responses HTTP/SSE transport
+  without going through Codex App Server; DeepSeek Account uses the sign-in with
+  your DeepSeek account (or a DeeperSeeker instance with an API key); DeepSeek
+  Web reuses a web session and solves the proof-of-work challenge with a
+  WebAssembly module executed in wasmtime. Credential files are private
   configuration and never enter exports.
 - **Codex and Claude Code** own their native tools. Kira observes their
   notifications (exactly once: an observed notification is never re-executed by
@@ -63,8 +64,9 @@ The data model follows a simple hierarchy:
 - A **project** owns its folder, instructions, permission and memory.
 - A **chat** (ordinary session) has a name, belongs to exactly one project and
   keeps its own provider reference and its own history. Switching provider
-  creates a new session: a native thread identifier is never transferred from
-  one provider to another.
+  within the same chat retires the current provider generation and opens a new
+  one without a native reference: a native thread identifier is never
+  transferred from one provider to another.
 - A **run** owns the sequenced events and the real proof of tools and
   artifacts.
 
@@ -79,10 +81,12 @@ reserve overlapping roots: readers are scheduled in parallel, writers stay
 exclusive until the provider has completed cleanup.
 
 After a service restart, unfinished work is **interrupted, not repeated**. A
-requested cancellation is distinct from a confirmed cancellation, and the
-interface shows them differently. A successful outcome reported by the provider
-is not an independent verification of every claim the model makes: the chat
-shows messages and tool receipts, the Activity section keeps the lifecycle
+cleanup that recorded no process identity cannot be verified within the same
+boot: it stays pending until the computer restarts, and the next start then
+releases it. A requested cancellation is distinct from a confirmed cancellation,
+and the interface shows them differently. A successful outcome reported by the
+provider is not an independent verification of every claim the model makes: the
+chat shows messages and tool receipts, the Activity section keeps the lifecycle
 summary of every run.
 
 The service also owns the request queue, the archive and branching metadata of
@@ -100,18 +104,21 @@ create replacement work.
 
 ## Context and permissions
 
-The instructions and memory maintained by the user are inspectable. On request
-Kira adds limited excerpts from at most five other ordinary chats of the same
-project (6000 additional characters in total), with the source reference and
-the unverified-claim label; it excludes external projects, archived chats and
-Team sessions. The block provided to the model stays recorded as an event. This
-context does not remove what a persistent provider thread has already received
-and does not limit the tools' file system permissions.
+The instructions and memory maintained by the user are inspectable. Unless the
+project disables it (`share_session_summaries:false`), Kira adds limited
+excerpts from at most five other ordinary chats of the same project (6000
+additional characters in total), with the source reference and the
+unverified-claim label; it excludes external projects, archived chats, Team
+sessions and chats with another Soul identity. The block provided to the model
+stays recorded as an event. This context does not remove what a persistent
+provider thread has already received and does not limit the tools' file system
+permissions.
 
 The service enforces permissions **independently of the interface**:
 
-- The built-in file tools validate that paths stay inside the project and check
-  the expected hashes before modifying a file.
+- The built-in file tools validate that paths stay inside the project (outside
+  it only with **Full access**) and check the expected hashes before modifying a
+  file.
 - Arbitrary commands (an `argv` vector, no shell) require the **Trusted host**
   or **Full access** permission and act as the user: the working folder is not
   a sandbox.
@@ -146,7 +153,7 @@ execution permissions.
 | Default location | Content and owner |
 | --- | --- |
 | `~/.config/kira/ui.json` | Interface preferences, validated and saved atomically (GUI) |
-| `~/.config/kira/composer.json` | Bounded drafts and history of sent messages (GUI) |
+| `~/.config/kira/composer.json` | Bounded drafts, history of sent messages and pending identities of chat requests (GUI) |
 | `~/.local/share/kira/kira.sqlite3` | Projects, chats, events, Teams, queue, goals and settings (only the service writes) |
 | `~/.local/share/kira/artifacts/` | Captured output, with size limits (service) |
 | `~/.local/share/kira/attachments/` | Images imported from the interface |
@@ -156,6 +163,7 @@ execution permissions.
 | `~/.local/share/kira/exports/` | Private exports too large for an IPC response |
 | `~/.local/share/kira/browser-engine/`, `browser-profiles/`, `browser-temporary/` | Downloaded Chromium and isolated browser profiles (service) |
 | `~/.local/state/kira/` | State and logs of the detached service |
+| `~/.local/state/kira/souls-ui/`, `research-ui/`, `knowledge-ui/` | Drafts and pending identities of Soul, Research and project tools (GUI) |
 | `$XDG_RUNTIME_DIR/kira/service.sock` | Private IPC socket; falls back to the state folder when unavailable |
 | Project folder chosen by the user | The real project files, separate from the application data |
 
@@ -199,15 +207,15 @@ an inspectable runtime manifest. The chosen provider stays explicit. Project
 text and reports from Team mates are data: they cannot alter the operational
 contract or select another execution identity through a tool's arguments.
 
-Codex native threads receive the `kira` tools through a **temporary MCP
-bridge**: a private descriptor and a same-user Unix socket relay, bound to that
-`RunContext`. Only the registered Kira tools receive the explicit per-thread
-approval; the other tools, the sandbox and the account settings keep their
-policies. The relay exposes no generic RPC surface towards the service and its
-installed bootstrap is anchored to the package's trusted location. Claude Code
-receives the same tools from an **internal MCP server** started by the adapter
-inside the service process, with the names `mcp__kira__<tool>` visible in the
-receipts.
+Codex native threads receive the `kira` tools (and, with an autonomous goal,
+the goal tools) through a **temporary MCP bridge**: a private descriptor and a
+same-user Unix socket relay, bound to that `RunContext`. Only the registered
+Kira tools receive the explicit per-thread approval; the other tools, the
+sandbox and the account settings keep their policies. The relay exposes no
+generic RPC surface towards the service and its installed bootstrap is anchored
+to the package's trusted location. Claude Code receives Kira's tools from an
+**internal MCP server** started by the adapter inside the service process, with
+the names `mcp__kira__<tool>` visible in the receipts.
 
 When the assistant delegates work to a Team, the service atomically saves the
 delegation intent, the call result and the originating event, and hands the
@@ -225,9 +233,10 @@ The isolated browser and **Kira's Computer** are a single actor owned by the
 service (`service/web.py`), which coordinates the Chromium worker and the
 worker that observes and acts on the screen. Every model tool (`browser.search`,
 `browser.navigate`, `computer.observe`, `computer.act`…) goes through the
-service, which checks the project's consent, records the action as an event and
-returns a bounded result to the model. Consent can be revoked while the browser
-is open; a request awaiting approval keeps its identity. The handover of control
-between the user and Kira (**Take control**, **Return to Kira**) is also
-service state, not interface state. Usage details and limits are in
+service, which checks the project permission, the mode and the chat's consent,
+records the action as an event and returns a bounded result to the model.
+Consent can be revoked while the browser is open; a request awaiting approval
+keeps its identity. The handover of control between the user and Kira (**Take
+control**, **Return to Kira**) is also service state, not interface state.
+Usage details and limits are in
 [Browser and Computer](BROWSER_AND_COMPUTER.md).

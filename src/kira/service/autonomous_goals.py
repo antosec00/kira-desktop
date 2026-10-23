@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from kira.domain.autonomous_goals import GOAL_INSTRUCTIONS, GOAL_TOOL_NAMES, goal_tool_specs
 from kira.domain.contracts import Json, KiraError
+from kira.domain.providers import WEB_BACKENDS
+from kira.service.history_tools import mirrors_kira_tool
 from kira.service.storage import encode, new_id, now
 from kira.service.teams import fields, fingerprint, integer, text
 from kira.service.tool_policy import kira_tools_enabled
@@ -21,6 +23,17 @@ if TYPE_CHECKING:
 
 METHODS = {"goal.get", "goal.start", "goal.pause", "goal.resume"}
 _TERMINAL_SQL = "('completed','failed','cancelled','interrupted')"
+# Provider item identities, timings and process numbers differ on every call.
+_VOLATILE_RECEIPT_FIELDS = frozenset({"id", "durationMs", "processId"})
+_MAX_PROGRESS_RECEIPTS = 256
+
+
+def _characters(value: Any, field: str, maximum: int, *, empty: bool = False) -> str:
+    """Checkpoint text is bounded in characters, as its tool schema declares."""
+    if (not isinstance(value, str) or "\0" in value or len(value) > maximum
+            or (not empty and not value.strip())):
+        raise KiraError("INVALID_ARGUMENT", f"{field} must contain at most {maximum} characters")
+    return value
 
 
 class AutonomousGoals:
@@ -105,7 +118,7 @@ class AutonomousGoals:
         # frozen so changes require an explicit resume using the new selection.
         policy = current["settings"].get("browser_action_approval", "ask")
         frozen_policy = row["binding"]["settings"].get("browser_action_approval", "ask")
-        allow_live_browser_policy = (session["backend"] in {"openai_chatgpt", "ollama", "deepseek_account"}
+        allow_live_browser_policy = (session["backend"] in WEB_BACKENDS
             and isinstance(policy, str) and policy in {"ask", "always"}
             and isinstance(frozen_policy, str) and frozen_policy in {"ask", "always"})
         def clean(settings: Json) -> Json:
@@ -422,7 +435,8 @@ class AutonomousGoals:
                 raise KiraError("INVALID_ARGUMENT", "Evidence event does not exist")
             payload = json.loads(row["payload"])
             good_tool = (row["type"] == "tool.completed" and isinstance(payload.get("result"), dict)
-                         and payload["result"].get("ok") is True and not str(payload.get("name", "")).startswith("goal."))
+                         and payload["result"].get("ok") is True and not str(payload.get("name", "")).startswith("goal.")
+                         and not mirrors_kira_tool(payload.get("name"), payload["result"]))
             good_artifact = row["type"] == "artifact.created" and bool(payload.get("sha256"))
             good_text = row["type"] == "message.completed" and bool(str(payload.get("content") or "").strip())
             if not (good_tool or good_artifact or good_text):
@@ -454,10 +468,12 @@ class AutonomousGoals:
         status = text(args.get("status"), "status", 16)
         if status not in {"continue", "completed", "blocked"}:
             raise KiraError("INVALID_ARGUMENT", "Checkpoint status must be continue, completed or blocked")
-        summary = self.service.redactor.text(text(args.get("summary"), "summary", 6000))
-        next_step = self.service.redactor.text(text(args.get("next_step"), "next_step", 3000, empty=status == "completed"))
+        summary = self.service.redactor.text(_characters(args.get("summary"), "summary", 6000))
+        next_step = self.service.redactor.text(_characters(args.get("next_step"), "next_step", 3000,
+                                                           empty=status == "completed"))
         evidence = self._evidence(goal["session_id"], args.get("evidence"))
-        deliverable = self.service.redactor.text(text(args.get("deliverable", ""), "deliverable", 12000, empty=True))
+        deliverable = self.service.redactor.text(_characters(args.get("deliverable", ""), "deliverable", 12000,
+                                                             empty=True))
         if status == "completed" and not evidence and not deliverable.strip():
             raise KiraError("INVALID_ARGUMENT", "Completion needs recorded evidence or an explicit text deliverable")
         if status == "completed" and self.store.db.execute("SELECT 1 FROM assistant_delegations WHERE session_id=? "
@@ -565,7 +581,10 @@ class AutonomousGoals:
             started = self.store.db.execute("SELECT payload FROM events WHERE run_id=? AND type='tool.started' "
                 "AND json_extract(payload,'$.tool_id')=? ORDER BY seq LIMIT 1", (run_id, payload.get("tool_id"))).fetchone()
             arguments = json.loads(started[0]).get("arguments") if started else None
-            value = {"type": event["type"], "name": payload.get("name"), "arguments": arguments, "result": payload.get("result")}
+            result = payload.get("result")
+            if isinstance(result, dict) and result.get("observed_only") is True:
+                result = {key: value for key, value in result.items() if key not in _VOLATILE_RECEIPT_FIELDS}
+            value = {"type": event["type"], "name": payload.get("name"), "arguments": arguments, "result": result}
         elif event["type"] == "artifact.created":
             value = {"type": event["type"], **{key: payload.get(key) for key in ("path", "sha256", "kind")}}
         else:
@@ -574,10 +593,17 @@ class AutonomousGoals:
 
     def _progress(self, cycle: Any, checkpoint: Json | None) -> tuple[bool, list[str]]:
         signatures: set[str] = set()
-        for event in self.store.db.execute("SELECT seq FROM events WHERE run_id=? AND type='tool.completed' "
+        receipts = 0
+        for event in self.store.db.execute("SELECT seq,payload FROM events WHERE run_id=? AND type='tool.completed' "
                 "AND json_extract(payload,'$.result.ok')=1 AND json_extract(payload,'$.name') NOT LIKE 'goal.%' "
-                "ORDER BY seq LIMIT 256", (cycle["run_id"],)):
+                "ORDER BY seq", (cycle["run_id"],)):
+            payload = json.loads(event["payload"])
+            if mirrors_kira_tool(payload.get("name"), payload.get("result")):
+                continue
             signatures.add(self._evidence_signature(cycle["run_id"], event["seq"]))
+            receipts += 1
+            if receipts == _MAX_PROGRESS_RECEIPTS:
+                break
         if checkpoint:
             if checkpoint["deliverable"].strip():
                 signatures.add(fingerprint({"deliverable": checkpoint["deliverable"]}))

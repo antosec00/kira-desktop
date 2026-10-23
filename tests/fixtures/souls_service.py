@@ -29,6 +29,8 @@ class Backend:
 
 
 async def main():
+    if not os.environ.get("KIRA_HOME"):
+        raise SystemExit("This fixture service only runs on an isolated KIRA_HOME profile")
     service = Service(backend_factory=lambda *_: Backend())
     await service.start()
     for value in (signal.SIGINT, signal.SIGTERM):

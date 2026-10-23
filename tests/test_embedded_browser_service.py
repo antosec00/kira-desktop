@@ -166,10 +166,10 @@ async def test_cancelled_input_has_unknown_receipt_and_is_not_replayed(fixture, 
     monkeypatch.setattr(actor.engine, "call", interrupted)
     request_id = str(uuid4())
     task = asyncio.create_task(command(service, client, params, stream, 1, "ui_text", {"text": "synthetic"}, request_id))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, 30)
     with pytest.raises(KiraError) as rejected:
         await command(service, client, params, stream, 1, "ui_text", {"text": "synthetic"}, request_id)
     assert rejected.value.code == "UNKNOWN_OUTCOME"

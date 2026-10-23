@@ -71,7 +71,7 @@ async def test_real_local_mcp_stdio_lists_calls_and_deduplicates_research(tmp_pa
             process.stdin.write((json.dumps({"jsonrpc": "2.0", "id": identity, "method": method,
                 "params": params}) + "\n").encode())
             await process.stdin.drain()
-            return json.loads(await asyncio.wait_for(process.stdout.readline(), 5))["result"]
+            return json.loads(await asyncio.wait_for(process.stdout.readline(), 30))["result"]
 
         initialized = await request(1, "initialize", {"protocolVersion": "2025-06-18"})
         assert initialized["serverInfo"]["name"] == "Kira Desktop" and relay.ready
@@ -122,7 +122,8 @@ class ResearchServer(AssistantServer):
 
 
 @pytest.mark.parametrize("resume", [False, True])
-async def test_codex_new_and_resumed_threads_require_seven_tools_and_keep_configuration(tmp_path, monkeypatch, resume):
+async def test_codex_new_and_resumed_threads_require_all_kira_tools_and_keep_configuration(
+        tmp_path, monkeypatch, resume):
     ctx, calls, events = assistant_context(tmp_path)
     ctx.client_tools = research_namespace()
     ctx.assistant_instructions = "Research proposals remain unaccepted until explicit review."

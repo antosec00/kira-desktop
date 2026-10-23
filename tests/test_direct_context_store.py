@@ -97,10 +97,12 @@ def test_source_memory_and_manual_notes_are_separate_and_scoped(contexts):
     assert data.snapshot(session)["pins"][0]["content"] == note["content"]
     data.set_pin("chat", "Corrected: use AX-005", note["id"])
     assert data.snapshot(session)["memory"] == memory
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError, match="does not belong") as wrong_chat:
         data.set_pin("other", "wrong chat", note["id"])
-    with pytest.raises(KiraError):
+    assert wrong_chat.value.code == "NOT_FOUND"
+    with pytest.raises(KiraError, match="does not belong") as wrong_chat:
         data.remove_pin("other", note["id"])
+    assert wrong_chat.value.code == "NOT_FOUND"
     foreign_run, _ = store.create_run("other", new_id(), "Foreign constraint")
     foreign = data.history.search("other", "Foreign")["sources"][0]["source_id"]
     with pytest.raises(KiraError, match="does not belong"):
@@ -151,10 +153,12 @@ def test_images_persist_only_same_chat_asset_refs_and_restore_verified_pixels(co
     restored, omissions = data.restore_images("chat", changed)
     assert restored[0]["content"][0]["type"] == "input_text"
     assert omissions[0]["attachment_id"] == attachment["id"]
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError, match="changed") as error:
         data.restore_images("chat", changed, current_run_id=run["id"])
-    with pytest.raises(KiraError):
+    assert error.value.code == "INVALID_ATTACHMENT"
+    with pytest.raises(KiraError, match="does not match an original attachment") as error:
         data.persist_images("other", items)
+    assert error.value.code == "INVALID_ATTACHMENT"
 
 
 def test_pins_limits_and_rejected_invalid_state_preserve_existing_data(contexts):
@@ -163,13 +167,18 @@ def test_pins_limits_and_rejected_invalid_state_preserve_existing_data(contexts)
         data.set_pin("chat", f"Important fixture {index}")
     with pytest.raises(KiraError, match="at most 32"):
         data.set_pin("chat", "Too many")
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError, match="8192") as error:
         data.set_pin("chat", "x" * 8193)
+    assert error.value.code == "INVALID_PARAMS"
     data.save(session, payload())
-    for invalid in (payload(boundary="pending_tool"), payload(memory=[{"text": "ungrounded"}]),
-                    payload(items=[{"role": "user", "content": [{"type": "input_image", "image_url": "https://invalid.example/image.png"}]}])):
-        with pytest.raises(KiraError):
+    for invalid, code, reason in (
+            (payload(boundary="pending_tool"), "INVALID_CONTEXT", "complete boundary"),
+            (payload(memory=[{"text": "ungrounded"}]), "INVALID_CONTEXT", "memory entry"),
+            (payload(items=[{"role": "user", "content": [{"type": "input_image", "image_url": "https://invalid.example/image.png"}]}]),
+             "INVALID_ATTACHMENT", "owned original image")):
+        with pytest.raises(KiraError, match=reason) as error:
             data.save(session, invalid)
+        assert error.value.code == code
     assert data.load(session)["revision"] == 1 and len(data.pins("chat")) == 32
 
 
@@ -193,7 +202,8 @@ def test_schema6_migration_preserves_original_rows_and_creates_private_backup(co
     upgraded = Store(path)
     assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     assert [tuple(row) for row in upgraded.db.execute("SELECT * FROM events")] == original
-    assert list(path.parent.glob(f"context.sqlite3.pre-v{SCHEMA_VERSION}-*.bak"))
+    backups = list(path.parent.glob(f"context.sqlite3.pre-v{SCHEMA_VERSION}-*.bak"))
+    assert len(backups) == 1 and backups[0].stat().st_mode & 0o777 == 0o600
     # Replace the closed connection so fixture cleanup remains valid.
     store.db = upgraded.db
 

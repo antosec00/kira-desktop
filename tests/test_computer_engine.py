@@ -225,7 +225,9 @@ async def test_visual_read_actions_and_typing_keep_one_observation_per_effect(tm
 
 
 @pytest.mark.skipif(os.environ.get("KIRA_TEST_BROWSER") != "1", reason="Explicit browser test opt-in")
-async def test_real_chromium_visual_actions_and_frame_privacy(tmp_path):
+async def test_real_chromium_visual_actions_and_frame_privacy(tmp_path, monkeypatch):
+    # The embedded engine must not start a host (WSL) Windows authentication helper.
+    monkeypatch.setattr("kira.tools.browser_auth._powershell", lambda: None)
     engine = BrowserEngine()
     try:
         started = await engine.call("initialize", {"profile_dir": str(tmp_path / "profile"),
@@ -303,7 +305,9 @@ async def test_real_chromium_visual_actions_and_frame_privacy(tmp_path):
 
 
 @pytest.mark.skipif(os.environ.get("KIRA_TEST_BROWSER") != "1", reason="Explicit browser test opt-in")
-async def test_real_chromium_rejects_changed_image_document_viewport_and_manual_state(tmp_path):
+async def test_real_chromium_rejects_changed_image_document_viewport_and_manual_state(tmp_path, monkeypatch):
+    # The embedded engine must not start a host (WSL) Windows authentication helper.
+    monkeypatch.setattr("kira.tools.browser_auth._powershell", lambda: None)
     engine = BrowserEngine()
     try:
         initialized = await engine.call("initialize", {"profile_dir": str(tmp_path / "profile"),

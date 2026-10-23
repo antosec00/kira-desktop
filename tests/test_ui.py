@@ -337,22 +337,33 @@ def test_supported_sizes_keep_composer_inside_window(running_ui, qtbot, width, h
 
 
 def test_large_export_background_copy_and_path_validation(workspace, monkeypatch, qtbot, tmp_path):
+    # The top-bar export saves the selected chat (session.export), never the project.
     workspace._project = {"id": "fixture-project"}
+    workspace._session = {"id": "fixture-chat", "project_id": "fixture-project"}
+    workspace._connected_value = True
     export_dir = workspace.paths.data / "exports"
     export_dir.mkdir(parents=True)
-    source = export_dir / "fixture.json"
-    source.write_text('{"fixture": "complete export"}')
-    destination = tmp_path / "saved.json"
-    monkeypatch.setattr(workspace.client, "request",
-                        lambda method, params, done: done({"path": str(source)}))
+    source = export_dir / "fixture.md"
+    source.write_text("# Fixture chat\n\ncomplete export\n")
+    destination = tmp_path / "saved.md"
+    methods = []
+
+    def reply(path):
+        def request(method, params, done, failed=None):
+            methods.append((method, params))
+            done({"path": str(path)})
+        return request
+
+    monkeypatch.setattr(workspace.client, "request", reply(source))
     workspace.exportTranscript(QUrl.fromLocalFile(str(destination)).toString())
     qtbot.waitUntil(lambda: destination.exists())
     qtbot.waitUntil(lambda: not workspace._jobs)
     assert destination.read_text() == source.read_text()
-    outside = tmp_path / "outside.json"
+    assert [call for call in methods if call[0].endswith(".export")] == [
+        ("session.export", {"project_id": "fixture-project", "session_id": "fixture-chat"})]
+    outside = tmp_path / "outside.md"
     outside.write_text("fixture must not be exported")
-    monkeypatch.setattr(workspace.client, "request",
-                        lambda method, params, done: done({"path": str(outside)}))
+    monkeypatch.setattr(workspace.client, "request", reply(outside))
     workspace.exportTranscript(QUrl.fromLocalFile(str(destination)).toString())
     qtbot.waitUntil(lambda: not workspace._jobs)
     assert destination.read_text() == source.read_text()

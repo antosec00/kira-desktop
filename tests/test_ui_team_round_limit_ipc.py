@@ -2,8 +2,6 @@
 
 import copy
 import os
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -14,7 +12,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
 from kira.domain.paths import Paths
-from test_ui_assistant_ipc import close_desktop, open_desktop, visual_item
+from test_ui_assistant_ipc import close_desktop, open_desktop, open_team_details, visual_item
+from test_ui_support import (
+    SERVICE_WAIT_MS, isolated_service_environment, start_service, stop_service, wait_laid_out,
+)
 from test_ui_team_orchestration_ipc import calls, read_marker, request
 
 FIXTURE = Path(__file__).parent / "fixtures/team_round_limit_service.py"
@@ -50,28 +51,23 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
         project.mkdir()
         (project / "evidence.txt").write_text(ORIGINAL + "\n", encoding="utf-8")
         (project / "verification.txt").write_text(VERIFIED + "\n", encoding="utf-8")
-        monkeypatch.setenv("XDG_CACHE_HOME", str(home / "cache"))
-        monkeypatch.setenv("KIRA_HOME", str(home))
-        monkeypatch.setenv("CODEX_HOME", str(home / "codex"))
-        environment = {**os.environ, "KIRA_TEST_TEAM_ROUND_LIMIT_CONTROL": str(control)}
+        environment = isolated_service_environment(
+            monkeypatch, home, KIRA_TEST_TEAM_ROUND_LIMIT_CONTROL=control)
         with (home / "service.log").open("w+", encoding="utf-8") as log:
-            # -I resolves the fixture's Kira imports through the selected
-            # interpreter's installed package, never a script-added source path.
-            process = subprocess.Popen([sys.executable, "-I", str(FIXTURE)], env=environment,
-                                       stdout=log, stderr=log)
+            process = start_service([FIXTURE], environment, log)
             desktops = []
             try:
-                qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=5000)
+                qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=SERVICE_WAIT_MS)
                 assert process.poll() is None
                 desktop = open_desktop(paths)
                 desktops.append(desktop)
                 view, _, window = desktop
                 window.resize(1380, 900)
-                qtbot.waitUntil(lambda: view.connected, timeout=5000)
+                qtbot.waitUntil(lambda: view.connected, timeout=SERVICE_WAIT_MS)
                 view.setBackend("codex")
-                qtbot.waitUntil(lambda: bool(view.models), timeout=5000)
+                qtbot.waitUntil(lambda: bool(view.models), timeout=SERVICE_WAIT_MS)
                 view.createProject("Synthetic continuation round limit", str(project), "", "read_only")
-                qtbot.waitUntil(lambda: bool(view.project) and not view.sessionsLoading, timeout=5000)
+                qtbot.waitUntil(lambda: bool(view.project) and not view.sessionsLoading, timeout=SERVICE_WAIT_MS)
                 project_id = view.project["id"]
                 view.setModel(MODEL)
                 view.setEffort("xhigh")
@@ -79,9 +75,9 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                 prompt = visual_item(window.contentItem(), "prompt")
                 type_text(window, prompt, "Delegate a synthetic read-only review with one coordinator turn.")
                 send = visual_item(window.contentItem(), "sendButton")
-                qtbot.waitUntil(send.isEnabled, timeout=5000)
+                qtbot.waitUntil(send.isEnabled, timeout=SERVICE_WAIT_MS)
                 click(window, send)
-                qtbot.waitUntil(lambda: (control / "delegation-requested").exists(), timeout=7000)
+                qtbot.waitUntil(lambda: (control / "delegation-requested").exists(), timeout=SERVICE_WAIT_MS)
                 origin = read_marker(control, "delegation-requested")
                 session_id = view.sessionId
                 session_settings = copy.deepcopy(view._session["settings"])
@@ -90,15 +86,15 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                 view.flushDrafts()
                 (control / "release-origin").touch()
                 qtbot.waitUntil(lambda: view.assistant.current.get("state") == "paused"
-                                and view.assistant.current.get("cleanup_confirmed"), timeout=15000)
+                                and view.assistant.current.get("cleanup_confirmed") is True, timeout=SERVICE_WAIT_MS)
                 parent_id = view.assistant.current["team_id"]
                 qtbot.waitUntil(lambda: view.assistant.followup.get("team_id") == parent_id
                                 and view.assistant.followup.get("state") == "completed"
-                                and not view.busy, timeout=10000)
+                                and not view.busy, timeout=SERVICE_WAIT_MS)
                 parent_followup = view.assistant.followup["run_id"]
                 qtbot.waitUntil(lambda: any(row["kind"] == "assistant" and row["runId"] == parent_followup
                                 and row["body"] == "Synthetic round-limit Team followup: paused"
-                                for row in view.transcript.rows), timeout=5000)
+                                for row in view.transcript.rows), timeout=SERVICE_WAIT_MS)
                 assert not any(row["kind"] == "user" and row["runId"] == parent_followup for row in view.transcript.rows)
                 parent = request(qtbot, view, "team.snapshot", {"team_id": parent_id})["team"]
                 assert parent["round_limit"] == parent["round_index"] == 1
@@ -112,16 +108,19 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                 assert view.assistant.current["round_limit"] == 1
                 assert view.assistant.current["delegation_id"] == origin["delegation_id"]
 
-                click(window, visual_item(window.contentItem(), "assistantConfigureTeam"))
-                qtbot.wait(40)
+                open_team_details(qtbot, window)
                 if surface == "chat_details":
                     control_name, button_name = "assistantResumeRoundLimitInput", "assistantResumeTeam"
                 else:
-                    click(window, visual_item(window.contentItem(), "assistantOpenTeam"))
-                    qtbot.waitUntil(lambda: view.teams.selectedId == parent_id and view.teams.canResume, timeout=5000)
+                    open_team = visual_item(window.contentItem(), "assistantOpenTeam")
+                    wait_laid_out(qtbot, open_team)
+                    click(window, open_team)
+                    qtbot.waitUntil(lambda: view.teams.selectedId == parent_id and view.teams.canResume, timeout=SERVICE_WAIT_MS)
                     control_name, button_name = "teamContinuationRoundLimitInput", "resumeTeamButton"
-                qtbot.wait(30)
+                qtbot.waitUntil(lambda: visual_item(window.contentItem(), control_name) is not None, timeout=SERVICE_WAIT_MS)
                 limit = visual_item(window.contentItem(), control_name)
+                # The input is clicked at its centre: measure it only once its panel is laid out.
+                wait_laid_out(qtbot, limit, limit.property("contentItem"))
                 assert limit.property("value") == 1
                 type_text(window, limit.property("contentItem"), "0")
                 QTest.keyClick(window, Qt.Key.Key_Return)
@@ -131,7 +130,7 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                 assert not (control / "continuation-started").exists()
                 assert view.sessionId == session_id and view.draftText == draft
                 click(window, visual_item(window.contentItem(), button_name))
-                qtbot.waitUntil(lambda: (control / "continuation-started").exists(), timeout=10000)
+                qtbot.waitUntil(lambda: (control / "continuation-started").exists(), timeout=SERVICE_WAIT_MS)
                 continuation = read_marker(control, "continuation-started")
                 child_id = continuation["team_id"]
                 child = request(qtbot, view, "team.snapshot", {"team_id": child_id})["team"]
@@ -147,15 +146,15 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                     latest = request(qtbot, view, "team.snapshot", {"team_id": child_id})["team"]
                     return latest["state"] == "completed" and latest.get("cleanup_confirmed", True)
 
-                qtbot.waitUntil(child_completed, timeout=15000)
+                qtbot.waitUntil(child_completed, timeout=SERVICE_WAIT_MS)
                 qtbot.waitUntil(lambda: view.assistant.followup.get("team_id") == child_id
                                 and view.assistant.followup.get("state") == "completed"
-                                and not view.busy, timeout=10000)
+                                and not view.busy, timeout=SERVICE_WAIT_MS)
                 child_followup = view.assistant.followup["run_id"]
                 assert child_followup != parent_followup
                 qtbot.waitUntil(lambda: any(row["kind"] == "assistant" and row["runId"] == child_followup
                                 and row["body"] == "Synthetic round-limit Team followup: completed"
-                                for row in view.transcript.rows), timeout=5000)
+                                for row in view.transcript.rows), timeout=SERVICE_WAIT_MS)
                 assert not any(row["kind"] == "user" and row["runId"] == child_followup for row in view.transcript.rows)
                 child = request(qtbot, view, "team.snapshot", {"team_id": child_id})["team"]
                 assert child["round_index"] == 2 and child["round_limit"] == 0 and child["summary"] == RESULT
@@ -176,7 +175,7 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                 assert all(row["account_id"] == recorded[0]["account_id"] for row in recorded)
                 assert all(row["permission"] == "read_only" for row in recorded)
                 qtbot.waitUntil(lambda: all((control / (row["run_id"] + ".closed")).exists() for row in recorded),
-                                timeout=5000)
+                                timeout=SERVICE_WAIT_MS)
                 assert view.sessionId == session_id and view.draftText == draft
                 assert view.selectedModel == MODEL and view.selectedEffort == "xhigh"
                 assert view._session["settings"] == session_settings
@@ -185,9 +184,9 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                 reopened = open_desktop(paths)
                 desktops.append(reopened)
                 view, _, window = reopened
-                qtbot.waitUntil(lambda: view.connected, timeout=5000)
+                qtbot.waitUntil(lambda: view.connected, timeout=SERVICE_WAIT_MS)
                 view.openProject(project_id)
-                qtbot.waitUntil(lambda: view.sessionId == session_id and not view.sessionsLoading, timeout=5000)
+                qtbot.waitUntil(lambda: view.sessionId == session_id and not view.sessionsLoading, timeout=SERVICE_WAIT_MS)
                 assert visual_item(window.contentItem(), "prompt").property("text") == draft
                 assert view.selectedModel == MODEL and view.selectedEffort == "xhigh"
                 assert view._session["settings"] == session_settings
@@ -216,9 +215,4 @@ def test_existing_team_zero_limit_real_qml_ipc_and_second_synthesis(qapp, qtbot,
                     (control / name).touch()
                 for desktop in desktops:
                     close_desktop(desktop)
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+                stop_service(process)

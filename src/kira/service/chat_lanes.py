@@ -61,9 +61,9 @@ class ChatLanes:
             if not self._idle(project):
                 return
             session = ProjectChats(self.store).owned_session(project["id"], candidate["session_id"])
-            if session["backend"] == "openai_chatgpt":
-                await self.service.direct_accounts.prepare(session["settings"])
-            # Account preparation yielded. Recheck all identities and admission.
+            # The same provider checks as run.start; they can yield, so every
+            # identity and the admission are checked again afterwards.
+            await self.service.prepare_provider(session["backend"], session["settings"])
             candidate = followups.prepare_candidate(team_id)
             if candidate is None:
                 return

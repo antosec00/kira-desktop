@@ -23,7 +23,7 @@ from kira.service.portable_history import portable_history
 OBJECTIVE = "Create exactly three synthetic files and verify their recorded results."
 
 
-async def until(predicate, timeout=10):
+async def until(predicate, timeout=30):
     async with asyncio.timeout(timeout):
         while not predicate():
             await asyncio.sleep(0.01)
@@ -242,18 +242,20 @@ async def test_provider_failure_never_converts_staged_completion_to_success_or_r
 
     async def cycle(ctx, number):
         evidence = await write_receipt(service, ctx, "retained-before-provider-error.txt")
-        result = await checkpoint(ctx, "completed", next_step="", evidence=[evidence])
-        assert result["ok"]
+        factory.results.append(await checkpoint(ctx, "completed", next_step="", evidence=[evidence]))
         return {"state": provider_state, "error": "Synthetic provider terminal failure"}
 
     factory.handler = cycle
     await start_goal(goal_env)
     state = await terminal(goal_env)
+    assert factory.results[0]["ok"]
     assert state["status"] != "completed"
     assert len(factory.contexts) == 1 and state["cycle_count"] == 1
     await asyncio.sleep(0.1)
     assert len(factory.contexts) == 1
-    assert service.store.one("runs", factory.contexts[0].run_id)["state"] == provider_state
+    # The provider's own terminal outcome, not an exception raised inside the synthetic provider.
+    run = service.store.one("runs", factory.contexts[0].run_id)
+    assert run["state"] == provider_state and run["error"] == "Synthetic provider terminal failure"
 
 
 async def test_pause_during_a_cycle_preserves_current_work_and_prevents_next_cycle(goal_env):
@@ -310,6 +312,7 @@ async def test_start_and_pause_request_retries_do_not_start_or_resume_duplicate_
     factory.handler = cycle
     first = await start_goal(goal_env)
     await until(lambda: len(factory.contexts) == 1)
+    first_run = factory.contexts[0].run_id
     second = await start_goal(goal_env)
     assert first["autonomous"]["id"] == second["autonomous"]["id"]
     with pytest.raises(KiraError) as changed:
@@ -320,6 +323,8 @@ async def test_start_and_pause_request_retries_do_not_start_or_resume_duplicate_
     await service.dispatch("goal.pause", pause)
     release.set()
     await terminal(goal_env)
+    # The goal was already paused, so only the run state shows the checkpoint above succeeded.
+    assert service.store.one("runs", first_run)["state"] == "completed"
     await start_goal(goal_env)
     assert (await goal_state(goal_env))["autonomous"]["status"] == "paused"
     assert len(factory.contexts) == 1
@@ -387,14 +392,20 @@ async def test_completion_rejects_missing_or_other_project_receipts(goal_env, tm
 
     async def cycle(ctx, number):
         factory.results.append(await checkpoint(ctx, "completed", next_step="", evidence=evidence))
-        assert (await checkpoint(ctx, "blocked", call_id="blocked", summary="Completion evidence is unavailable.", next_step="Request valid evidence."))["ok"]
+        factory.results.append(await checkpoint(ctx, "blocked", call_id="blocked",
+            summary="Completion evidence is unavailable.", next_step="Request valid evidence."))
         return {"state": "completed", "outcome": {"synthetic": True}}
 
     factory.handler = cycle
     await start_goal(goal_env)
     state = await terminal(goal_env)
-    assert not factory.results[0]["ok"] and factory.results[0]["error"]["code"] == "INVALID_ARGUMENT"
-    assert state["status"] == "blocked" and len(factory.contexts) == 1
+    rejected, blocked = factory.results
+    assert not rejected["ok"] and rejected["error"]["code"] == "INVALID_ARGUMENT"
+    assert blocked["ok"]
+    # A failed cycle also blocks the goal; the error shows the recorded checkpoint blocked it.
+    assert state["status"] == "blocked" and state["error"] == "Request valid evidence."
+    assert len(factory.contexts) == 1
+    assert service.store.one("runs", factory.contexts[0].run_id)["state"] == "completed"
     assert service.store.one("sessions", session["id"])["model"] == "synthetic-goal-model"
 
 
@@ -430,7 +441,7 @@ async def test_binding_change_between_cycles_stops_automatic_dispatch(goal_env, 
     factory.close_gate = asyncio.Event()
 
     async def cycle(ctx, number):
-        assert (await checkpoint(ctx, summary="Recorded before binding changed."))["ok"]
+        factory.results.append(await checkpoint(ctx, summary="Recorded before binding changed."))
         return {"state": "completed", "outcome": {"synthetic": True}}
 
     factory.handler = cycle
@@ -446,7 +457,10 @@ async def test_binding_change_between_cycles_stops_automatic_dispatch(goal_env, 
         service.store.db.execute("UPDATE projects SET root=? WHERE id=?", (str(changed), project["id"]))
     factory.close_gate.set()
     state = await terminal(goal_env)
-    assert state["status"] in {"paused", "blocked", "interrupted"}
+    # The first cycle finished normally; admission of the next cycle refused the changed binding.
+    assert factory.results[0]["ok"]
+    assert service.store.one("runs", factory.contexts[0].run_id)["state"] == "completed"
+    assert state["status"] == "blocked" and "execution scope changed; explicitly resume" in state["error"]
     assert len(factory.contexts) == 1
 
 
@@ -648,7 +662,7 @@ async def test_later_team_delegation_invalidates_an_earlier_completion_checkpoin
 
 
 async def test_different_narration_each_cycle_does_not_establish_recorded_progress(goal_env):
-    _, factory, _, _ = goal_env
+    service, factory, _, _ = goal_env
 
     async def cycle(ctx, number):
         assert (await checkpoint(ctx, summary=f"Synthetic unverified progress claim {number}."))["ok"]
@@ -660,6 +674,7 @@ async def test_different_narration_each_cycle_does_not_establish_recorded_progre
     state = await terminal(goal_env)
     assert state["status"] == "blocked" and state["cycle_count"] == 3
     assert len(factory.contexts) == 3 and "progress" in state["error"].lower()
+    assert all(service.store.one("runs", ctx.run_id)["state"] == "completed" for ctx in factory.contexts)
 
 
 async def test_uncertain_tool_effect_blocks_continuation_even_after_provider_completed(goal_env):
@@ -690,7 +705,9 @@ async def test_ordinary_chat_can_read_paused_goal_but_cannot_write_checkpoint(go
 
     factory.handler = first
     await start_goal(goal_env)
-    assert (await terminal(goal_env))["status"] == "blocked"
+    blocked = await terminal(goal_env)
+    # A failed cycle also blocks the goal; the error shows the recorded checkpoint blocked it.
+    assert blocked["status"] == "blocked" and blocked["error"] == "Ask for clarification."
 
     async def ordinary(ctx, number):
         names = {tool["name"] for group in ctx.client_tools if group.get("name") == "goal" for tool in group["tools"]}
@@ -727,6 +744,7 @@ async def test_identical_reads_with_new_receipt_ids_do_not_fake_progress(goal_en
     state = await terminal(goal_env)
     assert state["status"] == "blocked" and state["cycle_count"] == 4
     assert len(factory.contexts) == 4
+    assert all(service.store.one("runs", ctx.run_id)["state"] == "completed" for ctx in factory.contexts)
 
 
 async def test_late_user_guidance_prevents_old_checkpoint_from_completing_goal(goal_env):

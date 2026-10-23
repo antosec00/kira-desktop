@@ -303,11 +303,11 @@ async def test_new_work_while_account_check_waits_blocks_atomic_switch(routing):
     api, service, accounts, project, session = routing
     accounts.started, accounts.release = asyncio.Event(), asyncio.Event()
     task = asyncio.create_task(api.dispatch("session.switch", request(project, session)))
-    await accounts.started.wait()
+    await asyncio.wait_for(accounts.started.wait(), 30)
     run, _ = service.store.create_run(session["id"], "during-account-check", "Synthetic admitted work", reserve=True)
     accounts.release.set()
     with pytest.raises(KiraError) as error:
-        await task
+        await asyncio.wait_for(task, 30)
     assert error.value.code == "BUSY"
     assert service.store.one("sessions", session["id"]) == session
     assert not service.store.all("SELECT * FROM session_provider_switches")
@@ -318,11 +318,11 @@ async def test_concurrent_model_update_while_account_check_waits_is_not_overwrit
     api, service, accounts, project, session = routing
     accounts.started, accounts.release = asyncio.Event(), asyncio.Event()
     task = asyncio.create_task(api.dispatch("session.switch", request(project, session)))
-    await accounts.started.wait()
+    await asyncio.wait_for(accounts.started.wait(), 30)
     service.store.db.execute("UPDATE sessions SET model=? WHERE id=?", ("new-choice", session["id"]))
     accounts.release.set()
     with pytest.raises(KiraError) as error:
-        await task
+        await asyncio.wait_for(task, 30)
     assert error.value.code == "CONFLICT"
     assert service.store.one("sessions", session["id"])["model"] == "new-choice"
     assert not service.store.all("SELECT * FROM session_provider_switches")
@@ -332,11 +332,11 @@ async def test_concurrent_duplicate_request_commits_once(routing):
     api, service, accounts, project, session = routing
     accounts.started, accounts.release = asyncio.Event(), asyncio.Event()
     first = asyncio.create_task(api.dispatch("session.switch", request(project, session)))
-    await accounts.started.wait()
+    await asyncio.wait_for(accounts.started.wait(), 30)
     second = asyncio.create_task(api.dispatch("session.switch", request(project, session)))
     await asyncio.sleep(0)
     accounts.release.set()
-    results = await asyncio.gather(first, second)
+    results = await asyncio.wait_for(asyncio.gather(first, second), 30)
     assert sorted(result["replayed"] for result in results) == [False, True]
     assert results[0]["switch"] == results[1]["switch"]
     assert len(generations(service, session)) == 2
@@ -356,17 +356,18 @@ async def test_failed_receipt_commit_rolls_back_provider_and_generation(routing)
     assert not service.store.all("SELECT * FROM session_provider_switches")
 
 
-async def test_unsupported_saved_configuration_is_not_silently_dropped(routing):
+async def test_unused_saved_setting_does_not_block_returning_to_a_provider(routing):
     api, service, _, project, session = routing
-    bad = {**session["settings"], "temperature": 0.4}
-    service.store.db.execute("UPDATE sessions SET settings=? WHERE id=?", (encode(bad), session["id"]))
+    legacy = {**session["settings"], "temperature": 0.4}
+    service.store.db.execute("UPDATE sessions SET settings=? WHERE id=?", (encode(legacy), session["id"]))
     await api.dispatch("session.switch", request(project, session))
-    with pytest.raises(KiraError) as error:
-        await api.dispatch("session.switch", request(project, session,
-            request_id="return-unsupported", backend="codex", model="codex-fixture", reasoning_effort="high"))
-    assert error.value.code == "UNSUPPORTED_SETTING"
-    assert generations(service, session)[0]["settings"] == bad
-    assert service.store.one("sessions", session["id"])["backend"] == "openai_chatgpt"
+    await api.dispatch("session.switch", request(project, session,
+        request_id="return-unsupported", backend="codex", model="codex-fixture", reasoning_effort="high"))
+    current = service.store.one("sessions", session["id"])
+    assert current["backend"] == "codex" and "temperature" not in current["settings"]
+    assert current["settings"]["service_tier"] == "default"
+    # The retired generation keeps its original record.
+    assert generations(service, session)[0]["settings"] == legacy
 
 
 async def test_switch_receipts_survive_recreating_router(routing):

@@ -17,20 +17,20 @@ ROOT = Path(__file__).resolve().parents[1]
 REVIEWED_BINARY = {
     "src/kira/ui/assets/kira-mascot.png":
         "f46917623b21b61c37996a3d439b2538efe1d30cb77bb8ed7197a54c3bf04f8f",
-    # README screenshots rendered offscreen from synthetic fixture data only.
+    # Documentation screenshots rendered by scripts/render_doc_screenshots.py from synthetic data.
     "docs/images/chat-dark.png":
-        "4d281e4b46a807be09d38be3a6e1b2f3988b41cb48668b96b9d8453b2a4647e5",
+        "04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23",
     "docs/images/chat-light.png":
-        "74e60b58ce8ba8d961a9ec89fb9dbb232e91a9eada9a50cce70c1697e620ec39",
+        "bb094e3addbf7e306d945f54e294ba55a4bce111a5661e3ef28ebb19bac1a6b7",
     "docs/images/model-popover.png":
-        "d663520d21be938d21a9598601a748dc2a864b492a766f7f567de7a099e426e4",
+        "f8d0e29924051e13e02e2d3ae753441a50c5636dcb7e33ce03b30e8819d4fd09",
     "docs/images/models.png":
-        "50bb6aea195c5bd9074c5da96782f1a442c5161d16833b3d8917a3fc6a85faed",
+        "fad14491b799abe415824a674166bbec04ba733837215e5d00daa5085b3acafd",
     "docs/images/settings.png":
-        "15e197997a39389a58363a8b36cf96bf2966da6050ab5fa62d085e331a062129",
-    # Proof-of-work helper for the experimental DeepSeek Web endpoint: a
-    # Rust-built module with no imports (pure computation inside wasmtime),
-    # exporting alloc/solve_pow. See docs/THIRD_PARTY_NOTICES.md.
+        "d921946b0ac3fde61699a148411e2c09e763d30fb6ea6f83659dd8ad028effb1",
+    # Proof-of-work helper for the DeepSeek Web endpoint: the unmodified v1.0.0
+    # release of AmanCode22/deepseek_pow_solver (MIT), a Rust-built module with no
+    # imports (pure computation inside wasmtime). See docs/en/THIRD_PARTY_LICENSES.md.
     "src/kira/backends/deepseek_pow_solver.wasm":
         "fde55b7e43b00ce12ae8c08a272fc2e22a96c057e2f120fd7f4056506c10f144",
 }

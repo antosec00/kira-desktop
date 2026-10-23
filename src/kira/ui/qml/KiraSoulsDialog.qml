@@ -10,6 +10,7 @@ KiraPanel {
     fallbackHeight: 820
     property bool archiveConfirmation: false
     property bool importVisible: false
+    KFormat { id: kformat }
     component PreferenceEditor: ColumnLayout {
         id: preferenceEditor
         required property string preferenceKey
@@ -248,7 +249,7 @@ KiraPanel {
                                     Layout.fillWidth: true
                                     ReadText { text: qsTr("Revisione %1").arg(modelData.revision) + " · " + (modelData.name || ""); Layout.fillWidth: true; font.bold: true }
                                     ReadText { text: modelData.core || ""; Layout.fillWidth: true }
-                                    ReadText { text: (modelData.created_at || "") + " · " + (modelData.reason || ""); Layout.fillWidth: true; color: appearance.colors.muted }
+                                    ReadText { text: kformat.timestamp(modelData.created_at) + " · " + (modelData.reason || ""); Layout.fillWidth: true; color: appearance.colors.muted }
                                     KButton { text: qsTr("Ripristina questa versione"); enabled: souls.canEdit && !souls.dirty && modelData.revision !== souls.selected.revision; onClicked: souls.rollback(modelData.revision) }
                                 }
                             }

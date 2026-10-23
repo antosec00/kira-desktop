@@ -24,6 +24,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+# Noble validation image, pinned by digest like the resolute recipe's images.
+NOBLE_IMAGE = "ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac"
 TEST_USER = "kira-test"
 TEST_HOME = f"/home/{TEST_USER}"
 TEST_RUNTIME = f"{TEST_HOME}/runtime"
@@ -39,7 +41,7 @@ class PackageCheck:
         self.keep = keep
         self.target = target
         self.image = (json.loads((ROOT / "packaging/resolute/source.json").read_text())["base_image"]
-                      if target == "resolute" else "ubuntu:24.04")
+                      if target == "resolute" else NOBLE_IMAGE)
         self.created = False
         self.log_path = self.evidence / "package-validation.log"
         self.report_path = self.evidence / "package-validation.json"
@@ -235,6 +237,8 @@ print(json.dumps(result))
                                                      user=True, quiet=True).strip()
         short_version = self.inside("/usr/bin/kira", "--version", user=True, quiet=True).strip()
         assert short_version == self.report["launcher_version"], short_version
+        # The package version (pyproject) and the application version (kira.__version__) agree.
+        assert self.report["launcher_version"] == f"Kira Desktop {VERSION}", self.report["launcher_version"]
         self.record("fresh_install", debian_version=version)
         original = self.smoke("installed-offscreen")
         self.smoke("installed-xcb", "xcb")
@@ -280,12 +284,16 @@ print(json.dumps(result))
         self.report["status"] = "PASS"
 
     def finish(self) -> None:
-        if self.created and not self.keep:
+        # The container name is unique to this run, so removing it is safe even
+        # when `docker run` timed out after the container was created.
+        if not self.keep:
             try:
                 self.command(["docker", "rm", "--force", self.container], quiet=True)
                 self.report["container_removed"] = True
             except (RuntimeError, subprocess.TimeoutExpired) as exc:
-                self.report["cleanup_error"] = str(exc)
+                self.report["container_removed"] = False
+                if self.created:
+                    self.report["cleanup_error"] = str(exc)
         else:
             self.report["container_removed"] = False
         self.report["finished_at"] = datetime.now(UTC).isoformat()
@@ -311,7 +319,7 @@ def main() -> int:
         check.verify()
         print(f"PASS: {check.report_path}", flush=True)
         return 0
-    except (OSError, RuntimeError, AssertionError, subprocess.TimeoutExpired) as exc:
+    except Exception as exc:  # Any failure must still end in a FAIL report.
         check.report["status"] = "FAIL"
         check.report["error"] = str(exc)
         print(f"FAIL: {exc}\nEvidence: {check.report_path}", file=sys.stderr, flush=True)

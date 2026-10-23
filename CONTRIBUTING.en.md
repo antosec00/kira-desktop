@@ -3,7 +3,7 @@
 *[Leggi in italiano](CONTRIBUTING.md)*
 
 Thank you for helping Kira grow. This page explains how the repository is
-organised, how to set up a development environment and what a change needs
+organized, how to set up a development environment and what a change needs
 before it can be merged. Engineering rules that apply to every change are in
 [AGENTS.md](AGENTS.md); feature behavior is described in the
 [documentation](docs/en/README.md).
@@ -23,7 +23,9 @@ before it can be merged. Engineering rules that apply to every change are in
 
 ## Development setup
 
-Ubuntu 24.04 (Python 3.12) or 26.04 (Python 3.14), natively or on WSL2/WSLg.
+Ubuntu 24.04 (Python 3.12) or 26.04 (Python 3.14), natively or on WSL2/WSLg,
+with the system libraries listed in
+[Installation → Running from source with `uv`](docs/en/INSTALLATION.md#running-from-source-with-uv).
 
 ```sh
 git clone https://github.com/antosec00/kira-desktop.git
@@ -34,9 +36,12 @@ uv run kira-desktop
 ```
 
 `KIRA_HOME` keeps the development profile (database, drafts, preferences,
-runtime socket) apart from an installed application. The GUI and the service
-must run the same version; stop a running service with `uv run kira-desktop
-stop-service` before switching checkouts.
+runtime socket) apart from an installation in use. It does not isolate Codex
+credentials or the quotas of a shared account, though: the `scripts/live_*.py`
+scripts use the real account. The GUI and the service must run the same
+version; before switching checkouts close the window and stop the service with
+`uv run kira-desktop stop-service` (with the window open the interface would
+restart it).
 
 ## Checks before a pull request
 
@@ -65,9 +70,11 @@ Useful conventions:
 
 ## Branches and commits
 
-- `main` — the latest published release. It is updated only by the maintainer.
-- `dev/<version>` — the active development line. Open pull requests against it.
-- `release/<version>` — retained copies of published releases.
+- `main` is the only branch of the public repository and holds the latest
+  published release. Open pull requests against `main`: the maintainer
+  integrates them and publishes them with the next version.
+- Published versions are the `v<version>` releases on the
+  [Releases](https://github.com/antosec00/kira-desktop/releases) page.
 
 Commit messages follow the conventional form used in the history:
 `type(scope): summary`, for example `fix(ollama): report stream inactivity as a

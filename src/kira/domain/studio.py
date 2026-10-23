@@ -12,6 +12,10 @@ from typing import Any, NoReturn
 
 from kira.domain.contracts import Json, KiraError
 
+# Studio is not offered in this release: no interface entry or model tool exposes it.
+# Its service methods and stored data stay, so turning this on restores the feature.
+STUDIO_AVAILABLE = False
+
 FORMAT = "kira.scene/1"
 WIDTH, HEIGHT = 960, 540
 MAX_SCENE_BYTES = 16_384

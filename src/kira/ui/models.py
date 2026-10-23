@@ -13,6 +13,7 @@ from PySide6.QtCore import (
 )
 
 from kira.ui.presentation import limit_ui, refresh_ui, tr
+from kira.ui.service_errors import tool_error_summary
 
 
 class TranscriptModel(QAbstractListModel):
@@ -193,8 +194,19 @@ class TranscriptModel(QAbstractListModel):
                 code = cls._receipt_literal(error.get("code"), 80)
                 message = cls._receipt_literal(error.get("message"), 320)
                 evidence["error"] = (code + ": " if code and message else code) + message
+                # Known codes are explained when shown, in the current language.
+                if tool_error_summary(name, code) is not None:
+                    evidence["error_code"] = code
             else:
                 evidence["error"] = cls._receipt_literal(error, 400)
+            # A completed browser call can still report a page that did not load
+            # or a network budget that ran out; both keep their literal details.
+            for key in ("page_error", "network_budget"):
+                notice = values.get(key)
+                notice_code = notice.get("code") if isinstance(notice, dict) else None
+                if isinstance(notice_code, str) and tool_error_summary(name, notice_code) is not None:
+                    evidence["notice_code"] = notice_code
+                    break
         return evidence
 
     @classmethod
@@ -264,9 +276,12 @@ class TranscriptModel(QAbstractListModel):
             label = cls._receipt_literal(name, 160)
         evidence = row.get("_receiptEvidence", {})
         state = cls._tool_group_status(row["status"])
+        if state in {"error", "unconfirmed"}:
+            preview = tool_error_summary(name, evidence.get("error_code")) or evidence.get("error", "")
+        else:
+            preview = tool_error_summary(name, evidence.get("notice_code")) or ""
         return {"receiptLabel": label, "receiptTarget": evidence.get("target", ""),
-                "receiptError": evidence.get("error", "") if state in {"error", "unconfirmed"} else "",
-                "receiptState": state}
+                "receiptError": preview, "receiptState": state}
 
     @staticmethod
     def _tool_group_run(row: dict[str, Any]) -> str:

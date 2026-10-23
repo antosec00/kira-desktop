@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Dialog {
     id: dialog; objectName: "workbenchDialog"
-    title: qsTr("Strumenti del progetto")
+    title: qsTr("Strumenti della chat")
     modal: true; anchors.centerIn: parent
     width: Math.min(900, parent.width - 40); height: Math.min(720, parent.height - 50)
     font: appearance.uiFont
@@ -21,6 +21,7 @@ Dialog {
         else if (name === "goal") workbench.refreshGoal()
     }
     function confirmCompact() { compactDialog.open() }
+    KFormat { id: kformat }
     function openSection(name) { section = name; open() }
     onOpened: { contextStamp = JSON.stringify([workspace.project.id || "", workspace.sessionId]); activate(section) }
     Connections {
@@ -89,7 +90,7 @@ Dialog {
                         color: appearance.colors.surfaceAlt; radius: 10
                         ColumnLayout {
                             id: historyRow; anchors.fill: parent; anchors.margins: 10
-                            Text { text: modelData.timestamp; font: appearance.uiFont; color: appearance.colors.muted; textFormat: Text.PlainText }
+                            Text { objectName: "promptHistoryTime"; text: kformat.timestamp(modelData.timestamp); font: appearance.uiFont; color: appearance.colors.muted; textFormat: Text.PlainText }
                             Text { text: modelData.text; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
                             KButton { text: qsTr("Riutilizza nella bozza"); Layout.alignment: Qt.AlignRight; onClicked: { workbench.useHistory(modelData.text); dialog.close() } }
                         }
@@ -113,8 +114,9 @@ Dialog {
                     KButton { visible: workbench.hasUncertainRequests; text: qsTr("Consenti nuove richieste separate…"); enabled: !workbench.loading; onClicked: newIntentDialog.open() }
                     KButton { objectName: "archiveChatButton"; text: workbench.sessionArchived ? qsTr("Ripristina chat") : qsTr("Archivia chat"); enabled: workspace.connected && workspace.sessionId.length > 0 && !workspace.busy && !teams.busy && !workbench.loading; onClicked: workbench.archive(workspace.sessionId, !workbench.sessionArchived) }
                     Text { text: qsTr("Archiviare nasconde la chat dall’elenco principale e conserva la cronologia. Puoi ripristinarla in Chat archiviate."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
-                    KButton { text: workspace.backend === "openai_chatgpt" ? qsTr("Contesto e memoria") : qsTr("Riduci il contesto"); enabled: workspace.backend === "openai_chatgpt" ? chatContext.available : workbench.canCompact; onClicked: { if (workspace.backend === "openai_chatgpt") { dialog.close(); workbench.invokeAction("context") } else compactDialog.open() } }
-                    Text { visible: workspace.backend !== "openai_chatgpt" && !workbench.nativeCompactionAvailable; text: qsTr("La riduzione del contesto non è dichiarata disponibile dal provider selezionato."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
+                    // Direct providers compact in the context panel; Codex compacts natively.
+                    KButton { objectName: "compactContextButton"; text: chatContext.directContext ? qsTr("Contesto e memoria") : qsTr("Riduci il contesto"); enabled: chatContext.directContext ? chatContext.available : workbench.canCompact; onClicked: { if (chatContext.directContext) { dialog.close(); workbench.invokeAction("context") } else compactDialog.open() } }
+                    Text { objectName: "compactUnavailableNote"; visible: !chatContext.directContext && !workbench.nativeCompactionAvailable; text: qsTr("La riduzione del contesto non è dichiarata disponibile dal provider selezionato."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
                     Text { text: qsTr("Riepiloga produce una risposta leggibile. Riduci il contesto modifica il contesto del provider; la cronologia di Kira resta conservata. Disponibilità dipendente dal provider."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
                 }
             }

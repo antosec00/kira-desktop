@@ -12,6 +12,15 @@ from kira.backends.deepseek_web import DeepSeekWebBackend, DeepSeekWebError, Dee
 from kira.domain.web import browser_tool_specs
 
 
+@pytest.fixture(autouse=True)
+def _without_host_network_settings(monkeypatch):
+    # The backend's own httpx client reads proxy and CA settings from the
+    # environment; a host SOCKS proxy or CA path must not decide these tests.
+    for name in ("ALL_PROXY", "all_proxy", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY",
+                 "http_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_deepseek_dsml_browser_navigate_maps_to_registered_kira_tool():
     response = (
         '<|DSML|calls><|DSML|invoke name="browser.navigate">'

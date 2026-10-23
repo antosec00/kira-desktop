@@ -14,6 +14,7 @@ from kira.domain.paths import Paths
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 from kira.ui.research_controller import ResearchController, empty_record, present_record
+from test_ui_support import wait_laid_out, wait_opened
 
 
 def record(**changes):
@@ -226,7 +227,7 @@ def test_actual_research_dialog_is_scrollable_translated_and_literal(research, q
         assert dialog is not None
         evaluate(dialog, "open()")
         requests[-1][2](listed())
-        qtbot.wait(50)
+        wait_opened(qtbot, dialog)
         assert dialog.property("title") == ("Project research" if language == "en" else "Ricerca del progetto")
         evaluate(dialog, 'projectResearch.newRecord(); page = "editor"; syncEditor()')
         evaluate(dialog, 'projectResearch.setField("kind", "decision")')
@@ -238,7 +239,7 @@ def test_actual_research_dialog_is_scrollable_translated_and_literal(research, q
         assert window.findChild(QObject, "researchKind").property("currentValue") == "decision"
         assert evaluate(dialog, "projectResearch.editor.body") == "<b>Literal source</b>"
         scroll = window.findChild(QObject, "researchScroll")
-        qtbot.wait(50)
+        wait_laid_out(qtbot, scroll, title, body)
         assert dialog.property("height") <= 580
         assert scroll.property("contentHeight") > scroll.property("height")
         assert window.findChild(QObject, "researchSave").property("enabled")

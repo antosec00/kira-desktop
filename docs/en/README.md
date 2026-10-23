@@ -9,13 +9,13 @@ are. It is written in Italian; the English translation is in `docs/en/`.
 
 ## Where to start
 
-| You are… | Start from |
+| If you want to… | Start from |
 | --- | --- |
-| New to Kira | The [README](../../README.en.md), then the [User guide](USER_GUIDE.md) |
-| Installing or administering it | [Installation](INSTALLATION.md) |
-| Connecting a model | [Providers](PROVIDERS.md) |
-| Wanting to understand what Kira can do on the computer | [Permissions and security](PERMISSIONS_AND_SECURITY.md) |
-| Working on the code | [Development](DEVELOPMENT.md), [Architecture](ARCHITECTURE.md), [Contracts](CONTRACTS.md) |
+| Start using Kira | The [README](../../README.en.md), then the [User guide](USER_GUIDE.md) |
+| Install or administer it | [Installation](INSTALLATION.md) |
+| Connect a model | [Providers](PROVIDERS.md) |
+| Understand what Kira can do on the computer | [Permissions and security](PERMISSIONS_AND_SECURITY.md) |
+| Work on the code | [Development](DEVELOPMENT.md), [Architecture](ARCHITECTURE.md), [Contracts](CONTRACTS.md) |
 
 ## Guides
 
@@ -30,9 +30,9 @@ are. It is written in Italian; the English translation is in `docs/en/`.
 | What the model receives: project memory, cross-chat excerpts, important notes, compaction, browsable history | [Context and memory](CONTEXT_AND_MEMORY.md) |
 | Agent teams: composition, execution, messages, resumption, conversation during the work | [Teams](TEAMS.md) |
 | Goals Kira pursues on its own with `/obiettivo` | [Autonomous goals](AUTONOMOUS_GOALS.md) |
-| Research record: records, sources, assessments, agent proposals | [Research](RESEARCH.md) |
+| Research registry: records, sources, assessments, agent proposals | [Research](RESEARCH.md) |
 | Kira's Soul, shared identity, Knowledge and tools panel, project tools | [Soul and Knowledge](SOUL_AND_KNOWLEDGE.md) |
-| Themes, colours, fonts, presentation options, interface language | [Appearance and language](APPEARANCE_AND_LANGUAGE.md) |
+| Themes, colors, fonts, presentation options, interface language | [Appearance and language](APPEARANCE_AND_LANGUAGE.md) |
 
 ## For developers
 

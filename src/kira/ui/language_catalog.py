@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 CATALOG_ROOT = Path(__file__).with_name("translations")
+#: A locale's standard Qt labels (dialog and file-picker buttons), keyed by Qt's
+#: English source text.
+NATIVE_LABELS = "qt.json"
 MAX_CATALOG_BYTES = 1024 * 1024
 MAX_LANGUAGE_BYTES = 4 * MAX_CATALOG_BYTES
 MAX_CATALOG_ENTRIES = 10000
@@ -121,3 +124,20 @@ def load_catalog(code: str) -> dict[str, str]:
         if len(result) > MAX_CATALOG_ENTRIES:
             raise CatalogError("Too many translation entries")
     return result
+
+
+def native_labels(code: str) -> frozenset[str]:
+    """Sources of the locale's standard Qt labels; they always keep Qt's contexts.
+
+    Other catalog files may translate Qt labels too: those reach Qt's contexts
+    unless the application uses the same source text itself.
+    """
+    if not supported_language(code):
+        raise CatalogError("Unsupported language code")
+    path = CATALOG_ROOT / code / NATIVE_LABELS
+    if not path.exists() and not path.is_symlink():
+        return frozenset()
+    data = _read_json(path, MAX_CATALOG_BYTES)
+    if not isinstance(data, dict) or len(data) > MAX_CATALOG_ENTRIES:
+        raise CatalogError(f"Invalid bundled catalog: {code}/{NATIVE_LABELS}")
+    return frozenset(source for source in data if isinstance(source, str))

@@ -37,7 +37,7 @@ async def test_default_off_no_world_or_worker_and_explicit_activation(tmp_path):
             await studio.dispatch("studio.render", {"project_id": pid})
         with pytest.raises(KiraError):
             await studio.dispatch("studio.poster", {"project_id": pid,
-                "request_id": str(uuid4()), "expected_revision": 0, "text": "Ambra mi manchi"})
+                "request_id": str(uuid4()), "expected_revision": 0, "text": "Synthetic poster caption"})
         assert list(store.db.execute("SELECT * FROM studio_worlds")) == []
         state = await studio.dispatch("studio.enable", {"project_id": pid,
             "request_id": str(uuid4()), "expected_enabled": False, "enabled": True})
@@ -56,9 +56,9 @@ async def test_poster_edit_conflict_idempotency_restore_and_restart(tmp_path):
                                                "expected_enabled": False, "enabled": True})
         request_id = str(uuid4())
         request = {"project_id": pid, "request_id": request_id,
-                   "expected_revision": 0, "text": "Ambra mi manchi"}
+                   "expected_revision": 0, "text": "Synthetic poster caption"}
         first = await studio.dispatch("studio.poster", request)
-        assert first["revision"] == 1 and first["scene"] == poster_scene("Ambra mi manchi")
+        assert first["revision"] == 1 and first["scene"] == poster_scene("Synthetic poster caption")
         assert await studio.dispatch("studio.poster", request) == first
         with pytest.raises(KiraError):
             await studio.dispatch("studio.poster", {**request, "text": "Changed"})
@@ -164,7 +164,7 @@ async def test_schema15_to16_preserves_user_poster_and_history(tmp_path):
         })
         await studio.dispatch("studio.poster", {
             "project_id": pid, "request_id": str(uuid4()),
-            "text": "Ambra mi manchi", "expected_revision": 0,
+            "text": "Synthetic poster caption", "expected_revision": 0,
         })
         before = await studio.dispatch("studio.status", {"project_id": pid})
     finally:

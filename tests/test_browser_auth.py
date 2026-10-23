@@ -637,10 +637,10 @@ async def test_prepare_cancellation_cleans_helper_and_propagates(monkeypatch, tm
     monkeypatch.setattr(browser_auth, "_WindowsHelper", lambda executable: helper)
     bridge = BrowserAuthBridge(AsyncMock(), lambda: False)
     task = asyncio.create_task(bridge.prepare(tmp_path))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, 30)
     helper.close.assert_awaited_once()
     assert bridge._helper is None and not bridge.launch_args
 

@@ -14,13 +14,14 @@ from typing import Any
 
 from kira import __version__
 from kira.backends.client_tools import (
+    KIRA_CLIENT_TOOL_NAMES,
     ClientToolBridge,
     ClientToolError,
     encoded,
     validate_tools,
 )
 from kira.backends.reasoning_summary import CodexSummaryFilter, PublicSummaries
-from kira.backends.kira_mcp import KIRA_RELAY_TOOLS, MCP_SERVER_NAME, KiraMcpRelay
+from kira.backends.kira_mcp import MCP_SERVER_NAME, KiraMcpRelay, mcp_tool_name
 from kira.domain.account_usage import normalize_codex_usage, unavailable_codex_usage
 from kira.domain.contracts import HOST_PERMISSIONS, PERMISSIONS, Json, KiraError, ProviderStarted, RunContext
 from kira.domain.questions import MAX_INPUT_REQUESTS, validate_answers, validate_request
@@ -213,7 +214,6 @@ class CodexBackend:
         self._control: AppServer | None = None
         self._control_lock = asyncio.Lock()
         self._active: set[AppServer] = set()
-        self._version: str | None = None
         self._login_id: str | None = None
 
     async def _get_control(self) -> AppServer:
@@ -368,10 +368,11 @@ class CodexBackend:
                 # authority. Project instructions, memory and tool output stay
                 # in the inspectable user-level supplied context below.
                 thread_params["developerInstructions"] = ctx.assistant_instructions
-            if client_names & KIRA_RELAY_TOOLS:
+            if client_names & KIRA_CLIENT_TOOL_NAMES:
                 # thread/resume cannot add dynamicTools. A thread-local MCP
-                # overlay attaches the same service-bound tools to both existing
-                # and new native conversations without resetting their history.
+                # overlay attaches the same service-bound tools, including an
+                # autonomous goal's, to both existing and new native
+                # conversations without resetting their history.
                 assistant_relay = KiraMcpRelay(ctx, client_names)
                 thread_params["config"]["mcp_servers"] = {
                     MCP_SERVER_NAME: await assistant_relay.start()}
@@ -553,7 +554,7 @@ class CodexBackend:
     async def _verify_assistant_tools(self, rpc: AppServer, thread_id: str,
                                       relay: KiraMcpRelay) -> None:
         """Fail before inference when the local provider did not attach Kira."""
-        expected = {name.split(".", 1)[1] for name in relay.names}
+        expected = {mcp_tool_name(name) for name in relay.names}
         async with asyncio.timeout(15):
             while True:
                 inventory = await rpc.request("mcpServerStatus/list", {

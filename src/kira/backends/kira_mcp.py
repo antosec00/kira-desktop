@@ -26,6 +26,7 @@ from typing import Any
 from kira import __version__
 from kira.backends.client_tools import KIRA_CLIENT_TOOL_NAMES, ClientToolBridge, ClientToolError, encoded
 from kira.domain.assistant import assistant_tool_specs
+from kira.domain.autonomous_goals import GOAL_TOOL_NAMES, goal_tool_specs
 from kira.domain.research import research_tool_specs
 from kira.domain.knowledge import knowledge_tool_specs
 from kira.domain.project_tools import PROJECT_TOOL_CALL_TIMEOUT, PROJECT_TOOL_NAMES, project_tool_specs
@@ -37,7 +38,28 @@ MCP_SERVER_NAME = "kira"
 MCP_FRAME_BYTES = 196_608
 MAX_RELAY_CLIENTS = 16
 MCP_TIMEOUT = 65.0
-KIRA_RELAY_TOOLS = KIRA_CLIENT_TOOL_NAMES
+# Kira's own tools and, in a chat with an autonomous goal, the goal tools.
+KIRA_RELAY_TOOLS = KIRA_CLIENT_TOOL_NAMES | GOAL_TOOL_NAMES
+PARSE_ERROR: Json = {"code": -32700, "message": "Parse error"}
+
+
+def mcp_tool_name(name: str) -> str:
+    """The relay's MCP name for a registered tool.
+
+    Kira's own tools keep their bare names; another namespace is flattened as
+    ``<namespace>__<tool>``, which no Kira tool name contains.
+    """
+    namespace, tool = name.split(".", 1)
+    return tool if namespace == MCP_SERVER_NAME else f"{namespace}__{tool}"
+
+
+def _relay_specs() -> dict[str, Json]:
+    """Typed definitions of every relayable tool, keyed by registered name."""
+    kira = [*assistant_tool_specs()[0]["tools"], *research_tool_specs(), *knowledge_tool_specs(),
+            *project_tool_specs(), *soul_tool_specs(), *studio_tool_specs()]
+    specs = {f"{MCP_SERVER_NAME}.{tool['name']}": tool for tool in kira}
+    specs.update({f"goal.{tool['name']}": tool for tool in goal_tool_specs(writable=True)["tools"]})
+    return specs
 
 
 def _failure(message: str) -> Json:
@@ -102,9 +124,9 @@ class KiraMcpRelay:
                     # answered under approvalPolicy=never. Grant only these exact
                     # names; native tools, other MCP servers and the project's
                     # execution/sandbox permission remain untouched.
-                    "tools": {name.split(".", 1)[1]: {"approval_mode": "approve"}
+                    "tools": {mcp_tool_name(name): {"approval_mode": "approve"}
                               for name in sorted(self.names)},
-                    "enabled_tools": sorted(name.split(".", 1)[1] for name in self.names)}
+                    "enabled_tools": sorted(mcp_tool_name(name) for name in self.names)}
         except BaseException:
             await self.close()
             raise
@@ -138,10 +160,11 @@ class KiraMcpRelay:
                 name = request["name"]
                 if not isinstance(name, str) or name not in self.names:
                     raise ValueError("Unregistered relay tool")
+                namespace, tool = name.split(".", 1)
                 operation = asyncio.create_task(self.bridge.call({
                     "threadId": self.ctx.run_id, "turnId": self.ctx.run_id,
-                    "callId": request["call_id"], "namespace": "kira",
-                    "tool": name.split(".", 1)[1], "arguments": request["arguments"],
+                    "callId": request["call_id"], "namespace": namespace,
+                    "tool": tool, "arguments": request["arguments"],
                 }))
                 disconnected = asyncio.create_task(reader.read(1))
                 done, _ = await asyncio.wait({operation, disconnected},
@@ -178,11 +201,14 @@ class KiraMcpRelay:
         self.closed = True
         if self.server is not None:
             self.server.close()
-            await self.server.wait_closed()
+        # wait_closed() also waits for open connections, which an in-flight
+        # call keeps open: end the calls first.
         for task in tuple(self.tasks):
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)
         self.tasks.clear()
+        if self.server is not None:
+            await self.server.wait_closed()
         if self.directory is not None:
             for name in ("bridge.json", "relay.sock"):
                 with contextlib.suppress(FileNotFoundError):
@@ -237,6 +263,29 @@ async def _relay_call(config: Json, request: Json) -> Json:
                 await writer.wait_closed()
 
 
+async def _frame(reader: asyncio.StreamReader) -> bytes | None:
+    """Read one newline-delimited frame: b"" at end of input, None when it is oversized.
+
+    An oversized frame is discarded through its newline, so its remainder is
+    never taken for a frame of its own.
+    """
+    try:
+        return await reader.readuntil(b"\n")
+    except asyncio.IncompleteReadError as exc:
+        return exc.partial
+    except asyncio.LimitOverrunError as exc:
+        consumed = exc.consumed
+    while True:
+        await reader.readexactly(consumed)
+        try:
+            await reader.readuntil(b"\n")
+            return None
+        except asyncio.IncompleteReadError:
+            return None
+        except asyncio.LimitOverrunError as exc:
+            consumed = exc.consumed
+
+
 async def _stdio(config: Json) -> None:
     """Small MCP JSON-RPC surface; no resources, prompts or arbitrary methods."""
     reader = asyncio.StreamReader(limit=MCP_FRAME_BYTES)
@@ -244,6 +293,7 @@ async def _stdio(config: Json) -> None:
     transport, _ = await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin)
     pending: dict[str, asyncio.Task[None]] = {}
     initialized = False
+    registered = {mcp_tool_name(name): name for name in config["tools"]}
 
     def respond(request_id: Any, result: Json | None = None, error: Json | None = None) -> None:
         reply: Json = {"jsonrpc": "2.0", "id": request_id}
@@ -264,20 +314,18 @@ async def _stdio(config: Json) -> None:
                           "resources/templates/list": {"resourceTemplates": []},
                           "prompts/list": {"prompts": []}}[method]
             elif method == "tools/list":
-                result = {"tools": [{key: value for key, value in tool.items() if key != "type"}
-                                    for tool in [*assistant_tool_specs()[0]["tools"], *research_tool_specs(),
-                                                 *knowledge_tool_specs(), *project_tool_specs(), *soul_tool_specs(),
-                                                 *studio_tool_specs()]
-                                    if "kira." + tool["name"] in config["tools"]]}
+                result = {"tools": [{**{key: value for key, value in tool.items() if key != "type"},
+                                     "name": mcp_tool_name(name)}
+                                    for name, tool in _relay_specs().items() if name in config["tools"]]}
             elif method == "tools/call" and isinstance(params, dict):
                 name, arguments = params.get("name"), params.get("arguments", {})
-                if not isinstance(name, str) or "kira." + name not in config["tools"]:
+                if not isinstance(name, str) or name not in registered:
                     result = _failure("The requested Kira tool is not registered.")
                 else:
                     # JSON-RPC numeric and string IDs remain different identities.
                     call_id = "mcp-" + identity
                     result = await _relay_call(config, {"call_id": call_id,
-                        "name": "kira." + name, "arguments": arguments})
+                        "name": registered[name], "arguments": arguments})
             else:
                 respond(request["id"], error={"code": -32601, "message": "Method not found"})
                 return
@@ -292,8 +340,16 @@ async def _stdio(config: Json) -> None:
             pending.pop(identity, None)
 
     try:
-        while line := await reader.readline():
-            request = _decode(line)
+        while (frame := await _frame(reader)) != b"":
+            try:
+                request = _decode(frame) if frame is not None else None
+            except (ValueError, ClientToolError, RecursionError):
+                request = None
+            if request is None:
+                # Not one bounded JSON object: answer with JSON-RPC's parse
+                # error and keep serving later requests.
+                respond(None, error=PARSE_ERROR)
+                continue
             method = request.get("method")
             params = request.get("params", {})
             if request.get("jsonrpc") != "2.0" or not isinstance(method, str) \

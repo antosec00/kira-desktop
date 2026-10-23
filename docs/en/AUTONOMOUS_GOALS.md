@@ -29,7 +29,8 @@ provider has already received.
 
 In the composer you can use these commands, which Kira interprets as
 application commands and does not send to the provider; `/obbiettivo` and
-`/goal` (the English alias) are equivalent aliases.
+`/goal` are equivalent aliases, and the English forms `status`, `pause` and
+`resume` work with each of the three, for example `/goal pause`.
 
 | Command | Effect |
 | --- | --- |
@@ -40,10 +41,12 @@ application commands and does not send to the provider; `/obbiettivo` and
 | `/obiettivo riprendi` | Reactivates a stopped goal after the necessary checks |
 
 Send the command without attached images (the files stay in the draft); it is
-not available in an archived chat. The default cycle limit is **0: no limit**.
-A positive value is an optional cap, not a promise that the goal will be
-reached within that number; there is no implicit time limit. The panel shows
-**Cycles: N · unlimited** or **Cycles: N/limit**.
+not available in an archived chat. From the interface and with `/obiettivo` a
+goal starts with no cycle limit and no implicit time limit. A cap can be set
+only with the `goal.start` IPC method (`max_cycles`, see
+[Contracts](CONTRACTS.md)) and is not a promise that the goal will be reached
+within that number. The panel shows **Cycles: N · unlimited** or **Cycles:
+N/limit**.
 
 ## What a cycle does
 
@@ -87,16 +90,17 @@ The **Chat goal** panel shows status, cycle count, last summary
 stop, regardless of the state of the turn in progress.
 
 At every cycle the model records a checkpoint with a summary, a next step and a
-decision: continue, completed or blocked. To declare completion it must
-justify it with results recorded in the project (events, artifacts, tool
-outcomes) or, for a purely writing goal, with an explicit written deliverable;
-proof taken from other projects does not count. Completion is applied only
-after the turn has ended successfully and cleanup is confirmed: a failed turn
-does not turn a proposed conclusion into a success. The status **Goal
-completed · assessed by the model** says exactly that: Kira checks provenance,
-execution and consistency of the records, but cannot guarantee that the model
-understood everything or that every real requirement is satisfied. Verify the
-results before considering the work closed.
+decision: continue, completed or blocked. To declare completion it must justify
+it with results recorded in the project (events, artifacts, tool outcomes) or,
+for a purely writing goal, with an explicit written deliverable; proof taken
+from other projects does not count, and neither do the copies of Kira tool calls
+that Codex and Claude Code also record. Completion is applied only after the
+turn has ended successfully and cleanup is confirmed: a failed turn does not
+turn a proposed conclusion into a success. The status **Goal completed ·
+assessed by the model** says exactly that: Kira checks provenance, execution and
+consistency of the records, but cannot guarantee that the model understood
+everything or that every real requirement is satisfied. Verify the results
+before considering the work closed.
 
 ## Blocks, pause and resume
 
@@ -154,8 +158,8 @@ managed by Kira that DeepSeek Account uses.
   re-read.
 - **Check `/obiettivo stato`.** If you see **A change is needed to continue**,
   add guidance in the chat and resume.
-- **Use the cycle limit as a brake.** A low limit makes you re-read the
-  progress before spending more provider quota; one chat, one goal.
+- **Review progress at intervals.** Pause with `/obiettivo pausa` to check
+  the progress before spending more provider quota; one chat, one goal.
 
 For Teams and their automatic reply see [Teams](TEAMS.md); for the other chat
 controls see [Chat and tools](CHAT_AND_TOOLS.md).

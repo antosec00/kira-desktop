@@ -12,6 +12,7 @@ from kira.domain.paths import Paths
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 from kira.ui.knowledge_controller import KnowledgeController
+from test_ui_support import wait_laid_out, wait_opened
 
 
 def snapshot():
@@ -114,6 +115,12 @@ def evaluate(obj, code):
 
 def bounds(item):
     return item.mapRectToScene(QRectF(0, 0, item.width(), item.height()))
+
+
+def named(window, name):
+    item = window.findChild(QObject, name)
+    assert item is not None, name
+    return item
 
 
 def click(window, item):
@@ -423,12 +430,14 @@ def test_real_dialog_is_lazy_literal_and_fits_large_fonts(knowledge, qtbot, qtlo
     try:
         evaluate(dialog, "open()")
         replies.reply("knowledge.snapshot", snapshot())
-        qtbot.wait(60)
+        panel = ("knowledgeIdentity", "knowledgeModel", "knowledgeTab", "knowledgeToolsTab", "knowledgeRefresh",
+                 "knowledgeQuery", "knowledgeScope", "knowledgeSearch", "knowledgeScroll", "knowledgePrevious", "knowledgeNext")
+        footer = ("knowledgeMemory", "knowledgeResearch", "knowledgeClose")
+        wait_opened(qtbot, dialog, *(named(window, name) for name in panel + footer))
         assert dialog.property("title") == ("Kira · Conoscenza e strumenti" if language == "it" else "Kira · Knowledge and tools")
         assert "Chosen %2 <model>" in window.findChild(QObject, "knowledgeModel").property("text")
         content = dialog.property("contentItem")
-        for name in ("knowledgeIdentity", "knowledgeModel", "knowledgeTab", "knowledgeToolsTab", "knowledgeRefresh",
-                     "knowledgeQuery", "knowledgeScope", "knowledgeSearch", "knowledgeScroll", "knowledgePrevious", "knowledgeNext"):
+        for name in panel:
             item = window.findChild(QObject, name)
             assert item.isVisible(), name
             assert bounds(content).adjusted(-1, -1, 1, 1).contains(bounds(item)), (name, bounds(item), bounds(content))
@@ -437,7 +446,7 @@ def test_real_dialog_is_lazy_literal_and_fits_large_fonts(knowledge, qtbot, qtlo
                 "parentSize:[parent.width,parent.height],host:[panelHost.x,panelHost.y,panelHost.width,panelHost.height],"
                 "currentOrigin:panelHost.mapToItem(parent,0,0)})"))
         assert window.findChild(QObject, "knowledgeScroll").height() > 80
-        for name in ("knowledgeMemory", "knowledgeResearch", "knowledgeClose"):
+        for name in footer:
             item = window.findChild(QObject, name)
             assert item.isVisible() and QRectF(0, 0, *size).contains(bounds(item)), name
         assert replies.methods() == ["knowledge.snapshot"]
@@ -463,18 +472,19 @@ def test_real_dialog_is_lazy_literal_and_fits_large_fonts(knowledge, qtbot, qtlo
         replies.reply("project.tools.list", {"project_id": "project", "items": [registered()], "has_more": False})
         controller.readTool("tool-a", 0)
         replies.reply("project.tools.get", {"project_id": "project", "tool": registered()})
-        qtbot.wait(30)
-        actions = window.findChild(QObject, "knowledgeToolActions")
+        actions = named(window, "knowledgeToolActions")
+        scroll = named(window, "knowledgeScroll")
+        wait_laid_out(qtbot, actions, scroll)
         # Scroll the detail to its action row before testing actual pointer use.
-        scroll = window.findChild(QObject, "knowledgeScroll")
         position = bounds(actions).top() - bounds(scroll).top() + evaluate(scroll, "contentItem.contentY")
         evaluate(scroll, f"contentItem.contentY = Math.max(0, Math.min({position}, contentItem.contentHeight - height))")
-        qtbot.wait(30)
+        use_tool = named(window, "knowledgeUseTool")
+        wait_laid_out(qtbot, use_tool)
         prompt = window.findChild(QObject, "prompt")
         prompt.setProperty("text", "Keep this draft <literal>")
         prompt.setProperty("cursorPosition", len("Keep this draft <literal>"))
         before = len(replies.calls)
-        click(window, window.findChild(QObject, "knowledgeUseTool"))
+        click(window, use_tool)
         assert "Keep this draft <literal>" in workspace.draftText and "tool-a" in workspace.draftText
         assert "tool-a" in prompt.property("text") and not dialog.property("visible")
         assert not any(method in {"run.start", "queue.add", "project.tools.run", "project.tools.test"} for method, _ in replies.calls[before:])

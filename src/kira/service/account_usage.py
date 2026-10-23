@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+import json
 from typing import TYPE_CHECKING
 
 from kira.domain.account_usage import normalize_claude_plan, unavailable_claude_usage
@@ -76,7 +77,6 @@ class AccountUsage:
             manual_truncated = len(operations) > MAX_EVENTS
             rejected |= manual_truncated
             for operation in operations[:MAX_EVENTS]:
-                import json
                 usage = json.loads(operation[0]).get("usage", {})
                 count = usage.get("requests", 0)
                 if type(count) is not int or count <= 0:

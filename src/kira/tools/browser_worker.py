@@ -14,14 +14,23 @@ from typing import TYPE_CHECKING, Any
 
 from kira.domain.contracts import Json
 from kira.tools.browser import (
+    ERROR_PAGE_MESSAGE,
     MAX_BROWSER_FRAME,
     MAX_BROWSER_RESULT,
+    BrowserErrorPage,
     browser_error,
+    is_error_page,
     validate_browser_action,
 )
 from kira.tools.browser_view import BrowserView
 from kira.tools.computer_worker import ComputerEngine
-from kira.tools.web_network import PublicWebError, PublicWebProxy, validate_url
+from kira.tools.web_network import (
+    NETWORK_BUDGET_MESSAGE,
+    NetworkBudgetExhausted,
+    PublicWebError,
+    PublicWebProxy,
+    validate_url,
+)
 
 if TYPE_CHECKING:
     from kira.tools.browser_auth import BrowserAuthBridge
@@ -33,9 +42,16 @@ MAX_ELEMENTS = 80
 MAX_FRAMES = 8
 MAX_SCREENSHOT = 2 * 1024 * 1024
 ACTION_TIMEOUT = 30
-ELEMENT_SELECTOR = (
-    "a[href],button,input,textarea,select,[role=button],[role=link],[contenteditable=true]"
-)
+# Ubuntu sets this to 1 to deny unprivileged user namespaces to programs
+# without an AppArmor profile; Chromium's sandbox needs them.
+USERNS_RESTRICTION = Path("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+# A timeout in these requests cannot have changed a page or a site.
+NO_EFFECT_ACTIONS = frozenset({"initialize", "set_artifacts", "viewer", "snapshot", "find",
+                               "screenshot", "tabs", "prepare_interaction", "computer_observe",
+                               "computer_prepare"})
+# These may have acted on a site; repeating them without inspection is unsafe.
+EFFECT_ACTIONS = frozenset({"click", "type", "press", "perform_interaction", "computer_perform",
+                            "ui_mouse", "ui_key", "ui_text"})
 ELEMENTS_SCRIPT = """() => {
   const all = document.querySelectorAll(
     'a[href],button,input,textarea,select,[role=button],[role=link],[contenteditable=true]');
@@ -118,6 +134,77 @@ def bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return value
 
 
+def playwright_timeout(exc: BaseException) -> bool:
+    try:
+        from playwright.async_api import TimeoutError as PlaywrightTimeout
+    except ImportError:
+        return False
+    return isinstance(exc, PlaywrightTimeout)
+
+
+def _uncertain(result: Json, action: str) -> Json:
+    if action not in NO_EFFECT_ACTIONS:
+        result["action_outcome"] = "unknown"
+        if action in EFFECT_ACTIONS:
+            result["retry_safe"] = False
+    return result
+
+
+def request_failure(exc: Exception, action: str, *, deadline_expired: bool) -> tuple[Json, bool]:
+    """Public result for a failed worker request and whether the worker must stop.
+
+    Playwright and other bounded waits leave the browser usable. Only Kira's
+    whole-request deadline stops the worker: it expires when an operation
+    without a deadline of its own (for example a script in a hung renderer)
+    stalls, and the browser is then closed instead of queueing work behind it.
+    Playwright messages can contain form values or request data, so only
+    fixed text leaves the worker.
+    """
+    if isinstance(exc, BrowserErrorPage):
+        return browser_error("browser_error_page", str(exc)), False
+    if isinstance(exc, PublicWebError):
+        return browser_error("public_web_only", "Only public HTTP port 80 and HTTPS port 443 "
+                             "destinations without URL credentials are supported"), False
+    if isinstance(exc, (ValueError, KeyError, TypeError)):
+        return browser_error("invalid_argument", "Invalid browser request or stale element reference"), False
+    if isinstance(exc, TimeoutError) and deadline_expired:
+        return _uncertain(browser_error(
+            "browser_unavailable", "The browser stopped responding within Kira's time limit and "
+            "was closed; open the page again and inspect it before continuing"), action), True
+    if isinstance(exc, TimeoutError) or playwright_timeout(exc):
+        return _uncertain(browser_error(
+            "browser_timeout", "The browser operation timed out; take a new snapshot to inspect "
+            "the page before retrying"), action), False
+    return browser_error("browser_failed", "Browser operation failed; take a new snapshot before retrying"), False
+
+
+def launch_failure(exc: BaseException, restriction: Path | None = None) -> Json:
+    """Describe a failed Chromium start without echoing Playwright's text.
+
+    That text includes the browser log, command line and profile paths. The
+    sandbox stays enabled; a sandbox failure is named with its likely cause.
+    """
+    detail = str(exc).casefold()
+    if "sandbox" not in detail and "new namespace" not in detail:
+        return browser_error("browser_unavailable", "Chromium could not start; install the browser "
+                             "engine for this profile and check the desktop environment")
+    try:
+        restricted = (restriction or USERNS_RESTRICTION).read_text(encoding="ascii").strip() == "1"
+    except (OSError, ValueError):
+        restricted = False
+    if restricted:
+        return browser_error(
+            "browser_sandbox_unavailable", "Chromium could not start its sandbox because this "
+            "system restricts unprivileged user namespaces through AppArmor "
+            "(kernel.apparmor_restrict_unprivileged_userns = 1). Kira keeps the sandbox enabled: "
+            "allow user namespaces for Kira's browser engine as described in the installation "
+            "guide's troubleshooting, then open the browser again")
+    return browser_error(
+        "browser_sandbox_unavailable", "Chromium could not start its sandbox because unprivileged "
+        "user namespaces are unavailable on this system. Kira keeps the sandbox enabled; see the "
+        "installation guide's troubleshooting, then open the browser again")
+
+
 class BrowserEngine:
     def __init__(self, emit: Callable[[Json], Awaitable[None]] | None = None) -> None:
         self.embedded = False
@@ -139,7 +226,6 @@ class BrowserEngine:
         self.current_tab = ""
         self.refs: dict[str, Any] = {}
         self.snapshot_id = ""
-        self.request_count = 0
         self.blocked_requests = 0
         self.prepared: Json | None = None
         self.computer = ComputerEngine(self)
@@ -213,9 +299,8 @@ class BrowserEngine:
                     await self.auth.close()
                     self.auth = None
                     self.auth_state["auth_result"] = "unavailable"
-        except Exception:
-            return browser_error("browser_unavailable", "Chromium could not start with its sandbox; "
-                                 "install the browser engine and check the desktop environment")
+        except Exception as exc:
+            return launch_failure(exc)
         self.context.set_default_timeout(12000)
         self.context.set_default_navigation_timeout(25000)
         await self.context.route("**/*", self._route)
@@ -250,9 +335,8 @@ class BrowserEngine:
 
     async def _route(self, route: Any) -> None:
         try:
-            self.request_count += 1
-            if self.request_count > 3000:
-                raise PublicWebError("Browser request limit reached")
+            if not self.proxy.budget.request():
+                raise NetworkBudgetExhausted("Browser request budget exhausted")
             validate_url(route.request.url)
             previous = route.request.redirected_from
             redirects = 0
@@ -320,7 +404,13 @@ class BrowserEngine:
                 "elements_truncated": extracted["elements_truncated"],
                 "frames": extracted["frames"], "frames_omitted": extracted["frames_omitted"],
                 "blocked_requests": self.blocked_requests + self.proxy.denied_requests,
-                "untrusted_content": True}
+                **self._network_notice(), "untrusted_content": True}
+
+    def _network_notice(self) -> Json:
+        if not self.proxy.budget.limited:
+            return {}
+        return {"network_budget": {"code": "network_budget_exhausted",
+                                   "message": NETWORK_BUDGET_MESSAGE}}
 
     async def _extract_frames(self, *, collect_refs: bool) -> Json:
         page = self.page()
@@ -408,10 +498,20 @@ class BrowserEngine:
         finally:
             await owner.dispose()
 
-    @staticmethod
-    def _check_page(page: Any) -> None:
-        if page.url != "about:blank":
-            validate_url(page.url)
+    def _check_page(self, page: Any, *, error_page_allowed: bool = False) -> None:
+        """Admit only a public page, or the initial blank page, for reading and input.
+
+        Chromium's error page holds no site content: it is named as such rather
+        than as a public-web violation, and manual input may use its controls.
+        """
+        if page.url == "about:blank":
+            return
+        if is_error_page(page.url):
+            if error_page_allowed:
+                return
+            notice = self._network_notice().get("network_budget", {}).get("message", "")
+            raise BrowserErrorPage(f"{ERROR_PAGE_MESSAGE} {notice}".strip())
+        validate_url(page.url)
 
     @staticmethod
     def _check_frame(frame: Any) -> None:
@@ -419,6 +519,8 @@ class BrowserEngine:
         # No local-file, data or blob origin is opened through this exception.
         for _ in range(64):
             if frame.url not in {"about:blank", "about:srcdoc"}:
+                if frame.parent_frame is None and is_error_page(frame.url):
+                    raise BrowserErrorPage(ERROR_PAGE_MESSAGE)
                 validate_url(frame.url)
                 return
             if frame.parent_frame is None:
@@ -536,7 +638,13 @@ class BrowserEngine:
             if self.auth is not None:
                 await self.auth.set_manual(False)
             await self.invalidate()
-            return {**await self.snapshot({}), "paused": False}
+            try:
+                return {**await self.snapshot({}), "paused": False}
+            except BrowserErrorPage as exc:
+                # Control returned to Kira even though the tab has no readable page.
+                return {"ok": True, "paused": False, "tab_id": self.current_tab,
+                        "url": self.page().url[:2048],
+                        "page_error": {"code": "browser_error_page", "message": str(exc)}}
         if self.paused:
             return {**browser_error("browser_paused", "Browser awaits manual login completion"),
                     **({"action_executed": False} if action.startswith("computer_") else {})}
@@ -550,7 +658,9 @@ class BrowserEngine:
             return await self._prepare_interaction(args)
         if action == "perform_interaction":
             return await self._perform_interaction(args)
-        if action not in {"navigate", "tabs", "select_tab", "close_tab"}:
+        if action not in {"navigate", "back", "tabs", "select_tab", "close_tab"}:
+            # Leaving or replacing the page reads nothing from it; destinations
+            # pass validate_url, the request route and the proxy.
             self._check_page(self.page())
         if action == "snapshot":
             return await self.snapshot(args)
@@ -560,6 +670,7 @@ class BrowserEngine:
                 raise ValueError("Navigation requires a URL")
             validate_url(url)
             await self.invalidate()
+            self.proxy.budget.reset()
             response = await self.page().goto(url, wait_until="domcontentloaded")
             result = await self.snapshot({})
             result["status"] = response.status if response else None
@@ -665,6 +776,7 @@ class BrowserEngine:
             return {"ok": True, "closed_tab": tab_id}
         if action == "back":
             await self.invalidate()
+            self.proxy.budget.reset()
             await self.page().go_back(wait_until="domcontentloaded")
             return await self.snapshot({})
         raise ValueError("Unknown browser action")
@@ -836,6 +948,7 @@ async def serve() -> None:
                 break
             request: Json = {}
             fatal = False
+            deadline: asyncio.Timeout | None = None
             try:
                 request = json.loads(raw)
                 if (not isinstance(request, dict) or type(request.get("id")) is not int
@@ -848,20 +961,12 @@ async def serve() -> None:
                 if initialized and action == "initialize":
                     break
                 initialized = True
-                async with asyncio.timeout(ACTION_TIMEOUT):
+                deadline = asyncio.timeout(ACTION_TIMEOUT)
+                async with deadline:
                     result = await engine.call(action, request["args"])
-            except PublicWebError:
-                result = browser_error("public_web_only", "Only public HTTP port 80 and HTTPS port 443 "
-                                       "destinations without URL credentials are supported")
-            except (ValueError, KeyError, TypeError):
-                result = browser_error("invalid_argument", "Invalid browser request or stale element reference")
-            except TimeoutError:
-                result = browser_error("browser_timeout", "Browser operation timed out; inspect the page before retrying")
-                fatal = True
             except Exception as exc:
-                # Playwright messages can contain form values or request data.
-                result = browser_error("browser_failed", "Browser operation failed; take a new snapshot before retrying")
-                fatal = type(exc).__name__ == "TimeoutError"
+                result, fatal = request_failure(exc, str(request.get("action", "")),
+                                                deadline_expired=deadline is not None and deadline.expired())
             await send({"id": request.get("id"), "result": result})
             if fatal:
                 break

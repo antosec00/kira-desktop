@@ -14,8 +14,8 @@ A **project** is a working folder to which Kira attaches four things: the
 **instructions** you write, a **permission** (**Read only**, **Project
 write**, **Trusted host**, **Full access**), the **Project memory** and the
 set of its chats. Instructions, permission and memory are edited from
-**Project memory and instructions** (the **Project** button in the header, or
-**Actions → Project memory → Edit project notes**). Permissions are described
+**Project memory and instructions** (**Actions → Project permissions**, or
+**Project memory → Edit project notes**). Permissions are described
 in [Permissions and security](PERMISSIONS_AND_SECURITY.md); memory in
 [Context and memory](CONTEXT_AND_MEMORY.md).
 
@@ -28,8 +28,8 @@ remain in the list.
 ### Chat name
 
 The initial name is derived from the first request, with normalized spaces;
-until you send something the chat is called **New chat**. With the **⋯**
-button next to the name choose **Rename chat**: the name can have at most 120
+until you send something the chat is called **New chat**. The **⋯** button
+next to the name opens **Rename chat**: the name can have at most 120
 characters and cannot be empty. The name is internal data of Kira: it is not
 sent to the model, and renaming a chat does not change the provider's
 conversation.
@@ -58,24 +58,25 @@ when a chat exceeds this limit the notice **History is limited to the latest
 messages nor the model's working memory. The full history stays in the
 database and is obtained with **Export chat as Markdown** (section 7).
 
-When a chat is opened Kira briefly shows "Loading the chat…" and then
+When a chat is opened Kira briefly shows "Loading chat…" and then
 presents the latest messages. If you scroll up, new results do not move the
 view: **Latest updates** brings you back to the bottom.
 
 ### Activity
 
 The **Completed** / **Running** boxes do not appear in the conversation: you
-find them in the **Activity** panel, with the request excerpt, the start and
-outcome times, the error if any, **Details** and the **Open chat** button that
-takes you back to the originating conversation. No event or export record is
+find them in the **Activity** panel, with the request excerpt, the start time,
+the error if any, **Details** and the **Open chat** button that takes you back
+to the originating conversation. No event or export record is
 ever deleted from this panel.
 
 ## 2. Quick actions
 
 **Actions** in the header opens **Quick actions**: a search by name or
-description of the app's features. The same list opens with **Ctrl+Shift+P**
-or by typing `/` in the message field. You can also search with English terms
-such as `model`, `plan`, `diff`, `queue`, `fork`.
+description of the app's features. The same list opens with **Ctrl+Shift+P**,
+with **Chat tools** (**⋯**) under the field or by typing `/` at the beginning of
+the message or after a space. You can also search with English terms such as
+`model`, `plan`, `diff`, `queue`, `fork`.
 
 Among other entries you find: **New project**, **New chat**, **Project
 files**, **Sent message history**, **Project queue**, the **Plan** /
@@ -105,9 +106,9 @@ The search covers only the project folder and excludes:
 - files with sensitive names (keys, credentials, secrets);
 - files ignored by Git, when the project is a Git repository.
 
-The search is limited to **1,000 entries examined, 100 matches shown, 32
-folders of depth and 16 MiB scanned**. If it hits a limit, Kira reports it:
-refine the search with a more precise name. **Attach** always remains
+The search is limited to **10,000 entries examined, 100 matches shown and a
+depth of 32 folders**. If it hits a limit, Kira reports it: refine the search
+with a more precise name. **Attach** always remains
 available to explicitly pick any other file with the system picker.
 
 A reference is text in the message: it does not change the project
@@ -122,8 +123,9 @@ The text you write and do not send is saved privately, chat by chat
 (including the "new chat" not yet created), in the file
 `$HOME/.config/kira/composer.json` (with `KIRA_HOME`: `$KIRA_HOME/config/`).
 The save is **atomic**, happens **300 ms** after the last change and is forced
-on orderly window close. On reopening you find the text, the mode, the chosen
-Soul identity and the attached images.
+on orderly window close. On reopening you find the text, the attached images
+and the Soul identity chosen for the new chat; the request mode goes back to
+**Execute**.
 
 The same file keeps the **sent message history** and the identities of pending
 requests. The limits are:
@@ -156,29 +158,34 @@ reusable list: conversations stay in the database and drafts stay in place.
 
 ### Request identities and **Allow new separate requests…**
 
-To queue, send guidance, branch, compact and change provider, Kira records the
+For sends, queue, guidance, branches, compactions, provider switches, goals,
+context notes and Team messages or resumes from the chat, Kira records the
 request identity (an identifier and a fingerprint of the arguments, not a copy
-of the text) **before** sending it to the service. Closing the window or
-switching chat does not turn it into a new operation: a second attempt with
-the same content reuses the same identity, and an uncertain outcome is never
-repeated on its own.
+of the text) **before** sending it to the service; the same applies to changes
+to Soul, Research and project tools. Closing the window or switching chat does
+not turn it into a new operation: a second attempt with the same content reuses
+the same identity, and an uncertain outcome is never repeated on its own. Team
+commands and native launches keep their identity only while the window is open:
+after a restart, check **Activity** or the Team view before repeating them.
 
 If you really want to send a distinct request with the same content, first
 check the chat, the queue and **Activity**, then use **Manage chat → Allow new
-separate requests…**. The command asks for confirmation and sends nothing: it
-only enables a subsequent new request, which could duplicate a previous effect
-whose outcome is still uncertain.
+separate requests…** (it appears when some requests have an uncertain
+outcome). The command asks for confirmation and sends nothing: it only enables
+a subsequent new request, which could duplicate a previous effect whose
+outcome is still uncertain.
 
 ## 5. Sending, queuing, guiding
 
-To the right of the message field you find **Send** (**Ctrl+Enter**) and
-**Queue**; **Queue** opens the list of waiting requests. When the **same
-chat** has an active turn, **Send guidance** appears in place of **Send**.
+Below the message field, on the right, you find **Send** (**Ctrl+Enter**) and,
+while work is in progress, **Queue**; the queue button with the number of
+waiting requests opens their list. When the **same chat** has an active turn,
+**Send guidance** appears in place of **Send**.
 
 | Button | When it appears | What it does |
 | --- | --- | --- |
 | **Send** | Idle chat and no work in the project | Starts the request immediately. |
-| **Queue** | Always | Saves a separate request to be run in a later turn. |
+| **Queue** | While work is in progress in the project, including a Team | Saves a separate request to be run in a later turn. |
 | **Send guidance** | A turn of this chat is in progress | Adds text to the work in progress, without stopping it. |
 
 When another chat of the project is working, the message stays addressed to
@@ -198,8 +205,8 @@ is required.
 
 ### Queue states
 
-Every queued request goes through these states: **waiting**, **starting**,
-**running**, **completed**, **failed**, **cancelled**, **interrupted**. While
+Every queued request goes through these states: **Waiting**, **Starting**,
+**Running**, **Completed**, **Failed**, **Cancelled**, **Interrupted**. While
 it is waiting you can edit its text, move it with the arrows or remove it; a
 request that has already started cannot be edited or cancelled from the queue
 (use **Stop**). A removed entry cannot be brought back to life by a late
@@ -212,9 +219,12 @@ queue.
 - The queue **continues on its own** after every successfully completed job.
 - After an **error**, a **cancellation** or a **service restart** the queue
   **stays paused**: check the outcome and press **Resume queue**.
+- If a request's start is refused only because of the current state (work
+  already running, an archived chat or the service shutting down), the request
+  stays waiting in the paused queue, with the reason shown on the entry.
 - **Pause queue** prevents new starts and lets the current turn finish.
-- **Stop** requests cancellation of the turn in progress and waits for the
-  backend's outcome; it does not empty the queue.
+- **Stop** requests cancellation of the selected chat's turn in progress and
+  waits for the outcome recorded by the service; it does not empty the queue.
 - Closing the window does not stop the service and does not delete the queue;
   on reopening you find the saved requests.
 
@@ -227,6 +237,8 @@ queue.
   of a group not yet started can be deferred with outcome
   `DEFERRED_FOR_USER_GUIDANCE`, so that the model re-plans taking the
   correction into account.
+- **DeepSeek Web** and **Claude Code · personal use** do not receive guidance
+  during a turn: queue a separate request.
 - A response already in progress is not rewritten and private reasoning is
   not exposed.
 
@@ -269,14 +281,16 @@ run Git on their own.
 
 ## 7. Archiving, branching, exporting
 
-All these actions are in **Actions → Manage chat**.
+All these actions are in **Actions → Manage chat**, in the **Chat tools**
+window.
 
 ### Archive chat
 
-**Archive chat** hides an **idle** chat from the main list and keeps its
-history, provider reference and files. In **Archived chats** you can open it,
-export it or restore it. An archived chat cannot start work: restore it before
-sending new messages. Archived chats do not feed new excerpts shared between
+**Archive chat** hides from the main list an **idle** chat with no queued
+requests, and keeps its history, provider reference and files. In
+**Archived chats** you can open it or restore it; a chat opened from there can
+be exported. An archived chat cannot start work: restore it before sending new
+messages. Archived chats do not feed new excerpts shared between
 chats. The archive is Kira's: it has no relationship with the provider's
 archive.
 
@@ -293,8 +307,8 @@ project files.
   thread and the new chat's local history starts from the new requests; a
   banner with **Open original chat** takes you back to the earlier messages
   kept by Kira.
-- **Ollama** and **Direct OpenAI · ChatGPT** receive an **explicit copy of the
-  recorded context**. The full copied source is limited to **8,000,000 bytes**
+- **The other providers** receive an **explicit copy of the recorded
+  context**. The full copied source is limited to **8,000,000 bytes**
   (beyond that, Kira refuses the branch); at subsequent requests the model
   receives a declared excerpt of at most **100,000 characters** of the source.
   No invented messages or events are inserted, and an uncertain branch
@@ -302,15 +316,16 @@ project files.
 
 ### Export chat as Markdown
 
-**Export chat as Markdown** saves the **whole** persisted conversation, even
-when the view shows only part of it, followed by the retained activity
-records and the current goal, if any. It includes the guidance accepted during
-work and the assistant's partial outputs; truncation markers already present
-in the events stay as they are. Artifact paths remain references: the files
-are neither read nor embedded. Large exports go through a private file of the
-service and a destination you choose. The export of a native Codex branch
-contains what Kira recorded in that branch: for the inherited history, export
-the starting chat as well. Always check the content before sharing it.
+**Export chat as Markdown** (also with **Export** in the top bar) saves the
+**whole** persisted conversation, even when the view shows only part of it,
+followed by the retained activity records and the current goal, if any. It
+includes the guidance accepted during work and the assistant's partial outputs;
+truncation markers already present in the events stay as they are. Artifact
+paths remain references: the files are neither read nor embedded. Large exports
+go through a private file of the service and a destination you choose. The
+export of a native Codex branch contains what Kira recorded in that branch: for
+the inherited history, export the starting chat as well. Always check the
+content before sharing it.
 
 **Copy last response** instead copies to the clipboard the text of a completed
 response present in the visible chat.
@@ -327,8 +342,8 @@ resuming a goal starts no work cycle.
 provider has already received), **Resume goal** puts it back and **Mark
 completed** records your assessment, which is not an independent verification
 of the result. These commands do not replace **Stop** for a turn already
-started. A saved goal appears as a compact box above the field only when an
-explicit record exists; opening it shows the same controls.
+started. A saved goal appears as a compact box above the conversation only
+when an explicit record exists; **Open** shows the same controls.
 
 To have Kira work in successive cycles without sending every step by hand,
 use the `/obiettivo` command described in
@@ -348,8 +363,8 @@ visible as long as there are answers to give. **Asynchronous** questions let
 the agent continue its independent work; **blocking** ones stop that turn
 until you answer.
 
-Kira distinguishes three answer states: **saved** (recorded by Kira), **being
-forwarded** and **forwarded to the backend**. The last state proves that the
+Kira distinguishes three answer states: **saved** (recorded by Kira),
+**forwarding** and **forwarded to the provider**. The last state proves that the
 provider received the answer, not that the model used it. If the turn ends,
 is cancelled or the forwarding fails, the request is closed: question and
 answer remain readable and copyable for a new turn, without automatic
@@ -379,7 +394,7 @@ start or resume work.
 | --- | --- |
 | **Direct OpenAI · ChatGPT** | Yes |
 | **DeepSeek Account** (experimental) | Yes, only with the models whose catalog entry declares image support |
-| **DeepSeek Web** (experimental) | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) |
+| **DeepSeek Web** (experimental) | Yes, with DeepSeek V4 Flash (web) and DeepSeek Reasoner (web) |
 | **Claude Code · personal use** (experimental) | Yes, up to 4 PNGs |
 | **Codex**, **Ollama** | No: the attachment becomes a reference to the path, as text |
 
@@ -425,7 +440,7 @@ draft but sending is blocked: choose a compatible model or remove them.
 **Writing or pasting a path remains text**: it does not attach the bytes and
 does not let the model see the image. With **Codex** and **Ollama**,
 **Attach** and paste always insert the local path, even for images; with the
-direct provider the same applies to non-image files and to free-text answers
+other providers the same applies to non-image files and to free-text answers
 to questions. An image pasted from the clipboard into an answer to a question
 is saved as a private PNG in the `attachments/` folder and inserted as a path.
 Reading a path requires the project's tools and permissions and does not
@@ -459,12 +474,12 @@ bytes: keep the data folder as well (see [Installation](INSTALLATION.md)).
 
 ## 11. Tool receipts
 
-Every operation the model performs (reading a file, a command, a text search,
-a browser page…) appears in the chat as a **receipt**: a row with a light-blue
-thread on the left, the operation label, the literal path or command and the
-outcome. The labels are the same for all providers (**Reading the file**,
-**Running the command**, **Searching text**…); the tool's native name stays in
-the row's original data. An unknown tool keeps its literal name.
+Every operation the model performs (reading a file, a command, a text search, a
+browser page…) appears in the chat as a **receipt**: a row with a thread in the
+theme's accent color on the left, the operation label, the literal path or
+command and the outcome. The labels are the same for all providers (**Reading
+the file**, **Running the command**, **Searching text**…); the tool's native
+name stays in the row's original data. An unknown tool keeps its literal name.
 
 ### Kira activity
 
@@ -486,20 +501,22 @@ not recover bytes absent from the recorded output; for very large outputs use
 compact again.
 
 For every receipt you find: **Copy** (always copies the full body, regardless
-of the preview), **Copy command**, **Data** (the JSON of the recorded event),
-**Artifacts** (the files recorded as results) and **Open folder**, because not
-every file created by a command automatically becomes an artifact. A sentence
-from the model such as "I ran the command" must always be compared with the
-actual receipt.
+of the preview), **Copy command** and **Data** (the JSON of the recorded
+event). The files recorded as results are in **Files** (**Project artifacts**)
+and **Open folder** in the project **Details** opens the working folder,
+because not every file created by a command automatically becomes an artifact.
+A sentence from the model such as "I ran the command" must always be compared
+with the actual receipt.
 
 ### Status indicators
 
 Every receipt and the activity row use a color, a symbol and an accessible
-label: **blue** running, **green** confirmed completion, **red** error,
-**amber** waiting, paused or unconfirmed outcome, **gray** queued, cancelled
-or unknown. Only an operation actually in progress pulses (1.4-second cycle,
-no movement); the animation stops when the window is hidden, with **Reduce
-motion** or outside the active chat. A request that ended with failed or
+label: the theme's **accent color** (amber in the Kira theme) running,
+**green** confirmed completion, **red** error, **amber** waiting, paused or
+unconfirmed outcome, **gray** queued, cancelled or unknown. Only an operation
+actually in progress pulses (1.4-second cycle, no movement); the animation
+stops when the window is hidden, with reduced animations (**Reduce motion**)
+or outside the active chat. A request that ended with failed or
 unconfirmed tools keeps those outcomes visible: the completion of the turn
 does not become the success of every tool.
 
@@ -533,7 +550,7 @@ remain literal text.
 - The renderer accepts at most **131,072 characters** of input and 20 nesting
   levels; beyond the output limit it shows the source.
 
-**Typographic punctuation** (quotes and dashes) changes only the display of
+**Smart punctuation** (quotes and dashes) changes only the display of
 prose; sent text, code and **Copy** stay identical. Details in
 [Appearance and language](APPEARANCE_AND_LANGUAGE.md).
 
@@ -541,12 +558,12 @@ prose; sent text, code and **Copy** stay identical. Details in
 
 Every run of a request has its own final status: several **Completed** rows
 in **Activity** refer to different requests, not to repeated work.
-**Completed** means the backend confirmed the end of the run; it is not proof
+**Completed** means the service recorded the end of the run; it is not proof
 that every task succeeded, which is why the responses, receipts and artifacts
 remain. The **Activity** cards show an excerpt of the request (up to 160
-characters), the start time and the outcome time in **UTC**; **Details**
-shows identifiers, full request, event sequence, status, error and recorded
-outcome in JSON.
+characters) and the start time in the computer's time zone; **Details** shows
+in JSON identifiers, request (flagged when truncated), start and event times in
+**UTC**, event sequence, status, error and recorded outcome.
 
 If the chat's last request fails or is interrupted, an **error box** appears
 above the message field with the available reason and a reference to the
@@ -571,22 +588,22 @@ credentials.
 
 | Preference | Values | Notes |
 | --- | --- | --- |
-| Chat text size | 12 to 20 px (default 14) | Interface and code sizes are separate, in **Appearance**. |
-| Density | compact / comfortable | |
-| **Reduce motion** | yes / no | Stops animations while keeping the status texts. |
-| **Sidebar** | **Whole / Icons only / Hidden** | Also with **Ctrl+B**. |
-| Tool **Labels** | yes / no | Shows the text next to the icons of the tray under the field. |
+| **Conversation** size (in **Appearance → Fonts**) | 12 to 20 px (default 14) | Interface and code have separate sizes, in the same section. |
+| **Interface density** | **Comfortable** (default) / **Compact** | |
+| **Reduce motion** (in **Appearance**) | **Follow system** / **Always** / **Never** | Stops animations while keeping the status texts. |
+| **Sidebar** | **Whole** / **Icons only** / **Hidden** | Also with **Ctrl+B**. |
+| **Labels next to the tool icons** | yes / no | Shows the text next to the icons of the tray under the field. |
 | **Open the model options with the chat** | yes / no | Opens **Provider, model and reasoning** when entering a chat. |
-| **Details** panel | open / closed | The right-hand panel starts closed; the choice is remembered. |
-| Confirmation on close | **while working** / **always** / **never** | Closing the window never stops a turn. |
-| Opening files | system application / **VS Code** | VS Code requires the `code` command; if it is missing, Kira reports it. |
-| Initial permission of **new** projects | **Read only** (default) and the others | Existing projects do not change; wider permissions must be chosen explicitly. |
-| **The next step** hint | visible / hidden | **Hide** closes it; here you re-enable it. It does not delete the saved note. |
+| **Show the Details panel** | yes / no | The right-hand panel starts closed; **Details** in the top bar also opens or closes it, and the choice is remembered. |
+| **Ask for confirmation before closing the window** | **When work is running** / **Always** / **Never** | Closing the window never stops a turn. |
+| **Open files with** | **Default system application** / **Visual Studio Code** | VS Code requires the `code` command; if it is missing, Kira reports it. |
+| **New project permissions** | **Read only** (default) and the others | Existing projects do not change; wider permissions must be chosen explicitly. |
+| **Show the “Next step” hint** | yes / no | **Hide** closes it; here you re-enable it. It does not delete the saved note. |
 | **Show reasoning summaries** | yes / no | Shows or hides the **Reasoning summary** panel under the chat without interrupting the work. |
 
 The **Reasoning summary** is the public summary that some providers (Codex,
-OpenAI direct) supply during processing; it does not certify that an operation
-happened and is not the final response; with Ollama it is not available.
-Themes, fonts, column width and interface language are in
+Direct OpenAI) supply during processing; it does not certify that an operation
+happened and is not the final response; with Ollama, DeepSeek and Claude Code it
+is not available. Themes, fonts, column width and interface language are in
 [Appearance and language](APPEARANCE_AND_LANGUAGE.md); the choice of provider
 and model in [Providers](PROVIDERS.md).

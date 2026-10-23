@@ -60,8 +60,9 @@ in quel momento diventa quello condiviso.
 
 - **Riduci le animazioni**: **Segui il sistema** legge la preferenza esposta
   dal desktop; se il sistema non ne espone una, compare una nota e le
-  animazioni restano attive finché non scegli **Sempre** (ridotte) o **Mai**.
-  Con le animazioni ridotte si fermano anche i puntini degli stati di lavoro.
+  animazioni restano attive: scegli **Sempre** per ridurle, **Mai** per
+  lasciarle sempre attive. Con le animazioni ridotte si fermano anche i puntini
+  degli stati di lavoro.
 - **Barra laterale traslucida** lascia intravedere lo sfondo di Kira nella
   barra laterale. Non attiva sfocature del compositore né trasparenza verso
   altre finestre.
@@ -69,8 +70,7 @@ in quel momento diventa quello condiviso.
   modifica i colori principali che hai scelto.
 - **Conversazione a tutta larghezza**: per impostazione predefinita i messaggi
   occupano una colonna di lettura centrata e limitata; attiva l'opzione per
-  usare tutto lo spazio disponibile. Un profilo che aveva già salvato una
-  scelta la conserva.
+  usare tutto lo spazio disponibile.
 - **Cursore a mano sui comandi** mostra il cursore a mano sui controlli
   interattivi.
 
@@ -132,13 +132,13 @@ stati, formati numerici e messaggi di errore generati dall'app. Restano
 originali:
 
 - nomi di progetti, chat e membri dei Team, bozze e istruzioni;
-- percorsi, identificativi dei modelli, permessi e impostazioni dei provider;
+- percorsi, identificativi dei modelli, impostazioni e messaggi dei provider;
 - i contenuti della conversazione, le risposte dei modelli, l'output degli
   strumenti e il JSON originale.
 
 Scegliere **English** non chiede al modello di rispondere in inglese: la lingua
 delle risposte dipende dalle tue richieste e, se usi un'Anima, dalla preferenza
-**Lingua delle risposte** (vedi [Anima e conoscenza](ANIMA_E_CONOSCENZA.md)).
+**Lingua delle risposte** (vedi [Anima e Conoscenza](ANIMA_E_CONOSCENZA.md)).
 
 I nuovi Team e i membri aggiunti dopo il cambio ricevono nomi e ruoli iniziali
 nella lingua scelta; quelli già presenti conservano il proprio testo, anche se

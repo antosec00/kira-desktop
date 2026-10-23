@@ -6,6 +6,7 @@ shared by all direct provider instances so token rotation has one owner.
 
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING
 
 from kira.domain.contracts import Json, KiraError
@@ -29,7 +30,9 @@ class DirectAccounts:
         if self._auth is None:
             from kira.backends.openai_auth import ChatGPTAuth
             self._auth = ChatGPTAuth(self.service.paths.config / "openai-chatgpt",
-                                    protect_secrets=self.service.redactor.set_provider_values)
+                                    protect_secrets=functools.partial(
+                                        self.service.redactor.set_provider_values,
+                                        owner=BACKEND))
         return self._auth
 
     def busy(self) -> bool:

@@ -23,7 +23,7 @@ Rectangle {
             Layout.fillWidth: true
         }
         ReadText {
-            text: qsTr("Questo backend usa la sessione web di chat.deepseek.com e non passa dall’accesso DeepSeek Account, da PKCE o da una API key.")
+            text: qsTr("Questo provider usa la sessione web di chat.deepseek.com e non passa dall’accesso DeepSeek Account, da PKCE o da una API key.")
             color: appearance.colors.muted
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
@@ -94,7 +94,7 @@ Rectangle {
             visible: deepseekAccount.webModels.length > 0
             Layout.fillWidth: true
             spacing: 4
-            ReadText { text: qsTr("Modelli esposti dal backend DeepSeek Web"); color: appearance.colors.text; font.bold: true; Layout.fillWidth: true }
+            ReadText { text: qsTr("Modelli esposti dal provider DeepSeek Web"); color: appearance.colors.text; font.bold: true; Layout.fillWidth: true }
             Repeater {
                 model: deepseekAccount.webModels
                 delegate: ReadText {

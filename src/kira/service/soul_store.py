@@ -10,6 +10,7 @@ from typing import Any
 
 from kira.domain.contracts import Json, KiraError
 from kira.domain.souls import MAX_MEMORIES, MAX_SOURCE_BYTES, canonical, capsule, integer, text, validate_profile
+from kira.service.history_tools import mirrors_kira_tool
 from kira.service.storage import Store, new_id, now
 
 
@@ -158,8 +159,10 @@ class SoulStore:
         if row["type"] == "tool.completed":
             payload = json.loads(row["payload"])
             name = payload.get("name")
-            if (not isinstance(name, str) or name.startswith(("kira.", "kira_", "kira_history."))):
-                raise KiraError("INVALID_SOURCE", "Recalled knowledge, generated suggestions and Kira metadata are not new learning evidence")
+            if (not isinstance(name, str) or name.startswith(("kira.", "kira_", "kira_history."))
+                    or mirrors_kira_tool(name, payload.get("result"))):
+                raise KiraError("INVALID_SOURCE", "Recalled knowledge, generated suggestions, Kira metadata and "
+                                "provider copies of Kira tool calls are not new learning evidence")
         floor = self.db.execute("SELECT learning_floor FROM souls WHERE id=?", (soul_id,)).fetchone()
         if floor is None or row["event_order"] <= floor[0]:
             raise KiraError("STALE_SOURCE", "This evidence predates the last profile rollback")

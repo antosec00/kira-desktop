@@ -19,9 +19,7 @@ MAX_MEMBER_INSTRUCTIONS_BYTES = 8_000
 MAX_TEAM_MESSAGE_BYTES = 8_000
 MAX_MAILBOX_PAGE = 50
 TEAM_TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "interrupted", "paused"})
-TEAM_STATES = frozenset({"planning", "running", "cancelling"}) | TEAM_TERMINAL_STATES
 MEMBER_ID_PATTERN = r"^[a-z][a-z0-9_-]{0,47}$"
-RESERVED_MEMBER_IDS = frozenset({"all", "user", "human", "system"})
 MAX_COMPLETION_ANCESTORS = 32
 COORDINATOR_INSTRUCTIONS = (
     "Return exactly the required JSON object. Kira, not the mailbox, schedules the team. "

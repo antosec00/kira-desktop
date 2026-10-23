@@ -20,6 +20,7 @@ from kira import __version__
 from kira.client import ensure_service
 from kira.domain.contracts import RUN_STATES, TERMINAL_STATES
 from kira.domain.paths import Paths
+from kira.domain.providers import WEB_BACKENDS
 from kira.ui.presentation import join_ui, refresh_ui, tr
 from kira.ui.input_controller import InputController
 from kira.ui.assistant_controller import AssistantController, delegation_card, delegation_identity
@@ -37,6 +38,7 @@ from kira.ui.native_labels import native_text
 from kira.ui.preferences import read_preferences, valid_preference, write_preferences
 from kira.ui.qt_properties import qt_property
 from kira.ui.run_errors import run_error_presentation
+from kira.ui.service_errors import UNCERTAIN_ERRORS, service_error_text
 from kira.ui.status import run_visual_state
 from kira.ui.provider_switch import ProviderSwitchController
 from kira.ui.team_controller import TeamController
@@ -59,11 +61,41 @@ LAUNCHER_SUFFIXES = frozenset({
     ".vbs", ".vbe", ".js", ".jse", ".mjs", ".cjs", ".wsf", ".wsh", ".hta", ".scr", ".pif",
     ".cpl", ".msc", ".lnk", ".url", ".reg", ".inf", ".chm", ".appref-ms", ".application",
     ".settingcontent-ms", ".library-ms", ".search-ms", ".jar", ".py", ".pyw", ".pl", ".rb"})
+# These filesystems store no POSIX execute bit: WSL drvfs (9p) and Windows
+# volumes report every file as executable, so only suffix and header apply.
+SYNTHETIC_EXECUTE_FILESYSTEMS = frozenset({"9p", "v9fs", "drvfs", "vfat", "msdos", "exfat", "ntfs",
+                                           "ntfs3", "fuseblk"})
+MOUNTINFO = Path("/proc/self/mountinfo")
+
+
+def filesystem_type(path: Path) -> str:
+    """Type of the mount holding path, matched by device number; empty when unknown."""
+    try:
+        device = os.stat(path).st_dev
+        lines = MOUNTINFO.read_bytes().splitlines()
+    except OSError:
+        return ""
+    identity = f"{os.major(device)}:{os.minor(device)}".encode()
+    for line in lines:
+        # ID, parent, major:minor, root, mount point, options, optional fields,
+        # "-", filesystem type, source, super options (proc(5)).
+        fields = line.split(b" ")
+        if len(fields) < 9 or fields[2] != identity:
+            continue
+        try:
+            separator = fields.index(b"-", 6)
+        except ValueError:
+            continue
+        if separator + 1 < len(fields):
+            return fields[separator + 1].decode("ascii", "replace")
+    return ""
 
 
 def launch_denied(path: Path) -> bool:
     """True for scripts, executables and launchers that a document click must not run."""
-    if path.suffix.casefold() in LAUNCHER_SUFFIXES or os.access(path, os.X_OK):
+    if path.suffix.casefold() in LAUNCHER_SUFFIXES:
+        return True
+    if os.access(path, os.X_OK) and filesystem_type(path) not in SYNTHETIC_EXECUTE_FILESYSTEMS:
         return True
     with path.open("rb") as stream:
         header = stream.read(256)
@@ -71,8 +103,21 @@ def launch_denied(path: Path) -> bool:
 
 
 def draft_error_text(error: str) -> str:
+    """Explain a draft-store diagnostic; unknown system errors stay literal."""
+    invalid = tr("Il file delle bozze non è valido: è stato conservato e non verrà sovrascritto.")
     labels = {
-        "Existing composer storage requires recovery before replacing it": tr("Il file delle bozze non è valido: è stato conservato e non verrà sovrascritto."),
+        "Existing composer storage requires recovery before replacing it": invalid,
+        "Unsupported composer storage": invalid,
+        "Invalid drafts": invalid,
+        "Invalid draft": invalid,
+        "Duplicate draft": invalid,
+        "Invalid prompt history": invalid,
+        "Invalid history entry": invalid,
+        "Invalid pending request identities": invalid,
+        "Invalid image drafts": tr("Limite delle immagini nelle bozze superato: al massimo 4 immagini e 16 MiB per bozza."),
+        "Invalid image draft": invalid,
+        "Duplicate image draft": invalid,
+        "Pending request identity limit exceeded": tr("Troppe operazioni con esito incerto: verifica le attività prima di inviarne altre."),
         "Composer storage text or draft-count limit exceeded": tr("Limite di 100 bozze o 256 KiB per bozza superato."),
         "Composer storage size limit exceeded": tr("Limite di 2 MiB delle bozze superato. Svuota alcune bozze già salvate."),
         "Composer storage must be a bounded private owned file": tr("Il file delle bozze deve essere privato, appartenere al tuo utente e rispettare il limite di dimensione."),
@@ -81,6 +126,33 @@ def draft_error_text(error: str) -> str:
         "Composer storage must not be a symlink": tr("Il file delle bozze non può essere un collegamento."),
     }
     return labels.get(error, error)
+
+
+def preference_error_text(error: str) -> str:
+    """Explain a preference-store diagnostic; unknown system errors stay literal."""
+    return {
+        "Preferences directory must not be a symlink": tr("La cartella delle preferenze non può essere un collegamento."),
+        "Preferences directory must belong to this user": tr("La cartella delle preferenze non appartiene al tuo utente."),
+    }.get(error, error)
+
+
+# Routine provider and service acknowledgements stay in the run's events and in
+# the full export; the chat shows them only when they carry a warning or error.
+ROUTINE_NOTICES = frozenset({
+    "Codex session configured", "Claude Code session configured", "DeepSeek Web response received",
+    "Approval decision received", "Project tool test progress",
+    "Claude Code handled a queued notification before this prompt",
+})
+
+
+def routine_notice(message: Any) -> bool:
+    if not isinstance(message, str):
+        return False
+    # Ollama-style tool acknowledgements carry the provider name.
+    return (message in ROUTINE_NOTICES
+            or message.endswith((" tool probe passed", " tool results returned to model"))
+            or (message.startswith("Verifying ")
+                and message.endswith(" tool calling with a side-effect-free probe")))
 
 
 def formatted(value: Any) -> str:
@@ -396,7 +468,7 @@ class Workspace(QObject):
         try:
             write_preferences(self.paths.config, preferences)
         except (OSError, ValueError) as exc:
-            self._problem(tr("Preferenze non salvate: {error}", error=str(exc)))
+            self._problem(tr("Preferenze non salvate: {error}", error=preference_error_text(str(exc))))
             return
         self._preferences = preferences
         self.preferencesChanged.emit()
@@ -978,9 +1050,9 @@ class Workspace(QObject):
     def providerText(self) -> str:
         catalog = self.provider_catalog()
         if catalog is None:
-            return tr("Rilevamento del backend…")
+            return tr("Rilevamento del provider…")
         if not catalog.get("available"):
-            message = str(refresh_ui(catalog.get("error", tr("Backend non disponibile."))))
+            message = str(refresh_ui(catalog.get("error", tr("Provider non disponibile."))))
             code = catalog.get("error_code")
             return f"[{code}] {message}" if isinstance(code, str) and code else message
         account = catalog.get("account")
@@ -992,7 +1064,7 @@ class Workspace(QObject):
                 and not self.deepseekAccount.proxyEnabled):
             return tr("Account DeepSeek non connesso. Apri Modelli per accedere.")
         if self._backend == "deepseek_web" and not self.deepseekAccount.webConnected:
-            return tr("Collega DeepSeek Web dal pannello Modelli per usare questo backend.")
+            return tr("Collega DeepSeek Web dal pannello Modelli per usare questo provider.")
         if self._backend == "claude_code" and (not account or not account.get("connected")):
             return tr("Claude Code non risulta collegato. Accedi da un terminale con claude e /login, poi aggiorna.")
         if not self.models:
@@ -1299,7 +1371,7 @@ class Workspace(QObject):
             details += "\n" + formatted({"waiting_tools": sorted(waiting), "reason": "manual_control"})
         if len(details) <= MAX_ACTIVITY_DETAILS_CHARS:
             return details
-        suffix = tr("\n\nDettagli limitati nella vista. Esporta il progetto per consultare i dati registrati completi.")
+        suffix = tr("\n\nDettagli limitati nella vista. Esporta la chat per consultare la cronologia completa.")
         return details[:MAX_ACTIVITY_DETAILS_CHARS - len(suffix)] + suffix
 
     @qt_property("QVariantMap", notify=changed)
@@ -1381,7 +1453,9 @@ class Workspace(QObject):
         return bool(self.sessionId and not self._chat_loading and not self._configuring_session
                     and self._is_selected_run(run) and run.get("state") in ACTIVE_RUN_STATES
                     and not self._session.get("team_id") and not run.get("team_id")
-                    and self.backend == "openai_chatgpt"
+                    # The service offers "always" for its own browser actions, with
+                    # every provider that receives Kira's browser.
+                    and self.backend in WEB_BACKENDS
                     and self._approval.get("allow_always") is True
                     and self._approval.get("kind") == "browser_action"
                     and isinstance(tool, str)
@@ -1882,7 +1956,7 @@ class Workspace(QObject):
         def failed(error: Json) -> None:
             if current():
                 self._configuring_session = False
-                self._problem(str(error.get("message", tr("Operazione non riuscita."))))
+                self._problem(service_error_text(error, tr("Operazione non riuscita.")))
 
         def done(result: Json) -> None:
             if not current():
@@ -2032,29 +2106,26 @@ class Workspace(QObject):
             self._problem(tr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare."))
             return
         if self._session:
-            self._pending_start = {"session_id": self._session["id"], "prompt": prompt,
-                                   "request_id": str(uuid.uuid4()), "mode": mode}
+            params: Json = {"session_id": self._session["id"], "prompt": prompt, "mode": mode}
             if self.draft_image_ids():
-                self._pending_start["attachments"] = self.draft_image_ids()
+                params["attachments"] = self.draft_image_ids()
+            # The identity is saved before sending: a resend after a restart or
+            # an unconfirmed reply reuses it and cannot start a second turn.
+            submitted = self.workbench._intent("run.start", params)
+            if submitted is None:
+                return
+            self._pending_start = submitted
             self._send_start()
             return
-        draft_soul = self._soul_controller.newChatSoulId if self._soul_controller is not None else ""
         draft_project = str(self._project.get("id", ""))
-        settings: Json = {"tools": self._tools}
-        if self._effort:
-            settings["reasoning_effort"] = self._effort
-        if self._num_ctx and self._backend == "ollama":
-            settings["num_ctx"] = self._num_ctx
-        if self._think is not None and self._backend == "ollama":
-            settings["think"] = self._think
+        create, draft_soul = self.new_chat_request()
         self._creating_session = True
         self.changed.emit()
 
         def created(result: Json) -> None:
             self._creating_session = False
             self._session = result["session"]
-            if draft_soul and self._soul_controller is not None:
-                self._soul_controller.consumeNewChatSelection(draft_project, draft_soul)
+            self.consume_new_chat_soul(draft_project, draft_soul)
             self._sessions.append(self._session)
             self._remember_session()
             self._drafts[(str(self._project.get("id", "")), self.sessionId)] = self._drafts.pop(
@@ -2067,14 +2138,35 @@ class Workspace(QObject):
 
         def failed(error: Json) -> None:
             self._creating_session = False
-            self._problem(str(error.get("message", tr("Sessione non creata"))))
+            self._problem(service_error_text(error, tr("Sessione non creata")))
 
-        self.client.request("session.create", {"project_id": self._project["id"],
-                            "backend": self._backend, "model": self._model,
-                            "settings": settings,
-                            **({"soul_id": draft_soul} if draft_soul else {}),
-                            "handoff": "New session; use explicit project memory as portable context."},
-                            created, failed)
+        self.client.request("session.create", create, created, failed)
+
+    def new_chat_request(self) -> tuple[Json, str]:
+        """session.create parameters shared by every path that saves a new chat.
+
+        Tools, reasoning, the Ollama context and thinking choices and the Kira
+        chosen for the new chat travel together; the Soul is returned so the
+        caller consumes exactly that selection once the chat exists.
+        """
+        soul = self._soul_controller.newChatSoulId if self._soul_controller is not None else ""
+        settings: Json = {"tools": self._tools}
+        if self._effort:
+            settings["reasoning_effort"] = self._effort
+        if self._num_ctx and self._backend == "ollama":
+            settings["num_ctx"] = self._num_ctx
+        if self._think is not None and self._backend == "ollama":
+            settings["think"] = self._think
+        params: Json = {"project_id": self._project["id"], "backend": self._backend, "model": self._model,
+                        "settings": settings,
+                        "handoff": "New session; use explicit project memory as portable context."}
+        if soul:
+            params["soul_id"] = soul
+        return params, soul
+
+    def consume_new_chat_soul(self, project_id: str, soul: str) -> None:
+        if soul and self._soul_controller is not None:
+            self._soul_controller.consumeNewChatSelection(project_id, soul)
 
     def _send_start(self) -> None:
         if not self._pending_start:
@@ -2087,6 +2179,7 @@ class Workspace(QObject):
             run = result["run"]
             self._runs[run["id"]] = run
             self._pending_start = None
+            self.workbench._settle_intent(str(submitted["request_id"]))
             # Acknowledgement must not erase text typed while the request was in flight.
             if self.draftText == submitted["prompt"]:
                 self.setDraftText("")
@@ -2098,9 +2191,13 @@ class Workspace(QObject):
             self.changed.emit()
 
         def failed(error: Json) -> None:
-            if error.get("code") != "DISCONNECTED":
+            code = error.get("code")
+            if code != "DISCONNECTED":
                 self._pending_start = None
-            self._problem(str(error.get("message", tr("Avvio non riuscito"))))
+                # A definitive rejection started nothing; an uncertain reply keeps
+                # the saved identity so an identical resend cannot duplicate the run.
+                self.workbench._settle_intent(str(submitted["request_id"]), unknown=code in UNCERTAIN_ERRORS)
+            self._problem(service_error_text(error, tr("Avvio non riuscito")))
 
         self.client.request("run.start", self._pending_start, started, failed)
 
@@ -2190,6 +2287,12 @@ class Workspace(QObject):
             elif kind == "approval.requested":
                 self._approval = {**payload, "run_id": run_id,
                                   "description": browser_approval_description(payload) or formatted(payload)}
+            elif (kind == "backend.notice" and payload.get("approval_id") and payload.get("decision")
+                    and self._approval.get("run_id") == run_id
+                    and payload["approval_id"] == self._approval.get("approval_id")):
+                # Replaying another chat's run from its start must not reopen an
+                # approval whose recorded decision follows the request.
+                self._approval = {}
             if not self._chat_loading:
                 self.changed.emit()
             return
@@ -2345,8 +2448,8 @@ class Workspace(QObject):
             if (payload.get("approval_id") and payload.get("decision")
                     and payload["approval_id"] == self._approval.get("approval_id")):
                 self._approval = {}
-            # Hide only the routine acknowledgement; keep durable events and warnings.
-            if (payload.get("message") != "Codex session configured"
+            # Hide only routine acknowledgements; keep durable events and warnings.
+            if (not routine_notice(payload.get("message"))
                     or payload.get("level") in {"warning", "error"}
                     or payload.get("severity") in {"warning", "error"}
                     or payload.get("error")):
@@ -2358,7 +2461,7 @@ class Workspace(QObject):
                 notice_body = (tr("Kira continua autonomamente verso l’obiettivo") if goal_notice else tr("Recupero del contesto: preparo un riepilogo mantenendo cronologia e operazioni già registrate.")
                                if context_recovery else tr("Kira sta preparando la risposta sui risultati del Team")
                                if followup_notice else str(payload.get("message", "")))
-                self.transcript.append(kind="notice", title="BACKEND", runId=run_id,
+                self.transcript.append(kind="notice", title=tr("AVVISO"), runId=run_id,
                                        body=notice_body,
                                        raw=formatted(payload) if followup_notice or goal_notice or context_recovery else "")
         if not self._chat_loading:
@@ -2384,9 +2487,12 @@ class Workspace(QObject):
 
     @Slot()
     def stop(self) -> None:
-        run_id = self.activeRunId
+        """Cancel only the selected chat's turn; another chat's work is never stopped from here."""
+        run_id = self.selectedActiveRunId
         if run_id:
             self.client.request("run.cancel", {"run_id": run_id}, lambda _: None)
+        elif self.activeRunId:
+            self._problem(tr("Un’altra chat sta lavorando: aprila per fermarne il turno."))
 
     @Slot(str)
     def approve(self, decision: str) -> None:
@@ -2419,7 +2525,7 @@ class Workspace(QObject):
         def failed(error: Json) -> None:
             self._pending_approvals.discard(identity)
             if current():
-                self._problem(str(error.get("message") or tr("Impossibile inviare la decisione. Riprova.")))
+                self._problem(service_error_text(error, tr("Impossibile inviare la decisione. Riprova.")))
             self.changed.emit()
 
         self.client.request("run.approve", params, done, failed)
@@ -2466,29 +2572,17 @@ class Workspace(QObject):
 
     @Slot(str)
     def exportTranscript(self, url: str) -> None:
-        if self._project:
-            def received(result: Json) -> None:
-                if "text" in result:
-                    self._save(url, result["text"])
-                    return
-                destination = QUrl(url)
-                if not destination.isLocalFile():
-                    self._problem(tr("Scegli un file locale per l'esportazione."))
-                    return
+        """The top-bar Export saves the selected chat as Markdown, never the whole project.
 
-                def copy_export() -> None:
-                    source = Path(result["path"])
-                    export_root = (self.paths.data / "exports").resolve()
-                    if source.is_symlink() or not source.is_file():
-                        raise ValueError(tr("Il servizio non ha fornito un file di esportazione regolare."))
-                    source.resolve(strict=True).relative_to(export_root)
-                    shutil.copyfile(source, destination.toLocalFile())
-
-                self._background(copy_export,
-                                 lambda _: self._problem(tr("Esportato: {path}", path=destination.toLocalFile())))
-
-            self.client.request("project.export", {"project_id": self._project["id"]},
-                                received)
+        The project JSON (every chat, run and Team) is not offered here: it
+        would share far more than the chat the user is looking at.
+        """
+        if not self._project:
+            return
+        if not self.sessionId:
+            self._problem(tr("Apri una chat per esportarla."))
+            return
+        self.workbench.exportChat(url)
 
     @Slot(str)
     def exportMemory(self, url: str) -> None:

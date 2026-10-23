@@ -27,6 +27,7 @@ from kira.ui.models import TranscriptModel
 from kira.ui.evidence_model import EvidenceModel
 from kira.ui.evidence_format import readable_payload
 from kira.ui.qt_properties import qt_property
+from kira.ui.service_errors import service_error_text
 from kira.ui.team_models import TeamListModel
 
 if TYPE_CHECKING:
@@ -800,7 +801,7 @@ class TeamController(QObject):
             if error.get("code") not in uncertain:
                 self._pending.pop(key, None)
             if command["project_id"] == self._project_id:
-                self._problem(str(error.get("message", tr("Richiesta team non riuscita."))))
+                self._problem(service_error_text(error, tr("Richiesta team non riuscita.")))
         self.client.request(command["method"], command["params"], done, failed)
 
     @Slot()

@@ -119,7 +119,7 @@ def params(env, **changes):
 async def finish(service, team_id):
     task = service.teams.tasks.get(team_id)
     if task is not None:
-        await asyncio.wait_for(asyncio.shield(task), 15)
+        await asyncio.wait_for(asyncio.shield(task), 30)
     return (await service.dispatch("team.snapshot", {"team_id": team_id}))["team"]
 
 

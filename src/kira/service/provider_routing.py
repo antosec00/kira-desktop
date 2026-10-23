@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from kira.backends.claude_code import BACKEND as CLAUDE_CODE_BACKEND, require_sdk as require_claude_code
 from kira.domain.contracts import Json, KiraError
+from kira.domain.providers import WEB_BACKENDS
 from kira.domain.web import WEB_SETTINGS
 from kira.service.direct_accounts import BACKEND as DIRECT_BACKEND
 from kira.service.project_context import ProjectChats
@@ -27,13 +28,21 @@ DEEPSEEK_WEB_BACKEND = "deepseek_web"
 BACKENDS = ("ollama", "codex", DIRECT_BACKEND, DEEPSEEK_BACKEND, DEEPSEEK_WEB_BACKEND,
             CLAUDE_CODE_BACKEND)
 SHARED_SETTINGS = frozenset({"tools", "max_tool_rounds", "max_output_bytes"})
-PROVIDER_SETTINGS = {
-    "ollama": SHARED_SETTINGS | {"num_ctx", "temperature", "seed", "think"},
+_OWN_SETTINGS = {
+    # The desktop offers every effort a model's catalog declares; Ollama keeps
+    # such a choice although its native API does not use it.
+    "ollama": SHARED_SETTINGS | {"num_ctx", "temperature", "seed", "think", "reasoning_effort"},
     "codex": SHARED_SETTINGS | {"reasoning_effort", "service_tier"},
-    DIRECT_BACKEND: SHARED_SETTINGS | {"reasoning_effort", "openai_account_id"} | WEB_SETTINGS,
-    DEEPSEEK_BACKEND: SHARED_SETTINGS | {"reasoning_effort"} | WEB_SETTINGS,
+    DIRECT_BACKEND: SHARED_SETTINGS | {"reasoning_effort", "openai_account_id"},
+    DEEPSEEK_BACKEND: SHARED_SETTINGS | {"reasoning_effort"},
     DEEPSEEK_WEB_BACKEND: SHARED_SETTINGS,
     CLAUDE_CODE_BACKEND: SHARED_SETTINGS | {"reasoning_effort"},
+}
+# The settings a chat can save for each provider. Browser preferences belong to
+# every provider that receives Kira's browser tools (session.web.update).
+PROVIDER_SETTINGS: dict[str, frozenset[str]] = {
+    backend: settings | (WEB_SETTINGS if backend in WEB_BACKENDS else frozenset())
+    for backend, settings in _OWN_SETTINGS.items()
 }
 CHAT_SETTINGS = frozenset({"chat_title", "handoff"})
 MAX_TRANSITIONS = 100
@@ -129,8 +138,12 @@ class ProviderRouting:
 
     @staticmethod
     def _summary(row: Json) -> Json:
+        # Report only settings the provider uses: an effort saved for DeepSeek
+        # Web by an older version is not offered back as a choice.
+        supported = PROVIDER_SETTINGS.get(row["backend"], frozenset())
         return {"backend": row["backend"], "model": row["model"],
-                "reasoning_effort": row["settings"].get("reasoning_effort", ""),
+                "reasoning_effort": (row["settings"].get("reasoning_effort", "")
+                                     if "reasoning_effort" in supported else ""),
                 "account_id": row["settings"].get("openai_account_id", "")}
 
     def snapshot(self, project_id: str, session_id: str) -> Json:
@@ -210,12 +223,10 @@ class ProviderRouting:
         previous = self._latest(session, backend)
         source = previous["settings"] if previous else session["settings"]
         # Selecting a different provider chooses its separately saved settings.
-        # First use carries only common settings; no unsupported field is
-        # smuggled across providers or silently discarded from a saved binding.
+        # First use carries only common settings; no field crosses providers. A
+        # saved setting this provider does not use (from an older version) has
+        # no effect and is left out; the retired generation keeps its record.
         allowed = PROVIDER_SETTINGS[backend] if previous else SHARED_SETTINGS
-        unsupported = set(source) - PROVIDER_SETTINGS[backend] - CHAT_SETTINGS if previous else set()
-        if unsupported:
-            raise KiraError("UNSUPPORTED_SETTING", "The saved provider configuration contains unsupported settings")
         config = {key: value for key, value in source.items() if key in allowed}
         config.update({key: value for key, value in session["settings"].items() if key in CHAT_SETTINGS})
         if backend == DEEPSEEK_BACKEND:
@@ -225,11 +236,10 @@ class ProviderRouting:
         elif backend == DEEPSEEK_WEB_BACKEND:
             # Kira wraps the text-only web transport in a validated tool loop.
             config["tools"] = True
-        if effort:
-            if backend in {"ollama", DEEPSEEK_WEB_BACKEND}:
-                raise KiraError("UNSUPPORTED_SETTING", "This provider does not use reasoning_effort")
+        if effort and "reasoning_effort" in PROVIDER_SETTINGS[backend]:
             config["reasoning_effort"] = effort
         else:
+            # DeepSeek Web uses no reasoning effort; it is not saved.
             config.pop("reasoning_effort", None)
         if account_id is not None:
             config["openai_account_id"] = account_id

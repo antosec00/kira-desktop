@@ -16,10 +16,11 @@ confirmed completion.
 
 Generated summaries are fallible model claims with source references, not new
 instructions. Private provider-native reasoning is not a readable memory source.
-OpenAI direct's durable working context and automatic compaction remain separate
-from the original archive. A context estimate is not a guarantee of recall or an
-actual measured input size. Switching providers does not expose another provider's
-encrypted state through this gateway.
+OpenAI direct and DeepSeek Account keep a durable Kira-managed working context
+with automatic compaction; it remains separate from the original archive, which
+kira_history.search and kira_history.read recover. A context estimate is not a
+guarantee of recall or an actual measured input size. Switching providers does
+not expose another provider's encrypted state through this gateway.
 
 Project memory is user-maintained reference material. Model access to accepted
 research records requires project sharing; linked sources stay within their owned
@@ -27,7 +28,7 @@ project. Reading a record or procedure never authorizes its execution.
 
 ## Explicit autonomous objectives
 
-Kira 0.14 adds service-owned goal continuation. A user can start it with
+The service can continue an explicit objective across turns. A user starts it with
 `/obiettivo <result>` (also `/obbiettivo` or `/goal`) or the objective panel's
 explicit autonomous-start control. Saving an ordinary manual objective does not
 start a loop. `/obiettivo pausa`, `riprendi` and `stato` control this mode.

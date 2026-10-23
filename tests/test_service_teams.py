@@ -165,17 +165,19 @@ def params(env, **extra):
 async def finished(service, team_id):
     task = service.teams.tasks.get(team_id)
     if task:
-        await asyncio.wait_for(asyncio.shield(task), 15)
+        await asyncio.wait_for(asyncio.shield(task), 30)
     return (await service.dispatch("team.snapshot", {"team_id": team_id}))["team"]
 
 
 async def wait_event(factory, mapping, mid):
-    for _ in range(300):
-        if mid in getattr(factory, mapping):
-            await asyncio.wait_for(getattr(factory, mapping)[mid].wait(), 5)
-            return
-        await asyncio.sleep(0.01)
-    raise AssertionError("fixture member did not reach " + mapping)
+    # Member runs start and stop real child processes; allow for a contended host.
+    try:
+        async with asyncio.timeout(30):
+            while mid not in getattr(factory, mapping):
+                await asyncio.sleep(0.01)
+            await getattr(factory, mapping)[mid].wait()
+    except TimeoutError:
+        raise AssertionError("fixture member did not reach " + mapping) from None
 
 
 async def test_dependency_handoff_reaches_assignee_without_other_members_private_mail(env):
@@ -310,8 +312,9 @@ async def test_overlap_reservation_held_through_writer_cleanup(env, tmp_path):
             "run.start", {"session_id": session["id"], "request_id": "ordinary", "prompt": "x"}
         )
     assert failure.value.code == "BUSY"
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as second:
         await service.dispatch("team.start", params(env, request_id="second"))
+    assert second.value.code == "BUSY"
     factory.close_gate["producer"].set()
     await finished(service, team["id"])
 
@@ -376,18 +379,20 @@ async def test_limit_pause_and_unicode_explicit_continuation_atomic(env):
 @pytest.mark.parametrize("bad", [True, 3.0])
 async def test_manual_count_rejects_boolean_float(env, bad):
     service, _, _ = env
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch("team.start", params(env, max_agents=bad))
+    assert error.value.code == "INVALID_ARGUMENT"
     assert not service.store.all("SELECT * FROM project_reservations")
 
 
 @pytest.mark.parametrize("mid", ["all", "user", "human", "system"])
 async def test_reserved_member_ids(env, mid):
     service, factory, _ = env
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch(
             "team.start", params(env, members=[member("coordinator"), member(mid)])
         )
+    assert error.value.code == "INVALID_ARGUMENT"
 
 
 async def test_shutdown_admission_gate(env):
@@ -488,7 +493,7 @@ async def test_approval_queue_correlates_member_run_and_rejects_wrong_team(env):
     snapshot = service.teams.snapshot(team["id"])
     approval = snapshot["approvals"][0]
     assert approval["member_id"] == "producer"
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as wrong:
         await service.dispatch(
             "team.approve",
             {
@@ -498,6 +503,7 @@ async def test_approval_queue_correlates_member_run_and_rejects_wrong_team(env):
                 "decision": "accept",
             },
         )
+    assert wrong.value.code == "INVALID_ARGUMENT"
     await service.dispatch(
         "team.approve",
         {

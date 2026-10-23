@@ -1,4 +1,4 @@
-"""Single opt-in Kira Studio gateway shared by Codex MCP, OpenAI direct, Ollama.
+"""Single opt-in Kira Studio gateway shared by Codex (MCP), OpenAI direct, Ollama and DeepSeek Account.
 
 No provider is allowed to enable Studio or grant itself editing authority.
 Mutations use run-scoped durable UUIDs and append-only, attributed revisions.
@@ -11,6 +11,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from kira.domain.contracts import WRITE_PERMISSIONS, Json, KiraError
+from kira.domain import studio as studio_domain
 from kira.domain.studio import (
     STUDIO_TOOL_NAMES, studio_action_contract, studio_tool_specs, validate_studio_action,
 )
@@ -30,6 +31,8 @@ def _failure(exc: Exception) -> Json:
 def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
                   cancel: asyncio.Event, mode: str, options: Json) -> Json:
     """Enable only for an allowed ordinary chat, on a new executable model turn."""
+    if not studio_domain.STUDIO_AVAILABLE:
+        return options
     if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}
             or not kira_tools_enabled(session) or mode != "execute"
             or project["permission"] not in WRITE_PERMISSIONS

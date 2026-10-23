@@ -22,6 +22,24 @@ def test_provider_rotation_masks_current_and_previous_set_and_preserves_environm
     assert len(redactor.values) == 3  # Environment + current + preceding set.
 
 
+
+def test_credential_owners_keep_their_values_independently():
+    redactor = Redactor(values=())
+    redactor.set_provider_values(("fixture-web-token-0001",), owner="deepseek_web")
+    redactor.set_provider_values(("fixture-openai-access", "fixture-openai-refresh"),
+                                 owner="openai_chatgpt")
+    redactor.set_provider_values(("fixture-deepseek-token",), owner="deepseek_account")
+    redactor.set_provider_values(("fixture-deepseek-token", "fixture-proxy-key-01"),
+                                 owner="deepseek_account")
+    for _ in range(3):  # Rotations of one owner never drop another owner's values.
+        redactor.set_provider_values(("fixture-openai-access-new",), owner="openai_chatgpt")
+    text = ("fixture-web-token-0001 fixture-openai-access-new fixture-deepseek-token "
+            "fixture-proxy-key-01")
+    assert redactor.text(text) == "[REDACTED] [REDACTED] [REDACTED] [REDACTED]"
+    redactor.set_provider_values(("", "fixture-web-token-0002"), owner="deepseek_web")
+    assert "" not in redactor.values
+    assert redactor.text("fixture-web-token-0001") == "[REDACTED]"  # Preceding set.
+
 @pytest.mark.parametrize("width", [1, 2, 3, 5, 11, 100])
 def test_stream_redacts_registered_values_independently_of_fragment_width(width):
     stream = StreamRedactor(Redactor(values=(CANARY,)))

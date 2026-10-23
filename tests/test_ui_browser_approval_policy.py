@@ -8,6 +8,7 @@ from PySide6.QtTest import QTest
 
 from kira.ui.app import create_engine
 from test_ui_embedded_browser import event as browser_event, state as browser_state
+from test_ui_support import wait_laid_out, wait_opened
 from test_ui_web import evaluate, snapshot
 import test_ui_web
 
@@ -296,16 +297,16 @@ def test_live_checkbox_saves_and_revokes_with_visible_error_in_real_qml(web, qtb
         dialog = window.findChild(QObject, "webDialog")
         evaluate(dialog, "open()")
         requests[-1][2](policy_snapshot())
-        qtbot.wait(40)
         checkbox = window.findChild(QObject, "webAlwaysAllowActions")
+        scroll = window.findChild(QObject, "webScroll")
+        wait_opened(qtbot, dialog, scroll, checkbox)
         assert checkbox.isEnabled() and not checkbox.property("checked")
         assert checkbox.property("text") == ("Consenti sempre le azioni dell’agente in questa chat" if language == "it"
                                                else "Always allow the agent’s actions in this chat")
         assert not window.findChild(QObject, "webSave").property("enabled")
-        scroll = window.findChild(QObject, "webScroll")
         offset = bounds(checkbox).top() - bounds(scroll).top() + evaluate(scroll, "contentItem.contentY")
         evaluate(scroll, f"contentItem.contentY = Math.max(0, Math.min({offset}, contentItem.contentHeight - height))")
-        qtbot.wait(30)
+        wait_laid_out(qtbot, checkbox)
         assert bounds(scroll).adjusted(-1, -1, 1, 1).contains(bounds(checkbox))
         click(window, checkbox)
         first = policy_requests(requests)[-1]
@@ -344,13 +345,14 @@ def test_quick_buttons_fit_at_large_fonts_and_dispatch_once(web, qtbot, qtlog, l
     window.resize(*size)
     engine.rootContext().contextProperty("appearance").setOption("ui_size", 18)
     try:
-        qtbot.wait(70)
         popup = window.findChild(QObject, "approvalDialog")
-        assert popup.property("visible")
-        content = popup.property("contentItem")
         action_row = window.findChild(QObject, "approvalActions")
         buttons = [window.findChild(QObject, name) for name in
                    ("approvalAllowOnce", "approvalAllowAlways", "approvalDecline")]
+        hint = window.findChild(QObject, "approvalAlwaysHint")
+        wait_opened(qtbot, popup, action_row, hint, *buttons)
+        assert popup.property("visible")
+        content = popup.property("contentItem")
         assert buttons[1].property("text") == ("Consenti sempre in questa chat" if language == "it" else "Always allow in this chat")
         for button in buttons:
             assert button.isVisible() and button.isEnabled()
@@ -360,7 +362,6 @@ def test_quick_buttons_fit_at_large_fonts_and_dispatch_once(web, qtbot, qtlog, l
         for index, first in enumerate(buttons):
             for second in buttons[index + 1:]:
                 assert not bounds(first).intersects(bounds(second))
-        hint = window.findChild(QObject, "approvalAlwaysHint")
         assert bounds(hint).bottom() <= bounds(action_row).top()
         assert '<literal target>' in workspace.approval["description"]
         click(window, buttons[1])

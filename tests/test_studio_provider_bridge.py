@@ -18,6 +18,13 @@ from kira.domain.studio import STUDIO_TOOL_NAMES, studio_tool_specs
 from kira.service.server import Service
 
 
+@pytest.fixture(autouse=True)
+def studio_available(monkeypatch):
+    # Studio is not offered in this release; these tests keep its dormant code working.
+    monkeypatch.setattr("kira.domain.studio.STUDIO_AVAILABLE", True)
+
+
+
 class HoldingProvider:
     def __init__(self):
         self.started = asyncio.Queue()
@@ -59,7 +66,7 @@ async def chat(service, project, backend):
 async def turn(service, provider, session, *, mode="execute"):
     result = await service.dispatch("run.start", {
         "session_id": session["id"], "request_id": str(uuid.uuid4()),
-        "prompt": "Create a blue brush poster reading Ambra mi manchi",
+        "prompt": "Create a blue brush poster reading Synthetic poster caption",
         "mode": mode,
     })
     context = await asyncio.wait_for(provider.started.get(), 4)
@@ -116,11 +123,11 @@ async def test_opt_in_provider_gateway_attributed_edits_and_immediate_revoke(
     info = await tool(ctx, "inspect")
     assert info["ok"] and info["revision"] == 0
     result = await tool(ctx, "poster", {
-        "text": "Ambra mi manchi", "expected_revision": 0,
+        "text": "Synthetic poster caption", "expected_revision": 0,
         "text_color": "#2467c9", "background": "#f0e7f3",
     })
     assert result["ok"] and result["revision"] == 1
-    assert result["scene"]["objects"][-1]["text"] == "Ambra mi manchi"
+    assert result["scene"]["objects"][-1]["text"] == "Synthetic poster caption"
     row = service.store.db.execute(
         "SELECT origin FROM studio_revisions WHERE project_id=? AND revision=1",
         (project["id"],),

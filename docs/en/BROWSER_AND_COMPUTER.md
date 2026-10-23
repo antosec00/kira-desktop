@@ -16,16 +16,16 @@ Kira offers four different things, which often work together:
 | Feature | What it is | Availability |
 | --- | --- | --- |
 | Hosted web search | The search run by the provider on its own servers, with sources cited in the response | **Direct OpenAI · ChatGPT** only; modes **Live access**, **Indexed content**, **Search disabled** |
-| Web search through the browser | The `browser.search` tool: the agent searches the public web inside Kira's isolated browser | Ollama and the other providers with a browser |
+| Web search through the browser | The `browser.search` tool: the agent opens a Google search in Kira's isolated browser | Ollama and the other providers with a browser |
 | Integrated browser | A dedicated Chromium, with a separate profile, running on a private virtual screen and shown in the **Browser** panel next to the chat | All providers except **Codex** |
 | Kira's Computer | Visual control of the integrated browser: the model observes a screenshot and acts by coordinates | Same as the browser, except **DeepSeek Web** |
 
 **Codex** uses its own native tools and does not receive Kira's browser. With
 **Ollama** the browser tools are verified at first use with a side-effect-free
 probe; screenshots and Kira's Computer are offered only if the selected model
-accepts images. **DeepSeek Web** uses the browser in text form only: no
-screenshots and no Kira's Computer. With **OpenAI direct** the chat tools must
-be enabled for the agent to use the web.
+accepts images. **DeepSeek Web** never receives Kira's Computer, and receives
+browser screenshots only with a model that accepts images. With **Direct
+OpenAI** the chat tools must be enabled for the agent to use the web.
 
 OpenAI's hosted search depends on the model and on your account's
 authorizations: a refusal is shown as is, without changing model or payment
@@ -54,14 +54,15 @@ uv run kira-desktop browser-install
 
 The command downloads a dedicated Chromium engine into the `browser-engine/`
 folder of Kira's data. It does not touch the system browser and starts no
-inference. If you start Kira from source you also need Chromium's system
-libraries and the Linux packages `xvfb` and `libxtst6`, which provide the
-private virtual screen; the `.deb` packages declare them as dependencies.
+inference. If you start Kira from source you also need the system libraries
+listed in [Installation](INSTALLATION.md#running-from-source-with-uv), including
+Chromium's and the `xvfb` and `libxtst6` packages, which provide the private
+virtual screen; the `.deb` packages declare them as dependencies.
 
 Web options are per chat. Open them with **⚙** in the browser panel or with
 **Web settings** in the tool tray under the message field:
 
-- **Web search mode**: with OpenAI direct choose **Live access**, **Indexed
+- **Web search mode**: with Direct OpenAI choose **Live access**, **Indexed
   content** or **Search disabled**;
 - **Allow the browser for this chat**;
 - **Keep the browser profile for this chat** (see below);
@@ -89,7 +90,7 @@ The tools available to the model are:
 
 | Tool | What it does |
 | --- | --- |
-| `browser.search` | Searches the public web inside the isolated browser |
+| `browser.search` | Opens Google's results for the query in the isolated browser; the model writes the query, which therefore reaches Google |
 | `browser.navigate` | Opens an HTTP/HTTPS address |
 | `browser.snapshot` | Reads the page's text and structure and returns references to the visible elements |
 | `browser.find` | Searches for text or elements in the page |
@@ -119,6 +120,11 @@ Some rules of use:
 - Manual sign-in also requires **Execute** and a writable project.
 - File upload, automatic downloads and automatic filling of password fields
   are not available.
+- If a page cannot be loaded, the tab shows Chromium's error page: the agent
+  receives `browser_error_page` instead of content and can go back or open
+  another address; during **Take control** the address bar, Back, Forward,
+  Reload and tabs keep working. A timed-out operation leaves the browser and its
+  tabs open and reports that its outcome is unknown.
 - Some sites block automation, ask for cookie consent or show a CAPTCHA. Kira
   must report the obstacle it observed; there is no promise of access to every
   site. If a search engine presents an anti-bot check, a hosted search of the
@@ -161,10 +167,11 @@ Hiding the panel, switching area or minimizing Kira suspends the view update
 without closing the page. **Close browser** and the panel's **×** button really
 close the service's Chromium, wait for the process cleanup and invalidate the
 actions still pending. A completed turn leaves the browser open as long as the
-Kira window stays connected; when the last window disconnects, Kira closes idle
-browsers immediately and those with a turn in progress as soon as it ends. You
-can also ask Kira to close it: `browser.close` concerns only this chat's
-browser, requires no write permission and prevents that run from reopening it.
+Kira window stays connected; when the last window disconnects, Kira immediately
+closes the browsers that are idle or under manual control, and the others as
+soon as the current turn ends. You can also ask Kira to close it:
+`browser.close` concerns only this chat's browser, requires no write permission
+and prevents that run from reopening it.
 A cleanup with an uncertain outcome stays visible and blocks the opening of a
 replacement browser until it is resolved.
 
@@ -176,11 +183,12 @@ active work; the full procedure is in [Installation](INSTALLATION.md).
 Every chat with a browser has a policy for the agent's actions: **ask** (the
 initial value) or **always allow**.
 
-With **ask**, every click, typing or key press brings up a decision in the
-chat: **Allow once** authorizes only that action; **Always allow in this chat**
-authorizes it and saves the policy for the chat. The same choice is available
-in the web settings with **Always allow the agent's actions in this chat**,
-which is saved immediately, even during work. The browser bar shows **actions
+With **ask**, every click, typing or key press brings up the **Decision
+required** window: **Allow once** authorizes only that action; **Always allow in
+this chat** authorizes it and saves the policy for the chat; **Decline** refuses
+it. The same choice is available, with every provider that uses the browser, in
+the web settings with **Always allow the agent’s actions in this chat**, which
+is saved immediately, even during work. The browser bar shows **actions
 allowed** when the policy is active.
 
 The policy covers the browser's clicks, typing and key presses and Kira's
@@ -213,8 +221,10 @@ Every chat browser starts with a temporary profile, isolated from your
 personal browser and kept as long as that browser stays open. It is removed
 only after the process closure is confirmed. By enabling **Keep the browser
 profile for this chat** you choose instead a persistent private profile,
-distinct per chat, account and provider. Disabling retention does not delete
-the profile already saved: it remains available if you enable it again.
+distinct per chat, account and provider: the chat uses it again whenever it
+returns to that provider and account, including after a change of its Kira
+identity. Disabling retention does not delete the profile already saved: it
+remains available if you enable it again.
 
 Chromium keeps persistent cookies and site data according to its normal
 rules. Session-only cookies can disappear when you close the browser, so some
@@ -334,13 +344,18 @@ make the sites' anti-bot checks disappear.
 | View frames in the panel | At most 10 fps and 500 KiB per frame; only the last frame is kept, hidden views do not capture, static pages generate no polling |
 | Network | Public HTTP/HTTPS only on ports 80 and 443, through an authenticated local proxy of the service |
 | Blocked addresses | Local, private and special addresses (even after a redirect), credentials embedded in the address, non-web navigation, proxy bypass |
-| Chromium | Normal sandbox and TLS verification; service workers, QUIC and non-proxied WebRTC disabled |
+| Chromium | Normal sandbox and TLS verification; service workers, QUIC and non-proxied WebRTC disabled; if the system prevents the sandbox from starting, the browser does not open and Kira says why, never starting Chromium without it |
 | Credentials | The browser inherits neither the providers' credentials nor your environment's HTTP proxy variables |
 
 The proxy validates every DNS response and connects to a verified numeric
-address, even after redirects. Concurrency and transferred bytes are limited.
-These limits concern Kira's browser: with **Trusted host** or **Full access**
-a command run by the model has your user's network, as described in
+address, even after redirects. At most 32 simultaneous connections and 32 MiB
+per connection; each browser may make 3,000 requests and transfer 128 MiB per
+budget, which restarts with every navigation you or the agent request and
+otherwise every five minutes. When a limit blocks or cuts requests, the agent's
+page reads report `network_budget_exhausted`. Connections such as WebSockets
+stay open while they transfer data and close after 60 seconds without traffic.
+These limits concern Kira's browser: with **Trusted host** or **Full access** a
+command run by the model has your user's network, as described in
 [Permissions and security](PERMISSIONS_AND_SECURITY.md).
 
 Every browser is recorded in a private process registry before it starts.

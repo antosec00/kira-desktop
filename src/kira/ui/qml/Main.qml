@@ -73,6 +73,7 @@ ApplicationWindow {
     readonly property color muted: appearance.colors.muted
     readonly property color accent: appearance.colors.accent
     readonly property bool hasProject: Boolean(workspace.project.id)
+    KFormat { id: kformat }
 
     // Tray tools are icons; their labels appear on request, their names always.
     component ChatToolButton: KButton {
@@ -136,11 +137,16 @@ ApplicationWindow {
         projectFileDialog.initialQuery = ""
         projectFileDialog.open()
     }
-    function performAction(action) {
+    // A "/" typed in the composer opens the palette; only choosing an action
+    // there consumes it. Esc and every other route leave the draft untouched.
+    function chooseAction(action) {
         if (commandStart >= 0 && prompt.text.slice(commandStart, commandStart + 1) === "/") {
             prompt.remove(commandStart, commandStart + 1)
         }
         commandStart = -1
+        performAction(action)
+    }
+    function performAction(action) {
         if (action === "new_project") newProject.open()
         else if (action === "new_chat") { window.page = 0; workspace.newChat(); prompt.forceActiveFocus() }
         else if (action === "files") { mentionStart = -1; openProjectFiles() }
@@ -149,8 +155,11 @@ ApplicationWindow {
         else if (action === "chat") { workbenchDialog.close(); window.page = 0 }
         else if (action === "context") chatContextDialog.open()
         else if (action === "compact") {
-            if (workspace.backend === "openai_chatgpt") chatContextDialog.open()
-            else { workbenchDialog.openSection("chat"); workbenchDialog.confirmCompact() }
+            // Direct providers compact from the context panel; a native compaction
+            // is confirmed only when it can start. Otherwise the chat tools explain why.
+            if (chatContext.directContext) chatContextDialog.open()
+            else if (workbench.canCompact) { workbenchDialog.openSection("chat"); workbenchDialog.confirmCompact() }
+            else workbenchDialog.openSection("chat")
         }
         else if (action === "export_chat") chatMarkdownExport.open()
         else if (action === "copy_last") workbench.copyLastOutput()
@@ -196,13 +205,13 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+B"; onActivated: workspace.cycleSidebarMode() }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: if (hasProject) resumeDialog.open() }
     Shortcut { sequence: "Ctrl+N"; onActivated: newProject.open() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: hasProject; onActivated: workspace.newChat() }
-    Shortcut { sequence: "Ctrl+L"; onActivated: prompt.forceActiveFocus() }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: hasProject; onActivated: window.performAction("new_chat") }
+    Shortcut { sequence: "Ctrl+L"; onActivated: { window.page = 0; prompt.forceActiveFocus() } }
     Shortcut { sequence: "Ctrl+Shift+C"; onActivated: workspace.copyTranscript() }
     Connections {
         target: workspace
         function onPromptAccepted() { prompt.text = ""; window.followOutput = true }
-        function onChatChanged() { panelHost.closeCurrent(); window.restoringDraft = true; prompt.text = workspace.draftText; window.restoringDraft = false; window.followOutput = true }
+        function onChatChanged() { panelHost.closeCurrent(); window.commandStart = -1; window.mentionStart = -1; window.restoringDraft = true; prompt.text = workspace.draftText; window.restoringDraft = false; window.followOutput = true }
         function onProjectCreated() { newProject.close(); window.page = 0 }
         function onTranscriptChanged() { conversation.scheduleFollow() }
         function onChatLoadingChanged() {
@@ -388,7 +397,7 @@ ApplicationWindow {
                                         checked: workspace.sessionId === chatEntry.modelData.id
                                         quietSelection: true; selectionMark: true
                                         subtle: true; leftAligned: true
-                                        toolTipText: text + " · " + chatEntry.modelData.backend + " · " + chatEntry.modelData.model
+                                        toolTipText: text + " · " + kformat.providerLabel(chatEntry.modelData.backend) + " · " + chatEntry.modelData.model
                                             + (chatEntry.indicatorVisible ? " · " + chatEntry.activity.label : "")
                                         Accessible.name: qsTr("Apri chat %1").arg(text)
                                             + (chatEntry.indicatorVisible ? " · " + chatEntry.activity.label : "")
@@ -544,7 +553,7 @@ ApplicationWindow {
                             onClicked: resumeDialog.open()
                         }
                         HeaderSecondaryButton { objectName: "quickActionsButton"; label: qsTr("Azioni"); compactIcon: "actions"; toolTipText: qsTr("Azioni rapide · Ctrl+Shift+P"); Accessible.name: toolTipText; onClicked: { window.commandStart = -1; window.openActions("") } }
-                        HeaderSecondaryButton { objectName: "projectExportButton"; label: qsTr("Esporta"); compactIcon: "export"; visible: hasProject && window.page === 0; toolTipText: qsTr("Esporta la cronologia della chat"); Accessible.name: toolTipText; onClicked: { window.memoryExport = false; exportDialog.open() } }
+                        HeaderSecondaryButton { objectName: "projectExportButton"; label: qsTr("Esporta"); compactIcon: "export"; visible: hasProject && window.page === 0; toolTipText: qsTr("Esporta chat in Markdown"); Accessible.name: toolTipText; onClicked: { window.memoryExport = false; exportDialog.open() } }
                         HeaderSecondaryButton {
                             objectName: "detailsToggle"; label: qsTr("Dettagli"); compactIcon: "details"
                             visible: hasProject && window.page === 0
@@ -573,7 +582,7 @@ ApplicationWindow {
                 RowLayout {
                     anchors.fill: parent; anchors.margins: 10; anchors.leftMargin: 26
                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; id: noticeText; Layout.fillWidth: true; text: workspace.notice; color: appearance.colors.warning; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
-                    KButton { text: "×"; subtle: true; implicitWidth: Math.ceil(26 * appearance.uiFont.pixelSize / 13); implicitHeight: 26 + Math.max(0, appearance.uiFont.pixelSize - 13); onClicked: workspace.dismissNotice() }
+                    KButton { objectName: "dismissNoticeButton"; text: "×"; subtle: true; implicitWidth: Math.ceil(26 * appearance.uiFont.pixelSize / 13); implicitHeight: 26 + Math.max(0, appearance.uiFont.pixelSize - 13); toolTipText: qsTr("Chiudi avviso"); Accessible.name: toolTipText; onClicked: workspace.dismissNotice() }
                 }
             }
             Rectangle {
@@ -588,7 +597,7 @@ ApplicationWindow {
                     Text {
                         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic
                         Layout.fillWidth: true
-                        text: inputs.pendingCount > 0 ? (inputs.pendingCount === 1 ? qsTr("%1 richiesta in attesa di risposta") : qsTr("%1 richieste in attesa di risposta")).arg(inputs.pendingCount) : qsTr("Domande del progetto · risposte e stato disponibili")
+                        text: (inputs.pendingCount === 1 ? qsTr("%1 richiesta in attesa di risposta") : qsTr("%1 richieste in attesa di risposta")).arg(inputs.pendingCount)
                         color: appearance.colors.text; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1)
                     }
                     KButton { objectName: "inputPendingOpen"; text: qsTr("Domande"); primary: true; onClicked: inputDialog.open(); toolTipText: qsTr("Apri le domande · Ctrl+Shift+Q") }
@@ -622,7 +631,7 @@ ApplicationWindow {
                         KButton { text: qsTr("Crea il primo progetto  →"); primary: true; implicitHeight: 44 + Math.max(0, appearance.uiFont.pixelSize - 13); Layout.topMargin: 12; onClicked: newProject.open() }
                         KButton { text: qsTr("Come funziona Kira"); subtle: true; visible: !workspace.onboardingComplete; onClicked: onboardingDialog.open() }
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Kira Desktop organizza progetti, chat e risultati. Il provider scelto esegue i compiti AI."); visible: !workspace.onboardingComplete; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Ollama locale  ·  Codex App Server  ·  Dati sul tuo computer"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.topMargin: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Modelli locali o in cloud  ·  Dati sul tuo computer"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.topMargin: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                     SplitView {
                         id: browserSplit; objectName: "browserSplit"
@@ -1097,7 +1106,7 @@ ApplicationWindow {
                                     implicitHeight: 32 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                     destructive: true; visible: workspace.busy
                                     toolTipText: qsTr("Ferma l’esecuzione in corso")
-                                    enabled: workspace.connected && workspace.activeRunId.length > 0
+                                    enabled: workspace.connected && workspace.selectedActiveRunId.length > 0
                                     onClicked: workspace.stop()
                                 }
                                 }
@@ -1162,7 +1171,7 @@ ApplicationWindow {
                                             wrapMode: TextEdit.Wrap; selectByMouse: true; color: appearance.colors.text
                                             textFormat: TextEdit.PlainText; background: null
                                             font.pixelSize: window.chatFontSize; leftPadding: 2; rightPadding: 2; topPadding: 4; bottomPadding: 4
-                                            Keys.onPressed: function(event) { if (event.key === Qt.Key_Return && (event.modifiers & Qt.ControlModifier)) { window.submitComposer(); event.accepted = true } }
+                                            Keys.onPressed: function(event) { if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { window.submitComposer(); event.accepted = true } }
                                         }
                                     }
                                     Text {
@@ -1222,7 +1231,7 @@ ApplicationWindow {
                                                 KIcon { name: "models"; ink: modelChip.foreground; width: 16; height: 16; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter }
                                                 Text {
                                                     id: modelChipLabel; objectName: "modelControlsSummary"
-                                                    readonly property string details: (workspace.selectedModel || qsTr("Scegli un modello")) + (workspace.backend !== "ollama" ? " · " + (workspace.selectedEffort || qsTr("Predefinito del provider")) : "")
+                                                    readonly property string details: (workspace.selectedModel || qsTr("Scegli un modello")) + (kformat.offersEffort(workspace.backend) ? " · " + (workspace.selectedEffort || qsTr("Predefinito del provider")) : "")
                                                     // The chip shows the short provider name; the tooltip keeps the full label.
                                                     readonly property string selectionSummary: workspace.backendShortLabel + " · " + details
                                                     readonly property string fullSummary: workspace.backendLabel + " · " + details
@@ -1236,7 +1245,7 @@ ApplicationWindow {
                                         }
                                         RowLayout {
                                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 4
-                                        KButton { objectName: "projectQueueButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; iconName: "queue"; text: composerChips.tight ? (workbench.pendingCount > 0 ? String(workbench.pendingCount) : "") : qsTr("Coda %1").arg(workbench.pendingCount); subtle: true; Accessible.name: qsTr("Coda del progetto: %1 richieste").arg(workbench.pendingCount); toolTipText: qsTr("Coda del progetto · controlla, modifica e riordina le richieste"); onClicked: workbenchDialog.openSection("queue") }
+                                        KButton { objectName: "projectQueueButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; iconName: "queue"; text: composerChips.tight ? (workbench.pendingCount > 0 ? String(workbench.pendingCount) : "") : qsTr("Coda %1").arg(workbench.pendingCount); subtle: true; Accessible.name: (workbench.pendingCount === 1 ? qsTr("Coda del progetto: %1 richiesta") : qsTr("Coda del progetto: %1 richieste")).arg(workbench.pendingCount); toolTipText: qsTr("Coda del progetto · controlla, modifica e riordina le richieste"); onClicked: workbenchDialog.openSection("queue") }
                                         KButton { objectName: "chatToolsButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); iconName: "more"; subtle: true; implicitWidth: 34; Accessible.name: qsTr("Strumenti della chat"); toolTipText: qsTr("Cronologia, obiettivo, modifiche e gestione chat"); onClicked: { window.commandStart = -1; window.openActions("") } }
                                         KButton {
                                             objectName: "queueComposerButton"; text: qsTr("Accoda")
@@ -1299,7 +1308,7 @@ ApplicationWindow {
                                                 currentIndex: ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend)
                                                 onActivated: { workspace.setBackend(["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"][currentIndex]); currentIndex = Qt.binding(function() { return ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend) }) }
                                                 enabled: !workspace.busy && !assistant.active
-                                                Accessible.name: qsTr("Backend")
+                                                Accessible.name: qsTr("Provider")
                                                 KToolTip { visible: backendBox.hovered; text: workspace.backendLabel }
                                             }
                                             KComboBox {
@@ -1316,7 +1325,7 @@ ApplicationWindow {
                                                 palette.dark: window.muted
                                                 id: effortBox; objectName: "effortBox"; model: [qsTr("Predefinito del provider")].concat(workspace.efforts)
                                                 Layout.preferredWidth: chatColumn.width < 650 ? 122 : 150; implicitHeight: 35
-                                                visible: workspace.backend !== "ollama"
+                                                visible: kformat.offersEffort(workspace.backend)
                                                 currentIndex: Math.max(0, workspace.efforts.indexOf(workspace.selectedEffort) + 1)
                                                 displayText: currentIndex === 0 && workspace.selectedEffort.length > 0 ? qsTr("%1 · salvato").arg(workspace.selectedEffort) : currentText
                                                 onActivated: workspace.setEffort(currentIndex === 0 ? "" : currentText)
@@ -1337,12 +1346,18 @@ ApplicationWindow {
                                                 enabled: !workspace.busy && !assistant.active
                                                 Accessible.name: qsTr("Sessione")
                                             }
-                                            CheckBox { HoverHandler { cursorShape: appearance.pointerCursors && parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                            CheckBox {
+                                                id: ollamaTools; objectName: "ollamaToolsChoice"
+                                                HoverHandler { id: ollamaToolsHover; cursorShape: appearance.pointerCursors && parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
                                                 font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
                                                 text: qsTr("Strumenti"); checked: workspace.toolsEnabled || workspace.backend !== "ollama"
-                                                visible: workspace.backend === "ollama"; enabled: workspace.canUseTools && !workspace.busy
+                                                // Changing tools starts another chat, so a saved chat keeps its choice.
+                                                visible: workspace.backend === "ollama"; enabled: workspace.canUseTools && !workspace.busy && !workspace.sessionId
                                                 onClicked: workspace.setTools(checked)
-                                                KToolTip { visible: parent.hovered; text: workspace.canUseTools ? qsTr("La prima esecuzione verifica il supporto del modello; se fallisce resta disponibile la chat.") : qsTr("Strumenti non dichiarati dal modello. La chat resta disponibile.") }
+                                                readonly property string hint: workspace.sessionId ? qsTr("Gli strumenti si scelgono per le nuove chat: apri una nuova chat per cambiarli.") : workspace.canUseTools ? qsTr("La prima esecuzione verifica il supporto del modello; se fallisce resta disponibile la chat.") : qsTr("Strumenti non dichiarati dal modello. La chat resta disponibile.")
+                                                Accessible.description: hint
+                                                // A disabled control still reports hover to its handler.
+                                                KToolTip { visible: ollamaToolsHover.hovered; text: ollamaTools.hint }
                                             }
                                         }
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; id: providerLabel; text: workspace.providerText; Layout.fillWidth: true; elide: Text.ElideRight; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); KToolTip { visible: providerMouse.containsMouse; text: providerLabel.text } MouseArea { id: providerMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton } }
@@ -1360,7 +1375,7 @@ ApplicationWindow {
                                 ChatToolButton { objectName: "chatContextButton"; label: chatContext.compacting ? qsTr("Compattazione…") : qsTr("Contesto e memoria"); iconName: "context"; enabled: workspace.sessionId.length > 0; checked: panelHost.activePanel === chatContextDialog; quietSelection: true; onClicked: chatContextDialog.open() }
                                 ChatToolButton { objectName: "chatKnowledgeButton"; label: qsTr("Conoscenza"); iconName: "knowledge"; enabled: workspace.sessionId.length > 0; onClicked: assistantTeamPanel.showEnvironment(); toolTipText: qsTr("Conoscenza e strumenti") }
                                 ChatToolButton { objectName: "chatWebButton"; label: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; checked: workspace.web.paneVisible; quietSelection: true; onClicked: { workspace.studio.hideStudio(); workspace.web.showBrowser() } toolTipText: qsTr("Apri il browser integrato") }
-                                ChatToolButton { objectName: "chatStudioButton"; label: qsTr("Studio"); iconName: "studio"; enabled: workspace.connected; checked: workspace.studio.paneVisible; quietSelection: true; onClicked: workspace.studio.showStudio(); toolTipText: qsTr("Apri il mondo creativo locale di questo progetto") }
+                                ChatToolButton { objectName: "chatStudioButton"; label: qsTr("Studio"); iconName: "studio"; visible: workspace.studio.available; enabled: workspace.connected; checked: workspace.studio.paneVisible; quietSelection: true; onClicked: workspace.studio.showStudio(); toolTipText: qsTr("Apri il mondo creativo locale di questo progetto") }
                                 ChatToolButton { objectName: "sharedMemoryButton"; label: qsTr("Memoria del progetto"); iconName: "memory"; checked: panelHost.activePanel === sharedMemoryDialog; quietSelection: true; onClicked: sharedMemoryDialog.open() }
                                 ChatToolButton { objectName: "chatSoulButton"; label: souls.activeName || qsTr("Anima"); iconName: "anima"; enabled: souls.available; checked: panelHost.activePanel === soulDialog; quietSelection: true; onClicked: soulDialog.open(); toolTipText: qsTr("Anima di Kira · identità e ricordi") + (souls.activeName ? " · " + souls.activeName : "") }
                                 KButton {
@@ -1584,7 +1599,7 @@ ApplicationWindow {
                                             Text { font.family: appearance.codeFont.family; textFormat: Text.PlainText; text: modelCard.modelData.id; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); elide: Text.ElideMiddle; Layout.maximumWidth: 200 }
                                         }
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: workspace.backend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : workspace.backend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : workspace.backend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["openai_chatgpt", "deepseek_account"].indexOf(workspace.backend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; visible: workspace.backend !== "openai_chatgpt" && workspace.backend !== "claude_code"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg((modelCard.modelData.size_bytes / 1073741824).toFixed(2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelSize_" + modelCard.modelData.id; visible: !!modelCard.modelData.size_bytes || workspace.backend === "ollama"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg(Number(modelCard.modelData.size_bytes / 1073741824).toLocaleString(Qt.locale(localization.language), "f", 2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
                                         Flow {
                                             visible: modelCard.efforts.length > 0
                                             Layout.fillWidth: true; spacing: 4
@@ -1642,7 +1657,7 @@ ApplicationWindow {
                             color: appearance.colors.surfaceAlt; radius: 9; border.color: appearance.colors.border
                             ColumnLayout {
                                 id: activityColumn; anchors.fill: parent; anchors.margins: 13; spacing: 9
-                                RowLayout { Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: modelData.label; color: accent; font.weight: Font.Medium; Layout.fillWidth: true } Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelData.created_at || ""; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3) } }
+                                RowLayout { Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: modelData.label; color: accent; font.weight: Font.Medium; Layout.fillWidth: true } Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "activityStarted_" + modelData.id; text: kformat.timestamp(modelData.created_at); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3) } }
                                 ReadText { text: modelData.requestExcerpt || modelData.prompt || ""; Layout.fillWidth: true }
                                 RowLayout {
                                     KButton { text: qsTr("Apri chat"); subtle: true; onClicked: { workspace.selectSession(modelData.session_id); window.page = 0 } }
@@ -1695,7 +1710,7 @@ ApplicationWindow {
                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Il contesto effettivo dipende dal modello e dalla memoria disponibile. 128K e 256K possono richiedere molta RAM/VRAM; verifica i dati del modello in Ollama."); visible: workspace.backend === "ollama"; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                     RowLayout {
                                         visible: workspace.backend === "ollama"
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Pensiero interno del modello"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Ragionamento interno del modello"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true }
                                         KComboBox {
                                             objectName: "ollamaThinkMode"; Layout.preferredWidth: 190
                                             model: [qsTr("Predefinito del modello"), qsTr("Ragionamento interno disattivato"), qsTr("Ragionamento interno attivato")]
@@ -1744,25 +1759,27 @@ ApplicationWindow {
         function open() { active = true; if (item) item.open() }
         onLoaded: if (inputs.pendingCount > 0) item.open()
     }
-    ActionPalette { id: actionPalette; parent: Overlay.overlay; onSelected: function(action) { window.performAction(action) } }
-    ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay }
+    ActionPalette { id: actionPalette; parent: Overlay.overlay; onSelected: function(action) { window.chooseAction(action) }; onClosed: window.commandStart = -1 }
+    ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay; onClosed: window.mentionStart = -1 }
     WorkbenchDialog { id: workbenchDialog; parent: Overlay.overlay }
     FileDialog { id: chatMarkdownExport; title: qsTr("Esporta chat"); fileMode: FileDialog.SaveFile; nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; onAccepted: workbench.exportChat(selectedFile.toString()) }
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
     ActionDialog { id: actionDialog; parent: Overlay.overlay; onProjectSelected: { window.page = 0; window.followOutput = true } }
     DiagnosticsDialog { id: diagnosticsDialog; parent: Overlay.overlay }
     ProviderSwitchDialog { id: providerSwitchDialog; parent: Overlay.overlay }
-    OnboardingDialog { id: onboardingDialog; parent: Overlay.overlay; onCreateRequested: newProject.open(); onModelsRequested: { if (!workspace.busy) workspace.setBackend("codex"); window.page = 1 } }
+    // The guide only navigates: provider, model and account stay the user's choice.
+    OnboardingDialog { id: onboardingDialog; parent: Overlay.overlay; onCreateRequested: newProject.open(); onModelsRequested: window.page = 1 }
 
     FolderDialog {
         id: folderDialog; title: qsTr("Scegli la cartella del progetto")
         onAccepted: rootInput.text = selectedFolder.toString()
     }
+    // The header exports the selected chat as Markdown; project memory stays JSON.
     FileDialog {
-        id: exportDialog; objectName: "projectExportDialog"; title: window.memoryExport ? qsTr("Esporta memoria") : qsTr("Esporta cronologia")
+        id: exportDialog; objectName: "projectExportDialog"; title: window.memoryExport ? qsTr("Esporta memoria") : qsTr("Esporta chat")
         fileMode: FileDialog.SaveFile
-        nameFilters: [qsTr("JSON (*.json)"), qsTr("Testo (*.txt)"), qsTr("Tutti i file (*)")]
-        defaultSuffix: "json"
+        nameFilters: window.memoryExport ? [qsTr("JSON (*.json)"), qsTr("Testo (*.txt)"), qsTr("Tutti i file (*)")] : [qsTr("Markdown (*.md)")]
+        defaultSuffix: window.memoryExport ? "json" : "md"
         onAccepted: { if (window.memoryExport) workspace.exportMemory(selectedFile.toString()); else workspace.exportTranscript(selectedFile.toString()) }
     }
     KiraSoulsDialog { id: soulDialog; inspectorKey: "anima" }
@@ -1823,7 +1840,7 @@ ApplicationWindow {
         standardButtons: Dialog.Close
         ColumnLayout {
             anchors.fill: parent
-            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Questo è il contributo effettivamente inviato da Kira nell'ultima esecuzione. Il prompt interno del backend può contenere altro contesto non osservabile."); color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
+            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Questo è il contributo effettivamente inviato da Kira nell'ultima esecuzione. Il prompt interno del provider può contenere altro contesto non osservabile."); color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
             ScrollView { Layout.fillWidth: true; Layout.fillHeight: true; clip: true; ReadText { text: workspace.contextText; width: parent.width } }
             KButton { text: qsTr("Copia contesto"); onClicked: workspace.copy(workspace.contextText) }
         }
@@ -1857,12 +1874,18 @@ ApplicationWindow {
         title: qsTr("Rinomina chat"); modal: true; anchors.centerIn: parent
         width: Math.min(480, window.width - 40)
         background: Rectangle { color: appearance.colors.surface; radius: 12; border.color: appearance.colors.border }
+        function save() {
+            if (chatNameInput.text.trim().length === 0) return
+            workspace.renameSession(chatId, chatNameInput.text)
+            close()
+        }
+        onOpened: { chatNameInput.forceActiveFocus(); chatNameInput.selectAll() }
         contentItem: ColumnLayout {
-            TextField { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; id: chatNameInput; objectName: "chatNameInput"; Layout.fillWidth: true; maximumLength: 120; selectByMouse: true; placeholderText: qsTr("Nome della chat"); Accessible.name: qsTr("Nome della chat") }
+            TextField { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; id: chatNameInput; objectName: "chatNameInput"; Layout.fillWidth: true; maximumLength: 120; selectByMouse: true; placeholderText: qsTr("Nome della chat"); Accessible.name: qsTr("Nome della chat"); onAccepted: renameChatDialog.save() }
             RowLayout {
                 Item { Layout.fillWidth: true }
                 KButton { text: qsTr("Annulla"); onClicked: renameChatDialog.close() }
-                KButton { objectName: "saveChatName"; text: qsTr("Salva"); primary: true; enabled: chatNameInput.text.trim().length > 0; onClicked: { workspace.renameSession(renameChatDialog.chatId, chatNameInput.text); renameChatDialog.close() } }
+                KButton { objectName: "saveChatName"; text: qsTr("Salva"); primary: true; enabled: chatNameInput.text.trim().length > 0; onClicked: renameChatDialog.save() }
             }
         }
     }
@@ -1889,7 +1912,8 @@ ApplicationWindow {
     }
     Dialog {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
-        id: approvalDialog; objectName: "approvalDialog"; title: qsTr("Decisione richiesta dal backend"); modal: true
+        // Codex approvals and Kira's own browser consents share this dialog.
+        id: approvalDialog; objectName: "approvalDialog"; title: qsTr("Decisione richiesta"); modal: true
         anchors.centerIn: parent; width: Math.min(690, window.width - 60); height: Math.min(530, window.height - 80)
         visible: Boolean(workspace.approval.approval_id) && workspace.approval.kind !== "browser_manual_login"
         closePolicy: Popup.NoAutoClose

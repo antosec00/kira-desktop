@@ -13,6 +13,7 @@ Dialog {
     closePolicy: providerSwitch.applying ? Popup.NoAutoClose : Popup.CloseOnEscape
     font: appearance.uiFont
     onRejected: providerSwitch.cancel()
+    KFormat { id: kformat }
     background: Rectangle { color: appearance.colors.surface; radius: 14; border.color: appearance.colors.border }
     Connections {
         target: providerSwitch
@@ -32,7 +33,8 @@ Dialog {
                 font: appearance.uiFont; color: appearance.colors.text
             }
             Text {
-                text: providerSwitch.backend === "codex" ? "Codex" : providerSwitch.backend === "ollama" ? "Ollama" : providerSwitch.backend === "deepseek_account" ? qsTr("DeepSeek Account") : providerSwitch.backend === "deepseek_web" ? qsTr("DeepSeek Web · sperimentale") : providerSwitch.backend === "claude_code" ? qsTr("Claude Code · uso personale") : qsTr("OpenAI diretto · ChatGPT")
+                objectName: "switchProviderName"
+                text: kformat.providerLabel(providerSwitch.backend)
                 Layout.fillWidth: true; textFormat: Text.PlainText; font: appearance.uiFont; color: appearance.colors.accent
             }
             Text { text: qsTr("Account per questa chat"); visible: providerSwitch.backend === "openai_chatgpt"; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
@@ -62,10 +64,10 @@ Dialog {
                 onActivated: providerSwitch.setModel(currentValue)
                 Accessible.name: qsTr("Modello")
             }
-            Text { text: qsTr("Livello di ragionamento"); visible: ["ollama", "deepseek_web"].indexOf(providerSwitch.backend) < 0; font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
+            Text { text: qsTr("Livello di ragionamento"); visible: kformat.offersEffort(providerSwitch.backend); font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
             KComboBox {
                 objectName: "switchProviderEffort"
-                visible: ["ollama", "deepseek_web"].indexOf(providerSwitch.backend) < 0
+                visible: kformat.offersEffort(providerSwitch.backend)
                 Layout.fillWidth: true
                 model: [qsTr("Predefinito del provider")].concat(providerSwitch.efforts)
                 currentIndex: Math.max(0, providerSwitch.efforts.indexOf(providerSwitch.effort) + 1)

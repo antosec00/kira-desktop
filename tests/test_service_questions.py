@@ -58,7 +58,7 @@ async def runtime(monkeypatch, tmp_path):
             "project_id": project["id"], "backend": "ollama", "model": "fixture-only"}))["session"]
         run = (await service.dispatch("run.start", {
             "session_id": session["id"], "request_id": "fixture-run", "prompt": "Fixture questions"}))["run"]
-        await backend.started.wait()
+        await asyncio.wait_for(backend.started.wait(), 30)
         yield service, backend, project, run
         await service.close()
 
@@ -164,7 +164,7 @@ async def test_terminal_closes_saved_but_unreceived_answer_without_replay(runtim
     await service.dispatch("input.answer", {"run_id": run["id"], "request_id": result["request_id"], "answers": ANSWER})
     task = service.tasks[run["id"]]
     backend.release.set()
-    await task
+    await asyncio.wait_for(task, 30)
     state = (await service.dispatch("input.list", {"project_id": project["id"]}))["requests"][0]
     assert state["status"] == "closed" and state["answers"] == ANSWER and not state["received"]
     assert not any(e["type"] == "input.received" for e in events(service, run))
@@ -217,8 +217,9 @@ async def test_redaction_applies_before_question_and_answer_persistence(runtime)
 ])
 async def test_malformed_request_has_no_persisted_event(runtime, change):
     service, backend, project, run = runtime
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await backend.context.request_input({**REQUEST, **change})
+    assert error.value.code == "INVALID_ARGUMENT"
     assert events(service, run) == []
 
 
@@ -248,8 +249,9 @@ async def test_request_limit_project_and_run_isolation(runtime, tmp_path):
 async def test_invalid_answers_never_wake_or_persist(runtime, answers):
     service, backend, project, run = runtime
     result = await backend.context.request_input(REQUEST)
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch("input.answer", {"run_id": run["id"], "request_id": result["request_id"], "answers": answers})
+    assert error.value.code == "INVALID_ARGUMENT"
     assert len(events(service, run)) == 1
 
 
@@ -323,7 +325,7 @@ async def test_delivered_answer_stays_delivered_after_terminal_and_recovery(runt
     await backend.context.emit("input.delivered", {"request_id": result["request_id"], "transport": "turn/steer"})
     task = service.tasks[run["id"]]
     backend.release.set()
-    await task
+    await asyncio.wait_for(task, 30)
     await service.questions.recover()
     state = (await service.dispatch("input.list", {"project_id": project["id"]}))["requests"][0]
     assert state["status"] == "answered" and state["received"] and state["delivered"]
@@ -347,7 +349,7 @@ async def test_delivery_failure_after_adapter_read_remains_closed_after_terminal
     assert (await backend.context.read_input(result["request_id"], False))["status"] == "closed"
     task = service.tasks[run["id"]]
     backend.release.set()
-    await task
+    await asyncio.wait_for(task, 30)
     expected = ["input.requested", "input.answered", "input.received", "input.delivery_failed"]
     assert [e["type"] for e in events(service, run)] == expected
     await service.close()
@@ -412,7 +414,7 @@ async def test_terminal_without_delivery_confirmation_closes_retrieved_answer(ru
     assert (await backend.context.read_input(result["request_id"], False))["received"]
     task = service.tasks[run["id"]]
     backend.release.set()
-    await task
+    await asyncio.wait_for(task, 30)
     state = (await service.dispatch("input.list", {"project_id": project["id"]}))["requests"][0]
     assert state["status"] == "closed" and state["received"] and not state["delivered"]
     assert state["answers"] == ANSWER and state["reason"] == "run_ended"

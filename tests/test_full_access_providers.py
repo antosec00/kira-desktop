@@ -176,6 +176,9 @@ async def test_codex_full_access_approval_does_not_accept_persistent_amendments(
     class Server(FakeServer):
         instances = []
         queued = [request, terminal("completed")]
+        # Pinned here rather than inherited from FakeServer's shared class state.
+        resolved_model = "fixture-model"
+        resolved_effort = "ultra"
 
     monkeypatch.setattr(codex, "AppServer", Server)
     ctx, _, _, _ = codex_context(tmp_path, "full_access")

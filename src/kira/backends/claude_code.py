@@ -144,8 +144,17 @@ def tool_set(permission: str) -> list[str]:
     return tools
 
 
+def reinterpreted(value: str) -> bool:
+    """Whether Claude Code would resolve a different path than the literal text.
+
+    It trims surrounding whitespace (JavaScript's set: Python's plus U+FEFF)
+    and expands a leading "~" to the home directory before resolving a path.
+    """
+    return value != value.strip() or value.startswith(("~", "\ufeff")) or value.endswith("\ufeff")
+
+
 def inside(value: Any, root: Path) -> bool:
-    if not isinstance(value, str) or not value or "\0" in value:
+    if not isinstance(value, str) or not value or "\0" in value or reinterpreted(value):
         return False
     base = Path(os.path.realpath(root))
     target = Path(value) if os.path.isabs(value) else base / value
@@ -456,7 +465,8 @@ class ClaudeCodeBackend:
                 return deny("The path is outside the Kira project. Ask the user to grant "
                             "full access when work outside the project is required.")
             pattern = tool_input.get("pattern") if name == "Glob" else None
-            if isinstance(pattern, str) and (os.path.isabs(pattern) or ".." in Path(pattern).parts):
+            if isinstance(pattern, str) and (os.path.isabs(pattern) or ".." in Path(pattern).parts
+                                             or reinterpreted(pattern)):
                 return deny("Glob patterns must stay inside the Kira project.")
             return {}
 

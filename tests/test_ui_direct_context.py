@@ -15,6 +15,7 @@ from kira.ui.app import create_engine
 from kira.ui.context_controller import ContextController, present_context
 from kira.ui.controller import Workspace
 from kira.ui.metrics import context_card, count, present_metrics
+from test_ui_support import wait_opened
 
 
 def snapshot(**updates):
@@ -259,17 +260,18 @@ def test_real_context_dialog_minimum_size_translations_and_plaintext(context, qt
         assert dialog is not None
         evaluate(dialog, "open()")
         requests[-1][2](snapshot())
-        qtbot.wait(50)
         mode = window.findChild(QObject, "contextMode")
+        scroll = window.findChild(QObject, "contextScroll")
+        wait_opened(qtbot, dialog, mode, scroll)
         assert mode.property("text") == ("Automatic — maximum available" if language == "en"
                                          else "Automatico — massimo disponibile")
-        # The panel fills the workspace under the single 0.18 top bar.
+        # The panel fills the workspace under the single top bar.
         header = window.findChild(QObject, "projectHeader")
         assert dialog.property("height") <= 620 - header.property("height")
-        scroll = window.findChild(QObject, "contextScroll")
         assert scroll.property("contentHeight") > scroll.property("height")
         assert window.findChild(QObject, "contextCompact").property("enabled")
-        assert "non prova" in window.findChild(QObject, "contextCapacityNote").property("text") if language == "it" else True
+        note = window.findChild(QObject, "contextCapacityNote").property("text")
+        assert ("does not prove" if language == "en" else "non prova") in note
         assert not any("binding loop" in record.message.lower() or "ReferenceError" in record.message
                        or "TypeError" in record.message for record in qtlog.records)
     finally:

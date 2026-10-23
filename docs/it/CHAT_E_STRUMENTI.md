@@ -13,8 +13,8 @@ Un **progetto** è una cartella di lavoro a cui Kira associa quattro cose: le
 **istruzioni** che scrivi tu, un **permesso** (**Sola lettura**, **Scrittura nel
 progetto**, **Host fidato**, **Accesso completo**), la **Memoria del progetto**
 e l'insieme delle sue chat. Istruzioni, permesso e memoria si modificano da
-**Memoria e istruzioni del progetto** (pulsante **Progetto** nell'intestazione
-oppure **Azioni → Memoria del progetto → Modifica note del progetto**).
+**Memoria e istruzioni del progetto** (**Azioni → Permessi del progetto**
+oppure **Memoria del progetto → Modifica note del progetto**).
 I permessi sono descritti in [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md);
 la memoria in [Contesto e memoria](CONTESTO_E_MEMORIA.md).
 
@@ -27,9 +27,9 @@ chat vuote in elenco.
 ### Nome della chat
 
 Il nome iniziale deriva dalla prima richiesta, normalizzata negli spazi; finché
-non invii nulla la chat si chiama **Nuova chat**. Con il pulsante **⋯** accanto
-al nome scegli **Rinomina chat**: il nome può avere al massimo 120 caratteri e
-non può essere vuoto. Il nome è un dato interno di Kira: non viene inviato al
+non invii nulla la chat si chiama **Nuova chat**. Il pulsante **⋯** accanto al
+nome apre **Rinomina chat**: il nome può avere al massimo 120 caratteri e non
+può essere vuoto. Il nome è un dato interno di Kira: non viene inviato al
 modello e rinominare una chat non cambia la conversazione del provider.
 
 ### Che cosa ricorda Kira
@@ -65,16 +65,17 @@ non spostano la vista: **Ultimi aggiornamenti** riporta in fondo.
 
 I riquadri **Completato** / **In esecuzione** non compaiono nella
 conversazione: li trovi nel pannello **Attività**, con l'estratto della
-richiesta, l'ora di avvio e di esito, l'eventuale errore, i **Dettagli** e il
-pulsante **Apri chat** che riporta alla conversazione di origine. Nessun evento
+richiesta, l'ora di avvio, l'eventuale errore, i **Dettagli** e il pulsante
+**Apri chat** che riporta alla conversazione di origine. Nessun evento
 o record di esportazione viene mai cancellato da questo pannello.
 
 ## 2. Azioni rapide
 
 **Azioni** nell'intestazione apre **Azioni rapide**: una ricerca per nome o
 descrizione delle funzioni dell'app. Lo stesso elenco si apre con
-**Ctrl+Shift+P** oppure digitando `/` nel campo del messaggio. Puoi cercare
-anche con termini in inglese come `model`, `plan`, `diff`, `queue`, `fork`.
+**Ctrl+Shift+P**, con **Strumenti della chat** (**⋯**) sotto il campo oppure
+digitando `/` all'inizio del messaggio o dopo uno spazio. Puoi cercare anche
+con termini in inglese come `model`, `plan`, `diff`, `queue`, `fork`.
 
 Vi trovi, fra le altre voci: **Nuovo progetto**, **Nuova chat**, **File del
 progetto**, **Cronologia dei messaggi inviati**, **Coda del progetto**, le
@@ -105,9 +106,9 @@ La ricerca riguarda solo la cartella del progetto ed esclude:
 - i file con nomi sensibili (chiavi, credenziali, segreti);
 - i file ignorati da Git, quando il progetto è un repository Git.
 
-La ricerca è limitata a **1.000 voci esaminate, 100 corrispondenze mostrate,
-profondità 32 cartelle e 16 MiB scansionati**. Se raggiunge un limite, Kira lo
-segnala: affina la ricerca con un nome più preciso. **Allega** resta sempre
+La ricerca è limitata a **10.000 voci esaminate, 100 corrispondenze mostrate e
+32 livelli di cartelle**. Se raggiunge un limite, Kira lo segnala: affina la
+ricerca con un nome più preciso. **Allega** resta sempre
 disponibile per scegliere esplicitamente qualunque altro file con il selettore
 di sistema.
 
@@ -124,7 +125,8 @@ Il testo che scrivi e non invii viene salvato privatamente, chat per chat
 `$HOME/.config/kira/composer.json` (con `KIRA_HOME`: `$KIRA_HOME/config/`).
 Il salvataggio è **atomico**, avviene **300 ms** dopo l'ultima modifica e viene
 forzato alla chiusura ordinata della finestra. Alla riapertura ritrovi il testo,
-la modalità, l'identità Anima scelta e le immagini allegate.
+le immagini allegate e l'identità Anima scelta per la nuova chat; la modalità
+della richiesta torna a **Esegui**.
 
 Lo stesso file conserva la **cronologia dei messaggi inviati** e le identità
 delle richieste in sospeso. I limiti sono:
@@ -158,29 +160,35 @@ database e le bozze restano al loro posto.
 
 ### Identità delle richieste e **Consenti nuove richieste separate…**
 
-Per accodare, inviare indicazioni, diramare, compattare e cambiare provider,
-Kira registra l'identità della richiesta (un identificativo e un'impronta degli
-argomenti, non una copia del testo) **prima** di inviarla al servizio. Chiudere
-la finestra o cambiare chat non la trasforma in una nuova operazione: un
-secondo tentativo con lo stesso contenuto riusa la stessa identità, e un esito
-incerto non viene mai ripetuto da solo.
+Per invii, coda, indicazioni, diramazioni, compattazioni, cambi di provider,
+obiettivi, note del contesto e messaggi o riprese del Team dalla chat, Kira
+registra l'identità della richiesta (un identificativo e un'impronta degli
+argomenti, non una copia del testo) **prima** di inviarla al servizio; lo stesso
+vale per le modifiche ad Anima, Ricerca e strumenti del progetto. Chiudere la
+finestra o cambiare chat non la trasforma in una nuova operazione: un secondo
+tentativo con lo stesso contenuto riusa la stessa identità, e un esito incerto
+non viene mai ripetuto da solo. Le identità dei comandi dei Team e delle
+aperture native restano in memoria finché la finestra è aperta: dopo un riavvio
+controlla **Attività** o la vista Team prima di ripeterli.
 
 Se vuoi davvero inviare una richiesta distinta con lo stesso contenuto,
 controlla prima chat, coda e **Attività**, poi usa **Gestisci chat → Consenti
-nuove richieste separate…**. Il comando chiede conferma e non invia nulla:
-abilita soltanto una successiva nuova richiesta, che potrebbe duplicare un
-effetto precedente dall'esito ancora incerto.
+nuove richieste separate…** (compare quando ci sono richieste dall'esito
+incerto). Il comando chiede conferma e non invia nulla: abilita soltanto una
+successiva nuova richiesta, che potrebbe duplicare un effetto precedente
+dall'esito ancora incerto.
 
 ## 5. Inviare, accodare, indicare
 
-A destra del campo di scrittura trovi **Invia** (**Ctrl+Invio**) e **Accoda**;
-**Coda** apre l'elenco delle richieste in attesa. Quando la **stessa chat** ha
-un turno attivo, al posto di **Invia** compare **Invia indicazioni**.
+Sotto il campo di scrittura, a destra, trovi **Invia** (**Ctrl+Invio**) e,
+mentre c'è lavoro in corso, **Accoda**; il pulsante **Coda**, con il numero di
+richieste in attesa, ne apre l'elenco. Quando la **stessa chat** ha un turno
+attivo, al posto di **Invia** compare **Invia indicazioni**.
 
 | Pulsante | Quando compare | Che cosa fa |
 | --- | --- | --- |
 | **Invia** | Chat inattiva e nessun lavoro nel progetto | Avvia subito la richiesta. |
-| **Accoda** | Sempre | Salva una richiesta separata da eseguire in un turno successivo. |
+| **Accoda** | Mentre c'è lavoro in corso nel progetto, anche di un Team | Salva una richiesta separata da eseguire in un turno successivo. |
 | **Invia indicazioni** | Un turno di questa chat è in corso | Aggiunge testo al lavoro in corso, senza fermarlo. |
 
 Quando lavora un'altra chat del progetto, il messaggio resta destinato alla
@@ -199,23 +207,26 @@ servono il pulsante dedicato o **Ctrl+Invio** quando il pulsante è visibile.
 
 ### Stati della coda
 
-Ogni richiesta accodata passa per questi stati: **in attesa**, **in avvio**,
-**in esecuzione**, **completata**, **non riuscita**, **annullata**,
-**interrotta**. Finché è in attesa puoi modificarne il testo, spostarla con le
+Ogni richiesta accodata passa per questi stati: **In attesa**, **Avvio in
+corso**, **In esecuzione**, **Completato**, **Non riuscito**, **Annullato**,
+**Interrotto**. Finché è in attesa puoi modificarne il testo, spostarla con le
 frecce o rimuoverla; una richiesta già partita non si modifica né si annulla
-dalla coda (usa **Ferma**). Una voce rimossa non può essere riportata in vita
-da un tentativo in ritardo. Se una richiesta accodata contiene immagini, Kira le
-verifica di nuovo prima della partenza: un file mancante o modificato fa
-fallire la voce e mette la coda in pausa.
+dalla coda (usa **Ferma**). Una voce rimossa non può essere riportata in vita da
+un tentativo in ritardo. Se una richiesta accodata contiene immagini, Kira le
+verifica di nuovo prima della partenza: un file mancante o modificato fa fallire
+la voce e mette la coda in pausa.
 
 ### Pausa, ripresa, errori e riavvii
 
 - La coda **prosegue da sola** dopo ogni lavoro completato con successo.
 - Dopo un **errore**, una **cancellazione** o un **riavvio del servizio** la
   coda **resta in pausa**: controlla l'esito e premi **Riprendi coda**.
+- Se l'avvio di una richiesta viene rifiutato solo per lo stato del momento
+  (lavoro già in corso, chat archiviata o servizio in arresto), la richiesta
+  resta in attesa nella coda in pausa, con il motivo indicato nella voce.
 - **Pausa coda** impedisce nuove partenze e lascia terminare il turno corrente.
-- **Ferma** chiede la cancellazione del turno in corso e attende l'esito del
-  backend; non svuota la coda.
+- **Ferma** chiede la cancellazione del turno in corso della chat selezionata e
+  attende l'esito registrato dal servizio; non svuota la coda.
 - Chiudere la finestra non ferma il servizio e non cancella la coda; alla
   riapertura ritrovi le richieste salvate.
 
@@ -228,6 +239,8 @@ fallire la voce e mette la coda in pausa.
   Gli strumenti di un gruppo non ancora avviati possono essere rinviati con
   esito `DEFERRED_FOR_USER_GUIDANCE`, in modo che il modello ripianifichi
   tenendo conto della correzione.
+- **DeepSeek Web** e **Claude Code · uso personale** non ricevono indicazioni
+  durante il turno: accoda una richiesta separata.
 - Una risposta già in corso non viene riscritta e il ragionamento privato non
   viene esposto.
 
@@ -272,16 +285,18 @@ Funziona anche con provider locali che non possono eseguire Git da soli.
 
 ## 7. Archiviare, diramare, esportare
 
-Tutte queste azioni sono in **Azioni → Gestisci chat**.
+Tutte queste azioni sono in **Azioni → Gestisci chat**, nella finestra
+**Strumenti della chat**.
 
 ### Archivia chat
 
-**Archivia chat** nasconde una chat **inattiva** dall'elenco principale e ne
-conserva cronologia, riferimento al provider e file. In **Chat archiviate** puoi
-aprirla, esportarla o ripristinarla. Una chat archiviata non può avviare
-lavoro: ripristinala prima di inviare nuovi messaggi. Le chat archiviate non
-alimentano nuovi estratti condivisi tra chat. L'archivio è di Kira: non ha
-rapporto con l'archivio del provider.
+**Archivia chat** nasconde dall'elenco principale una chat **inattiva** e senza
+richieste in coda, e ne conserva cronologia, riferimento al provider e file. In
+**Chat archiviate** puoi aprirla o ripristinarla; una chat aperta da lì si può
+esportare. Una chat archiviata non può avviare lavoro: ripristinala prima di
+inviare nuovi messaggi. Le chat archiviate non alimentano nuovi estratti
+condivisi tra chat. L'archivio è di Kira: non ha rapporto con l'archivio del
+provider.
 
 ### Continua da qui
 
@@ -296,8 +311,8 @@ file del progetto.
   del provider e la cronologia locale della nuova chat parte dalle nuove
   richieste; un banner con **Apri chat originale** riporta ai messaggi
   precedenti conservati da Kira.
-- **Ollama** e **OpenAI diretto · ChatGPT** ricevono una **copia esplicita del
-  contesto** registrato. La sorgente completa copiata è limitata a
+- **Gli altri provider** ricevono una **copia esplicita del contesto**
+  registrato. La sorgente completa copiata è limitata a
   **8.000.000 byte** (oltre, Kira rifiuta la diramazione); alle richieste
   successive il modello riceve un estratto dichiarato di al massimo **100.000
   caratteri** della sorgente. Non vengono inseriti messaggi o eventi
@@ -305,16 +320,17 @@ file del progetto.
 
 ### Esporta chat in Markdown
 
-**Esporta chat in Markdown** salva l'**intera** conversazione persistita, anche
-quando la vista ne mostra solo una parte, seguita dai record di attività
-conservati e dall'obiettivo corrente, se presente. Include le indicazioni
-accettate durante il lavoro e gli output parziali dell'assistente; i marcatori
-di troncamento già presenti negli eventi restano tali. I percorsi degli artefatti
-restano riferimenti: i file non vengono letti né incorporati. Le esportazioni
-grandi passano da un file privato del servizio e da una destinazione che scegli
-tu. L'esportazione di una diramazione nativa Codex contiene ciò che Kira ha
-registrato in quel ramo: per la cronologia ereditata esporta anche la chat di
-partenza. Controlla sempre il contenuto prima di condividerlo.
+**Esporta chat in Markdown** (anche con **Esporta** nella barra in alto) salva
+l'**intera** conversazione persistita, anche quando la vista ne mostra solo una
+parte, seguita dai record di attività conservati e dall'obiettivo corrente, se
+presente. Include le indicazioni accettate durante il lavoro e gli output
+parziali dell'assistente; i marcatori di troncamento già presenti negli eventi
+restano tali. I percorsi degli artefatti restano riferimenti: i file non vengono
+letti né incorporati. Le esportazioni grandi passano da un file privato del
+servizio e da una destinazione che scegli tu. L'esportazione di una diramazione
+nativa Codex contiene ciò che Kira ha registrato in quel ramo: per la cronologia
+ereditata esporta anche la chat di partenza. Controlla sempre il contenuto prima
+di condividerlo.
 
 **Copia ultima risposta** copia invece negli appunti il testo di una risposta
 completata presente nella chat visibile.
@@ -322,17 +338,18 @@ completata presente nella chat visibile.
 ## 8. Obiettivo della chat
 
 **Azioni → Obiettivo della chat** apre un campo in cui descrivere il risultato
-desiderato; **Salva senza avviare** lo registra senza avviare alcun lavoro. Finché è attivo, Kira lo include
-nel contesto di ogni nuovo turno della chat. **Continua con un passo** invia
-una sola nuova richiesta esplicita; salvare o riprendere un obiettivo non avvia
-alcun ciclo di lavoro.
+desiderato; **Salva senza avviare** lo registra senza far partire alcun lavoro.
+Finché è attivo, Kira lo include nel contesto di ogni nuovo turno della chat.
+**Continua con un passo** invia una sola nuova richiesta esplicita; salvare o
+riprendere un obiettivo non avvia alcun ciclo di lavoro.
 
 **Pausa obiettivo** toglie il testo dai nuovi turni (senza ritirare quanto il
 provider ha già ricevuto), **Riprendi obiettivo** lo reinserisce e **Segna
 completato** registra la tua valutazione, che non è una verifica indipendente
 del risultato. Questi comandi non sostituiscono **Ferma** per un turno già
-avviato. Un obiettivo salvato compare come riquadro compatto sopra il campo
-solo quando esiste un record esplicito; aprirlo mostra gli stessi controlli.
+avviato. Un obiettivo salvato compare come riquadro compatto sopra la
+conversazione solo quando esiste un record esplicito; **Apri** mostra gli
+stessi controlli.
 
 Per far lavorare Kira in cicli successivi senza inviare ogni passo a mano, usa
 il comando `/obiettivo` descritto in [Obiettivi autonomi](OBIETTIVI_AUTONOMI.md).
@@ -352,7 +369,7 @@ lasciano l'agente continuare il lavoro indipendente; quelle **bloccanti**
 fermano quel turno finché non rispondi.
 
 Kira distingue tre stati della risposta: **salvata** (registrata da Kira), **in
-inoltro** e **inoltrata al backend**. L'ultimo stato prova che il provider ha
+inoltro** e **inoltrata al provider**. L'ultimo stato prova che il provider ha
 ricevuto la risposta, non che il modello l'abbia usata. Se il turno termina,
 viene cancellato o l'inoltro fallisce, la richiesta viene chiusa: domanda e
 risposta restano leggibili e copiabili per un nuovo turno, senza reinvii
@@ -382,7 +399,7 @@ approvano comandi e non avviano o riprendono lavoro.
 | --- | --- |
 | **OpenAI diretto · ChatGPT** | Sì |
 | **DeepSeek Account** (sperimentale) | Sì, solo con i modelli che nel catalogo indicano il supporto alle immagini |
-| **DeepSeek Web** (sperimentale) | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) |
+| **DeepSeek Web** (sperimentale) | Sì, con DeepSeek V4 Flash (web) e DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Sì, fino a 4 PNG |
 | **Codex**, **Ollama** | No: l'allegato diventa un riferimento al percorso, come testo |
 
@@ -427,10 +444,10 @@ bozza ma l'invio è bloccato: scegli un modello compatibile o rimuovile.
 ### Percorsi come testo
 
 **Scrivere o incollare un percorso resta testo**: non allega i byte e non
-permette al modello di vedere l'immagine. Con **Codex** e **Ollama**,
-**Allega** e l'incolla inseriscono sempre il percorso locale, anche per le
-immagini; con il diretto vale lo stesso per i file che non sono immagini e per
-le risposte libere alle domande. Un'immagine incollata dagli appunti in una
+permette al modello di vedere l'immagine. Con **Codex** e **Ollama**, **Allega**
+e l'incolla inseriscono sempre il percorso locale, anche per le immagini; con
+gli altri provider vale lo stesso per i file che non sono immagini e per le
+risposte libere alle domande. Un'immagine incollata dagli appunti in una
 risposta a una domanda viene salvata come PNG privato nella cartella
 `attachments/` e inserita come percorso. La lettura di un percorso richiede gli
 strumenti e i permessi del progetto e non garantisce la comprensione visiva.
@@ -467,11 +484,12 @@ conserva anche la cartella dei dati (vedi [Installazione](INSTALLAZIONE.md)).
 
 Ogni operazione che il modello esegue (lettura di un file, comando, ricerca nel
 testo, pagina del browser…) compare nella chat come una **ricevuta**: una riga
-con un filo azzurro a sinistra, l'etichetta dell'operazione, il percorso o il
-comando letterale e l'esito. Le etichette sono le stesse per tutti i provider
-(**Lettura del file**, **Esecuzione del comando**, **Ricerca nel testo**…);
-il nome nativo dello strumento resta nei dati originali della riga. Uno
-strumento sconosciuto mantiene il suo nome letterale.
+con un filo nel colore d'accento del tema a sinistra, l'etichetta
+dell'operazione, il percorso o il comando letterale e l'esito. Le etichette sono
+le stesse per tutti i provider (**Lettura del file**, **Esecuzione del
+comando**, **Ricerca nel testo**…); il nome nativo dello strumento resta nei
+dati originali della riga. Uno strumento sconosciuto mantiene il suo nome
+letterale.
 
 ### Attività di Kira
 
@@ -494,20 +512,22 @@ grandi usa **Esporta** o gli artefatti. Ricaricando la cronologia le ricevute
 ripartono compatte.
 
 Per ogni ricevuta trovi: **Copia** (copia sempre il corpo completo,
-indipendentemente dall'anteprima), **Copia comando**, **Dati** (il JSON
-dell'evento registrato), **Artefatti** (i file registrati come risultati) e
-**Apri cartella**, perché non ogni file creato da un comando diventa
+indipendentemente dall'anteprima), **Copia comando** e **Dati** (il JSON
+dell'evento registrato). I file registrati come risultati sono in **File**
+(**Artefatti del progetto**) e **Apri cartella** nei **Dettagli** del progetto
+apre la cartella di lavoro, perché non ogni file creato da un comando diventa
 automaticamente un artefatto. Una frase del modello come «ho eseguito il
 comando» va sempre confrontata con la ricevuta reale.
 
 ### Indicatori di stato
 
 Ogni ricevuta e la riga di attività usano un colore, un simbolo e un'etichetta
-accessibile: **blu** in esecuzione, **verde** completamento confermato,
-**rosso** errore, **ambra** attesa, pausa o esito non confermato, **grigio**
-in coda, annullato o sconosciuto. Solo un'operazione effettivamente in corso
-pulsa (ciclo di 1,4 secondi, senza movimento); l'animazione si ferma con la
-finestra nascosta, con **Riduci movimento** o fuori dalla chat attiva. Una
+accessibile: il **colore d'accento** del tema (ambra nel tema Kira) in
+esecuzione, **verde** completamento confermato, **rosso** errore, **ambra**
+attesa, pausa o esito non confermato, **grigio** in coda, annullato o
+sconosciuto. Solo un'operazione effettivamente in corso pulsa (ciclo di 1,4
+secondi, senza movimento); l'animazione si ferma con la finestra nascosta, con
+le animazioni ridotte (**Riduci le animazioni**) o fuori dalla chat attiva. Una
 richiesta terminata con strumenti falliti o non confermati mantiene quegli
 esiti visibili: il completamento del turno non diventa successo di ogni
 strumento.
@@ -550,12 +570,13 @@ identici. Dettagli in [Aspetto e lingua](ASPETTO_E_LINGUA.md).
 
 Ogni esecuzione di una richiesta ha il proprio stato finale: più righe
 **Completato** in **Attività** si riferiscono a richieste diverse, non a lavoro
-ripetuto. **Completato** significa che il backend ha confermato la fine
+ripetuto. **Completato** significa che il servizio ha registrato la fine
 dell'esecuzione; non è una prova che ogni compito sia riuscito, per questo
 restano le risposte, le ricevute e gli artefatti. Le schede di **Attività**
-mostrano un estratto della richiesta (fino a 160 caratteri), l'ora di avvio e
-quella dell'esito in **UTC**; **Dettagli** mostra identificativi, richiesta
-completa, sequenza degli eventi, stato, errore ed esito registrato in JSON.
+mostrano un estratto della richiesta (fino a 160 caratteri) e l'ora di avvio
+nel fuso orario del computer; **Dettagli** mostra in JSON identificativi,
+richiesta (segnalata se troncata), orari di avvio e dell'evento in **UTC**,
+sequenza degli eventi, stato, errore ed esito registrato.
 
 Se l'ultima richiesta della chat non riesce o viene interrotta, sopra il campo
 di scrittura compare un **riquadro di errore** con il motivo disponibile e un
@@ -579,22 +600,22 @@ e non toccano permessi dei progetti, modelli o credenziali.
 
 | Preferenza | Valori | Note |
 | --- | --- | --- |
-| Dimensione del testo della chat | da 12 a 20 px (predefinito 14) | Le dimensioni di interfaccia e codice sono separate, in **Aspetto**. |
-| Densità | compatta / comoda | |
-| **Riduci movimento** | sì / no | Ferma le animazioni mantenendo i testi di stato. |
-| **Barra laterale** | **Intera / Solo icone / Nascosta** | Anche con **Ctrl+B**. |
-| **Etichette** degli strumenti | sì / no | Mostra il testo accanto alle icone del vassoio sotto il campo. |
+| Dimensione della **Conversazione** (in **Aspetto → Caratteri**) | da 12 a 20 px (predefinito 14) | Interfaccia e codice hanno dimensioni separate, nella stessa sezione. |
+| **Densità dell'interfaccia** | **Comoda** (predefinita) / **Compatta** | |
+| **Riduci le animazioni** (in **Aspetto**) | **Segui il sistema** / **Sempre** / **Mai** | Ferma le animazioni mantenendo i testi di stato. |
+| **Barra laterale** | **Intera** / **Solo icone** / **Nascosta** | Anche con **Ctrl+B**. |
+| **Etichette accanto alle icone degli strumenti** | sì / no | Mostra il testo accanto alle icone del vassoio sotto il campo. |
 | **Apri le opzioni del modello con la chat** | sì / no | Apre **Provider, modello e ragionamento** entrando in una chat. |
-| Pannello **Dettagli** | aperto / chiuso | Il pannello a destra parte chiuso; la scelta viene ricordata. |
-| Conferma alla chiusura | **durante il lavoro** / **sempre** / **mai** | Chiudere la finestra non ferma mai un turno. |
-| Apertura dei file | applicazione di sistema / **VS Code** | VS Code richiede il comando `code`; se manca, Kira lo segnala. |
-| Permesso iniziale dei **nuovi** progetti | **Sola lettura** (predefinito) e gli altri | I progetti esistenti non cambiano; i permessi più ampi vanno scelti esplicitamente. |
-| Suggerimento **Il prossimo passo** | visibile / nascosto | **Nascondi** lo chiude; qui lo riattivi. Non cancella la nota salvata. |
+| **Mostra il pannello Dettagli** | sì / no | Il pannello a destra parte chiuso; anche **Dettagli** nella barra in alto lo apre o lo chiude, e la scelta viene ricordata. |
+| **Chiedi conferma prima di chiudere la finestra** | **Quando c'è lavoro in corso** / **Sempre** / **Mai** | Chiudere la finestra non ferma mai un turno. |
+| **Apri i file con** | **Applicazione predefinita del sistema** / **Visual Studio Code** | VS Code richiede il comando `code`; se manca, Kira lo segnala. |
+| **Permessi dei nuovi progetti** | **Sola lettura** (predefinito) e gli altri | I progetti esistenti non cambiano; i permessi più ampi vanno scelti esplicitamente. |
+| **Mostra il suggerimento «Il prossimo passo»** | sì / no | **Nascondi** lo chiude; qui lo riattivi. Non cancella la nota salvata. |
 | **Mostra riepiloghi del ragionamento** | sì / no | Mostra o nasconde il pannello **Riepilogo del ragionamento** sotto la chat senza interrompere il lavoro. |
 
 Il **Riepilogo del ragionamento** è il riassunto pubblico che alcuni provider
 (Codex, OpenAI diretto) forniscono durante l'elaborazione; non certifica che
-un'operazione sia avvenuta e non è la risposta finale; con Ollama non è
-disponibile. Temi, caratteri, larghezza della colonna e lingua dell'interfaccia
-sono in [Aspetto e lingua](ASPETTO_E_LINGUA.md); la scelta del provider e del
-modello in [Provider](PROVIDER.md).
+un'operazione sia avvenuta e non è la risposta finale; con Ollama, DeepSeek e
+Claude Code non è disponibile. Temi, caratteri, larghezza della colonna e lingua
+dell'interfaccia sono in [Aspetto e lingua](ASPETTO_E_LINGUA.md); la scelta del
+provider e del modello in [Provider](PROVIDER.md).

@@ -9,14 +9,14 @@ from kira.domain.studio import MAX_SCENE_BYTES, patch_scene, poster_scene, valid
 
 
 def test_exact_editable_blue_brush_phrase_and_stable_other_layers():
-    scene = poster_scene("Ambra mi manchi")
+    scene = poster_scene("Synthetic poster caption")
     text = next(item for item in scene["objects"] if item["id"] == "message")
-    assert text["text"] == "Ambra mi manchi" and text["color"] == "#2467c9"
+    assert text["text"] == "Synthetic poster caption" and text["color"] == "#2467c9"
     before = deepcopy(scene)
     changed = patch_scene(scene, "message", {"color": "#182b68", "x": 140})
     assert scene == before  # immutable source, no flattening
     assert changed["objects"][:-1] == scene["objects"][:-1]
-    assert changed["objects"][-1]["text"] == "Ambra mi manchi"
+    assert changed["objects"][-1]["text"] == "Synthetic poster caption"
     assert changed["objects"][-1]["x"] == 140
     assert changed["objects"][-1]["color"] == "#182b68"
     assert validate_scene(changed) == changed
@@ -37,11 +37,11 @@ def test_invalid_poster_text_rejected(value):
 ])
 def test_bad_patches_rejected(key, value):
     with pytest.raises(KiraError):
-        patch_scene(poster_scene("Ambra mi manchi"), "message", {key: value})
+        patch_scene(poster_scene("Synthetic poster caption"), "message", {key: value})
 
 
 def test_untrusted_programs_and_resource_bombs_never_parse_as_scenes():
-    scene = poster_scene("Ambra mi manchi")
+    scene = poster_scene("Synthetic poster caption")
     tests = []
     for key in ("script", "qml", "javascript", "file", "url"):
         invalid = deepcopy(scene)
@@ -65,7 +65,7 @@ def test_untrusted_programs_and_resource_bombs_never_parse_as_scenes():
 
 
 def test_star_paths_are_data_and_unicode_text_is_preserved():
-    scene = poster_scene("Àmbra mi manchi ♡")
-    assert scene["objects"][-1]["text"] == "Àmbra mi manchi ♡"
+    scene = poster_scene("Città già più ♡")
+    assert scene["objects"][-1]["text"] == "Città già più ♡"
     with pytest.raises(KiraError):
         patch_scene(scene, "star1", {"text": "injected"})

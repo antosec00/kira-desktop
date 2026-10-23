@@ -2,7 +2,6 @@ name: CI
 on:
   push:
     branches: [main, 'dev/**', 'release/**']
-    paths-ignore: ['docs/images/**']
   pull_request:
 permissions:
   contents: read
@@ -15,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - name: Prepare isolated build tools
@@ -25,6 +24,12 @@ jobs:
           echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
       - name: Install locked dependencies
         run: uv sync --frozen --extra claude-code
+      - name: Lock files are current
+        run: |
+          uv lock --check
+          # The packaging lock is the exported runtime lock (header comments aside).
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt --quiet \
+            | grep -v '^#' | diff -u <(grep -v '^#' packaging/requirements.lock.txt) -
       - name: Lint
         run: uv run ruff check src tests scripts packaging
       - name: Type check
@@ -42,7 +47,7 @@ jobs:
       QT_QUICK_BACKEND: software
       KIRA_HOME: ${{ github.workspace }}/build/ci-profile
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - name: Prepare isolated build tools

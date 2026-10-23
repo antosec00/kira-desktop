@@ -15,6 +15,7 @@ KiraPanel {
     property string sourceReturn: "editor"
     property string pendingAction: ""
     onPageChanged: pendingAction = ""
+    KFormat { id: kformat }
     function indexFor(rows, value) {
         for (let i = 0; i < rows.length; ++i) if (rows[i].value === value) return i
         return 0
@@ -120,7 +121,7 @@ KiraPanel {
                         columns: dialog.compactPanel ? 2 : 3
                         TextField { id: searchInput; objectName: "researchSearch"; Layout.fillWidth: true; placeholderText: qsTr("Cerca nel registro"); font: appearance.uiFont; onAccepted: projectResearch.search(text) }
                         KButton { text: qsTr("Cerca"); enabled: !projectResearch.busy; onClicked: projectResearch.search(searchInput.text) }
-                        KButton { objectName: "researchNew"; text: qsTr("Nuova scheda"); primary: true; Layout.columnSpan: dialog.compactPanel ? 2 : 1; enabled: projectResearch.canEdit; onClicked: { projectResearch.newRecord(); dialog.page = "editor"; dialog.syncEditor() } }
+                        KButton { objectName: "researchNew"; text: qsTr("Nuova scheda di ricerca"); primary: true; Layout.columnSpan: dialog.compactPanel ? 2 : 1; enabled: projectResearch.canEdit; onClicked: { projectResearch.newRecord(); dialog.page = "editor"; dialog.syncEditor() } }
                     }
                     KButton { text: qsTr("Riprendi la bozza"); visible: projectResearch.editor.title.length > 0; enabled: !projectResearch.busy; onClicked: { dialog.page = "editor"; dialog.syncEditor() } }
                     ReadText { objectName: "researchEmpty"; visible: projectResearch.report.records.length === 0; text: qsTr("Nessuna scheda in questa vista. Inizia da un obiettivo o da una domanda, poi collega le prove disponibili."); color: appearance.colors.muted; Layout.fillWidth: true }
@@ -276,7 +277,7 @@ KiraPanel {
                         delegate: RowLayout {
                             required property var modelData
                             Layout.fillWidth: true
-                            ReadText { text: qsTr("Revisione %1").arg(modelData.revision) + " · " + (modelData.reason || modelData.created_at || ""); Layout.fillWidth: true }
+                            ReadText { text: qsTr("Revisione %1").arg(modelData.revision) + " · " + (modelData.reason || kformat.timestamp(modelData.created_at)); Layout.fillWidth: true }
                             KButton { text: qsTr("Leggi"); enabled: !projectResearch.busy; onClicked: projectResearch.readRevision(modelData.revision) }
                         }
                     }

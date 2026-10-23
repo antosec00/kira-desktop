@@ -22,6 +22,10 @@ MAX_PROMPT = 8000
 MAX_GUIDANCE_REQUESTS = 128
 MAX_GUIDANCE_BATCH = 32
 MAX_GUIDANCE_BATCH_BYTES = 256 * 1024
+# Refusals that depend only on the current state (active work, an archived chat,
+# a Team handoff, browser settings changing, a draining service): the request
+# itself stays valid, so it waits in the paused queue for an explicit resume.
+TRANSIENT_REFUSALS = frozenset({"BUSY", "ARCHIVED", "SHUTTING_DOWN"})
 
 
 def text(params: Json, key: str, maximum: int = 128, *, empty: bool = False) -> str:
@@ -234,14 +238,17 @@ class PromptQueue:
             if not rows:
                 return
             item = rows[0]
-            self.store.db.execute("UPDATE prompt_queue SET status='starting',updated_at=? WHERE id=?", (now(), item["id"]))
+            self.store.db.execute("UPDATE prompt_queue SET status='starting',error=NULL,updated_at=? WHERE id=?",
+                                  (now(), item["id"]))
             try:
                 result = await self.service.dispatch("run.start", {"session_id": item["session_id"],
                     "prompt": item["prompt"], "request_id": item["request_id"], "mode": item["mode"],
                     "attachments": self.service.image_inputs.linked("queue", item["id"])})
             except Exception as exc:
-                self.store.db.execute("UPDATE prompt_queue SET status='failed',error=?,updated_at=? WHERE id=?",
-                                      (self.service.redactor.text(str(exc))[:2000], now(), item["id"]))
+                status = ("pending" if isinstance(exc, KiraError) and exc.code in TRANSIENT_REFUSALS
+                          else "failed")
+                self.store.db.execute("UPDATE prompt_queue SET status=?,error=?,updated_at=? WHERE id=?",
+                                      (status, self.service.redactor.text(str(exc))[:2000], now(), item["id"]))
                 self.set_paused(project_id, True)
                 return
             self.store.db.execute("UPDATE prompt_queue SET status='running',run_id=?,updated_at=? WHERE id=?",
@@ -502,7 +509,6 @@ class TurnControls:
             row = previous[0]
             if row["fingerprint"] != fingerprint or row["method"] != "session.compact":
                 raise KiraError("CONFLICT", "request_id belongs to different input")
-            import json
             return {"status": row["status"], "request_id": request_id, **json.loads(row["result"]), "automatic_replay": False}
         if session["backend"] != "codex" or not session.get("backend_ref"):
             raise KiraError("UNSUPPORTED", "Native compaction requires an existing supported provider thread")

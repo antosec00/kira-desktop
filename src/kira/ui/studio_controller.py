@@ -1,4 +1,4 @@
-"""Read-only GUI state and human-triggered IPC for opt-in Kira Studio M1."""
+"""Read-only GUI state and human-triggered IPC for the opt-in Kira Studio."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import uuid
 
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 
+from kira.domain import studio as studio_domain
+from kira.ui.presentation import refresh_ui, tr
 from kira.ui.qt_properties import qt_property
 
 if TYPE_CHECKING:
@@ -44,6 +46,10 @@ class StudioController(QObject):
         workspace.eventApplied.connect(self._onRunEvent)
         workspace.client.disconnected.connect(self._disconnected)
 
+    @qt_property(bool, constant=True)
+    def available(self) -> bool:
+        return studio_domain.STUDIO_AVAILABLE
+
     @qt_property(bool, notify=changed)
     def paneVisible(self) -> bool:
         return self._pane_visible
@@ -75,7 +81,7 @@ class StudioController(QObject):
 
     @qt_property(str, notify=changed)
     def error(self) -> str:
-        return self._error
+        return str(refresh_ui(self._error))
 
     @qt_property(int, notify=changed)
     def revision(self) -> int:
@@ -103,13 +109,6 @@ class StudioController(QObject):
             if item.get("id") == "message":
                 return str(item.get("text", ""))
         return ""
-
-    @qt_property(str, notify=changed)
-    def textColor(self) -> str:
-        for item in self._scene.get("objects", []):
-            if item.get("id") == "message":
-                return str(item.get("color", "#2467c9"))
-        return "#2467c9"
 
     def _selected(self) -> str:
         return str(self.workspace.project.get("id", ""))
@@ -174,7 +173,7 @@ class StudioController(QObject):
 
     @Slot()
     def showStudio(self) -> None:
-        if not self.workspace.connected or not self._selected():
+        if not studio_domain.STUDIO_AVAILABLE or not self.workspace.connected or not self._selected():
             return
         self.workspace.web.hideBrowser()  # visual handoff; does not close its actor
         self._pane_visible = True
@@ -215,7 +214,7 @@ class StudioController(QObject):
             if not valid():
                 return
             self._busy = False
-            self._error = str(error.get("message", "Operazione Studio non riuscita"))
+            self._error = str(error.get("message") or tr("Operazione Studio non riuscita."))
             self.changed.emit()
 
         self.workspace.client.request(method, {"project_id": project_id, **params},
@@ -345,7 +344,7 @@ class StudioController(QObject):
             if int(result.get("revision", -1)) == self._revision:
                 self._preview_url = self._verified_url(result, part="previews")
                 if not self._preview_url:
-                    self._error = "Anteprima Studio non disponibile"
+                    self._error = tr("Anteprima Studio non disponibile.")
 
         self._request("studio.render", {}, preview)
 
@@ -357,6 +356,6 @@ class StudioController(QObject):
         def exported(result: Json) -> None:
             self._export_path = QUrl(self._verified_url(result, part="exports")).toLocalFile()
             if not self._export_path:
-                self._error = "Esportazione Studio non verificata"
+                self._error = tr("Esportazione Studio non verificata.")
 
         self._request("studio.export", {}, exported)

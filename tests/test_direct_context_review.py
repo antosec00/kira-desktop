@@ -88,6 +88,11 @@ def test_returning_to_prior_model_imports_only_new_portable_sources(archive):
     assert restored["items"][0]["encrypted_content"] == "private-A-state"
 
 
+def no_provider(*_args):
+    # Never fall back to a real provider (local HTTP or a subprocess).
+    raise AssertionError("this test must not instantiate a provider")
+
+
 async def test_owned_large_event_artifact_is_available_in_original_history(tmp_path):
     import tempfile
     from pathlib import Path
@@ -97,7 +102,8 @@ async def test_owned_large_event_artifact_is_available_in_original_history(tmp_p
 
     with tempfile.TemporaryDirectory(prefix="kira-context-artifact-review-") as directory:
         root = Path(directory)
-        service = Service(Paths(*(root / name for name in ("config", "data", "state", "runtime"))))
+        service = Service(Paths(*(root / name for name in ("config", "data", "state", "runtime"))),
+                          backend_factory=no_provider)
         await service.start()
         try:
             project = (await service.dispatch("project.create", {"name": "Synthetic artifact review",
@@ -163,7 +169,7 @@ async def test_smaller_window_service_rebuild_preserves_old_checkpoint_and_resto
             assert completed_requests and "old-window-" not in encode(completed_requests)
             assert "data:image/png;base64," in encode(completed_requests)
             checkpoint = service.store.db.execute("SELECT revision,reason,state FROM direct_context_checkpoints "
-                                                  "WHERE session_id=? ORDER BY created_at LIMIT 1", (session["id"],)).fetchone()
+                                                  "WHERE session_id=? ORDER BY rowid LIMIT 1", (session["id"],)).fetchone()
             assert checkpoint and checkpoint["revision"] == saved["revision"]
             assert checkpoint["reason"] == "context_window_reduced"
             assert "old-window-" in checkpoint["state"] and attachment["id"] in checkpoint["state"]

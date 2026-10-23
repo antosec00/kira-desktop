@@ -34,6 +34,11 @@ PHYSICAL_KEY_CODES = {
     "NumpadMultiply": 106, "NumpadAdd": 107, "NumpadSubtract": 109,
     "NumpadDecimal": 110, "NumpadDivide": 111, "NumpadEnter": 13,
 }
+# Manual controls that leave or replace the visible page.
+LEAVING_ACTIONS = frozenset({"ui_navigate", "ui_back", "ui_forward", "ui_reload", "ui_new_tab",
+                             "ui_select_tab", "ui_close_tab"})
+# Stable identifier of the rendering failure, for translation by the interface.
+VIEW_UNAVAILABLE = "view_unavailable"
 
 
 class BrowserView:
@@ -51,6 +56,7 @@ class BrowserView:
         self.surface_mode = "page"
         self._surface_scope: tuple[str, int, int, str] | None = None
         self._surface_error = ""
+        self._surface_error_code = ""
         self.seq = 0
         self._latest: Json | None = None
         self._ready = asyncio.Event()
@@ -213,16 +219,19 @@ class BrowserView:
         """Keep rendering failure visible without replacing a tool's outcome."""
         self._surface_error = (
             "The complete browser view is unavailable. Close and reopen the browser after preserving your work.")
+        self._surface_error_code = VIEW_UNAVAILABLE
         if not self._closed:
             await self.emit({"event": "state", "data": {
-                "surface_error": self._surface_error, "manual": self.engine.paused,
+                "surface_error": self._surface_error, "surface_error_code": self._surface_error_code,
+                "manual": self.engine.paused,
             }})
 
     async def _frame_ready(self, surface_id: str) -> None:
         if self._surface_error and self._current_surface(surface_id):
             self._surface_error = ""
+            self._surface_error_code = ""
             await self.emit({"event": "state", "data": {
-                "surface_error": "", "manual": self.engine.paused,
+                "surface_error": "", "surface_error_code": "", "manual": self.engine.paused,
             }})
 
     def _received(self, frame: Json, cdp: Any, surface_id: str) -> None:
@@ -354,7 +363,8 @@ class BrowserView:
                  "loading": self._loading.get(self.engine.current_tab, False),
                  "can_back": back, "can_forward": forward, "manual": self.engine.paused,
                  "surface_mode": self.surface_mode, "surface_id": self.surface_id,
-                 "surface_error": self._surface_error, **getattr(self.engine, "auth_state", {})}
+                 "surface_error": self._surface_error, "surface_error_code": self._surface_error_code,
+                 **getattr(self.engine, "auth_state", {})}
         if state != self._last_state:
             self._last_state = state
             await self.emit({"event": "state", "data": state})
@@ -428,7 +438,11 @@ class BrowserView:
     async def _input(self, action: str, args: Json) -> None:
         await self.sync()
         page = self.engine.page()
-        self.engine._check_page(page)
+        if action not in LEAVING_ACTIONS:
+            # Leaving or replacing the page reads nothing from it; destinations
+            # pass validate_url, the request route and the proxy. Input may use
+            # the controls of Chromium's error page, which holds no site content.
+            self.engine._check_page(page, error_page_allowed=True)
         desktop = getattr(self.engine, "desktop", None)
         if desktop is not None and action in {"ui_mouse", "ui_key", "ui_text"}:
             # Recheck after sync, which may switch tabs or resize the surface.
@@ -468,12 +482,16 @@ class BrowserView:
             await self.cdp.send("Input.insertText", {"text": args["text"]})
         elif action == "ui_navigate":
             validate_url(args["url"])
+            self.engine.proxy.budget.reset()
             await page.goto(args["url"], wait_until="domcontentloaded")
         elif action == "ui_back":
+            self.engine.proxy.budget.reset()
             await page.go_back(wait_until="domcontentloaded")
         elif action == "ui_forward":
+            self.engine.proxy.budget.reset()
             await page.go_forward(wait_until="domcontentloaded")
         elif action == "ui_reload":
+            self.engine.proxy.budget.reset()
             await page.reload(wait_until="domcontentloaded")
         elif action == "ui_new_tab":
             from kira.tools.browser_worker import MAX_TABS
@@ -487,6 +505,7 @@ class BrowserView:
             self.engine.current_tab = next(tab for tab, candidate in self.engine.pages.items()
                                            if candidate is new_page)
             if url:
+                self.engine.proxy.budget.reset()
                 await new_page.goto(url, wait_until="domcontentloaded")
         elif action in {"ui_select_tab", "ui_close_tab"}:
             tab_id = args["tab_id"]

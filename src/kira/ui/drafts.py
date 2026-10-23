@@ -13,6 +13,12 @@ MAX_HISTORY = 200
 MAX_PENDING = 128
 MAX_TEXT_BYTES = 262_144
 MAX_STORE_BYTES = 2_097_152
+# Durable request identities the composer saves before sending.
+PENDING_METHODS = frozenset({
+    "run.start", "queue.add", "run.steer", "goal.start", "goal.pause", "goal.resume", "session.fork",
+    "session.compact", "assistant.message", "assistant.resume", "session.switch",
+    "session.context.compact", "session.context.pin", "session.context.unpin",
+})
 
 
 class DraftStore:
@@ -100,8 +106,7 @@ class DraftStore:
     def _pending_valid(rows: Any) -> bool:
         return (isinstance(rows, list) and len(rows) <= MAX_PENDING
                 and all(isinstance(row, dict)
-                        and row.get("method") in {"goal.start", "goal.pause", "goal.resume", "queue.add", "run.steer", "session.fork", "session.compact",
-                                                  "assistant.message", "assistant.resume", "session.switch", "session.context.compact", "session.context.pin", "session.context.unpin"}
+                        and row.get("method") in PENDING_METHODS
                         and row.get("state") in {"pending", "unknown"}
                         and isinstance(row.get("fingerprint"), str) and len(row["fingerprint"]) == 64
                         and all(c in "0123456789abcdef" for c in row["fingerprint"])

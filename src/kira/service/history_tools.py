@@ -12,6 +12,8 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from kira.backends.client_tools import CLIENT_NAMESPACES
+from kira.backends.kira_mcp import MCP_SERVER_NAME
 from kira.domain.contracts import TERMINAL_STATES, Json, KiraError
 from kira.service.storage import Store, encode
 
@@ -29,6 +31,28 @@ EVIDENCE = {
     "answer_delivery": "Provider transport delivery was observed; this does not establish understanding or grant execution permission",
     "answer_delivery_failed": "Answer delivery failure was reported; do not assume successful provider delivery",
 }
+# Kira tool namespaces as Claude Code names them in its receipts, questions included.
+_KIRA_TOOL_NAMESPACES = CLIENT_NAMESPACES | {"questions"}
+
+
+def mirrors_kira_tool(name: Any, result: Any) -> bool:
+    """Whether a tool receipt is a provider's own record of a call to a Kira tool.
+
+    Codex and Claude Code also report the Kira tools they call, as observed-only
+    items with per-call identities and timings. The service records every Kira
+    tool call itself, so the provider copy is neither a separate execution nor
+    new evidence. Their native tools (commands, file edits, other MCP servers)
+    remain observed execution.
+    """
+    if not isinstance(name, str) or not isinstance(result, dict) or result.get("observed_only") is not True:
+        return False
+    if name == "codex.dynamicToolCall":
+        return True  # Codex dynamic tools are only ever Kira's.
+    if name == "codex.mcpToolCall":
+        return result.get("server") == MCP_SERVER_NAME
+    provider, _, tool = name.partition(".")
+    namespace, separator, _ = tool.partition(".")
+    return provider == "claude_code" and bool(separator) and namespace in _KIRA_TOOL_NAMESPACES
 
 
 def history_tool_specs() -> list[Json]:

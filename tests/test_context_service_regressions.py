@@ -19,6 +19,7 @@ class MaintenanceProvider:
         self.release, self.started = release, started
         self.close_error = False
         self.calls = 0
+        self.turns = 0
 
     async def discover(self, **_kwargs):
         return {"available": True, "models": [{"id": "fixture-model", "context_window": 8192}]}
@@ -30,6 +31,9 @@ class MaintenanceProvider:
         return {"method": "fixture"}
 
     async def run(self, _context):
+        # Service._run records this exception as a failed run, so it cannot fail
+        # a test by itself; the fixture teardown checks the recorded counters.
+        self.turns += 1
         raise AssertionError("A maintenance operation must not start an ordinary model turn")
 
     async def close(self):
@@ -57,6 +61,13 @@ async def context_service(tmp_path):
             "model": "fixture-model", "settings": {"openai_account_id": "fixture-account"}}))["session"]
         try:
             yield service, project, session, release, started, providers
+            # Settle maintenance (and anything it admits afterwards) before
+            # checking that no ordinary model turn was started or recorded.
+            release.set()
+            await asyncio.wait_for(asyncio.gather(*service.contexts.tasks.values(),
+                                                  return_exceptions=True), 30)
+            assert not any(provider.turns for provider in providers)
+            assert not service.store.all("SELECT * FROM runs")
         finally:
             release.set()
             for provider in providers:
@@ -86,7 +97,7 @@ async def test_concurrent_retry_replays_one_maintenance_receipt_after_auth_wait(
     two = asyncio.create_task(service.dispatch("session.context.compact", params(project, session)))
     await asyncio.wait_for(auth_entered.wait(), 3)
     auth_release.set()
-    results = await asyncio.gather(one, two, return_exceptions=True)
+    results = await asyncio.wait_for(asyncio.gather(one, two, return_exceptions=True), 30)
     await asyncio.wait_for(started.wait(), 3)
     assert all(isinstance(result, dict) for result in results), results
     assert [result["operation"]["request_id"] for result in results] == ["fixture-maintenance"] * 2
@@ -103,7 +114,7 @@ async def test_client_close_failure_never_strands_project_reservation(context_se
     active.close_error = True
     task = service.contexts.tasks["fixture-maintenance"]
     release.set()
-    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 30)
     assert service.store.all("SELECT * FROM direct_context_reservations") == []
     assert not service.contexts.tasks and not service.contexts.cancellations
     assert not service.store.reserved(project["root"])
@@ -118,10 +129,12 @@ async def test_manual_operation_reserves_overlap_and_blocks_account_mutation(con
         await service.dispatch("session.configure", {"project_id": project["id"], "session_id": session["id"], "model": "other-model"})
     with pytest.raises(KiraError, match="Active"):
         await service.dispatch("service.shutdown", {})
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as settings_error:
         await service.dispatch("settings.update", {"tool_timeout": 30})
-    with pytest.raises(KiraError):
+    assert settings_error.value.code == "BUSY"
+    with pytest.raises(KiraError) as pin_error:
         await service.dispatch("session.context.pin", {**params(project, session, "different-intent"), "content": "New fixture note"})
+    assert pin_error.value.code == "BUSY"
     assert not service.contexts.data.pins(session["id"])
     release.set()
 
@@ -142,6 +155,6 @@ async def test_shutdown_cancellation_during_client_close_cleans_reservation(cont
     release.set()
     await asyncio.wait_for(cleanup_entered.wait(), 3)
     task.cancel()
-    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 30)
     assert service.store.all("SELECT * FROM direct_context_reservations") == []
     assert not service.contexts.tasks and not service.store.reserved(project["root"])

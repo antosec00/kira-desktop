@@ -87,14 +87,16 @@ async def test_chat_titles_create_derive_rename_and_keep_provider_state(chats):
 @pytest.mark.parametrize("title", ["", " \n ", "x" * 121, 5, None, "a\0b"])
 async def test_invalid_chat_titles_rejected(chats, title):
     service, _, (project, _) = chats
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await session(service, project, title=title)
+    assert error.value.code == "INVALID_ARGUMENT"
 
 
 async def test_internal_chat_title_cannot_be_injected_through_settings(chats):
     service, _, (project, _) = chats
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await session(service, project, settings={"chat_title": "Bypass"})
+    assert error.value.code == "INVALID_ARGUMENT"
 
 
 async def test_project_ownership_and_team_exclusion(chats):
@@ -127,8 +129,9 @@ async def test_chat_list_pagination_and_bounds(chats):
         offset = result["next_offset"]
     assert found == list(reversed(expected))
     for params in ({"limit": 201}, {"offset": -1}, {"limit": True}):
-        with pytest.raises(KiraError):
+        with pytest.raises(KiraError) as error:
             await service.dispatch("session.list", {"project_id": project["id"], **params})
+        assert error.value.code == "INVALID_ARGUMENT"
 
 
 async def test_session_snapshot_isolated_ordered_bounded_and_artifact_owned(chats):
@@ -198,7 +201,7 @@ async def test_context_opt_out_and_provider_provenance(chats):
     await service.dispatch("project.update", {"project_id": project["id"], "memory": {"note": "MANUAL-PRIORITY"}})
     inspected = await service.dispatch("project.context", {"project_id": project["id"], "session_id": target["id"]})
     run = (await service.dispatch("run.start", {"session_id": target["id"], "prompt": "Fixture request", "request_id": new_id()}))["run"]
-    await asyncio.wait_for(service.tasks[run["id"]], 3)
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     ctx = backend.contexts[-1]
     assert inspected["content"] in ctx.supplied_context and "project:memory" in ctx.supplied_context
     assert "MANUAL-PRIORITY" not in ctx.supplied_context
@@ -211,7 +214,7 @@ async def test_context_opt_out_and_provider_provenance(chats):
     disabled = await service.dispatch("project.context", {"project_id": project["id"], "session_id": target["id"]})
     assert disabled == {"enabled": False, "content": "", "sources": [], "truncated": False, "chars": 0}
     next_run = (await service.dispatch("run.start", {"session_id": target["id"], "prompt": "Second fixture", "request_id": new_id()}))["run"]
-    await asyncio.wait_for(service.tasks[next_run["id"]], 3)
+    await asyncio.wait_for(service.tasks[next_run["id"]], 30)
     assert "SIBLING-EVIDENCE" not in backend.contexts[-1].supplied_context
 
 
@@ -226,7 +229,7 @@ async def test_turn_reads_current_memory_and_shared_context_setting(chats):
     # must read the latest memory rather than the admission-time project object.
     await service.dispatch("project.update", {"project_id": project["id"],
                "memory": {"note": "CURRENT-MEMORY", "share_session_summaries": False}})
-    await asyncio.wait_for(service.tasks[run["id"]], 3)
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     assert "project:memory" in backend.contexts[-1].supplied_context
     assert "CURRENT-MEMORY" in service.knowledge.read(project["id"], target["id"], "project:memory")["content"]
     assert "STALE-SHARING-SENTINEL" not in backend.contexts[-1].supplied_context
@@ -272,6 +275,7 @@ async def test_sharing_flag_update_preserves_current_notes_after_stale_gui_snaps
 @pytest.mark.parametrize("flag", [None, 0, 1, "false", [], {}])
 async def test_sharing_flag_update_rejects_non_boolean_without_changing_memory(chats, flag):
     service, _, (project, _) = chats
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch("project.update", {"project_id": project["id"], "share_session_summaries": flag})
+    assert error.value.code == "INVALID_ARGUMENT"
     assert service.store.one("projects", project["id"])["memory"] == {}

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+import kira.service.server as server_module
 from kira.domain.contracts import KiraError
 from kira.domain.paths import Paths
 from kira.service import account_usage
@@ -146,15 +147,17 @@ async def test_codex_failure_never_returns_previous_account_snapshot(usage_servi
 @pytest.mark.parametrize("params", [{"backend": "unknown"}, {"backend": "codex", "account_id": "direct-id"},
                                     {"backend": "codex", "purchase": True}])
 async def test_usage_is_a_validated_read_only_contract(usage_service, params):
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await usage_service[0].dispatch("backend.usage", params)
+    assert error.value.code == "INVALID_ARGUMENT"
 
 
 async def test_provider_usage_during_settings_transition_rejected(usage_service):
     service = usage_service[0]
     service._settings_changing = True
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch("backend.usage", {"backend": "codex"})
+    assert error.value.code == "BUSY"
 
 
 async def test_codex_reads_are_serialized(usage_service, monkeypatch):
@@ -203,7 +206,9 @@ async def test_context_maintenance_usage_is_counted_without_double_count_or_fake
     assert local["coverage"] == "complete" and local["field_coverage"]["total_tokens"] == 4
 
 
-async def test_claude_code_usage_reads_the_latest_recorded_plan_notice_without_provider_calls(usage_service):
+async def test_claude_code_usage_reads_the_latest_recorded_plan_notice_without_provider_calls(usage_service, monkeypatch):
+    # Reading recorded notices never loads the optional Claude Code SDK; only chat creation checks it.
+    monkeypatch.setattr(server_module, "require_claude_code", lambda: None)
     service, project, backend = usage_service
     session = await create(service, project, backend="claude_code")
     empty = await service.dispatch("backend.usage", {"backend": "claude_code"})
@@ -231,5 +236,6 @@ async def test_claude_code_usage_reads_the_latest_recorded_plan_notice_without_p
     assert (local["runs"], local["requests"], local["input_tokens"], local["total_tokens"]) == (1, 1, 100, 120)
     assert local["coverage"] == "complete" and not local["is_plan_allowance"]
     assert not service.store.all("SELECT * FROM runs WHERE id NOT IN (?)", (run["id"],))
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as error:
         await service.dispatch("backend.usage", {"backend": "claude_code", "account_id": "direct-id"})
+    assert error.value.code == "INVALID_ARGUMENT"

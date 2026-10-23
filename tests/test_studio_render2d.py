@@ -15,7 +15,7 @@ from kira.studio.paint2d import render_png, star_path
 
 
 def test_offscreen_poster_png_and_replay_are_deterministic(qapp):
-    scene = poster_scene("Ambra mi manchi")
+    scene = poster_scene("Synthetic poster caption")
     png = render_png(scene)
     assert png.startswith(b"\x89PNG\r\n\x1a\n")
     assert png == render_png(scene)
@@ -43,7 +43,7 @@ async def test_short_lived_packaged_worker_generates_private_preview_and_export(
         await studio.dispatch("studio.enable", {"project_id": pid,
             "enabled": True, "expected_enabled": False, "request_id": str(uuid4())})
         await studio.dispatch("studio.poster", {"project_id": pid,
-            "text": "Ambra mi manchi", "expected_revision": 0, "request_id": str(uuid4())})
+            "text": "Synthetic poster caption", "expected_revision": 0, "request_id": str(uuid4())})
         preview = await studio.dispatch("studio.render", {"project_id": pid})
         assert preview["revision"] == 1
         with open(preview["path"], "rb") as image:

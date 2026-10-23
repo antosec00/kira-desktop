@@ -69,6 +69,8 @@ async def spin(app, condition, timeout=50):
     app.processEvents()
 
 
+@pytest.mark.skipif(not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
+                    reason="PLAYWRIGHT_BROWSERS_PATH must name the installed browser engine")
 @pytest.mark.skipif(os.environ.get("KIRA_TEST_BROWSER") != "1", reason="Explicit real-browser integration opt-in")
 @pytest.mark.parametrize("decision", ["accept", "accept_always"])
 async def test_computer_observation_approval_action_and_live_view(qapp, tmp_path, decision):
@@ -177,8 +179,7 @@ async def test_computer_observation_approval_action_and_live_view(qapp, tmp_path
                 assert service.store.one("runs", third["id"])["state"] == "completed"
                 assert len(provider.results) == 6
                 assert service.store.one("sessions", session["id"])["settings"]["browser_action_approval"] == "ask"
-            screenshot = Path("build/computer-integration.png").absolute()
-            screenshot.parent.mkdir(exist_ok=True)
+            screenshot = tmp_path / "computer-integration.png"
             assert window.grabWindow().save(str(screenshot))
             workspace.web.closeBrowser()
             await spin(qapp, lambda: session["id"] not in service.web.actors and not workspace.web.browser["active"])

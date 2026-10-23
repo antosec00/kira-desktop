@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -11,9 +12,11 @@ from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
 from kira.domain.contracts import TERMINAL_STATES
+from kira.domain.providers import WEB_BACKENDS
 from kira.ui.browser_frames import BrowserFrameStore, decode_frame
 from kira.ui.presentation import join_ui, refresh_ui, tr
 from kira.ui.qt_properties import qt_property
+from kira.ui.service_errors import browser_error_text
 
 if TYPE_CHECKING:
     from kira.ui.controller import Workspace
@@ -22,6 +25,8 @@ Json = dict[str, Any]
 DEFAULTS: Json = {"web_search": "live", "browser_enabled": True, "browser_persistent": False,
                   "browser_action_approval": "ask"}
 LIFECYCLE_ACTIONS = {"open", "close", "ui_takeover", "ui_resume"}
+# Stable worker codes such as "view_unavailable"; the literal surface error stays beside them.
+SURFACE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 SURFACE_INPUT_ACTIONS = {"ui_mouse", "ui_key", "ui_text", "ui_copy"}
 
 
@@ -160,7 +165,7 @@ class WebController(QObject):
     def available(self) -> bool:
         return bool(self.workspace.connected and self.workspace.project.get("id")
                     and self.workspace.sessionId
-                    and self.workspace.backend in {"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web"}
+                    and self.workspace.backend in WEB_BACKENDS
                     and not self.workspace._session.get("team_id")
                     and not self.workspace.workbench.sessionArchived)
 
@@ -203,7 +208,8 @@ class WebController(QObject):
     def browser(self) -> Json:
         return {"browser_id": "", "tabs": [], "tab_id": "", "can_back": False, "can_forward": False,
                 "loading": False, "mode": "embedded", "available": False, "active": False, "headed": False, "manual": False,
-                "preview_url": "", "title": "", "url": "", "error": "", **self._data.get("browser", {})}
+                "preview_url": "", "title": "", "url": "", "error": "", "surface_error": "",
+                "surface_error_code": "", **self._data.get("browser", {})}
 
     @qt_property(str, notify=changed)
     def status(self) -> str:
@@ -303,7 +309,7 @@ class WebController(QObject):
         def failed(error: Json) -> None:
             if current():
                 self._busy = False
-                self._error = error.get("message") or tr("Impossibile aggiornare le impostazioni web. Riprova.")
+                self._error = browser_error_text(error, tr("Impossibile aggiornare le impostazioni web. Riprova."))
                 self._schedule_refresh()
                 self.changed.emit()
 
@@ -355,7 +361,7 @@ class WebController(QObject):
         run_id = str(event.get("run_id", ""))
         run = self.workspace._runs.get(run_id, {})
         if (run.get("session_id") != self.workspace.sessionId or run.get("team_id")
-                or run.get("backend", self.workspace.backend) not in {"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web"}
+                or run.get("backend", self.workspace.backend) not in WEB_BACKENDS
                 or run.get("model", self.workspace.selectedModel) != self.workspace.selectedModel
                 or run.get("provider_generation", self.workspace._session.get("provider_generation", 0))
                    != self.workspace._session.get("provider_generation", 0)):
@@ -414,6 +420,11 @@ class WebController(QObject):
     def surfaceId(self) -> str:
         return self._surface_id
 
+    @qt_property(str, notify=changed)
+    def surfaceErrorCode(self) -> str:
+        """Stable code of the browser view's failure, for the interface to explain."""
+        return str(self.browser.get("surface_error_code") or "")
+
     @qt_property(bool, notify=changed)
     def nativeSurface(self) -> bool:
         return bool(self._frame_url and self._surface_mode == "native")
@@ -465,6 +476,8 @@ class WebController(QObject):
         for key, bound in (("auth_origin", 512), ("auth_provider", 32), ("auth_operation", 16), ("auth_result", 64)):
             value = browser.get(key)
             result[key] = value[:bound] if isinstance(value, str) else ""
+        code = browser.get("surface_error_code")
+        result["surface_error_code"] = code if isinstance(code, str) and SURFACE_ERROR_CODE.fullmatch(code) else ""
         result["preview_url"] = self._preview_url(browser.get("preview_url"))
         result["tabs"] = [{key: str(tab.get(key, ""))[:8192] for key in ("tab_id", "title", "url")}
                           for tab in browser.get("tabs", [])[:24] if isinstance(tab, dict)] \
@@ -575,7 +588,7 @@ class WebController(QObject):
         def failed(error: Json) -> None:
             if self._watched == key and generation == self._generation:
                 self._watched = None
-                self._error = error.get("message") or tr("Il browser integrato non è disponibile.")
+                self._error = browser_error_text(error, tr("Il browser integrato non è disponibile."))
                 self.changed.emit()
 
         self.workspace.client.request("session.browser.watch", {
@@ -853,7 +866,7 @@ class WebController(QObject):
             self._pending_action = ""
             self._command_queue.clear()
             self._drop_surface_input()
-            self._error = error.get("message") or tr("Comando del browser non confermato. Non viene ripetuto automaticamente.")
+            self._error = browser_error_text(error, tr("Comando del browser non confermato. Non viene ripetuto automaticamente."))
             self.changed.emit()
 
         self.workspace.client.request(method, {"project_id": identity[0], "session_id": identity[1], **extra},

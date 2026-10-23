@@ -55,7 +55,7 @@ def test_restored_claude_code_chat_discovers_its_catalog_once(workspace):
     space, requests = workspace
     space._adopt_session(session())
     assert [call[1] for call in discoveries(requests)] == [{"backend": "claude_code"}]
-    assert str(space.providerText) == "Rilevamento del backend…"
+    assert str(space.providerText) == "Rilevamento del provider…"
     space._adopt_session(session())
     assert len(discoveries(requests)) == 1
     discoveries(requests)[0][2](catalog())

@@ -78,8 +78,11 @@ valido e utile quando vuoi la disciplina della pianificazione per incarichi.
 
 ## Chiedere un Team dalla chat
 
-Con **Codex** o **OpenAI diretto · ChatGPT** e gli strumenti attivi, puoi chiedere
-un Team direttamente nella conversazione. Per esempio:
+Con **Codex**, **OpenAI diretto · ChatGPT**, **Ollama** o **DeepSeek Account** e
+gli strumenti attivi, puoi chiedere un Team direttamente nella conversazione; con
+**Ollama** il modello deve supportare gli strumenti. **Claude Code · uso
+personale** e **DeepSeek Web** non eseguono Team, quindi le loro chat non possono
+richiederne uno. Per esempio:
 
 > Organizza un team di tre membri: un coordinatore, un analista dei test e un
 > revisore indipendente. Lavorate in sola lettura sui file del progetto e
@@ -159,8 +162,9 @@ o il limite è raggiunto, il Team va in pausa con la motivazione visibile. Piani
 ripetutamente vuoti o senza progressi fermano il Team invece di farlo girare a
 vuoto. Un errore del provider non viene ritentato automaticamente.
 
-Una conclusione storica senza esiti dei membri è segnalata come **Conclusione da
-verificare**: i dati originali restano conservati e tocca a te giudicare.
+Una conclusione senza esiti registrati dei membri è segnalata come
+**Conclusione da verificare**: i dati originali restano conservati e tocca a te
+giudicare.
 
 ### I ruoli non sono una sandbox
 
@@ -264,10 +268,11 @@ progetto non cambia.
 
 ## Risposta automatica sui risultati
 
-Per i Team avviati o ripresi dalla chat, il risultato avvia da solo una risposta
-di Kira nella conversazione originale, senza che tu invii un altro messaggio.
-Un Team creato dalla vista **Team** senza una chat di origine non ha risposta
-automatica.
+Per i Team con una chat d'origine il risultato avvia da solo una risposta di
+Kira in quella conversazione, senza che tu invii un altro messaggio. La chat
+d'origine è quella in cui hai chiesto il Team oppure, per un Team avviato o
+ripreso dalla vista **Team**, la chat ordinaria aperta in quel momento; senza
+una chat d'origine non c'è risposta automatica.
 
 - **Quando parte.** Dopo la pulizia confermata del Team, quando il suo stato è
   concluso, fallito o in pausa. Se Kira sta ancora rispondendo nella chat, la
@@ -292,7 +297,7 @@ automatica.
 
 Nella cronologia la risposta è introdotta da un avviso di servizio, mai da un
 messaggio utente inventato; esportazioni e memoria conservano la stessa
-provenienza. I Team più vecchi non vengono riattivati per produrre risposte.
+provenienza.
 
 ## Dettagli esecuzione
 

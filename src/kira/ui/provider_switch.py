@@ -178,7 +178,7 @@ class ProviderSwitchController(QObject):
             else:
                 self._catalog = catalog
                 self._error = "" if catalog.get("available") else str(
-                    catalog.get("error") or tr("Backend non disponibile."))
+                    catalog.get("error") or tr("Provider non disponibile."))
             self.changed.emit()
 
         self.workspace.client.request("backend.discover", params, received,

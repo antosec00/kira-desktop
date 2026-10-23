@@ -734,10 +734,9 @@ class OpenAIChatGPTBackend:
         for item in output:
             if item.get("type") != "compaction":
                 break
-            if item.get("type") == "compaction":
-                if not isinstance(item.get("encrypted_content"), str) or not item["encrypted_content"]:
-                    raise ResponsesError("OpenAI returned invalid opaque compaction state", state="failed")
-                return {"supported": True, "items": [item]}
+            if not isinstance(item.get("encrypted_content"), str) or not item["encrypted_content"]:
+                raise ResponsesError("OpenAI returned invalid opaque compaction state", state="failed")
+            return {"supported": True, "items": [item]}
         return {"supported": True, "items": None}
 
     async def context_summary(self, items: list[Json], source_ids: list[str], memory: list[Json],

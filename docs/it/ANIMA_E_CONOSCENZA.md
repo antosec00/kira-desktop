@@ -168,7 +168,9 @@ chiede di confrontarla prima di salvare.
   risultato di uno strumento nella chat): il collegamento dice da dove viene
   un'interpretazione, non la rende corretta.
 - I riepiloghi del ragionamento e le affermazioni del modello su se stesso non
-  sono fonti valide, e un ricordo richiamato non può confermare se stesso.
+  sono fonti valide, e un ricordo richiamato non può confermare se stesso,
+  nemmeno attraverso la copia di una chiamata a uno strumento Kira registrata
+  da Codex o Claude Code.
 - Preferenze e lezioni non sono prove di lavoro svolto né progresso di un
   obiettivo: descrivono come collaborare, non che cosa è stato fatto.
 
@@ -176,11 +178,14 @@ chiede di confrontarla prima di salvare.
 
 ### In una chat esistente
 
-Per scegliere un'altra identità in una chat già avviata, il lavoro della chat
-deve essere fermo e l'eventuale obiettivo autonomo in pausa (vedi
-[Obiettivi autonomi](OBIETTIVI_AUTONOMI.md)); il pannello lo ricorda con una
-nota. Il cambio chiude la sessione corrente del provider e ne apre una nuova
-con le stesse impostazioni di provider, modello e ragionamento.
+Per scegliere un'altra identità in una chat già avviata, il lavoro del
+progetto deve essere fermo, la chat senza richieste in coda e l'eventuale
+obiettivo autonomo in pausa (vedi [Obiettivi autonomi](OBIETTIVI_AUTONOMI.md));
+il pannello lo ricorda con una nota. Il cambio chiude la sessione corrente del
+provider e ne apre una nuova con le stesse impostazioni di provider, modello e
+ragionamento. Chiude anche il browser della chat, mantenendo un profilo
+conservato; se stai controllando il browser, restituisci il controllo a Kira o
+chiudilo prima.
 
 La cronologia della chat resta: il cambio è una scelta di stile per la
 conversazione, non una cancellazione di ciò che il modello aveva già ricevuto.
@@ -195,9 +200,9 @@ un lavoro davvero separato, apri una nuova chat e scegli lì l'identità.
 
 - **Copia profilo** copia negli appunti il profilo dell'identità selezionata;
   **Importa profilo** lo incolla su questa o un'altra installazione con **Crea
-  dal profilo**. Il profilo contiene nome, nucleo e preferenze, **senza**
-  conversazioni, lezioni, fonti o revisioni precedenti. L'importazione crea
-  sempre una nuova identità indipendente.
+  dal profilo**. Il profilo contiene nome, nucleo, modalità di apprendimento e
+  preferenze, **senza** conversazioni, lezioni, fonti o revisioni precedenti.
+  L'importazione crea sempre una nuova identità indipendente.
 - **Duplica** crea una copia locale con lo stesso profilo, da cui far partire
   una variante.
 - **Archivia** ritira l'identità: non sarà più usata nei turni successivi e
@@ -258,8 +263,9 @@ ha verificato un risultato.
 
 Quando una capacità manca, puoi chiedere a Kira di preparare uno strumento
 riutilizzabile per il progetto: uno script Python che riceve un oggetto JSON
-su stdin e restituisce un oggetto JSON su stdout. Kira può anche proporlo da
-sola durante un'attività autorizzata. Gli strumenti appartengono al progetto.
+su stdin e restituisce su stdout un valore JSON conforme allo schema di output
+dichiarato. Kira può anche proporlo da sola durante un'attività autorizzata. Gli
+strumenti appartengono al progetto.
 
 ### La scheda Strumenti del progetto
 

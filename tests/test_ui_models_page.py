@@ -1,4 +1,4 @@
-"""Models page (0.18): segmented providers, provider status, model cards and folded raw data."""
+"""Models page: segmented providers, provider status, model cards and folded raw data."""
 
 import os
 

@@ -20,6 +20,11 @@ Rectangle {
             return qsTr("Autenticazione non confermata. Controlla il sito prima di riprovare.")
         return ""
     }
+    // The browser worker names known view failures with a code: those are shown in
+    // the interface language, and only an unknown failure keeps the worker's text.
+    readonly property string surfaceError: web.surfaceErrorCode === "view_unavailable"
+        ? qsTr("La vista completa del browser non è disponibile. Chiudi e riapri il browser dopo aver salvato il tuo lavoro.")
+        : web.browser.surface_error || ""
     signal settingsRequested()
     color: appearance.colors.surface
     border.color: "transparent"
@@ -227,7 +232,7 @@ Rectangle {
                 KButton { objectName: "browserStop"; text: qsTr("Chiudi browser"); subtle: true; enabled: pane.web.browser.active && !pane.web.lifecycleBusy; onClicked: pane.web.closeBrowser() }
             }
         }
-        ReadText { objectName: "browserError"; Layout.fillWidth: true; visible: text.length > 0; text: pane.web.error || pane.web.browser.surface_error || pane.authenticationNotice || pane.web.browser.error; color: appearance.colors.warning }
+        ReadText { objectName: "browserError"; Layout.fillWidth: true; visible: text.length > 0; text: pane.web.error || pane.surfaceError || pane.authenticationNotice || pane.web.browser.error; color: appearance.colors.warning }
         Rectangle {
             id: viewport; objectName: "browserViewport"
             Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 80

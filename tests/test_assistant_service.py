@@ -38,7 +38,6 @@ class Factory:
         self.origin_gate = None
         self.followup_contexts = []
         self.followup_started = asyncio.Event()
-        self.followup_gate = None
         self.followup = None
 
     def __call__(self, name, settings):
@@ -52,8 +51,6 @@ class Factory:
                 if factory.service.assistant.followups.is_followup(ctx.run_id):
                     factory.followup_contexts.append(ctx)
                     factory.followup_started.set()
-                    if factory.followup_gate:
-                        await factory.followup_gate.wait()
                     if factory.followup:
                         return await factory.followup(ctx)
                     await ctx.emit("message.completed", {"content": "Recorded Team result integrated into the original objective."})
@@ -108,7 +105,7 @@ async def env(tmp_path, monkeypatch):
         session = (await service.dispatch("session.create", {"project_id": project["id"], "backend": "codex",
             "model": "fixture-selected-model", "settings": {"reasoning_effort": "high", "service_tier": "fixture-tier"}}))["session"]
         yield service, factory, project, session
-        for gate in (factory.close_gate, factory.origin_gate, factory.member_gate, factory.followup_gate):
+        for gate in (factory.close_gate, factory.origin_gate, factory.member_gate):
             if gate:
                 gate.set()
         await service.close()
@@ -246,10 +243,9 @@ async def test_scope_rejects_foreign_chat_and_team_member_session(env):
 
 
 @pytest.mark.asyncio
-async def test_environment_does_not_leak_other_project_and_disabled_backend_is_honest(env, tmp_path):
+async def test_environment_does_not_leak_other_project_and_disabled_backend_is_honest(env, tmp_path_factory):
     service, _, project, session = env
-    sibling = tmp_path.parent / "different-project"
-    sibling.mkdir()
+    sibling = tmp_path_factory.mktemp("different-project")
     other = (await service.dispatch("project.create", {"name": "foreign-private-marker", "root": str(sibling)}))["project"]
     data = (await snapshot(env))["environment"]
     assert other["id"] not in json.dumps(data) and "foreign-private-marker" not in json.dumps(data)
@@ -509,10 +505,10 @@ async def test_pending_prompt_waits_for_team_reservation_then_receives_result_co
     factory.origin_gate = asyncio.Event()
     first = await start(env)
     await service.dispatch("queue.add", {"session_id": session["id"], "request_id": "queued-after-team", "prompt": "Summarize the recorded team result"})
+    observed = []
     async def followup(ctx):
-        assert "Verified synthetic evidence" not in ctx.supplied_context
-        result = await ctx.client_tool_call("inspect-result", "kira.team_status", {})
-        assert result["ok"] and result["delegations"][0]["summary"] == "Verified synthetic evidence"
+        # Collected for the test body: an assertion here would only fail the queued run.
+        observed.append((ctx.supplied_context, await ctx.client_tool_call("inspect-result", "kira.team_status", {})))
     factory.origin = followup
     factory.origin_gate.set()
     await asyncio.wait_for(factory.member_started.wait(), 5)
@@ -520,13 +516,16 @@ async def test_pending_prompt_waits_for_team_reservation_then_receives_result_co
     assert len(factory.contexts) == 2
     factory.member_gate.set()
     await settle(service, first["id"])
-    for _ in range(200):
-        row = service.store.db.execute("SELECT status,run_id FROM prompt_queue WHERE request_id='queued-after-team'").fetchone()
-        if row[0] == "completed":
-            break
-        await asyncio.sleep(.01)
+    # The queue's one-second poller dispatches the request after the Team releases the project.
+    async with asyncio.timeout(30):
+        while (row := service.store.db.execute("SELECT status,run_id FROM prompt_queue "
+                "WHERE request_id='queued-after-team'").fetchone())[0] in {"pending", "starting", "running"}:
+            await asyncio.sleep(.01)
     assert row[0] == "completed"
     assert len(factory.contexts) == 3
+    (supplied, result), = observed
+    assert "Verified synthetic evidence" not in supplied
+    assert result["ok"] and result["delegations"][0]["summary"] == "Verified synthetic evidence"
 
 
 @pytest.mark.asyncio
@@ -548,6 +547,8 @@ async def test_delegation_and_call_rollback_when_durable_event_fails(env):
     factory.origin = origin
     run = await start(env)
     await settle(service, run["id"])
+    # The checks above run inside the provider; a failed one would only fail the run.
+    assert service.store.one("runs", run["id"])["state"] == "completed"
     assert not (await snapshot(env))["delegations"]
 
 
@@ -661,6 +662,7 @@ async def test_model_message_crash_gap_retains_target_and_never_replays(env, mon
     factory.origin = origin
     second = await start(env, request="model-message-crash-turn")
     await settle(service, second["id"])
+    assert service.store.one("runs", second["id"])["state"] == "completed"
     assert factory.calls[-1]["delivery"] == "unknown"
     await service.dispatch("assistant.resume", {"project_id": project["id"], "session_id": session["id"],
         "delegation_id": original["id"], "request_id": "resume-after-model-message-crash"})

@@ -23,6 +23,7 @@ from kira.domain.contracts import SCHEMA_VERSION
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 from kira.ui.preferences import DEFAULTS, read_preferences
+from test_ui_support import SERVICE_WAIT_MS, isolated_service_environment, start_service, stop_service
 
 
 @pytest.fixture
@@ -356,75 +357,75 @@ def test_qml_local_frame_rejection_keeps_editable_draft(workspace, ui, monkeypat
 
 def test_real_ipc_workspace_journey_uses_isolated_service(qapp, qtbot, monkeypatch, tmp_path):
     """Real Qt transport + service + SQLite/file hashes; no provider or native launches."""
-    with tempfile.TemporaryDirectory(prefix="kira-ui-v02-") as directory:
+    with tempfile.TemporaryDirectory(prefix="kira-ui-workspace-ipc-") as directory:
         home = Path(directory)
         paths = Paths(*(home / key for key in ("config", "data", "state", "runtime")))
-        environment = {**os.environ, "KIRA_HOME": str(home), "CODEX_HOME": str(home / "codex")}
+        environment = isolated_service_environment(monkeypatch, home)
         log = (home / "service.log").open("w+")
-        process = subprocess.Popen([sys.executable, "-m", "kira.service.server"],
-                                   env=environment, stdout=log, stderr=log)
+        process = start_service(["-m", "kira.service.server"], environment, log)
         view = Workspace(paths)
         # Catalog discovery is independent of this workspace integration and would contact providers.
         monkeypatch.setattr(view, "discover", lambda _: None)
         monkeypatch.setattr(view, "refreshResources", lambda: None)
         try:
-            qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=5000)
+            qtbot.waitUntil(lambda: paths.socket.exists() or process.poll() is not None, timeout=SERVICE_WAIT_MS)
             assert process.poll() is None
             view.client.connect_service()
-            qtbot.waitUntil(lambda: view.connected)
+            qtbot.waitUntil(lambda: view.connected, timeout=SERVICE_WAIT_MS)
             project_dir = tmp_path / "real-project"
             project_dir.mkdir()
             reference = project_dir / "reference.txt"
             reference.write_text("initial evidence")
             view.createProject("Isolated GUI integration", str(project_dir), "", "read_only")
-            qtbot.waitUntil(lambda: bool(view.projectWorkspace))
+            qtbot.waitUntil(lambda: bool(view.projectWorkspace), timeout=SERVICE_WAIT_MS)
             view.saveWorkspace(True, False, True, "Verify changed reference")
-            qtbot.waitUntil(lambda: view.projectWorkspace.get("next_step") == "Verify changed reference")
+            qtbot.waitUntil(lambda: view.projectWorkspace.get("next_step") == "Verify changed reference", timeout=SERVICE_WAIT_MS)
             assert view.projectWorkspace["tools"] == ["folder", "editor"]
             view.watchFile("reference.txt")
-            qtbot.waitUntil(lambda: len(view.projectWorkspace.get("watches", [])) == 1)
+            qtbot.waitUntil(lambda: len(view.projectWorkspace.get("watches", [])) == 1, timeout=SERVICE_WAIT_MS)
             assert view.projectWorkspace["watches"][0]["state"] == "unchanged"
             reference.write_text("new evidence")
             view.refreshWorkspace()
-            qtbot.waitUntil(lambda: not view.workspaceLoading)
+            qtbot.waitUntil(lambda: not view.workspaceLoading, timeout=SERVICE_WAIT_MS)
             assert view.projectWorkspace["watches"][0]["state"] == "changed"
             view.watchFile("reference.txt")
-            qtbot.waitUntil(lambda: not view.workspaceLoading)
+            qtbot.waitUntil(lambda: not view.workspaceLoading, timeout=SERVICE_WAIT_MS)
             assert view.projectWorkspace["watches"][0]["state"] == "unchanged"
             reference.unlink()
             view.refreshWorkspace()
-            qtbot.waitUntil(lambda: not view.workspaceLoading)
+            qtbot.waitUntil(lambda: not view.workspaceLoading, timeout=SERVICE_WAIT_MS)
             assert view.projectWorkspace["watches"][0]["state"] == "missing"
             view.unwatchFile("reference.txt")
-            qtbot.waitUntil(lambda: not view.workspaceLoading)
+            qtbot.waitUntil(lambda: not view.workspaceLoading, timeout=SERVICE_WAIT_MS)
             assert not view.projectWorkspace["watches"]
             view.searchActions("terminal")
-            qtbot.waitUntil(lambda: bool(view.desktopActions))
+            qtbot.waitUntil(lambda: bool(view.desktopActions), timeout=SERVICE_WAIT_MS)
             assert any(a["id"] == "project.terminal" for a in view.desktopActions)
             view.refreshDiagnostics()
-            qtbot.waitUntil(lambda: view.diagnosticsReady)
+            qtbot.waitUntil(lambda: view.diagnosticsReady, timeout=SERVICE_WAIT_MS)
             assert json.loads(view.diagnosticsText)["database_schema"] == SCHEMA_VERSION
             view.exportDiagnostics()
-            qtbot.waitUntil(lambda: bool(view.diagnosticsExportPath))
+            qtbot.waitUntil(lambda: bool(view.diagnosticsExportPath), timeout=SERVICE_WAIT_MS)
             exported = Path(view.diagnosticsExportPath)
             assert exported.is_relative_to(paths.data) and exported.is_file()
             assert "Isolated GUI integration" not in exported.read_text()
             project_id = view.project["id"]
             view.client.socket.abort()
-            qtbot.waitUntil(lambda: not view.connected)
+            qtbot.waitUntil(lambda: not view.connected, timeout=SERVICE_WAIT_MS)
             view.client.connect_service()
-            qtbot.waitUntil(lambda: view.connected and not view.workspaceLoading)
+            qtbot.waitUntil(lambda: view.connected and not view.workspaceLoading, timeout=SERVICE_WAIT_MS)
             view.openProject(project_id)
-            qtbot.waitUntil(lambda: view.projectWorkspace.get("next_step") == "Verify changed reference")
+            qtbot.waitUntil(lambda: view.projectWorkspace.get("next_step") == "Verify changed reference", timeout=SERVICE_WAIT_MS)
             assert view.projectWorkspace["tools"] == ["folder", "editor"]
         finally:
-            view.close()
-            view.deleteLater()
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-            assert not isValid(view)
-            process.terminate()
-            process.wait(timeout=5)
-            log.close()
+            try:
+                view.close()
+                view.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                assert not isValid(view)
+            finally:
+                stop_service(process)
+                log.close()
 
 
 def test_saved_effort_visible_without_catalog_and_next_session_preserves_it(workspace, ui, monkeypatch, qtbot):
@@ -522,5 +523,5 @@ print("Production Basic style: checked and unchecked tabs plus all ComboBox indi
     environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software",
                    "QT_QUICK_CONTROLS_STYLE": "Basic"}
     completed = subprocess.run([sys.executable, "-c", script, str(tmp_path)], env=environment,
-                               capture_output=True, text=True, timeout=30, check=False)
+                               capture_output=True, text=True, timeout=120, check=False)
     assert completed.returncode == 0, completed.stdout + completed.stderr

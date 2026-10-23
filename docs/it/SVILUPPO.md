@@ -16,23 +16,25 @@ Kira è fatta di tre parti che cooperano dentro una sola sessione utente:
 | --- | --- | --- |
 | **Interfaccia** (Qt Quick / PySide6) | `src/kira/ui/` | Intenzioni e presentazione: QML in `ui/qml/`, controller esposti al QML come proprietà di contesto (`Workspace`, ricerca, web, workbench, allegati…), preferenze solo-GUI in `config/ui.json`. |
 | **Servizio** (asyncio, SQLite in WAL, IPC privata su socket Unix) | `src/kira/service/` | Esecuzione e durabilità: progetti, sessioni, esecuzioni e i loro eventi sequenziati, esecuzione degli strumenti con il permesso del progetto, l'attore browser/Computer, Team, registro di Ricerca, domande, allegati. È l'unico processo che scrive su SQLite. |
-| **Backend** (adapter dei provider) | `src/kira/backends/` | Un adapter per provider (`ollama`, `codex`, `openai_chatgpt`, `deepseek_account`, `deepseek_web`, `claude_code`). Riceve un `RunContext`, rimanda gli eventi con `ctx.emit` e, a seconda del provider, esegue gli strumenti di Kira tramite `ctx.client_tool_call` oppure osserva gli strumenti nativi del provider. |
+| **Backend** (adapter dei provider) | `src/kira/backends/` | Un adapter per provider (`ollama`, `codex`, `openai_chatgpt`, `deepseek_account`, `deepseek_web`, `claude_code`). Riceve un `RunContext`, rimanda gli eventi con `ctx.emit` e, a seconda del provider, fa eseguire al servizio gli strumenti di base con `ctx.execute_tool` e quelli client di Kira con `ctx.client_tool_call`, oppure osserva gli strumenti nativi del provider e offre quelli di Kira via MCP. |
 
 `src/kira/domain/` contiene le definizioni pure condivise dalle tre parti:
-specifiche degli strumenti, contratti, domande, namespace di web e Computer,
-percorsi. I contratti tra le parti (metodi IPC, buste degli eventi, permessi)
-sono in [Contratti](CONTRATTI.md); [Architettura](ARCHITETTURA.md) spiega i
-confini tra processi e il modello di recupero.
+specifiche degli strumenti, contratti, insiemi di provider per capacità
+(`providers.py`), domande, namespace di web e Computer, percorsi. I contratti
+tra le parti (metodi IPC, buste degli eventi, permessi) sono in
+[Contratti](CONTRATTI.md); [Architettura](ARCHITETTURA.md) spiega i confini tra
+processi e il modello di recupero.
 
 ## Mappa del repository
 
 ```
 src/kira/
   cli.py            punto d'ingresso kira-desktop e kira (GUI, diagnostics, doctor, stop-service, rpc…)
-  client.py         client IPC lato GUI e avvio del servizio
+  client.py         client IPC dei comandi da terminale e avvio del servizio (la GUI usa ui/ipc.py)
   backends/         adapter dei provider, client_tools.py (ponte degli strumenti Kira),
                     kira_mcp.py (relay MCP per Codex), deepseek_pow_solver.wasm
-  domain/           contratti, specifiche degli strumenti, domande, namespace web/computer
+  domain/           contratti, insiemi di provider (providers.py), specifiche degli strumenti,
+                    domande, namespace web/computer
   service/          server.py (dispatch IPC), assistant.py, teams.py, web.py (attore browser),
                     research.py, knowledge.py, questions.py, attachment_inputs.py,
                     provider_routing.py, tool_policy.py, storage.py
@@ -43,10 +45,11 @@ src/kira/
                     *_controller.py, preferences.py, qml/, translations/, assets/
 tests/              suite pytest sintetica (pytest-qt, Qt offscreen, provider finti)
 scripts/            check_translations.py, check_public_tree.py, build_deb.py, check_deb.py,
-                    installed_smoke.py, upgrade_smoke.py, live_*.py
+                    installed_smoke.py, render_doc_screenshots.py, live_*.py,
+                    deepseek_web_smoke.py, gui_evidence.py
 packaging/          packaging Debian per Ubuntu 24.04 (noble) e 26.04 (resolute):
                     launcher, unità utente, .desktop, testi delle licenze, lock dei requisiti
-protocol-schema/    definizioni JSON delle buste IPC e degli eventi
+protocol-schema/    schemi JSON generati del protocollo Codex App Server, usati dai test
 docs/
   it/               documentazione in italiano (questa cartella)
   en/               traduzione inglese della documentazione
@@ -86,14 +89,16 @@ Non copiare mai credenziali o contenuti personali nei fixture dei test.
 QT_QPA_PLATFORM=offscreen uv run pytest tests     # intera suite sintetica (~20 minuti)
 uv run ruff check src tests scripts packaging
 uv run mypy src
-python3 scripts/check_translations.py             # ogni qsTr()/tr() ha una voce inglese
+python3 scripts/check_translations.py             # voci inglesi complete, coerenti e usate
 python3 scripts/check_public_tree.py              # niente percorsi personali né binari non revisionati
 ```
 
-Tutti e cinque devono passare prima di una pull request. `check_public_tree.py`
-rifiuta percorsi come `/home/<nome>` e `C:\Users\<nome>` nei file tracciati e
-confronta l'hash di ogni binario revisionato (per esempio il modulo WebAssembly
-di DeepSeek Web) con il valore atteso.
+Tutti e cinque devono passare prima di una pull request; la CI li esegue e
+verifica anche che `uv.lock` e `packaging/requirements.lock.txt` siano
+aggiornati (`uv lock --check` e il confronto con `uv export`).
+`check_public_tree.py` rifiuta percorsi come `/home/<nome>` e `C:\Users\<nome>`
+nei file tracciati e confronta l'hash di ogni binario revisionato (per esempio
+il modulo WebAssembly di DeepSeek Web) con il valore atteso.
 
 ### Come sono fatti i test
 
@@ -113,7 +118,9 @@ arriva con un test che fallirebbe senza di essa.
 - **Render offscreen.** Per guardare un layout crea il motore con il workspace
   sintetico, ridimensiona la finestra e salva `window.grabWindow()`; i fixture
   dei test UI mostrano come. Le schermate in `docs/images/` sono prodotte così,
-  solo da dati di fixture.
+  solo da dati di fixture, da `scripts/render_doc_screenshots.py`: rigenerale
+  quando l'interfaccia cambia e aggiorna le loro impronte in
+  `scripts/check_public_tree.py`.
 - **Test del servizio.** Avviano un `Service` reale su un profilo temporaneo con
   un provider finto (`backend_factory=`) e chiamano i metodi IPC direttamente.
 - **Test dei backend.** Usano SDK o trasporti HTTP finti; niente raggiunge un
@@ -129,9 +136,8 @@ lavoro autorizzato e vanno lanciati solo con un profilo usa-e-getta sotto
 rapporti in `build/`, che è ignorato da Git: **non committare i rapporti**,
 possono contenere identificatori dell'account e percorsi personali.
 
-`scripts/installed_smoke.py` e `scripts/upgrade_smoke.py` girano invece dentro
-un contenitore usa-e-getta con il pacchetto installato, senza checkout e con dati
-sintetici; li usa `check_deb.py`.
+`scripts/installed_smoke.py` gira invece dentro un contenitore usa-e-getta con il
+pacchetto installato, senza checkout e con dati sintetici; lo usa `check_deb.py`.
 
 ## Aggiungere un provider
 
@@ -141,19 +147,26 @@ sintetici; li usa `check_deb.py`.
    `ctx.emit`. `claude_code.py` è un esempio compatto di adapter che osserva gli
    strumenti nativi del provider e offre quelli di Kira attraverso un server MCP
    interno; `ollama.py` mostra il ciclo di strumenti gestito da Kira.
-2. **Registrazione nel servizio.** Aggiungilo a `service/provider_routing.py`
-   (elenco dei backend e impostazioni ammesse) e alle allowlist in
-   `service/assistant.py`, `project_tools.py`, `research.py`, `knowledge.py`,
-   `autonomous_goals.py`, `reasoning_summaries.py`, `web.py` (`WEB_BACKENDS`),
-   `attachment_inputs.py` (capacità immagini) e `tool_policy.py`. Ogni allowlist
-   decide una capacità (Team, obiettivi autonomi, Ricerca, riepilogo del
-   ragionamento, browser, immagini): lasciare fuori il provider da una di esse è
-   una scelta legittima, non una dimenticanza, ma deve essere coerente con la
-   tabella delle capacità in [Provider](PROVIDER.md).
+2. **Registrazione nel servizio.** Aggiungilo alla fabbrica `_backend()` di
+   `service/server.py`, al controllo dell'account in `prepare_provider()` se ne
+   ha uno, e a `service/provider_routing.py` (`BACKENDS` e impostazioni ammesse
+   in `_OWN_SETTINGS`): da lì derivano anche i provider accettati da
+   `session.create` e dai metodi `backend.*`. Poi decidi le capacità condivise
+   negli insiemi di `domain/providers.py`: `IN_PROCESS_BACKENDS` (inferenza HTTP
+   dentro il servizio, senza un processo del provider), `WEB_BACKENDS` (browser
+   e Computer di Kira) e `TEAM_BACKENDS` (Team e delega dalla chat). Le altre
+   capacità hanno allowlist proprie in `service/assistant.py` (strumenti
+   dell'assistente), `conversation_controls.py` (indicazioni), `project_tools.py`,
+   `research.py`, `knowledge.py`, `autonomous_goals.py`, `reasoning_summaries.py`,
+   `attachment_inputs.py` (immagini), `tool_policy.py` e in `cli.py` (`doctor`).
+   Lasciare fuori il provider da un insieme è una scelta legittima, non una
+   dimenticanza, ma deve essere coerente con la tabella delle capacità in
+   [Provider](PROVIDER.md).
 3. **Interfaccia.** Esponilo in `ui/controller.py` (`setBackend`, etichette,
-   capacità), nella pagina dei modelli e nel popover del campo di scrittura in
-   `qml/Main.qml`, nel dialogo di cambio provider (`ProviderSwitchDialog.qml`) e
-   nei cataloghi di traduzione.
+   capacità), nelle etichette condivise di `qml/KFormat.qml` (`providerLabel`),
+   nella pagina dei modelli e nel popover del campo di scrittura in
+   `qml/Main.qml`, nel dialogo di cambio provider (`ProviderSwitchDialog.qml` e
+   `ui/provider_switch.py`) e nei cataloghi di traduzione.
 4. **Documentazione.** Descrivi collegamento, strumenti, contesto e limiti in
    `docs/it/PROVIDER.md` e aggiorna la traduzione in `docs/en/`. Se il provider è
    un'integrazione sperimentale, dillo con quella parola, una volta.
@@ -162,8 +175,8 @@ sintetici; li usa `check_deb.py`.
 
 - Marca le stringhe con `qsTr()` (QML) o `tr()` (Python) e aggiungi la
   traduzione inglese in `src/kira/ui/translations/en/*.json`.
-  `check_translations.py` fallisce su voci mancanti e su conflitti tra
-  cataloghi.
+  `check_translations.py` fallisce su voci mancanti, su voci che il sorgente
+  non usa e su conflitti tra cataloghi.
 - Le preferenze dell'interfaccia vivono in `ui/preferences.py` (`DEFAULTS` più
   la validazione in `valid_preference`) e sono esposte come proprietà e slot di
   `Workspace`; non chiamano mai l'IPC. Vengono salvate atomicamente in `ui.json`.
@@ -202,8 +215,9 @@ Per aggiungere una lingua:
    Python `{nome}` e Qt `%1`, e le estensioni nei filtri dei file. Traduci anche
    le etichette dei pulsanti standard di Qt.
 3. Esegui `python3 scripts/check_translations.py`: controlla copertura dei
-   messaggi marcati, duplicati in conflitto e placeholder. Le etichette generate
-   da tabelle statiche hanno bisogno anch'esse di voci nel catalogo.
+   messaggi marcati, duplicati in conflitto, placeholder e voci che il sorgente
+   non usa. Le etichette generate da tabelle statiche hanno bisogno anch'esse di
+   voci nel catalogo.
 4. Esegui i test di localizzazione e dell'interfaccia e verifica layout alle
    dimensioni supportate, fallback dei caratteri, direzione del testo dove
    serve, persistenza della scelta, dati utente letterali e ogni dialogo nella
@@ -239,8 +253,11 @@ Che cosa contiene il pacchetto:
 - l'unità systemd utente, il file `.desktop` e la mascotte in
   `/usr/share/pixmaps/kira-desktop.png`;
 - in `/usr/share/doc/kira-desktop/`: la licenza di Kira (`copyright`), le licenze
-  Qt in `licenses/`, `dependencies.json` con nome, versione e licenza di ogni
-  dipendenza inclusa, e il lock dei requisiti;
+  di terze parti in `licenses/` (Qt e il modulo WebAssembly di DeepSeek Web),
+  `dependencies.json` con nome, versione e licenza di ogni dipendenza inclusa, il
+  lock dei requisiti e la documentazione (README, `docs/` e i documenti della
+  comunità) con la struttura del repository, così i collegamenti relativi
+  funzionano;
 - le dipendenze native dichiarate, tra cui `xvfb` e `libxtst6` per il browser
   isolato.
 
@@ -256,6 +273,34 @@ di contenuto: un pacchetto nuovo non deve mai riattivare una cache vecchia, le
 sovrascritture esplicite della cache vanno rispettate e le variabili d'ambiente
 temporanee vanno ripristinate dopo il primo caricamento. Un aggiornamento non si
 risolve cancellando cache o dati non correlati.
+
+## Pubblicare una versione
+
+1. Sulla linea `dev/<versione>` aggiorna la versione in `pyproject.toml` e in
+   `src/kira/__init__.py`, poi esegui `uv lock` (cambia solo la riga del
+   progetto) e aggiorna il segnaposto della versione in
+   `.github/ISSUE_TEMPLATE/bug_report.yml`.
+2. Esegui tutti i [controlli](#controlli), rigenera le schermate se
+   l'interfaccia è cambiata, costruisci e controlla entrambi i pacchetti come
+   descritto sopra, poi porta `main` allo stesso commit.
+3. In **Actions → Release packages → Run workflow**, scegli `main`. Il workflow
+   `.github/workflows/release.yml` costruisce i due pacchetti con gli stessi
+   script e li controlla con `check_deb.py` nei contenitori; puoi lanciarlo anche
+   da `dev/<versione>` per provare costruzione e controlli senza pubblicare nulla.
+   Solo su `main` un secondo job, l'unico con permesso di scrittura, allega i
+   pacchetti a una **bozza** di release `v<versione>` con nomi stabili
+   (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`)
+   e il loro `SHA256SUMS`. Le note della bozza partono da
+   `.github/release-notes.md`; se la bozza esiste già, il workflow ne aggiorna
+   solo il commit e i file, senza toccare le note.
+4. Controlla la bozza, completa le note e pubblicala: la pubblicazione crea il
+   tag. Il workflow si rifiuta di sostituire i file di una versione già
+   pubblicata, quindi ogni correzione successiva richiede una nuova versione.
+5. Conserva una copia esatta della versione pubblicata come
+   `release/<versione>`.
+
+I nomi stabili mantengono validi i collegamenti `releases/latest/download/...`
+usati nel README e in [Installazione](INSTALLAZIONE.md#installazione-da-pacchetto).
 
 ## Personalizzazione dell'interfaccia
 
@@ -296,16 +341,17 @@ persistenti stanno fuori dal checkout, nei percorsi XDG standard o in un
 credenziali, chat, backup, rapporti locali, schermate di sessioni personali né
 percorsi con nomi utente reali: `check_public_tree.py` ne intercetta una parte,
 il resto è responsabilità della revisione. `KIRA_HOME` non isola le credenziali
-di Codex né le quote di un account condiviso: i test di ricerca usano provider
+di Codex né le quote di un account condiviso: per questo i test usano provider
 finti e profili isolati per default.
 
 ## Rami e commit
 
 - `main` contiene l'ultima versione pubblicata, una sola istantanea revisionata
-  per rilascio.
-- `dev/<versione>` è la linea di sviluppo attiva: apri le pull request contro di
-  essa.
-- `release/<versione>` sono copie esatte conservate delle versioni pubblicate.
+  per rilascio, ed è l'unico ramo del repository pubblico: apri le pull request
+  contro `main`.
+- Il manutentore sviluppa la versione successiva su un ramo `dev/<versione>` e
+  conserva copie esatte delle versioni pubblicate come `release/<versione>`;
+  questi rami non sono pubblicati.
 
 I messaggi di commit seguono la forma `type(scope): summary`, per esempio
 `fix(ollama): report stream inactivity as a timeout` oppure

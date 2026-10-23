@@ -14,6 +14,7 @@ from kira.domain.paths import Paths
 from kira.ui.account_usage import plan_summary, present_account_usage
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
+from test_ui_support import wait_opened
 
 
 def snapshot(backend="codex", **updates):
@@ -160,13 +161,15 @@ def test_real_dialog_minimum_size_zero_unknown_and_error(usage, qtbot, qtlog, la
     try:
         dialog = window.findChild(QObject, "usageDialog")
         evaluate(dialog, "open()")
-        qtbot.wait(30)
-        assert requests[-1][:2] == ("backend.usage", {"backend": "codex"})
+        qtbot.waitUntil(lambda: bool(requests) and requests[-1][:2] == ("backend.usage", {"backend": "codex"}))
         requests[-1][2](snapshot())
-        qtbot.wait(40)
         card = window.findChild(QObject, "accountUsageCard")
         scroll = window.findChild(QObject, "usageScroll")
-        assert card is not None and card.property("width") >= 340
+        names = ("usageManageChatGPT", "accountUsageRefresh", "usageRawToggle")
+        controls = [window.findChild(QObject, name) for name in names]
+        assert card is not None and scroll is not None and None not in controls
+        wait_opened(qtbot, dialog, card, scroll, *controls)
+        assert card.property("width") >= 340
         assert card.property("width") <= scroll.property("availableWidth")
         content = dialog.property("contentItem")
         assert QRectF(0, 0, 880, 620).contains(content.mapRectToScene(content.boundingRect()))
@@ -176,12 +179,11 @@ def test_real_dialog_minimum_size_zero_unknown_and_error(usage, qtbot, qtlog, la
         expected = "0% remaining" if language == "en" else "0% disponibile"
         assert controller.report["groups"][0]["windows"][0]["value"] == expected
         assert controller.report["groups"][0]["windows"][1]["known"] is False
-        # The panel fills the workspace under the single 0.18 top bar.
+        # The panel fills the workspace under the single top bar.
         header = window.findChild(QObject, "projectHeader")
         assert dialog.property("height") <= 620 - header.property("height")
         assert scroll.property("contentHeight") > scroll.property("height")
-        for name in ("usageManageChatGPT", "accountUsageRefresh", "usageRawToggle"):
-            control = window.findChild(QObject, name)
+        for name, control in zip(names, controls, strict=True):
             rect = control.mapRectToScene(control.boundingRect())
             view = scroll.mapRectToScene(scroll.boundingRect()) if name != "usageRawToggle" else content.mapRectToScene(content.boundingRect())
             assert view.left() - 1 <= rect.left() and rect.right() <= view.right() + 1, name

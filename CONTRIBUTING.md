@@ -26,7 +26,9 @@ ogni modifica sono in [AGENTS.md](AGENTS.md); il comportamento delle funzioni
 
 ## Ambiente di sviluppo
 
-Ubuntu 24.04 (Python 3.12) o 26.04 (Python 3.14), in modo nativo o su WSL2/WSLg.
+Ubuntu 24.04 (Python 3.12) o 26.04 (Python 3.14), in modo nativo o su WSL2/WSLg,
+con le librerie di sistema elencate in
+[Installazione → Avvio dal sorgente con `uv`](docs/it/INSTALLAZIONE.md#avvio-dal-sorgente-con-uv).
 
 ```sh
 git clone https://github.com/antosec00/kira-desktop.git
@@ -37,9 +39,12 @@ uv run kira-desktop
 ```
 
 `KIRA_HOME` tiene il profilo di sviluppo (database, bozze, preferenze, socket)
-separato da un'installazione in uso. Interfaccia e servizio devono avere la
-stessa versione; ferma un servizio in esecuzione con
-`uv run kira-desktop stop-service` prima di cambiare checkout.
+separato da un'installazione in uso. Non isola però le credenziali di Codex né le
+quote di un account condiviso: gli script `scripts/live_*.py` usano l'account
+reale. Interfaccia e servizio devono avere la stessa versione; prima di cambiare
+checkout chiudi la finestra e ferma il servizio con
+`uv run kira-desktop stop-service` (con la finestra aperta l'interfaccia lo
+riavvierebbe).
 
 ## Controlli prima di una pull request
 
@@ -68,9 +73,11 @@ Convenzioni utili:
 
 ## Rami e commit
 
-- `main` — l'ultima versione pubblicata. Viene aggiornato solo dal manutentore.
-- `dev/<versione>` — la linea di sviluppo attiva. Apri le pull request su questo ramo.
-- `release/<versione>` — copie conservate delle versioni pubblicate.
+- `main` è l'unico ramo del repository pubblico e contiene l'ultima versione
+  pubblicata. Apri le pull request su `main`: il manutentore le integra e le
+  pubblica con la versione successiva.
+- Le versioni pubblicate sono le release `v<versione>` nella pagina
+  [Releases](https://github.com/antosec00/kira-desktop/releases).
 
 I messaggi di commit seguono la forma convenzionale usata nella cronologia:
 `tipo(ambito): sintesi`, per esempio `fix(ollama): report stream inactivity as a

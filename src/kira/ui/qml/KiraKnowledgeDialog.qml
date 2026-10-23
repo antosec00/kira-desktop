@@ -15,6 +15,7 @@ KiraPanel {
     signal researchRequested()
     onOpened: knowledge.open()
     onClosed: knowledge.hide()
+    KFormat { id: kformat }
     Connections { target: knowledge; function onDismissed() { dialog.showRaw = false; dialog.showCapabilities = false; dialog.close() } }
     footer: Flow {
         padding: 12; spacing: 6
@@ -31,7 +32,7 @@ KiraPanel {
         }
         Label {
             objectName: "knowledgeModel"
-            text: qsTr("Modello: %1").arg(knowledge.summary.model) + " · " + knowledge.summary.backend
+            text: qsTr("Modello: %1").arg(knowledge.summary.model) + " · " + kformat.providerLabel(knowledge.summary.backend)
             font: appearance.uiFont; color: appearance.colors.muted
             textFormat: Text.PlainText; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 0
         }

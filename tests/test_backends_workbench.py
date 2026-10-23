@@ -148,6 +148,17 @@ async def finish_run(task, rpc):
     return result
 
 
+async def wait_for_request(task, server, method):
+    """Wait, bounded, until the newest server received ``method`` while the task runs."""
+    async with asyncio.timeout(10):
+        while not server.instances or not any(name == method
+                                              for name, _ in server.instances[-1].requests):
+            if task.done():
+                outcome = task.exception() or task.result()
+                pytest.fail(f"The task ended before {method}: {outcome!r}")
+            await asyncio.sleep(0)
+
+
 async def test_steering_targets_only_registered_turn_and_deduplicates(tmp_path, server):
     ctx, _ = context(tmp_path)
     task, handlers, rpc = await active_run(ctx, server)
@@ -333,9 +344,7 @@ async def test_compact_requires_item_lifecycle_and_matching_terminal(tmp_path, s
     ctx, _ = context(tmp_path)
     task = asyncio.create_task(codex.CodexBackend().manage_thread(
         "compact", ctx.session, ctx.project, {}))
-    while not server.instances or not any(method == "thread/compact/start"
-                                         for method, _ in server.instances[-1].requests):
-        await asyncio.sleep(0)
+    await wait_for_request(task, server, "thread/compact/start")
     rpc = server.instances[-1]
     assert not task.done(), "The immediate compact acknowledgement is not completion"
     await rpc.notifications.put({"method": "turn/completed", "params": {
@@ -373,9 +382,7 @@ async def test_compaction_timeout_or_cancel_interrupts_only_owned_turn_and_close
     ctx, _ = context(tmp_path)
     task = asyncio.create_task(codex.CodexBackend().manage_thread(
         "compact", ctx.session, ctx.project, {"timeout_seconds": 0.05 if mode == "timeout" else 10}))
-    while not server.instances or not any(method == "thread/compact/start"
-                                         for method, _ in server.instances[-1].requests):
-        await asyncio.sleep(0)
+    await wait_for_request(task, server, "thread/compact/start")
     if mode == "cancel":
         await asyncio.sleep(0.01)
         task.cancel()
@@ -413,7 +420,7 @@ async def test_compaction_does_not_resume_an_unfinished_native_goal(tmp_path, se
 
 
 def test_selected_native_contracts_are_unchanged_generated_artifacts():
-    root = Path(__file__).resolve().parents[1] / "protocol-schema/workbench-0.162.1"
+    root = Path(__file__).resolve().parents[1] / "protocol-schema/codex-app-server-0.162.1"
     manifest = json.loads((root / "manifest.json").read_text())
     for name, digest in manifest["files"].items():
         assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest

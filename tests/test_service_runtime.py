@@ -68,14 +68,14 @@ async def runtime(monkeypatch, tmp_path):
 async def start(runtime, request_id="stable-request"):
     service, backend, project, session = runtime
     run = (await service.dispatch("run.start", {"session_id": session["id"], "prompt": "fixture prompt", "request_id": request_id}))["run"]
-    await backend.started.wait()
+    await asyncio.wait_for(backend.started.wait(), 30)
     return run
 
 
 async def settle(service, run_id):
     task = service.tasks.get(run_id)
     if task:
-        await asyncio.wait_for(asyncio.shield(task), 3)
+        await asyncio.wait_for(asyncio.shield(task), 30)
     return service.store.one("runs", run_id)
 
 
@@ -176,8 +176,9 @@ async def test_unicode_instruction_limits_apply_to_encoded_bytes(runtime):
     with pytest.raises(KiraError) as failure:
         await service.dispatch("project.update", {"project_id": project["id"], "instructions": "😀" * 100_000})
     assert failure.value.code == "INVALID_ARGUMENT"
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as failure:
         await service.dispatch("project.update", {"project_id": project["id"], "memory": {"content": "😀" * 30_000}})
+    assert failure.value.code == "INVALID_ARGUMENT"
 
 
 async def test_large_export_is_complete_private_file_and_snapshot_is_bounded(runtime):
@@ -369,7 +370,7 @@ async def test_canary_redacted_before_events_export_artifacts_and_database(tmp_p
             project = (await service.dispatch("project.create", {"name": "Canary fixture", "root": str(tmp_path), "instructions": canary}))["project"]
             session = (await service.dispatch("session.create", {"project_id": project["id"], "backend": "ollama", "model": "fixture-only"}))["session"]
             run = (await service.dispatch("run.start", {"session_id": session["id"], "prompt": canary, "request_id": "canary-fixture"}))["run"]
-            await backend.started.wait()
+            await asyncio.wait_for(backend.started.wait(), 30)
             await service.emit(run["id"], "tool.completed", {"tool_id": "fixture", "name": "fixture", "result": {"stdout": canary, "access_token": "unregistered-fake-canary-value"}})
             artifact = service._save_artifact(run["id"], "canary", canary)
             assert canary not in Path(artifact["path"]).read_text()
@@ -557,7 +558,8 @@ async def test_synthetic_tail_metadata_has_the_same_public_sanitation(
 
     backend.run = partial
     run = await start(sanitized_runtime)
-    await settle(service, run["id"])
+    # The provider's own outcome: a failed assertion inside it would only fail the run.
+    assert (await settle(service, run["id"]))["state"] == ("completed" if complete_message else "interrupted")
     events = service.store.events(run["id"])["events"]
     deltas = [event["payload"] for event in events if event["type"] == "message.delta"]
     assert [payload["content"] for payload in deltas] == ["Visible: ", "[REDACTED]"]

@@ -139,7 +139,7 @@ class Store:
                                  + (SOULS_SCHEMA if version < 14 else "")
                                  + (STUDIO_SCHEMA if version < 15 else "")
                                  + (STUDIO_AGENT_SCHEMA if version < 16 else "")
-                                 + "PRAGMA user_version=16; COMMIT;")
+                                 + f"PRAGMA user_version={SCHEMA_VERSION}; COMMIT;")
         except BaseException:
             if self.db.in_transaction:
                 self.db.execute("ROLLBACK")

@@ -8,6 +8,7 @@ Item {
     property bool followMessages: true
     readonly property color muted: appearance.colors.muted
     readonly property color accent: appearance.colors.accent
+    KFormat { id: kformat }
     function memberLabel(memberId) {
         var member = teams.members.find(function(item) { return item.id === memberId })
         return member && member.name && member.name !== memberId ? member.name + " · " + memberId : memberId
@@ -167,7 +168,7 @@ Item {
             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "teamStateText"; text: teams.stateText; textFormat: Text.PlainText; color: page.stateColor(teams.team.state); Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
             KButton { objectName: "cancelTeamButton"; text: qsTr("Ferma team"); destructive: true; visible: teams.canCancel; enabled: workspace.connected; onClicked: teams.cancelTeam() }
         }
-        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: teams.team.id ? localization.format(qsTr("%1 · %2 · ragionamento %3 · concorrenza %4"), [teams.team.backend === "openai_chatgpt" ? qsTr("OpenAI diretto · ChatGPT") : teams.team.backend === "ollama" ? "Ollama" : teams.team.backend === "deepseek_account" ? qsTr("DeepSeek") : "Codex", teams.team.model, (teams.team.settings || {}).reasoning_effort || qsTr("Predefinito del provider"), teams.team.concurrency]) : qsTr("Configurazione esplicita: modello e ragionamento sono condivisi da tutti gli agenti."); textFormat: Text.PlainText; color: muted; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
+        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "teamConfigurationText"; text: teams.team.id ? localization.format(qsTr("%1 · %2 · ragionamento %3 · concorrenza %4"), [kformat.providerLabel(teams.team.backend || "codex"), teams.team.model, (teams.team.settings || {}).reasoning_effort || qsTr("Predefinito del provider"), teams.team.concurrency]) : qsTr("Configurazione esplicita: modello e ragionamento sono condivisi da tutti gli agenti."); textFormat: Text.PlainText; color: muted; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: teams.team.parent_team_id ? qsTr("Continuazione del team %1 · gli incarichi precedenti non vengono rieseguiti automaticamente.").arg(teams.team.parent_team_id) : ""; textFormat: Text.PlainText; visible: text.length > 0; color: muted; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
         TabBar {
             id: tabs; objectName: "teamTabs"; Layout.fillWidth: true
@@ -208,7 +209,7 @@ Item {
                             }
                         }
                     }
-                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: localization.format(qsTr("INCARICHI · %1 completati su %2"), [teams.steps.filter(function(s) { return s.state === "completed" }).length, teams.steps.length]); textFormat: Text.PlainText; color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.topMargin: 10 }
+                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "teamStepsHeading"; text: { const completed = teams.steps.filter(function(s) { return s.state === "completed" }).length; return localization.format(completed === 1 ? qsTr("INCARICHI · %1 completato su %2") : qsTr("INCARICHI · %1 completati su %2"), [completed, teams.steps.length]) } textFormat: Text.PlainText; color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.topMargin: 10 }
                     Repeater {
                         model: teamStepsModel
                         delegate: Rectangle {
@@ -262,7 +263,7 @@ Item {
                         onActivated: teams.setRecipientDraft(String(currentValue))
                         Accessible.name: qsTr("Destinatario del messaggio")
                     }
-                    TextArea { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; id: messageDraft; objectName: "teamMessageDraft"; Layout.fillWidth: true; Layout.preferredHeight: 80; text: teams.messageDraft; textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap; selectByMouse: true; placeholderText: qsTr("Messaggio al team…"); onTextChanged: if (activeFocus) teams.setMessageDraft(text); Accessible.name: qsTr("Messaggio al team"); Keys.onPressed: function(event) { if (event.key === Qt.Key_Return && (event.modifiers & Qt.ControlModifier)) { teams.sendMessage(String(recipient.currentValue || "all")); event.accepted = true } } }
+                    TextArea { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; id: messageDraft; objectName: "teamMessageDraft"; Layout.fillWidth: true; Layout.preferredHeight: 80; text: teams.messageDraft; textFormat: TextEdit.PlainText; wrapMode: TextEdit.Wrap; selectByMouse: true; placeholderText: qsTr("Messaggio al team…"); onTextChanged: if (activeFocus) teams.setMessageDraft(text); Accessible.name: qsTr("Messaggio al team"); Keys.onPressed: function(event) { if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { teams.sendMessage(String(recipient.currentValue || "all")); event.accepted = true } } }
                     KButton { objectName: "sendTeamMessageButton"; text: teams.messagePending ? qsTr("In attesa…") : qsTr("Invia"); primary: true; enabled: workspace.connected && teams.selectedId.length > 0 && !teams.messagePending && messageDraft.text.trim().length > 0; onClicked: teams.sendMessage(String(recipient.currentValue || "all")) }
                 }
             }

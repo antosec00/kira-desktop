@@ -166,7 +166,8 @@ async def test_invalid_state_duplicate_state_and_foreign_host_do_not_consume_att
 
 
 @pytest.mark.parametrize("override", [{"nonce": "wrong"}, {"iss": "https://attacker.invalid"},
-                                      {"aud": "another-client"}, {"exp": time.time() - 60},
+                                      {"aud": "another-client"},
+                                      {"exp": time.time() - 2 * openai_auth.CLOCK_SKEW_SECONDS},
                                       {"aud": ["issued-synthetic-client", "other-client"]},
                                       {"azp": "other-client"}, {"sub": ""}])
 async def test_rejects_invalid_verified_identity_claims(connection, override):

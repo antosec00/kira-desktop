@@ -78,7 +78,7 @@ def test_context_snapshot_never_adopts_another_chat_and_discards_stale_reply(ass
     assert workspace.sessionId == "chat-b"
 
 
-def test_idle_no_poll_and_relevant_events_coalesce_with_one_inflight(assistant_workspace):
+def test_idle_no_poll_and_relevant_events_coalesce_with_one_inflight(assistant_workspace, qtbot):
     workspace, assistant, replies = assistant_workspace
     replies.snapshot()
     assert not assistant._timer.isActive()
@@ -88,13 +88,16 @@ def test_idle_no_poll_and_relevant_events_coalesce_with_one_inflight(assistant_w
     assert not assistant._coalesce.isActive()
     for _ in range(20):
         assistant._event({"run_id": "run-a", "type": "team.delegation"})
-    QTest.qWait(150)
+    # The coalescing timer issues one read, then nothing else is scheduled.
+    qtbot.waitUntil(lambda: len(replies.pending) == 1, timeout=2000)
+    qtbot.wait(150)
     assert len(replies.pending) == 1
     assistant.refresh()
     assistant.refresh()
     assert len(replies.pending) == 1
     replies.snapshot([delegation(state="pending", team_id=None)])
-    QTest.qWait(150)
+    qtbot.waitUntil(lambda: len(replies.pending) == 1, timeout=2000)
+    qtbot.wait(150)
     assert len(replies.pending) == 1
     replies.snapshot([delegation(state="completed", can_cancel=False, can_message=False)])
     assert not assistant._timer.isActive()

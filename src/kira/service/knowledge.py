@@ -14,6 +14,7 @@ from typing import Any
 
 from kira import __version__
 from kira.domain.contracts import HOST_PERMISSIONS, Json, KiraError
+from kira.domain.providers import WEB_BACKENDS
 from kira.domain.souls import SOUL_TOOL_NAMES, soul_tool_specs
 from kira.domain.knowledge import (
     KNOWLEDGE_SCOPES, KNOWLEDGE_TOOL_NAMES, MAX_BOOTSTRAP_BYTES, MAX_QUERY_CHARS,
@@ -159,6 +160,22 @@ class Knowledge:
                                     (project_id,)).fetchone()
         return bool(row and row[0])
 
+    @staticmethod
+    def _web_unavailable(identity: str, session: Json) -> str | None:
+        """Why this chat cannot be offered Kira's browser or Computer, when that is known.
+
+        Otherwise availability stays unknown until a turn registers the tools: it
+        also depends on the browser engine, the mode and, with Ollama, the model.
+        """
+        backend = session["backend"]
+        if backend not in WEB_BACKENDS:
+            return "This provider route does not expose Kira's browser actor."
+        if identity == "computer" and backend == "deepseek_web":
+            return "This provider route does not expose Kira's Computer; the browser is text only."
+        if not session["settings"].get("browser_enabled", True):
+            return "The browser is turned off in this chat's web settings."
+        return None
+
     def _capabilities(self, project: Json, session: Json) -> list[Json]:
         registration = self._registration(session["id"])
         names = registration["names"] if registration else set()
@@ -183,9 +200,10 @@ class Knowledge:
                 reason = "Availability also depends on the owned browser engine, mode and chat consent."
             status = ("disabled" if not enabled else "blocked" if not allowed else
                       "registered" if registered else "unknown")
-            if not registered and identity in {"browser", "computer"} and session["backend"] != "openai_chatgpt":
-                status = "disabled"
-                reason = "This provider route does not expose Kira's browser actor."
+            if not registered and identity in {"browser", "computer"}:
+                unavailable = self._web_unavailable(identity, session)
+                if unavailable is not None:
+                    status, reason = "disabled", unavailable
             capability = {"id": identity, "label": label, "status": status, "reason": reason,
                 "source": "service_registration" if registration else "configuration",
                 "registered": bool(registered), "allowed": bool(enabled and allowed),
@@ -682,16 +700,20 @@ class Knowledge:
                     active()
                     if name not in self._registrations[run_id]["names"]:
                         raise KiraError("UNSUPPORTED", "Profile learning is not registered in this turn")
-                    self._registrations[run_id]["observed"].add(name)
-                    await self.service.emit(run_id, "tool.started", {"tool_id": call_id, "name": name,
-                                                                   "arguments": arguments})
-                    active()
-                    value = self.service.redactor.clean(await souls.tool_call(run_id, call_id, name, arguments))
-                    await self.service.emit(run_id, "tool.completed", {"tool_id": call_id, "name": name,
-                                                                     "result": value})
-                    return value
                 except KiraError as exc:
                     return {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+                self._registrations[run_id]["observed"].add(name)
+                await self.service.emit(run_id, "tool.started", {"tool_id": call_id, "name": name,
+                                                               "arguments": arguments})
+                try:
+                    active()
+                    value = await souls.tool_call(run_id, call_id, name, arguments)
+                except KiraError as exc:
+                    value = {"ok": False, "error": {"code": exc.code, "message": str(exc)}}
+                value = self.service.redactor.clean(value)
+                await self.service.emit(run_id, "tool.completed", {"tool_id": call_id, "name": name,
+                                                                 "result": value})
+                return value
             if name not in KNOWLEDGE_TOOL_NAMES:
                 if previous is None:
                     raise KiraError("UNSUPPORTED", "This Kira callback is not registered")

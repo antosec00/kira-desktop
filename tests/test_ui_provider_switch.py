@@ -134,25 +134,27 @@ def test_real_provider_dialog_keeps_current_selector_and_localizes_at_minimum_si
     engine = create_engine(workspace)
     assert engine.rootObjects()
     window = engine.rootObjects()[0]
-    window.resize(880, 620)
-    qtbot.wait(40)
-    switch = prepare(view, previous=True)
-    qtbot.wait(40)
-    dialog = window.findChild(QObject, "providerSwitchDialog")
-    assert dialog.property("visible") and dialog.property("width") <= 840
-    assert window.findChild(QObject, "backendBox").property("currentIndex") == 1
-    assert window.findChild(QObject, "switchProviderModel").property("currentValue") == "vision-model"
-    assert window.findChild(QObject, "switchProviderApply").property("enabled")
-    engine.rootContext().contextProperty("localization").setLanguage("en")
-    qtbot.wait(30)
-    assert dialog.property("title") == "Continue this chat with another provider"
-    assert window.findChild(QObject, "switchProviderApply").property("text") == "Continue in this chat"
-    assert workspace.backend == "codex" and switch.model == "vision-model"
-    assert not any("ReferenceError" in r.message or "binding loop" in r.message.lower() for r in qtlog.records)
-    window.setProperty("closeConfirmed", True)
-    window.close()
-    engine.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    try:
+        window.resize(880, 620)
+        qtbot.wait(40)
+        switch = prepare(view, previous=True)
+        qtbot.wait(40)
+        dialog = window.findChild(QObject, "providerSwitchDialog")
+        assert dialog.property("visible") and dialog.property("width") <= 840
+        assert window.findChild(QObject, "backendBox").property("currentIndex") == 1
+        assert window.findChild(QObject, "switchProviderModel").property("currentValue") == "vision-model"
+        assert window.findChild(QObject, "switchProviderApply").property("enabled")
+        engine.rootContext().contextProperty("localization").setLanguage("en")
+        qtbot.wait(30)
+        assert dialog.property("title") == "Continue this chat with another provider"
+        assert window.findChild(QObject, "switchProviderApply").property("text") == "Continue in this chat"
+        assert workspace.backend == "codex" and switch.model == "vision-model"
+        assert not any("ReferenceError" in r.message or "binding loop" in r.message.lower() for r in qtlog.records)
+    finally:
+        window.setProperty("closeConfirmed", True)
+        window.close()
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_direct_provider_can_reopen_account_choice_without_new_chat(view):

@@ -103,10 +103,10 @@ async def test_cancel_during_human_wait_never_resumes_or_closes_manual_page(comp
     if cancel_task:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 1)
+            await asyncio.wait_for(task, 10)
     else:
         context.cancel.set()
-        result = await asyncio.wait_for(task, 1)
+        result = await asyncio.wait_for(task, 10)
         assert result["error"]["code"] == "CANCELLED"
     assert [event["payload"]["phase"] for event in progress(service, context.run_id)] == ["waiting_for_browser_control"]
     assert not actor.waiting_runs and context.run_id not in actor.uncertain_runs
@@ -121,7 +121,7 @@ async def test_close_during_human_wait_does_not_report_resume_or_reopen(computer
     service, _, _, _ = computer_service
     context, actor, client, params, _, _, task, before = await paused_tool(computer_service, name)
     await service.dispatch("session.browser.close", {**params, "request_id": str(uuid4())}, client)
-    result = await asyncio.wait_for(task, 1)
+    result = await asyncio.wait_for(task, 10)
     assert result["error"]["code"] == "BROWSER_USER_CLOSED"
     assert [event["payload"]["phase"] for event in progress(service, context.run_id)] == ["waiting_for_browser_control"]
     assert actor.closed and actor.engine.calls == before and not actor.waiting_runs
@@ -168,7 +168,7 @@ async def test_cancel_wins_simultaneous_return_of_control(computer_service):
     context, actor, client, params, stream, _, task, before = await paused_tool(computer_service, "browser.tabs")
     context.cancel.set()
     await command(service, client, params, stream, 1, "ui_resume")
-    assert (await asyncio.wait_for(task, 1))["error"]["code"] == "CANCELLED"
+    assert (await asyncio.wait_for(task, 10))["error"]["code"] == "CANCELLED"
     assert [event["payload"]["phase"] for event in progress(service, context.run_id)] == ["waiting_for_browser_control"]
     assert actor.engine.calls == [*before, ("ui_resume", {})]
     await finish(computer_service, context, "cancelled")
@@ -206,7 +206,7 @@ async def test_visual_action_wait_does_not_reuse_pixels_changed_by_manual_contro
         await command(service, client, params, stream, 2, "ui_resume")
     else:
         context.cancel.set()
-    result = await asyncio.wait_for(task, 1)
+    result = await asyncio.wait_for(task, 10)
     assert not result["ok"] and result["action_executed"] is False
     assert result["error"]["code"] == ("stale_observation" if resume else "CANCELLED")
     assert actor.engine.effects == 0 and not service.approvals

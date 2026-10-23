@@ -57,13 +57,31 @@ async def proxy_request(proxy, target, *, authenticated=True, method="GET"):
     return response
 
 
-async def test_proxy_authentication_precedes_dns():
+async def proxy_client_only(original_connect, proxy, refused, host, port, **kwargs):
+    """Let the test client reach the proxy; record and refuse every other destination.
+
+    Used by fakes patched over asyncio.open_connection, so a regression in the
+    destination checks fails the test instead of opening a real connection.
+    """
+    if (host, port) == ("127.0.0.1", proxy.port):
+        return await original_connect(host, port, **kwargs)
+    refused.append((host, port))
+    raise AssertionError(f"Unexpected outbound connection to {host}:{port}")
+
+
+async def test_proxy_authentication_precedes_dns(monkeypatch):
     calls = []
+    refused = []
+    original_connect = asyncio.open_connection
+
+    async def connect(host, port, **kwargs):
+        return await proxy_client_only(original_connect, proxy, refused, host, port, **kwargs)
 
     async def resolver(host, port):
         calls.append((host, port))
         return ["93.184.216.34"]
 
+    monkeypatch.setattr(web_network.asyncio, "open_connection", connect)
     proxy = PublicWebProxy(resolver=resolver)
     await proxy.start()
     try:
@@ -72,7 +90,7 @@ async def test_proxy_authentication_precedes_dns():
         assert not calls
         response = await proxy_request(proxy, "http://127.0.0.1/")
         assert b"403 Forbidden" in response
-        assert not calls
+        assert not calls and not refused
     finally:
         await proxy.close()
 
@@ -91,12 +109,13 @@ async def test_proxy_connects_pinned_ip_and_never_forwards_proxy_credentials(mon
     server = await asyncio.start_server(fixture, "127.0.0.1", 0)
     fixture_port = server.sockets[0].getsockname()[1]
     original_connect = asyncio.open_connection
+    refused = []
 
     async def connect(host, port, **kwargs):
         if host == "93.184.216.34":
             connections.append((host, port))
             return await original_connect("127.0.0.1", fixture_port, **kwargs)
-        return await original_connect(host, port, **kwargs)
+        return await proxy_client_only(original_connect, proxy, refused, host, port, **kwargs)
 
     async def resolver(host, port):
         resolutions.append((host, port))
@@ -115,7 +134,7 @@ async def test_proxy_connects_pinned_ip_and_never_forwards_proxy_credentials(mon
         assert b"proxy-authorization" not in requests[0].lower()
         # A later DNS rebind is rejected on a new connection.
         assert b"403 Forbidden" in await proxy_request(proxy, "http://example.com/again")
-        assert len(connections) == 1
+        assert len(connections) == 1 and not refused
     finally:
         await proxy.close()
         server.close()
@@ -134,12 +153,13 @@ async def test_redirect_target_is_checked_as_new_destination(monkeypatch):
     fixture_port = server.sockets[0].getsockname()[1]
     original_connect = asyncio.open_connection
     sockets = []
+    refused = []
 
     async def connect(host, port, **kwargs):
         if host == "93.184.216.34":
             sockets.append(host)
             return await original_connect("127.0.0.1", fixture_port, **kwargs)
-        return await original_connect(host, port, **kwargs)
+        return await proxy_client_only(original_connect, proxy, refused, host, port, **kwargs)
 
     async def resolver(host, port):
         return ["93.184.216.34"]
@@ -152,7 +172,7 @@ async def test_redirect_target_is_checked_as_new_destination(monkeypatch):
         assert b"302 Found" in first
         second = await proxy_request(proxy, "http://169.254.169.254/latest/")
         assert b"403 Forbidden" in second
-        assert len(sockets) == 1
+        assert len(sockets) == 1 and not refused
     finally:
         await proxy.close()
         server.close()
@@ -170,12 +190,14 @@ async def test_authenticated_connect_pins_https_and_tunnels_bytes(monkeypatch):
     server = await asyncio.start_server(fixture, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     original_connect = asyncio.open_connection
+    refused = []
 
     async def connect(host, target_port, **kwargs):
         if host == "93.184.216.34":
             pinned.append((host, target_port))
             return await original_connect("127.0.0.1", port, **kwargs)
-        return await original_connect(host, target_port, **kwargs)
+        return await proxy_client_only(original_connect, proxy, refused, host, target_port,
+                                       **kwargs)
 
     async def resolver(host, port):
         return ["93.184.216.34"]
@@ -196,6 +218,7 @@ async def test_authenticated_connect_pins_https_and_tunnels_bytes(monkeypatch):
         writer.close()
         await writer.wait_closed()
         assert b"403 Forbidden" in await proxy_request(proxy, "example.com:80", method="CONNECT")
+        assert not refused
     finally:
         await proxy.close()
         server.close()
@@ -203,15 +226,16 @@ async def test_authenticated_connect_pins_https_and_tunnels_bytes(monkeypatch):
 
 
 async def test_proxy_enforces_transfer_budget(monkeypatch):
-    monkeypatch.setattr(web_network, "MAX_SESSION_BYTES", 3)
+    monkeypatch.setattr(web_network, "MAX_WINDOW_BYTES", 3)
     proxy = PublicWebProxy()
-    proxy.bytes_transferred = 3
+    proxy.budget.bytes = 3
     await proxy.start()
     try:
         reader, writer = await asyncio.open_connection("127.0.0.1", proxy.port)
         assert await asyncio.wait_for(reader.read(), 2) == b""
         writer.close()
         await writer.wait_closed()
+        assert proxy.budget.limited
     finally:
         await proxy.close()
 
@@ -229,6 +253,7 @@ async def test_proxy_fails_over_between_validated_addresses_without_resolving_ag
     server = await asyncio.start_server(fixture, "127.0.0.1", 0)
     fixture_port = server.sockets[0].getsockname()[1]
     original_connect = asyncio.open_connection
+    refused = []
 
     async def connect(host, port, **kwargs):
         if host == "2606:4700:4700::1111":
@@ -237,7 +262,7 @@ async def test_proxy_fails_over_between_validated_addresses_without_resolving_ag
         if host == "93.184.216.34":
             connections.append((host, port))
             return await original_connect("127.0.0.1", fixture_port, **kwargs)
-        return await original_connect(host, port, **kwargs)
+        return await proxy_client_only(original_connect, proxy, refused, host, port, **kwargs)
 
     async def resolver(host, port):
         resolutions.append((host, port))
@@ -249,7 +274,7 @@ async def test_proxy_fails_over_between_validated_addresses_without_resolving_ag
     try:
         assert (await proxy_request(proxy, "http://example.com/")).endswith(b"OK")
         assert connections == [("2606:4700:4700::1111", 80), ("93.184.216.34", 80)]
-        assert resolutions == [("example.com", 80)]
+        assert resolutions == [("example.com", 80)] and not refused
     finally:
         await proxy.close()
         server.close()

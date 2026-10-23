@@ -15,15 +15,15 @@ of:
 
 - the **project instructions**, written by you in **Project memory and
   instructions**;
-- the **Project memory**, the JSON you curate (section 2);
+- a reference to the **Project memory**, the JSON you curate (section 2),
+  which the model reads with the lookup tools when needed;
 - the **Important chat notes** you have kept (section 4);
 - the chat's **saved goal**, while it is active (see
   [Chat and tools](CHAT_AND_TOOLS.md));
 - the **excerpts from the other chats** of the same project, if enabled
   (section 3);
-- the **core of the Soul** chosen for the chat (identity, philosophy and
-  preferences, up to 1,200 bytes; see
-  [Soul and knowledge](SOUL_AND_KNOWLEDGE.md));
+- the **core of the Soul** chosen for the chat (name, philosophy up to 1,200
+  bytes and preferences; see [Soul and knowledge](SOUL_AND_KNOWLEDGE.md));
 - Kira's common identity, with the turn's effective capabilities and
   permissions;
 - the conversation's **portable context**, when the provider does not keep a
@@ -31,20 +31,21 @@ of:
   (section 5).
 
 Instructions and notes are binding input, supplied in full. Large material
-(extended project memory, Research record, Kira manual, tool catalog, chat
-history) is instead reachable by the model with searches and paged reads
-(section 8), so as not to fill the context with what is not needed. A compact
-anchor reminds the model of the current request and the saved goal, if any; a
+(project memory, Research record, Kira manual, tool catalog, chat history) is
+instead reachable by the model with searches and paged reads (section 8), so as
+not to fill the context with what is not needed: a model without tools does not
+see it. Team members receive the project memory in full. A compact anchor
+reminds the model of the current request and the saved goal, if any; a
 historical request never becomes a permanent goal, and a later correction of
 yours prevails.
 
-To see exactly what Kira added to the last run open **Context supplied by
-Kira** (in the **Details** panel, or with **Supplied context** in **Project
-memory and instructions**): it shows Kira's contribution, with the **Copy
-context** button. The provider's internal prompt may contain other
-non-observable context, and this view does not expose the model's private
-reasoning. From the **Research** panel, **Read shared context** shows the part
-of the record the project's chats receive.
+To see exactly what Kira added to the last run open **Context supplied by Kira**
+(in the **Details** panel, or with **Supplied context** in **Project memory and
+instructions**): it shows Kira's contribution, with the **Copy context** button.
+The provider's internal prompt may contain other non-observable context, and
+this view does not expose the model's private reasoning. From the **Research**
+panel, **Read shared context** shows the accepted records the assistant can
+consult with its tools; they are not added to the supplied context.
 
 ## 2. Project memory
 
@@ -54,9 +55,9 @@ from **Project memory and instructions** and save it with **Save**; **Export
 JSON** writes it to a file.
 
 Keep **hypotheses** separate from **conclusions** and link every conclusion to
-a file, an event or an artifact: the text you write here is given to the model
-as context, not as verified fact, and nothing you enter automatically becomes
-a confirmed conclusion. It is the memory curated by you: the model reads it,
+a file, an event or an artifact: the model reads this text as context, not as
+verified fact, and nothing you enter automatically becomes a confirmed
+conclusion. It is the memory curated by you: the model reads it,
 but does not rewrite it on its own.
 
 The project instructions and memory are shared by all the project's chats and
@@ -98,9 +99,11 @@ chat**), the **Important chat notes** section lets you write a constraint or
 a detail and press **Keep note**. Notes are supplied to the model in full at
 every turn, even after a compaction, and with any provider; **Remove** deletes
 a note without touching the original messages. The number and size of notes
-have limits visible on save: no note is discarded silently.
+have limits visible on save: no note is discarded silently. You can add or
+remove notes while no work is running in the project and no requests are
+queued.
 
-What sets the three tools apart:
+What sets these tools apart:
 
 | Tool | Scope | Who writes it |
 | --- | --- | --- |
@@ -144,8 +147,9 @@ The direct provider uses a **persistent context** managed by Kira for each
 chat, account and model, rebuilt from the original messages and kept across
 restarts. The setting is **Automatic — maximum available**: Kira plans
 requests on the largest window declared by the catalog for that model and
-reserves **18 %** of the window for response, reasoning and tools, plus a
-**3 %** margin when the catalog declares an output limit. A missing capacity
+reserves **18 %** of the window for response, reasoning and tools; when the
+catalog declares an output limit, the reserve is that limit plus **3 %** of the
+window, if larger. A missing capacity
 stays unknown, and the catalog's declaration alone does not prove that a
 request as large as the window works on that connection.
 
@@ -179,7 +183,9 @@ With DeepSeek the mode is **Automatic — Kira compaction**: the server does not
 shorten the history, Kira does. Before every request it estimates the pressure
 on the window and calibrates it with the input tokens reported in the
 responses. The threshold is the lesser of **80 %** of the model's window and
-the window minus the output limit minus a **65,536 token** margin. Compaction
+the window minus a reserve for the output limit plus a **65,536 token** margin;
+the reserve never exceeds half of the window, so models with small windows keep
+at least half of it for input. Compaction
 folds the oldest runs and keeps verbatim at least the most recent **16 %** of
 the usable window. The summary uses the selected DeepSeek model and account,
 **without tools and without reasoning**, in blocks, validates the source
@@ -202,15 +208,15 @@ request and the **context window occupancy** reported by Claude Code.
 ## 6. Context and memory: compacting
 
 Open **Context and memory** from the **Context** button under the chat, from
-**Manage chat** or from the **Usage** panel. With OpenAI direct and DeepSeek,
-**Compact now** starts an explicit compaction: it requires an **idle chat**
-and an **empty queue** (complete or remove the waiting requests, even if the
-queue is paused). During the operation the chat's button shows
+**Manage chat** or from the **Usage** panel. With Direct OpenAI and DeepSeek
+Account, **Compact now** starts an explicit compaction: it requires an **idle
+chat** and an **empty queue** (complete or remove the waiting requests, even if
+the queue is paused). During the operation the chat's button shows
 **Compacting…** and the panel updates the status while it is open; closing it
-cancels nothing. Compaction uses the selected model, may consume plan quota
-and add waiting time, and does not modify the project files. If the
-confirmation is missing, press **Refresh**: Kira keeps the request identity
-and does not repeat an inference on its own.
+cancels nothing. Compaction uses the selected model, may consume plan quota and
+add waiting time, and does not modify the project files. If the confirmation is
+missing, press **Refresh**: Kira keeps the request identity and does not repeat
+an inference on its own.
 
 If the native compaction's response is unusable (an index or format the local
 reader does not accept), Kira shows **Recovering context**, discards that

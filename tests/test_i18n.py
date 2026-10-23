@@ -56,6 +56,7 @@ def catalog_root(tmp_path, monkeypatch):
     for relative in ("languages.json", "it/qt.json", "en/core.json"):
         (directory / relative).write_bytes((original / relative).read_bytes())
     (directory / "en/fixture.json").write_text(json.dumps({
+        "Lingua": "Language",
         "Progetto: {name}": "Project: {name}",
         "Creato": "Created",
         "Valore {value}": "Value {wrong_placeholder}",

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import socket
 import struct
 import tempfile
 from typing import Any, ClassVar
@@ -268,22 +269,31 @@ class BrowserDesktop:
                 descriptor = os.open(self._authority, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(descriptor, "wb") as output:
                     output.write(data)
-                self._process = await asyncio.create_subprocess_exec(
-                    executable, self.display, "-screen", "0", f"{MAX_WIDTH}x{MAX_HEIGHT}x24",
-                    "-nolisten", "tcp", "-auth", str(self._authority), "-noreset",
-                    stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    env={key: value for key, value in os.environ.items()
-                         if key in {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR"}},
-                )
-                deadline = asyncio.get_running_loop().time() + 3
-                while self._process.returncode is None and asyncio.get_running_loop().time() < deadline:
+                # Xvfb writes the display number to -displayfd once it listens,
+                # and exits without writing when another server holds it. Kira
+                # connects only after that report, never to whichever server
+                # happens to answer on the number.
+                report, report_writer = os.pipe()
+                try:
+                    self._process = await asyncio.create_subprocess_exec(
+                        executable, self.display, "-displayfd", str(report_writer),
+                        "-screen", "0", f"{MAX_WIDTH}x{MAX_HEIGHT}x24",
+                        "-nolisten", "tcp", "-auth", str(self._authority), "-noreset",
+                        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL, pass_fds=(report_writer,),
+                        env={key: value for key, value in os.environ.items()
+                             if key in {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR"}},
+                    )
+                except BaseException:
+                    os.close(report)
+                    raise
+                finally:
+                    os.close(report_writer)
+                if await self._reported_display(report) == number:
                     self._connection = self._connect()
-                    if self._connection:
+                    if self._connection and self._served_by_display_process():
                         break
-                    await asyncio.sleep(0.04)
-                if self._connection:
-                    break
+                    self._disconnect()
                 await self._stop_process()
             if not self._connection:
                 raise OSError("The private browser display could not start")
@@ -294,6 +304,56 @@ class BrowserDesktop:
         except BaseException:
             await self.close()
             raise
+
+    async def _reported_display(self, descriptor: int) -> str | None:
+        """Read the number Xvfb reports when ready; None if it exits or stays silent."""
+        loop = asyncio.get_running_loop()
+        readable = asyncio.Event()
+        data = b""
+        try:
+            os.set_blocking(descriptor, False)
+            loop.add_reader(descriptor, readable.set)
+            try:
+                async with asyncio.timeout(3):
+                    while b"\n" not in data and len(data) <= 16:
+                        await readable.wait()
+                        readable.clear()
+                        try:
+                            chunk = os.read(descriptor, 32)
+                        except BlockingIOError:
+                            continue
+                        if not chunk:
+                            return None
+                        data += chunk
+            except TimeoutError:
+                return None
+            finally:
+                loop.remove_reader(descriptor)
+        finally:
+            os.close(descriptor)
+        line = data.split(b"\n", 1)[0]
+        return line.decode("ascii") if line.isdigit() and len(line) <= 5 else None
+
+    def _served_by_display_process(self) -> bool:
+        """Whether the peer of the X connection is the Xvfb process started here."""
+        assert self._libs is not None and self._connection is not None
+        if self._process is None:
+            return False
+        try:
+            descriptor = self._libs.x.XConnectionNumber(self._connection)
+            # fromfd duplicates the descriptor; Xlib keeps its own.
+            with socket.fromfd(descriptor, socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                credentials = peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                                              struct.calcsize("3i"))
+        except OSError:
+            return False
+        pid, uid, _ = struct.unpack("3i", credentials)
+        return pid == self._process.pid and uid == os.getuid()
+
+    def _disconnect(self) -> None:
+        connection, self._connection = self._connection, None
+        if connection and self._libs is not None:
+            self._libs.x.XCloseDisplay(connection)
 
     def _connect(self) -> int | None:
         assert self._libs is not None and self._authority is not None

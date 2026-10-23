@@ -79,8 +79,11 @@ useful when you want the discipline of task-based planning.
 
 ## Requesting a Team from the chat
 
-With **Codex** or **Direct OpenAI · ChatGPT** and tools enabled, you can ask
-for a Team directly in the conversation. For example:
+With **Codex**, **Direct OpenAI · ChatGPT**, **Ollama** or **DeepSeek Account**
+and tools enabled, you can ask for a Team directly in the conversation; with
+**Ollama** the model must support tools. **Claude Code · personal use** and
+**DeepSeek Web** do not run Teams, so their chats cannot request one. For
+example:
 
 > Organize a team of three members: a coordinator, a test analyst and an
 > independent reviewer. Work read-only on the project files and report
@@ -157,7 +160,7 @@ Team pauses with the reason visible. Repeatedly empty plans or plans without
 progress stop the Team instead of letting it spin. A provider error is not
 retried automatically.
 
-A historical conclusion without member outcomes is flagged as **Conclusion
+A conclusion without recorded member outcomes is flagged as **Conclusion
 needs review**: the original data stays preserved and it is up to you to
 judge.
 
@@ -261,10 +264,11 @@ permission does not change.
 
 ## Automatic reply with the results
 
-For Teams started or resumed from the chat, the result triggers a reply from
-Kira in the original conversation on its own, without you sending another
-message. A Team created from the **Team** view without an originating chat
-has no automatic reply.
+For Teams with an originating chat, the result triggers a reply from Kira in
+that conversation on its own, without you sending another message. The
+originating chat is the one where you asked for the Team or, for a Team started
+or resumed from the **Team** view, the ordinary chat open at that moment;
+without an originating chat there is no automatic reply.
 
 - **When it starts.** After the Team's confirmed cleanup, when its status is
   concluded, failed or paused. If Kira is still replying in the chat, the
@@ -288,8 +292,7 @@ has no automatic reply.
   explicit continuation from you.
 
 In the history the reply is introduced by a service notice, never by a
-made-up user message; exports and memory keep the same provenance. Older
-Teams are not reactivated to produce replies.
+made-up user message; exports and memory keep the same provenance.
 
 ## Run details
 

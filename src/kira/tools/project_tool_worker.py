@@ -4,9 +4,36 @@ import base64
 import hashlib
 import io
 import json
+import os
 import sys
 
 MAX_HANDSHAKE = 512 * 1024
+# Files a tool creates get the conventional user modes, as for run_command,
+# whatever umask the service runs with (the packaged unit uses UMask=0077).
+TOOL_UMASK = 0o022
+
+
+def provide_arguments(data: bytes) -> None:
+    """Expose the arguments as standard input: sys.stdin, sys.stdin.buffer and fd 0.
+
+    The service closes the handshake pipe, so descriptor 0 is replaced by an
+    in-memory file holding only the arguments. Where that is unavailable the
+    Python-level streams still carry them.
+    """
+    try:
+        memory = os.memfd_create("kira-project-tool-arguments", os.MFD_CLOEXEC)
+    except (AttributeError, OSError):
+        sys.stdin = io.TextIOWrapper(io.BytesIO(data), encoding="utf-8")
+        return
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(memory, view):]
+        os.lseek(memory, 0, os.SEEK_SET)
+        os.dup2(memory, 0)
+    finally:
+        os.close(memory)
+    sys.stdin = open(0, encoding="utf-8", closefd=False)
 
 
 def main() -> int:
@@ -30,7 +57,8 @@ def main() -> int:
         code = compile(script, "project-tool:" + value["identity"], "exec")
     except (ValueError, TypeError, KeyError, UnicodeError, SyntaxError):
         return 65
-    sys.stdin = io.StringIO(arguments + "\n")
+    provide_arguments((arguments + "\n").encode("utf-8"))
+    os.umask(TOOL_UMASK)
     sys.argv = ["project-tool:" + value["identity"]]
     namespace = {"__name__": "__main__", "__file__": sys.argv[0], "__package__": None}
     exec(code, namespace)

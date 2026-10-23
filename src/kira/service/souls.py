@@ -95,6 +95,13 @@ class Souls:
         if method in _MUTATIONS:
             if getattr(self.service, "_closing", False):
                 raise KiraError("BUSY", "The service is stopping")
+            if method == "soul.bind" and not self._recorded(params):
+                project, session, _, changed = self._binding_change(params)
+                web = getattr(self.service, "web", None)
+                if changed and web is not None:
+                    # The change retires the provider generation, and with it the
+                    # chat's browser, as a provider change does. Manual control refuses it.
+                    await web.before_configuration(project["id"], session["id"])
             return self.data.operation(method, params, lambda: self._mutate(method, params))
         if method == "soul.list":
             offset = integer(params.get("offset", 0), "offset", 0, 1000000)
@@ -216,7 +223,13 @@ class Souls:
             soul.update({key: params[key] for key in ("name", "core", "mode") if key in params})
         return {"soul": self.data.save(soul, expected, "archived" if method == "soul.archive" else "user_edit")}
 
-    def _bind(self, params: Json) -> Json:
+    def _recorded(self, params: Json) -> bool:
+        request_id = params.get("request_id")
+        return isinstance(request_id, str) and self.db.execute(
+            "SELECT 1 FROM soul_operations WHERE request_id=?", (request_id,)).fetchone() is not None
+
+    def _binding_change(self, params: Json) -> tuple[Json, Json, Any, bool]:
+        """Validate a selection; a change also requires an idle chat without pending work."""
         project, session = self._scope(params["project_id"], params["session_id"])
         soul_id = params["soul_id"]
         if soul_id is not None:
@@ -233,6 +246,12 @@ class Souls:
             if self.db.execute("SELECT 1 FROM prompt_queue WHERE session_id=? AND status IN ('pending','starting')",
                                (session["id"],)).fetchone():
                 raise KiraError("BUSY", "Finish or remove queued prompts before changing this Kira profile")
+        return project, session, previous, changed
+
+    def _bind(self, params: Json) -> Json:
+        project, session, previous, changed = self._binding_change(params)
+        soul_id = params["soul_id"]
+        if changed:
             self.service.provider_routing.reset_native(session)
         epoch = (previous["epoch"] if previous else 0) + int(changed or previous is None)
         self.db.execute("INSERT INTO soul_bindings VALUES (?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET "

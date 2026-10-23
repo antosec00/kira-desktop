@@ -32,7 +32,10 @@ class CrashFixtureBackend:
             await ctx.emit("tool.started", {"tool_id": "fixture-write", "name": "write_file",
                                             "arguments": arguments})
             assert FileTools(ctx.root).write_file(arguments)["ok"]
-        marker.write_text(ctx.prompt)
+        # Publish atomically: the test polls for this file and reads it at once.
+        temporary = marker.with_name(marker.name + ".tmp")
+        temporary.write_text(ctx.prompt)
+        temporary.replace(marker)
         await asyncio.Event().wait()
 
     async def close(self):
@@ -40,6 +43,8 @@ class CrashFixtureBackend:
 
 
 async def main():
+    if not os.environ.get("KIRA_HOME"):
+        raise SystemExit("This fixture service only runs on an isolated KIRA_HOME profile")
     service = Service(backend_factory=lambda name, settings: CrashFixtureBackend())
     await service.start()
     for value in (signal.SIGINT, signal.SIGTERM):

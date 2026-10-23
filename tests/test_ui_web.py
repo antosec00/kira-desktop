@@ -15,6 +15,7 @@ from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 from kira.ui.i18n import Localization
 from kira.ui.web_controller import browser_approval_description
+from test_ui_support import wait_opened
 
 
 def snapshot(**updates):
@@ -304,15 +305,15 @@ def test_real_web_dialog_translates_and_keeps_literal_preview_at_minimum_window(
         assert bitmap.save(str(path))
         requests[-1][2](snapshot(browser={"available": False, "title": "<literal title>",
                                          "url": "https://example.test/%2", "preview_url": path.as_uri()}))
-        qtbot.wait(50)
+        scroll = window.findChild(QObject, "webScroll")
+        wait_opened(qtbot, dialog, scroll)
         assert dialog.property("title") == ("Chat web and browser" if language == "en" else "Web e browser della chat")
-        assert window.findChild(QObject, "webComputerTitle").property("text") == ("Kira Computer" if language == "en" else "Computer di Kira")
+        assert window.findChild(QObject, "webComputerTitle").property("text") == ("Kira's Computer" if language == "en" else "Computer di Kira")
         assert window.findChild(QObject, "webPageTitle").property("text") == "<literal title>"
         assert window.findChild(QObject, "webPageUrl").property("text") == "https://example.test/%2"
         assert window.findChild(QObject, "webInstallCommand").property("text") == "kira-desktop browser-install"
         assert window.findChild(QObject, "webPreview").property("source").toString() == path.as_uri()
         assert dialog.property("height") <= 560
-        scroll = window.findChild(QObject, "webScroll")
         assert scroll.property("contentHeight") > scroll.property("height")
         assert not window.findChild(QObject, "webSave").property("enabled")
         controller.setPersistentEnabled(True)

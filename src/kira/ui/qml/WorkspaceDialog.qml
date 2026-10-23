@@ -16,6 +16,7 @@ KiraPanel {
     property string savingForm: ""
     readonly property color muted: appearance.colors.muted
     readonly property color accent: appearance.colors.accent
+    KFormat { id: kformat }
     function formKey() { return JSON.stringify([formProject, folder.checked, terminal.checked, editor.checked, nextStep.text]) }
     function rememberForm() {
         if (!formProject || loadingForm) return
@@ -130,7 +131,7 @@ KiraPanel {
                             ReadText { text: modelData.path; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
                             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: ({unchanged: qsTr("Invariato"), changed: qsTr("Modificato · prova da ricontrollare"), missing: qsTr("File mancante"), unavailable: qsTr("Verifica non disponibile")})[modelData.state] || modelData.state; color: modelData.state === "unchanged" ? appearance.colors.success : appearance.colors.warning; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             ReadText { text: modelData.reason || ""; visible: text.length > 0; color: muted; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
-                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Controllato: %1").arg(modelData.checked_at || "—"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; elide: Text.ElideRight }
+                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Controllato: %1").arg(modelData.checked_at ? kformat.timestamp(modelData.checked_at) : "—"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; elide: Text.ElideRight }
                             Flow {
                                 Layout.fillWidth: true; spacing: 6
                                 KButton { text: qsTr("Aggiorna riferimento"); implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); enabled: workspace.connected && !workspace.workspaceLoading; onClicked: workspace.watchFile(modelData.path) }
@@ -149,7 +150,7 @@ KiraPanel {
                     id: captures; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 10
                     model: workspace.projectWorkspace.captures || []
                     ScrollBar.vertical: ScrollBar {}
-                    delegate: KButton { required property var modelData; width: captures.width; text: "↗  " + modelData.created_at; onClicked: workspace.openArtifact(modelData.path); toolTipText: modelData.path }
+                    delegate: KButton { required property var modelData; width: captures.width; text: "↗  " + kformat.timestamp(modelData.created_at); onClicked: workspace.openArtifact(modelData.path); toolTipText: modelData.path }
                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; visible: captures.count === 0; text: qsTr("Nessuna schermata acquisita."); color: muted }
                 }
                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; visible: Boolean(workspace.projectWorkspace.captures_truncated); text: qsTr("Sono mostrate le 100 schermate più recenti."); color: muted; Layout.fillWidth: true; wrapMode: Text.Wrap }

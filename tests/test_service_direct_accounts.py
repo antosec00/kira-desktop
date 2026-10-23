@@ -102,7 +102,7 @@ async def test_chat_binding_survives_account_selection_and_model_configuration(d
     provider.release.set()
     run = (await service.dispatch("run.start", {
         "session_id": session["id"], "prompt": "Inspect the fixture", "request_id": "bound"}))["run"]
-    await service.tasks[run["id"]]
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     assert provider.contexts[0].settings["openai_account_id"] == "account-a"
     assert provider.contexts[0].model == "other-model"
     assert service.store.one("runs", run["id"])["state"] == "completed"
@@ -115,14 +115,14 @@ async def test_authentication_rejected_while_direct_run_or_queue_exists(direct):
     service, auth, provider, project, session = direct
     run = (await service.dispatch("run.start", {
         "session_id": session["id"], "prompt": "Wait", "request_id": "waiting"}))["run"]
-    await provider.started.wait()
+    await asyncio.wait_for(provider.started.wait(), 30)
     status = await service.dispatch("backend.account", account("status"))
     assert not status["mutation_allowed"]
     with pytest.raises(KiraError, match="Finish direct work"):
         await service.dispatch("backend.login", {"backend": "openai_chatgpt"})
     assert not auth.calls
     provider.release.set()
-    await service.tasks[run["id"]]
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     await service.dispatch("queue.pause", {"project_id": project["id"]})
     await service.dispatch("queue.add", {
         "session_id": session["id"], "prompt": "Later", "request_id": "queued"})
@@ -162,6 +162,7 @@ async def test_direct_team_has_account_and_http_cleanup_without_provider_process
     assert provider.contexts[0].settings["openai_account_id"] == "account-a"
     assert provider.contexts[0].settings["reasoning_effort"] == "high"
     assert not service.store.all("SELECT * FROM project_reservations")
+    assert not service.store.all("SELECT * FROM provider_processes")
     assert service.store.all("SELECT state FROM run_cleanup") == [{"state": "stopped"}]
 
 
@@ -172,8 +173,9 @@ async def test_existing_codex_creation_does_not_require_or_change_direct_account
         "project_id": project["id"], "backend": "codex", "model": "fixture-model"}))["session"]
     assert "openai_account_id" not in codex["settings"]
     assert auth.active == "account-a"
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError, match="Unsupported backend operation") as error:
         await service.dispatch("backend.account", {"backend": "codex", "action": "status"})
+    assert error.value.code == "INVALID_ARGUMENT"
 
 
 @pytest.mark.parametrize("setting,value", [("service_tier", "priority"), ("temperature", 0.5),

@@ -65,8 +65,9 @@ def test_replaced_project_root_symlink_is_rejected(tmp_path):
     tools = FileTools(project)
     project.rmdir()
     project.symlink_to(outside, target_is_directory=True)
-    with pytest.raises(OSError):
+    with pytest.raises(KiraError, match="Symbolic links are not followed") as error:
         tools.read_file({"path": "outside.txt"})
+    assert error.value.code == "PATH_DENIED"
     with pytest.raises(KiraError, match="root changed"):
         FileTools(project)
 
@@ -130,3 +131,16 @@ def test_file_mode_preserved_and_no_temporary_files(tmp_path):
     tools.write_file({"path": "executable", "content": "new", "expected_sha256": tools.read_file({"path": "executable"})["sha256"]})
     assert target.stat().st_mode & 0o777 == 0o750
     assert sorted(item.name for item in tmp_path.iterdir()) == ["executable"]
+
+
+@pytest.mark.parametrize("path", [".git/config", ".git/hooks/pre-commit", "sub/.git/config",
+                                  ".GIT/info/attributes"])
+def test_project_scoped_writes_never_reach_git_metadata(tmp_path, path):
+    (tmp_path / ".git" / "hooks").mkdir(parents=True)
+    (tmp_path / ".git" / "info").mkdir()
+    (tmp_path / "sub" / ".git").mkdir(parents=True)
+    with pytest.raises(KiraError, match="Git metadata"):
+        FileTools(tmp_path).write_file({"path": path, "content": "[filter]\n", "expected_sha256": None})
+    assert not (tmp_path / path).exists() or path.startswith(".GIT")
+    FileTools(tmp_path).write_file({"path": ".gitignore", "content": "build/\n", "expected_sha256": None})
+    assert (tmp_path / ".gitignore").read_text() == "build/\n"

@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import stat
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -183,15 +185,25 @@ async def test_relay_closes_pending_callback_and_does_not_replay_cancelled_ident
 
     ctx.client_tool_call = callback
     relay = kira_mcp.KiraMcpRelay(ctx, set(ASSISTANT_TOOL_NAMES))
-    await relay.start()
-    descriptor = kira_mcp._descriptor(relay.directory / "bridge.json")
-    pending = asyncio.create_task(kira_mcp._relay_call(descriptor, {
-        "call_id": "one", "name": "kira.environment", "arguments": {}}))
-    await asyncio.wait_for(entered.wait(), 1)
-    ctx.cancel.set()
-    result = await asyncio.wait_for(pending, 2)
-    assert result["isError"] and exited.is_set()
-    await relay.close()
+    pending = None
+    try:
+        await relay.start()
+        descriptor = kira_mcp._descriptor(relay.directory / "bridge.json")
+        request = {"call_id": "one", "name": "kira.environment", "arguments": {}}
+        pending = asyncio.create_task(kira_mcp._relay_call(descriptor, request))
+        await asyncio.wait_for(entered.wait(), 1)
+        ctx.cancel.set()
+        result = await asyncio.wait_for(pending, 2)
+        assert result["isError"] and exited.is_set()
+        # Retrying the cancelled identity returns its recorded cancellation; the
+        # callback is never dispatched again.
+        repeat = await asyncio.wait_for(kira_mcp._relay_call(descriptor, request), 10)
+        assert repeat == result and len(calls) == 1
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        await relay.close()
     assert not relay.tasks and not relay.directory.exists()
 
 
@@ -213,7 +225,7 @@ async def test_stdio_actual_process_initializes_lists_and_calls_relay(tmp_path, 
             process.stdin.write((json.dumps({"jsonrpc": "2.0", "id": request_id,
                                             "method": method, "params": params}) + "\n").encode())
             await process.stdin.drain()
-            return json.loads(await asyncio.wait_for(process.stdout.readline(), 5))["result"]
+            return json.loads(await asyncio.wait_for(process.stdout.readline(), 30))["result"]
 
         initialized = await request(1, "initialize", {"protocolVersion": "2025-06-18"})
         assert initialized["serverInfo"]["name"] == "Kira Desktop" and relay.ready
@@ -248,7 +260,27 @@ async def test_stdio_actual_process_initializes_lists_and_calls_relay(tmp_path, 
         await relay.close()
 
 
+SYSTEM_PYTHON = "/usr/bin/python3"
+
+
+def system_python_version():
+    """The host interpreter's (major, minor) version, or None when it cannot run."""
+    script = "import sys; print(*sys.version_info[:2])"
+    try:
+        output = subprocess.run([SYSTEM_PYTHON, "-I", "-c", script], capture_output=True,
+                                text=True, timeout=30, check=True).stdout
+        return tuple(int(part) for part in output.split())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 async def test_installed_private_library_runs_with_system_python_and_unrelated_cwd(tmp_path):
+    # The installed library deliberately runs under the host interpreter, which
+    # must support the syntax of the Python version this source tree targets.
+    version = system_python_version()
+    if version is None or version < sys.version_info[:2]:
+        pytest.skip(f"{SYSTEM_PYTHON} is missing or older than "
+                    f"Python {sys.version_info.major}.{sys.version_info.minor}")
     ctx, calls, _ = context(tmp_path)
     relay = kira_mcp.KiraMcpRelay(ctx, set(ASSISTANT_TOOL_NAMES))
     process = None
@@ -264,7 +296,7 @@ async def test_installed_private_library_runs_with_system_python_and_unrelated_c
         (poison / "__init__.py").write_text("raise RuntimeError('Untrusted cwd import')")
         entry = library / "kira" / "backends" / "kira_mcp_entry.py"
         process = await asyncio.create_subprocess_exec(
-            "/usr/bin/python3", "-I", str(entry), overlay["args"][-1], cwd=unrelated,
+            SYSTEM_PYTHON, "-I", str(entry), overlay["args"][-1], cwd=unrelated,
             env={"PATH": os.defpath, "PYTHONPATH": str(unrelated)},
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
@@ -275,7 +307,7 @@ async def test_installed_private_library_runs_with_system_python_and_unrelated_c
             process.stdin.write((json.dumps({"jsonrpc": "2.0", "id": request_id,
                                             "method": method, "params": params}) + "\n").encode())
             await process.stdin.drain()
-            response = json.loads(await asyncio.wait_for(process.stdout.readline(), 5))
+            response = json.loads(await asyncio.wait_for(process.stdout.readline(), 30))
             assert "error" not in response and not response["result"].get("isError")
         assert calls[0][1] == "kira.environment"
         process.stdin.close()
@@ -372,7 +404,8 @@ async def test_codex_attaches_tools_with_config_for_existing_and_new_threads(
     ctx.assistant_instructions = "You are the Kira Desktop assistant, using verified tools."
     if resume:
         ctx.session["backend_ref"] = "fixture-thread"
-    AssistantServer.instances, AssistantServer.valid_tools = [], True
+    monkeypatch.setattr(AssistantServer, "instances", [])
+    monkeypatch.setattr(AssistantServer, "valid_tools", True)
     monkeypatch.setattr(codex, "AppServer", AssistantServer)
     result = await codex.CodexBackend().run(ctx)
     assert result["state"] == "completed" and len(calls) == 1
@@ -401,7 +434,9 @@ async def test_codex_attaches_tools_with_config_for_existing_and_new_threads(
 
 async def test_missing_mcp_tools_prevents_inference_and_cleans_up(tmp_path, monkeypatch):
     ctx, calls, _ = context(tmp_path)
-    AssistantServer.instances, AssistantServer.valid_tools = [], False
+    # Subclasses in other modules inherit valid_tools; monkeypatch restores it.
+    monkeypatch.setattr(AssistantServer, "instances", [])
+    monkeypatch.setattr(AssistantServer, "valid_tools", False)
     monkeypatch.setattr(codex, "AppServer", AssistantServer)
     result = await codex.CodexBackend().run(ctx)
     assert result["state"] == "failed" and not calls

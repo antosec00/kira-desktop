@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import hashlib
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -436,7 +435,3 @@ class DirectContext:
         if self.features.get("server_compaction") is True and threshold and threshold >= 1000:
             return [{"type": "compaction", "compact_threshold": threshold}]
         return None
-
-    @staticmethod
-    def fingerprint(items: list[Json]) -> str:
-        return hashlib.sha256(encoded(items)).hexdigest()

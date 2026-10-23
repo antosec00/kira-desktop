@@ -31,8 +31,9 @@ always see what really happened.
   the model narrates never counts as evidence.
 - **Nothing leaves your computer without you.** Projects, chats, run events,
   screenshots and attachments live in a SQLite database and in private folders
-  of your profile. Credentials stay in each provider's official sign-in: Kira
-  neither reads nor stores them.
+  of your profile. Kira never reads cookies or other applications' credentials;
+  the tokens of the sign-ins it manages (ChatGPT, DeepSeek) stay in private
+  files of your profile, outside the database, exports and diagnostics.
 - **Bring your own model.** Ollama on your computer, OpenAI Codex, your ChatGPT
   plan, DeepSeek or your Claude Code: pick the provider per chat and change it
   without losing the conversation.
@@ -48,14 +49,14 @@ always see what really happened.
 - **An isolated browser and Kira's Computer.** The agent browses in a separate
   profile beside the chat, reads pages, takes screenshots it actually sees and
   hands control back to you for logins and consents.
-- **Agent teams** organised by you or by a coordinator, with durable messages,
+- **Agent teams** organized by you or by a coordinator, with durable messages,
   pause and resume, and results delivered to the originating chat.
 - **Research registry.** Attributed records, links to evidence, assessments and
   agent proposals you accept or reject: knowledge that outlives a single chat.
 - **Kira's Soul.** Identities you own, with a working philosophy, explicit
   preferences and learned lessons you can review, keep or forget.
-- **Autonomous objectives, persistent questions and guidance while working**,
-  plus public reasoning summaries where the provider offers them.
+- **Autonomous goals, persistent questions and guidance while working**, plus
+  public reasoning summaries where the provider offers them.
 - **A quiet interface.** One top bar, an icon rail or hidden sidebar, chips in
   the composer, tabbed side panels, light and dark themes, Italian and English.
 
@@ -72,7 +73,7 @@ always see what really happened.
 | **Codex** | OpenAI Codex App Server, with the official sign-in | Codex, with its sandboxes; Kira observes and records every operation |
 | **Direct OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
 | **DeepSeek Account** (experimental) | Account sign-in | Kira |
-| **DeepSeek Web** (experimental) | Session token from the website | Kira, with text-based tools |
+| **DeepSeek Web** (experimental) | Session token from the website | Kira, with a text protocol for the tools |
 | **Claude Code · personal use** (experimental) | Your already signed-in Claude Code (optional extra, not in the packages) | Claude Code, observed by Kira; browser, Computer, questions and Research through an internal MCP server |
 
 The provider is chosen per chat in **Models**. [Providers](docs/en/PROVIDERS.md)
@@ -81,7 +82,22 @@ describes every connection, its capabilities and known limits.
 ## Quick start
 
 Kira runs on Ubuntu 24.04 (Python 3.12) and Ubuntu 26.04 (Python 3.14), natively
-or in WSL2 with WSLg. The reference desktop is KDE Plasma/Wayland.
+or on Windows in WSL2 with WSLg. The reference desktop is KDE Plasma/Wayland.
+
+**From the package (Ubuntu 24.04):**
+
+```sh
+cd "$(mktemp -d)"
+wget https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_ubuntu24.04_amd64.deb
+sudo apt install --no-remove ./kira-desktop_ubuntu24.04_amd64.deb
+kira
+```
+
+For Ubuntu 26.04 use `kira-desktop_ubuntu26.04_amd64.deb`. Every version, with
+the `SHA256SUMS` checksums to verify the files, is on the
+[Releases](https://github.com/antosec00/kira-desktop/releases) page. On
+Windows install Ubuntu in WSL first: the steps are in
+[Installation → On Windows with WSL](docs/en/INSTALLATION.md#on-windows-with-wsl).
 
 **From source:**
 
@@ -94,16 +110,22 @@ cd kira-desktop
 uv sync --frozen                     # or: uv sync --frozen --extra claude-code
 
 # 3. Start
-uv run kira-desktop
+uv run kira
 ```
 
-The onboarding guide opens on first start. Create a project by choosing a
-folder, select provider and model in **Models** and write your first request.
-The [user guide](docs/en/USER_GUIDE.md) explains every panel.
+From source you also need the system libraries listed in
+[Installation → Running from source with `uv`](docs/en/INSTALLATION.md#running-from-source-with-uv);
+the `.deb` package installs them on its own.
 
-**Native packages.** `python3 scripts/build_deb.py` builds the `.deb` package
-for Ubuntu 24.04 (`--target resolute` for 26.04). [Installation](docs/en/INSTALLATION.md)
-covers requirements, data paths, separate profiles, backups and upgrades.
+On first start the start screen offers **How Kira works**, which opens the
+**Getting started** guide. Create a project by choosing a folder, select
+provider and model in **Models** and write your first request. The
+[user guide](docs/en/USER_GUIDE.md) explains every panel.
+
+**Building the packages.** `python3 scripts/build_deb.py` builds the `.deb`
+package for Ubuntu 24.04 (`--target resolute` for 26.04).
+[Installation](docs/en/INSTALLATION.md) covers requirements, checksum
+verification, data paths, separate profiles, backups and upgrades.
 
 ## Security and data
 
@@ -113,8 +135,8 @@ covers requirements, data paths, separate profiles, backups and upgrades.
 - **Execution is recorded.** Durable events establish what happened; failed or
   unconfirmed tools stay visible.
 - **Isolated browser.** Public pages are untrusted data, never instructions.
-  Logins and consents require you; profiles are separate per chat unless you
-  choose otherwise. [Browser and Computer](docs/en/BROWSER_AND_COMPUTER.md).
+  Logins and consents require you; each chat has its own profile, temporary
+  unless you choose to keep it. [Browser and Computer](docs/en/BROWSER_AND_COMPUTER.md).
 - **Private by default.** XDG paths or an explicit `KIRA_HOME`, 0600 files, a
   private Unix socket between interface and service, no telemetry.
 

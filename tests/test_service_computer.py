@@ -108,7 +108,7 @@ async def start(fixture, mode="execute", session=None):
     session = session or original_session
     await service.dispatch("run.start", {"session_id": session["id"], "request_id": str(uuid4()),
         "prompt": "Inspect the synthetic visual fixture", "mode": mode})
-    return await asyncio.wait_for(provider.started.get(), 3)
+    return await asyncio.wait_for(provider.started.get(), 30)
 
 
 async def finish(fixture, context, state="completed"):

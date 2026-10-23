@@ -106,6 +106,7 @@ async def prepare():
                 "open_questions": ["External providers are intentionally absent in this container"],
                 "next_step": "Use a real configured backend on the target desktop",
             }})
+        assert hasattr(Workspace, "newChat"), "installed Workspace lacks project chats"
         if hasattr(Workspace, "newChat"):
             chats = (await client.request("session.list", {"project_id": project["id"]}))["sessions"]
             for title in ("Installed chat A", "Installed chat B"):
@@ -216,8 +217,7 @@ def main():
     markdown_documents = []
 
     def verify_design():
-        if not hasattr(workspace, "modelControlsVisible"):
-            return {"available": False}
+        assert hasattr(workspace, "modelControlsVisible"), "installed Workspace lacks model controls"
         assert not app.windowIcon().isNull()
         asset = qml_directory.parent / "assets" / "kira-mascot.png"
         menu_icon = Path("/usr/share/pixmaps/kira-desktop.png")
@@ -230,14 +230,26 @@ def main():
         conversation = window.findChild(QObject, "conversation")
         assert popover is not None and toggle is not None and conversation is not None
         selected = (workspace.backend, workspace.selectedModel, workspace.selectedEffort, workspace.sessionId)
-        QTest.qWait(30)
-        collapsed = conversation.property("height")
+
+        def settled_height():
+            # A real display applies the requested window size asynchronously;
+            # measure only once the size is applied and the layout stops moving.
+            previous = None
+            for _ in range(250):
+                QTest.qWait(20)
+                current = (window.width(), window.height(), conversation.property("height"))
+                if current == previous and current[:2] == (1280, 800):
+                    return current[2]
+                previous = current
+            raise AssertionError(f"window layout did not settle: {previous}")
+
+        collapsed = settled_height()
         assert not popover.property("visible")
         QMetaObject.invokeMethod(toggle, "clicked")
-        QTest.qWait(30)
-        # The 0.18 options float over the conversation instead of taking its space.
+        # The options float over the conversation instead of taking its space.
+        expanded = settled_height()
         assert popover.property("visible")
-        assert abs(collapsed - conversation.property("height")) < 1
+        assert abs(collapsed - expanded) < 1, (collapsed, expanded)
         QMetaObject.invokeMethod(toggle, "clicked")
         QTest.qWait(30)
         assert not popover.property("visible")
@@ -250,8 +262,7 @@ def main():
 
     def verify_markdown():
         renderer = engine.rootContext().contextProperty("markdownRenderer")
-        if renderer is None:  # The helper is also used to inspect old upgrade inputs.
-            return {"available": False}
+        assert renderer is not None, "installed QML lacks the Markdown renderer"
         source = "**Installed Markdown**\n\n```python\nprint('fixture')\n```\n\n![diagram](https://example.invalid/image.png)"
         workspace.transcript.append(kind="assistant", title="SYNTHETIC PACKAGE CHECK", body=source)
         loop = QEventLoop()
@@ -288,9 +299,7 @@ def main():
                 "data_kind": "synthetic presentation only, no model run"}
 
     def verify_output_preview():
-        # Historical upgrade packages predate compact output presentation.
-        if not hasattr(workspace.transcript, "setOutputExpanded"):
-            return {"available": False}
+        assert hasattr(workspace.transcript, "setOutputExpanded"), "installed transcript lacks output preview"
         source = "$ python3 check_files.py\n\n" + "\n".join(
             f"{index:03d} file_{index:03d}.txt: <b>literal</b> **verified**"
             for index in range(60)
@@ -301,9 +310,9 @@ def main():
         )
         QTest.qWait(100)
         # Tool receipts start collapsed; the output and its toggle live inside.
-        if hasattr(workspace.transcript, "setReceiptExpanded"):
-            workspace.transcript.setReceiptExpanded(row, True)
-            QTest.qWait(80)
+        assert hasattr(workspace.transcript, "setReceiptExpanded"), "installed transcript lacks receipts"
+        workspace.transcript.setReceiptExpanded(row, True)
+        QTest.qWait(80)
 
         def find_item(root, name):
             if root.objectName() == name:
@@ -346,8 +355,7 @@ def main():
 
     def verify_attachments():
         bridge = engine.rootContext().contextProperty("attachmentInputs")
-        if bridge is None:
-            return {"available": False}
+        assert bridge is not None, "installed QML lacks attachment inputs"
         prompt = window.findChild(QObject, "prompt")
         assert prompt is not None
         # Xvfb without a window manager may leave the window inactive after a
@@ -415,8 +423,7 @@ def main():
                 "data_kind": "synthetic Qt MIME/events, not Windows Explorer or live inference"}
 
     def verify_chat_settings():
-        if not hasattr(workspace, "uiPreferences"):
-            return {"available": False}
+        assert hasattr(workspace, "uiPreferences"), "installed Workspace lacks UI preferences"
         selected = (workspace.backend, workspace.selectedModel, workspace.selectedEffort, workspace.sessionId)
         window.setProperty("page", 0)
         window.resize(1280, 800)
@@ -494,8 +501,7 @@ def main():
                 "data_kind": "synthetic GUI states; no provider execution"}
 
     def verify_project_chats():
-        if not hasattr(workspace, "newChat"):
-            return {"available": False}
+        assert hasattr(workspace, "newChat"), "installed Workspace lacks project chats"
         assert len(workspace.sessions) == 2 and workspace.sessionId
         original = workspace.sessionId
         other = next(chat for chat in workspace.sessions if chat["id"] != original)
@@ -589,8 +595,7 @@ def main():
 
     def verify_appearance():
         appearance = engine.rootContext().contextProperty("appearance")
-        if appearance is None:
-            return {"available": False}
+        assert appearance is not None, "installed QML lacks appearance settings"
         preferences = workspace.uiPreferences
         original_theme = appearance.exportTheme()
         selected = (workspace.backend, workspace.selectedModel, workspace.selectedEffort, workspace.sessionId)
@@ -643,6 +648,7 @@ def main():
             report["chat_settings"] = verify_chat_settings()
             report["appearance"] = verify_appearance()
             report["project_chats"] = verify_project_chats()
+            assert hasattr(workspace, "teams"), "installed Workspace lacks Teams"
             if hasattr(workspace, "teams"):
                 # Load the actual packaged team QML, with the installed service.
                 # Editing a draft does not start inference or a team fixture.

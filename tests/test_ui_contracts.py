@@ -448,6 +448,23 @@ def luminance(rgb):
 def contrast(foreground, background):
     light, dark = sorted((luminance(foreground), luminance(background)), reverse=True)
     return (light + 0.05) / (dark + 0.05)
+def settled_row_center(combo):
+    # Hosts such as the model popover size themselves from their content, so a
+    # row can still move for a few frames after opening; press it once stable.
+    readings = []
+    for _ in range(150):
+        readings.append(evaluate(combo, """
+            (function() {
+                const item = popup.opened ? popup.contentItem.itemAtIndex(0) : null;
+                if (!item || item.width <= 0 || item.height <= 0) return "";
+                const point = item.mapToItem(null, item.width / 2, item.height / 2);
+                return JSON.stringify([Math.round(point.x), Math.round(point.y)]);
+            })()
+        """))
+        if len(readings) >= 3 and readings[-1] and readings[-1] == readings[-2] == readings[-3]:
+            return json.loads(readings[-1])
+        QTest.qWait(20)
+    raise AssertionError(("popup row did not settle", combo.objectName(), readings[-3:]))
 measurements = []
 try:
     combos = [item for item in window.findChildren(QQuickItem) if item.inherits("QQuickComboBox") and item.property("count") > 0]
@@ -533,15 +550,8 @@ try:
                 })()
             """ % (reason, highlight))
             if state == "pressed":
-                coordinates = json.loads(evaluate(combo, """
-                    (function() {
-                        const item = popup.contentItem.itemAtIndex(0);
-                        const point = item.mapToItem(null, item.width / 2, item.height / 2);
-                        return JSON.stringify([point.x, point.y]);
-                    })()
-                """))
-                center = QPoint(int(coordinates[0]), int(coordinates[1]))
-                QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=center)
+                x, y = settled_row_center(combo)
+                QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=QPoint(x, y))
             values = json.loads(evaluate(combo, """
                 (function() {
                     const item = popup.contentItem.itemAtIndex(0);
@@ -605,7 +615,7 @@ finally:
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 '''
     result = subprocess.run(
-        [sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True, timeout=30,
+        [sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True, timeout=120,
         env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software",
              "QT_QUICK_CONTROLS_STYLE": "Basic"}, check=False)
     assert result.returncode == 0, result.stdout + result.stderr

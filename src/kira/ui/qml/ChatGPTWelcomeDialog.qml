@@ -56,7 +56,7 @@ Dialog {
             spacing: 10
             KButton {
                 objectName: "chatGPTWelcomeUsage"
-                text: qsTr("Gestisci utilizzo ↗")
+                text: qsTr("Utilizzo del piano ↗")
                 enabled: !directAccount.usageOpening
                 onClicked: directAccount.openUsage()
             }

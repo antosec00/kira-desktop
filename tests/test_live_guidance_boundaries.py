@@ -31,11 +31,17 @@ class Auth:
         return {"active_account_id": "synthetic-account"}
 
 
+def no_provider(*_args):
+    # Tests build their synthetic adapters directly; the service must never
+    # fall back to a real provider (local HTTP or a subprocess).
+    raise AssertionError("this test must not instantiate a provider")
+
+
 @pytest_asyncio.fixture
 async def inbox(tmp_path):
     with tempfile.TemporaryDirectory(prefix="kira-guidance-") as directory:
         paths = Paths(*(Path(directory) / part for part in ("config", "data", "state", "runtime")))
-        service = Service(paths)
+        service = Service(paths, backend_factory=no_provider)
         await service.start()
         project = (await service.dispatch("project.create", {"name": "Synthetic guidance", "root": str(tmp_path),
             "permission": "trusted_host"}))["project"]
@@ -92,8 +98,10 @@ async def test_durable_receipts_deduplicate_and_distinguish_acceptance_from_unde
     history, _ = portable_history(service.store, session["id"], "future-run")
     assert sum(row.get("content") == params["prompt"] for row in history) == 1
     assert await boundary("seal", {}) == {"sealed": True}
-    with pytest.raises(KiraError):
+    # A sealed inbox no longer admits guidance; the client is told to queue it.
+    with pytest.raises(KiraError) as late:
         await service.dispatch("run.steer", args(run, "too-late"))
+    assert late.value.code == "UNAVAILABLE"
     with pytest.raises(KiraError, match="no longer"):
         await boundary("pending", {})
 
@@ -118,8 +126,9 @@ async def test_unfinished_delivery_stays_durable_and_never_replays(inbox, submit
     assert records(service, run, "steering.failed")[-1]["delivery_state"] == recovered["delivery_state"]
     assert not records(service, run, "steering.accepted")
     if batch:
-        with pytest.raises(KiraError):
+        with pytest.raises(KiraError) as late:
             await boundary("accepted", {"delivery_id": batch["delivery_id"]})
+        assert late.value.code == "NOT_ACTIVE"
     assert await service.dispatch("run.steer", params) == recovered
 
 
@@ -220,10 +229,10 @@ async def test_late_native_acceptance_cannot_override_finished_unknown_receipt(i
 
     service._run_controls[run["id"]] = native
     pending = asyncio.create_task(service.dispatch("run.steer", args(run)))
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 30)
     service.turn_controls.finished(run["id"], "Synthetic turn ended")
     release.set()
-    result = await pending
+    result = await asyncio.wait_for(pending, 30)
     assert result["status"] == "unknown" and result["delivery_state"] == "unknown"
     assert not result["accepted"] and not records(service, run, "steering.accepted")
 
@@ -413,8 +422,9 @@ async def test_real_service_opens_guidance_during_preparation_and_settles_before
             terminal_seq = max(event["seq"] for event in events if event["type"] == "run.state"
                                and event["payload"].get("state") == "completed")
             assert receipt_seq < terminal_seq
-            with pytest.raises(KiraError):
+            with pytest.raises(KiraError) as closed:
                 await observed[0].guidance("pending", {})
+            assert closed.value.code == "NOT_ACTIVE"
             assert service.store.one("sessions", session["id"])["settings"] == session["settings"]
         finally:
             release.set()

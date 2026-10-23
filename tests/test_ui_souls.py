@@ -17,6 +17,7 @@ from kira.ui import app as ui_app
 from kira.ui.controller import Workspace
 from kira.ui.i18n import Localization
 from kira.ui.soul_controller import SoulController
+from test_ui_support import wait_opened
 
 
 def soul(identifier="a", revision=1, **changes):
@@ -325,17 +326,20 @@ def test_real_qml_dialog_is_literal_accessible_and_responsive(editor, qtbot, qtl
         replies.reply("soul.snapshot", {"snapshot": snapshot()})
         controller.select("a")
         replies.reply("soul.get", {"soul": soul()})
-        qtbot.wait(60)
         dialog = window.findChild(QObject, "kiraSoulsDialog")
         assert dialog is not None
-        assert dialog.property("title") == ("Anima di Kira" if language == "it" else "Kira soul")
+        names = (("soulPicker" if size[0] < 800 else "soulList"), "soulIdentityTab", "soulMemoryTab",
+                 "soulHistoryTab", "soulEditorScroll", "soulBind", "soulDisable")
+        items = [window.findChild(QObject, name) for name in names]
+        assert None not in items, names
+        wait_opened(qtbot, dialog, *items)
+        assert dialog.property("title") == ("Anima di Kira" if language == "it" else "Kira's Soul")
         assert window.findChild(QObject, "soulName").property("text") == "Synthetic <Kira> %2"
         preview = window.findChild(QObject, "soulPreview")
         assert preview.property("text") == "Exact <capsule> %1"
         assert evaluate(preview, "Number(textFormat)") == 0
-        for name in (("soulPicker" if size[0] < 800 else "soulList"), "soulIdentityTab", "soulMemoryTab", "soulHistoryTab", "soulEditorScroll", "soulBind", "soulDisable"):
-            item = window.findChild(QObject, name)
-            assert item is not None and item.isVisible(), name
+        for name, item in zip(names, items, strict=True):
+            assert item.isVisible(), name
             rect = item.mapRectToScene(QRectF(0, 0, item.width(), item.height()))
             assert QRectF(0, 0, *size).adjusted(-1, -1, 1, 1).contains(rect), (name, rect)
         assert window.findChild(QObject, "soulEditorScroll").height() >= 80

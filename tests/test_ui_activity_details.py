@@ -146,7 +146,7 @@ def test_oversized_details_are_explicitly_bounded_without_changing_stored_metada
     assert len(details) == MAX_ACTIVITY_DETAILS_CHARS
     assert details.startswith('{\n  "execution_id": "run",')
     assert 'Synthetic literal <b>text</b> \\"quoted\\"\\n' in details
-    assert details.endswith("Esporta il progetto per consultare i dati registrati completi.")
+    assert details.endswith("Esporta la chat per consultare la cronologia completa.")
     assert view._runs == original and not requests
 
 

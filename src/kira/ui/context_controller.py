@@ -11,6 +11,7 @@ from kira.ui.i18n import locale
 from kira.ui.metrics import context_card, count, mapping
 from kira.ui.presentation import refresh_ui, tr
 from kira.ui.qt_properties import qt_property
+from kira.ui.service_errors import service_error_text
 
 if TYPE_CHECKING:
     from kira.ui.controller import Workspace
@@ -366,7 +367,7 @@ class ContextController(QObject):
         if self._busy:
             return
         if not self.available:
-            self._error = tr("Apri una chat OpenAI diretto e connettiti al servizio per consultarne il contesto.")
+            self._error = tr("Apri una chat e connettiti al servizio per consultarne il contesto.")
             self.changed.emit()
             return
         self._request("session.context", {})
@@ -420,7 +421,7 @@ class ContextController(QObject):
                 self._refresh_timer.stop()
                 self._refresh_needed = False
                 self._busy = False
-                self._error = str(error.get("message") or tr("Impossibile aggiornare il contesto. Riprova."))
+                self._error = service_error_text(error, tr("Impossibile aggiornare il contesto. Riprova."))
                 self.changed.emit()
 
         def received(result: Json) -> None:

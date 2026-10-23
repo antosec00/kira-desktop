@@ -17,7 +17,13 @@ from kira.service.workbench import Workbench
 
 
 @pytest.fixture
-def bench(tmp_path):
+def bench(tmp_path, monkeypatch):
+    # The code under test runs git with the inherited HOME; keep the developer's
+    # global configuration and ignore files out of the synthetic repositories.
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     paths = Paths(*(tmp_path / name for name in ("config", "data", "state", "runtime")))
     # Unit tests need no service socket, so path length is immaterial.
     for directory in (paths.data, paths.config, paths.state, paths.runtime):
@@ -146,6 +152,27 @@ async def test_git_preview_disables_hooks_textconv_extdiff_and_literal_pathspecs
     assert "selected content" in result["diff"] and "unselected content" not in result["diff"]
     assert not marker.exists()
 
+
+
+@pytest.mark.parametrize("attributes", [".gitattributes", ".git/info/attributes"])
+async def test_git_preview_never_runs_configured_filter_drivers(bench, attributes):
+    workbench, project, _, root = bench
+    git(root, "init", "-q")
+    (root / "notes.txt").write_text("base\n")
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "Fixture")
+    marker = root.parent / "filter-ran"
+    # Unusual driver names still have to be neutralized exactly.
+    for driver in ("fixture", "odd=name.with dots"):
+        git(root, "config", f"filter.{driver}.clean", f"sh -c 'touch {marker}; cat'")
+        git(root, "config", f"filter.{driver}.required", "true")
+    (root / attributes).write_text("*.txt filter=fixture\nnotes.txt filter=odd=name.with dots\n")
+    (root / "notes.txt").write_text("base\nchanged\n")
+    changes = await workbench.dispatch("project.changes", {"project_id": project["id"]})
+    assert changes["available"]
+    detail = await workbench.dispatch("project.changes", {"project_id": project["id"], "path": "notes.txt"})
+    assert "changed" in detail["diff"]
+    assert not marker.exists()
 
 async def test_git_changes_handles_nested_project_and_oversize_binary(bench, monkeypatch):
     workbench, project, _, root = bench
@@ -436,6 +463,21 @@ async def test_sensitive_rename_and_outside_git_worktree_are_not_previewed(bench
     result = await workbench.dispatch("project.changes", {"project_id": project["id"]})
     assert not result["available"] and not result["diff"]
 
+
+
+async def test_sensitive_rename_stays_hidden_when_git_rename_detection_is_off(bench):
+    workbench, project, _, root = bench
+    git(root, "init", "-q")
+    (root / ".env").write_text("synthetic secret-like content\n")
+    git(root, "add", ".env")
+    git(root, "commit", "-qm", "Fixture")
+    git(root, "mv", ".env", "ordinary.txt")
+    # A user's own configuration can turn rename detection off.
+    git(root, "config", "status.renames", "false")
+    git(root, "config", "diff.renames", "false")
+    result = await workbench.dispatch("project.changes", {"project_id": project["id"]})
+    assert result["omitted"] == 1 and not result["files"] and not result["diff"]
+    assert "secret-like" not in str(result)
 
 async def test_diff_and_inline_export_bound_encoded_ipc_frames(bench):
     workbench, project, chat, root = bench

@@ -1,6 +1,7 @@
 """Non-blocking Qt transport for Kira's private local IPC protocol."""
 
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -9,12 +10,36 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtNetwork import QLocalSocket
 
 from kira.ui.presentation import tr
+from kira.ui.service_errors import service_error_text
 
 from kira import __version__
 from kira.domain.contracts import IPC_VERSION, MAX_FRAME_BYTES
 
 Json = dict[str, Any]
 Callback = Callable[[Json], None]
+LOGGER = logging.getLogger(__name__)
+NOTIFICATIONS = ("browser_event", "team_event", "event")
+
+
+class IncompatibleFrame(ValueError):
+    """A well-formed frame from a service speaking another IPC version."""
+
+
+def parse_frame(line: bytes) -> Json:
+    """Validate one frame completely before any interface code sees it."""
+    message = json.loads(line)
+    if not isinstance(message, dict) or type(message.get("version")) is not int:
+        raise ValueError("Invalid envelope")
+    if message["version"] != IPC_VERSION:
+        raise IncompatibleFrame("Incompatible IPC version")
+    for key in NOTIFICATIONS:
+        if key in message:
+            if not isinstance(message[key], dict):
+                raise ValueError("Invalid notification")
+            return message
+    if not isinstance(message.get("error", {}), dict) or not isinstance(message.get("result", {}), dict):
+        raise ValueError("Invalid response")
+    return message
 
 
 class LocalClient(QObject):
@@ -36,6 +61,8 @@ class LocalClient(QObject):
         self.socket.errorOccurred.connect(self._error)
         self._buffer = bytearray()
         self._pending: dict[str, tuple[Callback, Callback | None]] = {}
+        # Frames already buffered from a closed connection are never delivered.
+        self._connection = 0
         self.compatible = False
         self.incompatible = False
         self._retry = QTimer(self)
@@ -51,16 +78,20 @@ class LocalClient(QObject):
         self.socket.connectToServer(self.socket_path)
         self._retry.start()
 
+    def _refuse_incompatible(self) -> None:
+        """Another version needs user action; reconnecting in a loop cannot fix it."""
+        self.incompatible = True
+        self._retry.stop()
+        self.problem.emit(
+            tr("Servizio incompatibile. Attendi la fine dei lavori, arresta il servizio "
+               "e riapri Kira dopo l'aggiornamento.")
+        )
+        self.socket.abort()
+
     def _hello(self) -> None:
         def checked(result: Json) -> None:
             if result.get("version") != IPC_VERSION or result.get("app_version") != __version__:
-                self.incompatible = True
-                self.problem.emit(
-                    tr("Servizio incompatibile. Attendi la fine dei lavori, arresta il servizio "
-                    "e riapri Kira dopo l'aggiornamento.")
-                )
-                self._retry.stop()
-                self.socket.abort()
+                self._refuse_incompatible()
                 return
             self.compatible = True
             self._retry.stop()
@@ -111,51 +142,56 @@ class LocalClient(QObject):
 
     def _read(self) -> None:
         self._buffer.extend(self.socket.readAll().data())
-        while b"\n" in self._buffer:
+        connection = self._connection
+        while b"\n" in self._buffer and connection == self._connection:
             line, _, remainder = self._buffer.partition(b"\n")
             self._buffer = bytearray(remainder)
             if len(line) > MAX_FRAME_BYTES:
                 self._bad_frame(tr("Risposta del servizio troppo grande."))
                 return
             try:
-                message = json.loads(line)
-                if not isinstance(message, dict) or message.get("version") != IPC_VERSION:
-                    raise ValueError("Incompatible envelope")
-                if "browser_event" in message:
-                    if not isinstance(message["browser_event"], dict):
-                        raise ValueError("Invalid browser event")
-                    self.browserEventReceived.emit(message["browser_event"])
-                elif "team_event" in message:
-                    if not isinstance(message["team_event"], dict):
-                        raise ValueError("Invalid team event")
-                    self.teamEvent.emit(message["team_event"])
-                elif "event" in message:
-                    if not isinstance(message["event"], dict):
-                        raise ValueError("Invalid event")
-                    self.eventReceived.emit(message["event"])
-                else:
-                    callbacks = self._pending.pop(str(message.get("id")), None)
-                    if callbacks is None:
-                        continue
-                    callback, failed = callbacks
-                    if "error" in message:
-                        if failed:
-                            failed(message["error"])
-                        else:
-                            self.problem.emit(str(message["error"].get("message", tr("Errore"))))
-                    else:
-                        callback(message.get("result", {}))
-            except (ValueError, TypeError, UnicodeDecodeError):
+                message = parse_frame(line)
+            except IncompatibleFrame:
+                self._refuse_incompatible()
+                return
+            except (ValueError, TypeError, RecursionError):
                 self._bad_frame(tr("Risposta IPC non valida; riconnessione in corso."))
                 return
-        if len(self._buffer) > MAX_FRAME_BYTES:
+            try:
+                self._deliver(message)
+            except Exception:
+                # Interface code is not part of the protocol: its failure neither
+                # drops the connection nor strands the frames already buffered.
+                LOGGER.exception("Kira interface callback failed for an IPC frame")
+        if connection == self._connection and len(self._buffer) > MAX_FRAME_BYTES:
             self._bad_frame(tr("Risposta del servizio troppo grande."))
+
+    def _deliver(self, message: Json) -> None:
+        if "browser_event" in message:
+            self.browserEventReceived.emit(message["browser_event"])
+        elif "team_event" in message:
+            self.teamEvent.emit(message["team_event"])
+        elif "event" in message:
+            self.eventReceived.emit(message["event"])
+        else:
+            callbacks = self._pending.pop(str(message.get("id")), None)
+            if callbacks is None:
+                return
+            callback, failed = callbacks
+            if "error" in message:
+                if failed:
+                    failed(message["error"])
+                else:
+                    self.problem.emit(service_error_text(message["error"], tr("Errore")))
+            else:
+                callback(message.get("result", {}))
 
     def _bad_frame(self, message: str) -> None:
         self.problem.emit(message)
         self.socket.abort()
 
     def _disconnected(self) -> None:
+        self._connection += 1
         self.compatible = False
         callbacks, self._pending = self._pending, {}
         for _, failed in callbacks.values():

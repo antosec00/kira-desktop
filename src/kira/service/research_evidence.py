@@ -13,7 +13,7 @@ from kira.service.storage import Store, encode
 
 SOURCE_EVENTS = frozenset({"message.user", "message.completed", "tool.started", "tool.completed",
     "run.state", "artifact.created", "input.requested", "input.answered", "input.delivered",
-    "input.delivery_failed", "backend.notice", "web.search", "web.citation"})
+    "input.delivery_failed", "backend.notice"})
 
 
 def _page(content: str, offset: int, limit: int, metadata: Json) -> Json:
@@ -152,7 +152,8 @@ class ResearchEvidence:
                     item = self.db.execute("SELECT metadata FROM image_attachments WHERE id=?", (path.stem,)).fetchone()
                     if item is not None:
                         meta = json.loads(item[0])
-                        allowed = path == data / "attachments" / (path.stem + ".png") and meta.get("sha256") == artifact["sha256"]
+                        allowed = (path == data / "image-attachments" / (path.stem + ".png")
+                                   and meta.get("sha256") == artifact["sha256"])
             if not allowed or not isinstance(artifact["sha256"], str):
                 plan.update(availability="unavailable", integrity="unverifiable", content="")
             else:

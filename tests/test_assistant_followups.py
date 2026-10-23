@@ -56,8 +56,10 @@ async def test_team_result_starts_one_real_origin_followup_with_original_identit
     assert not service.store.reserved(project["root"])
     await service.assistant.team_finished(row["team_id"], True)
     await service.schedule_assistant_followup(row["team_id"])
-    assert len(factory.followup_contexts) == 1
+    # Durable state: a second finish or wake neither re-arms the receipt nor creates another run.
+    assert service.assistant.followups._one(row["team_id"])["state"] == "completed"
     assert service.store.db.execute("SELECT COUNT(*) FROM runs WHERE request_id=?", (followup["request_id"],)).fetchone()[0] == 1
+    assert len(factory.followup_contexts) == 1
 
 
 @pytest.mark.asyncio
@@ -176,7 +178,9 @@ async def test_overlapping_team_cleanup_wakes_pending_origin_without_polling(env
     monkeypatch.setattr(service, "schedule_assistant_followup", callback)
     monkeypatch.setattr(service.chat_lanes, "schedule_followup", callback)
     await callback(row["team_id"])
-    assert not factory.followup_contexts
+    # The overlapping Team still holds the root: the result stays pending and no run is created.
+    assert service.assistant.followups._one(row["team_id"])["state"] == "pending"
+    assert not service.store.all("SELECT id FROM runs WHERE request_id=?", (row["followup"]["request_id"],))
     factory.member_gate.set()
     if service.teams.tasks:
         await asyncio.wait_for(asyncio.gather(*list(service.teams.tasks.values())), 30)
@@ -188,23 +192,26 @@ async def test_overlapping_team_cleanup_wakes_pending_origin_without_polling(env
 @pytest.mark.asyncio
 async def test_automatic_followup_cannot_delegate_or_resume_another_team(env):
     service, factory, _, _ = env
-    results = []
+    results, observed = [], []
 
     async def continuation(ctx):
+        # Collected for the test body: an assertion here would only fail the follow-up run.
         for name in ("kira.team_delegate", "kira.team_resume"):
             results.append(await ctx.client_tool_call(name, name, {}))
-        status = await ctx.client_tool_call("status", "kira.team_status", {})
-        assert status["ok"]
         names = {tool["name"] for group in ctx.client_tools if group.get("name") == "kira" for tool in group["tools"]}
-        assert "team_delegate" not in names and "team_resume" not in names and "team_status" in names
+        observed.append((await ctx.client_tool_call("status", "kira.team_status", {}), names))
         return {"state": "completed", "outcome": {"final_text": "One bounded followup"}}
 
     factory.followup = continuation
     run = await start(env)
     await settle(service, run["id"])
     assert [result["error"]["code"] for result in results] == ["PERMISSION_DENIED", "PERMISSION_DENIED"]
+    (status, names), = observed
+    assert status["ok"]
+    assert "team_delegate" not in names and "team_resume" not in names and "team_status" in names
     assert service.store.db.execute("SELECT COUNT(*) FROM team_runs").fetchone()[0] == 1
     assert len(factory.followup_contexts) == 1
+    assert service.store.one("runs", factory.followup_contexts[0].run_id)["state"] == "completed"
 
 
 @pytest.mark.asyncio

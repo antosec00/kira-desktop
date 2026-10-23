@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import uuid
+import weakref
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable
 from typing import Any, TypeVar
 from urllib.parse import urlparse
@@ -42,6 +43,9 @@ MAX_DETAIL_BYTES = 32_768
 MAX_DISCOVERY_BYTES = 512_000
 MAX_CACHE_BYTES = 512_000
 MAX_BROWSER_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_ERROR_BODY_BYTES = 65_536
+MAX_ERROR_DETAIL_CHARS = 500
+MAX_TOOL_PROBES = 256
 CAPABILITIES = {
     "streaming": True, "tools": False, "cancellation": True, "resume": True,
     "usage": True, "images": False, "context_controls": True,
@@ -142,6 +146,31 @@ class OllamaMissingUserQuery(StreamError):
     """The model's chat template rejected a tool continuation without a user query."""
 
 
+class OllamaHTTPError(httpx.HTTPStatusError):
+    """An HTTP rejection with the bounded `error` text of Ollama's response body."""
+
+    def __init__(self, response: httpx.Response, detail: str) -> None:
+        super().__init__(f"Ollama HTTP {response.status_code}" + (f" — {detail}" if detail else ""),
+                         request=response.request, response=response)
+        self.safe_detail = detail
+
+
+# Tool-probe outcomes last as long as the service, which runs one event loop
+# for its lifetime; a separate event loop starts without another's outcomes.
+_TOOL_PROBES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[tuple[str, ...], bool]] = (
+    weakref.WeakKeyDictionary())
+
+
+def _tool_probes() -> dict[tuple[str, ...], bool]:
+    return _TOOL_PROBES.setdefault(asyncio.get_running_loop(), {})
+
+
+def _revision(detail: Json) -> str:
+    """Fingerprint of a model's catalog detail, which changes when the model does."""
+    return hashlib.sha256(json.dumps(detail, sort_keys=True, default=str,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
 # Appended to the system instructions of Ollama turns that carry verified tools.
 TOOL_CALL_GUIDANCE = (
     "\nWhen a request requires inspection or an action, call the relevant registered "
@@ -157,21 +186,31 @@ NO_TOOLS_GUIDANCE = (
     "disabled in the chat settings.")
 
 
-def _is_missing_user_query_error(body: bytes) -> bool:
+def _error_text(body: bytes) -> str:
+    """The `error` text of an Ollama error body on one printable line, or ""."""
     try:
         payload = json.loads(body)
-    except (ValueError, UnicodeError):
-        return False
-    if not isinstance(payload, dict):
-        return False
-    error = payload.get("error")
-    if isinstance(error, str):
-        detail = error
-    elif isinstance(error, dict) and isinstance(error.get("message"), str):
-        detail = error["message"]
-    else:
-        return False
-    return "no user query found in messages" in " ".join(detail.split()).casefold()
+    except (ValueError, UnicodeError, RecursionError):
+        return ""
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        error = error.get("message")
+    if not isinstance(error, str):
+        return ""
+    return " ".join("".join(char if char.isprintable() else " " for char in error).split())
+
+
+def _is_missing_user_query_error(body: bytes) -> bool:
+    return "no user query found in messages" in _error_text(body).casefold()
+
+
+async def _error_body(response: httpx.Response) -> bytes:
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        body.extend(chunk[:MAX_ERROR_BODY_BYTES - len(body)])
+        if len(body) >= MAX_ERROR_BODY_BYTES:
+            break
+    return bytes(body)
 
 
 def _json_size(value: Any) -> int:
@@ -245,6 +284,10 @@ def _detail(value: Json) -> Json:
     result = {"capabilities": capabilities,
               "model_info": _metadata_mapping(value.get("model_info", {}), "model_info"),
               "details": _metadata_mapping(value.get("details", {}), "details")}
+    # Changes when the model is pulled or created again under the same name.
+    modified = value.get("modified_at")
+    if isinstance(modified, str) and len(modified) <= 64:
+        result["modified_at"] = modified
     if _json_size(result) > MAX_DETAIL_BYTES:
         raise StreamError("Ollama model detail exceeds metadata size limit")
     return result
@@ -389,11 +432,14 @@ class OllamaBackend:
             async with asyncio.timeout(METADATA_TIMEOUT):
                 async with self.client.stream(method, path, json=body, timeout=METADATA_TIMEOUT,
                                               headers={"Accept-Encoding": "identity"}) as response:
-                    response.raise_for_status()
                     # Reject compression before aiter_bytes can invoke a decoder.
-                    if response.headers.get("content-encoding", "identity").strip().lower() not in {
-                        "", "identity"
-                    }:
+                    identity = response.headers.get("content-encoding", "identity").strip().lower() in {
+                        "", "identity"}
+                    if response.status_code >= 400 and identity:
+                        raise OllamaHTTPError(response, _error_text(
+                            await _error_body(response))[:MAX_ERROR_DETAIL_CHARS])
+                    response.raise_for_status()
+                    if not identity:
                         raise StreamError("Ollama metadata requires identity content encoding")
                     length = response.headers.get("content-length")
                     if length is not None:
@@ -472,12 +518,13 @@ class OllamaBackend:
                 metadata_error = str(exc)[:200]
                 self._details.pop(model, None)
                 self._probed.pop(model, None)
-            verified = self._probed.get(model, False)
+            probe = "not_run" if metadata_error else self._probe_outcome("ollama", model, detail)
+            verified = probe == "passed"
             entry = {"id": model, "name": model,
                      "capabilities": {**CAPABILITIES, "tools": verified,
                                       "images": "vision" in detail.get("capabilities", [])},
                      "tools_metadata": "tools" in detail.get("capabilities", []),
-                     "tools_verified": verified, "tool_probe": "passed" if verified else "not_run",
+                     "tools_verified": verified, "tool_probe": probe,
                      "size_bytes": item.get("size"), "digest": item.get("digest"),
                      "details": item["details"], "model_info": detail.get("model_info", {}),
                      "loaded": next((m for m in running if m["name"] == model), None)}
@@ -503,14 +550,11 @@ class OllamaBackend:
         async with self.client.stream("POST", "/api/chat", json=body,
                                       timeout=timeout) as response:
             if response.status_code >= 400:
-                error_body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    error_body.extend(chunk[:max(0, 65_537 - len(error_body))])
-                    if len(error_body) > 65_536:
-                        break
-                if _is_missing_user_query_error(bytes(error_body[:65_536])):
+                error_body = await _error_body(response)
+                if _is_missing_user_query_error(error_body):
                     raise OllamaMissingUserQuery(
                         "The Ollama model template rejected a tool continuation because it found no user query")
+                raise OllamaHTTPError(response, _error_text(error_body)[:MAX_ERROR_DETAIL_CHARS])
             response.raise_for_status()
             async for record in ndjson(response.aiter_bytes()):
                 if "error" in record:
@@ -566,29 +610,64 @@ class OllamaBackend:
                     return message, record
         raise StreamError("Ollama stream ended without done=true; outcome is unknown")
 
-    async def _probe_tools(self, model: str, cancel: asyncio.Event) -> bool:
+    async def _probe_tools(self, model: str, ctx: RunContext) -> bool:
+        """Verify tool calling once per service for a provider, endpoint and model revision.
+
+        Only an answer is remembered: the exact call, any other reply, or a
+        rejection of the tool request. Transport failures propagate, and an
+        unusable response keeps only this run conversational.
+        """
         model = _model_name(model)
         if model in self._probed:
             return self._probed[model]
+        provider = str(ctx.session.get("backend", "ollama"))
+        settings = ctx.settings
+        key = (provider, self.endpoint, model, _revision(await self._show(model)),
+               json.dumps(settings.get("think")))
+        probes = _tool_probes()
+        if key in probes:
+            return self._remember_probe(model, probes[key])
+        await ctx.emit("backend.notice", {"message": f"Verifying {provider} tool calling with a "
+                                          "side-effect-free probe", "model": model})
         token = uuid.uuid4().hex
         probe = _tool("kira_probe", "Echo the supplied probe value without side effects",
                       {"value": {"type": "string"}}, ["value"])
+        # The chat's context size keeps Ollama from reloading the model for the turn.
         body = {"model": model, "stream": True, "messages": [{"role": "user", "content":
                 f"Call kira_probe exactly once with value {token}. Do not answer in text."}],
-                "tools": [probe], "options": {"temperature": 0}}
+                "tools": [probe], "options": {"temperature": 0, **{
+                    name: settings[name] for name in ("num_ctx",) if name in settings}}}
+        if "think" in settings:
+            body["think"] = settings["think"]
         try:
-            message, _ = await cancellable(self._stream(body), cancel)
-            calls = message.get("tool_calls", [])
-            passed = len(calls) == 1 and calls[0].get("function", {}).get("name") == "kira_probe"
-            passed = passed and calls[0]["function"].get("arguments") == {"value": token}
+            message, _ = await cancellable(self._stream(body), ctx.cancel)
         except httpx.HTTPStatusError as exc:
             # These failures are not evidence that the model lacks tool
             # support. Do not send the user's prompt after quota/auth errors.
             if exc.response.status_code in {401, 402, 403, 429} or exc.response.status_code >= 500:
                 raise
             passed = False
-        except (httpx.HTTPError, ValueError, StreamError):
-            passed = False
+        except (ValueError, StreamError):
+            return False
+        else:
+            calls = message.get("tool_calls", [])
+            passed = (len(calls) == 1 and calls[0].get("function", {}).get("name") == "kira_probe"
+                      and calls[0]["function"].get("arguments") == {"value": token})
+        while len(probes) >= MAX_TOOL_PROBES:
+            probes.pop(next(iter(probes)))
+        probes[key] = passed
+        return self._remember_probe(model, passed)
+
+    def _probe_outcome(self, provider: str, model: str, detail: Json) -> str:
+        """The remembered probe outcome for a model revision: passed, failed or not_run.
+
+        A pass under any chat thinking mode counts. Reading never sends a probe.
+        """
+        scope = (provider, self.endpoint, model, _revision(detail))
+        outcomes = [passed for key, passed in _tool_probes().items() if key[:4] == scope]
+        return "passed" if any(outcomes) else "failed" if outcomes else "not_run"
+
+    def _remember_probe(self, model: str, passed: bool) -> bool:
         if len(self._probed) >= MAX_MODELS:
             self._probed.pop(next(iter(self._probed)))
         self._probed[model] = passed
@@ -633,9 +712,7 @@ class OllamaBackend:
         enabled = (tools_requested
                    and "tools" in detail.get("capabilities", []))
         if enabled:
-            await ctx.emit("backend.notice", {"message": f"Verifying {provider} tool calling with a "
-                            "side-effect-free probe", "model": ctx.model})
-            enabled = await self._probe_tools(ctx.model, ctx.cancel)
+            enabled = await self._probe_tools(ctx.model, ctx)
         if not enabled and tools_requested:
             await ctx.emit("backend.notice", {"message": "Chat-only mode: tool capability was "
                             "not verified", "model": ctx.model, "tools_verified": False})
@@ -707,10 +784,13 @@ class OllamaBackend:
                 await ctx.emit("backend.notice", {"message": "Historical tool outcomes are unknown. "
                                "Continuation must inspect verified state before further side effects.",
                                "unknown_tool_outcomes": missing_results})
+            fields = {"role", "content", "tool_calls", "tool_name"}
+            if provider != "ollama" and vision:
+                # DeepSeek Account attaches an earlier request's images by its run.
+                fields.add("run_id")
             for item in history:
                 if item.get("role") in {"user", "assistant", "tool"}:
-                    messages.append({k: v for k, v in item.items()
-                                     if k in {"role", "content", "tool_calls", "tool_name"}})
+                    messages.append({k: v for k, v in item.items() if k in fields})
             messages.append(active_turn[0])
         rounds = 0
         recent_results: list[str] = []
@@ -719,17 +799,22 @@ class OllamaBackend:
         request_index = 0
         overflow_recovered = False
         missing_query_recovered = False
+        # The first durable request was prepared above, before any guidance
+        # was taken; every later request is prepared here.
+        prepared = durable_context is not None
 
         while True:
             extra = await guidance.take()
             if extra:
                 recent_results.clear()
+                prepared = False
                 if durable_context is not None:
                     active_turn.extend(extra)
                 else:
                     messages.extend(extra)
-            if durable_context is not None:
+            if durable_context is not None and not prepared:
                 messages = await durable_context.before_request(active_turn)
+            prepared = False
             body: Json = {"model": ctx.model, "messages": messages, "stream": True}
             if schemas:
                 body["tools"] = schemas
@@ -925,7 +1010,8 @@ class OllamaBackend:
                     active_turn.append(tool_message)
                 else:
                     messages.append(tool_message)
-                _browser_tool_images(messages)
+                # With durable context, tool images exist only in the active turn.
+                _browser_tool_images(active_turn if durable_context is not None else messages)
                 tool_messages.append({key: value for key, value in tool_message.items()
                                       if key != "images"})
             await ctx.emit("backend.notice", {"message": f"{provider} tool results returned to model",

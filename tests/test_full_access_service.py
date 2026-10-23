@@ -30,7 +30,7 @@ async def test_only_explicit_full_access_enables_external_files_with_durable_rec
     await service.dispatch("project.update", {"project_id": project["id"], "permission": permission})
     run = (await service.dispatch("run.start", {"session_id": session["id"],
         "request_id": "file-scope", "prompt": "Inspect and write the explicitly selected sibling folder."}))["run"]
-    await backend.started.wait()
+    await asyncio.wait_for(backend.started.wait(), 30)
     context = backend.contexts[0]
     read = await context.execute_tool("read_file", {"path": str(outside / "input.txt")})
     write = await context.execute_tool("write_file", {"path": "../sibling/output.txt", "content": "Confirmed synthetic output"})
@@ -53,7 +53,7 @@ async def test_only_explicit_full_access_enables_external_files_with_durable_rec
     assert command["ok"] is (permission in {"trusted_host", "full_access"})
     assert context.root == workspace and context.model == session["model"]
     backend.release.set()
-    await service.tasks[run["id"]]
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     assert service.store.one("projects", project["id"])["permission"] == permission
     assert not service.store.all("SELECT * FROM project_reservations")
 
@@ -65,7 +65,7 @@ async def test_full_access_still_downscopes_restricted_modes(runtime, mode):
     await service.dispatch("project.update", {"project_id": project["id"], "permission": "full_access"})
     run = (await service.dispatch("run.start", {"session_id": session["id"], "request_id": mode,
         "prompt": "Discuss the synthetic change", "mode": mode}))["run"]
-    await backend.started.wait()
+    await asyncio.wait_for(backend.started.wait(), 30)
     context = backend.contexts[0]
     assert context.permission == "read_only"
     for name, arguments in (("write_file", {"path": str(outside / "no-write.txt"), "content": "no"}),
@@ -74,7 +74,7 @@ async def test_full_access_still_downscopes_restricted_modes(runtime, mode):
         assert result["error"]["code"] == "PERMISSION_DENIED"
     assert not (outside / "no-write.txt").exists()
     backend.release.set()
-    await service.tasks[run["id"]]
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     assert service.store.one("projects", project["id"])["permission"] == "full_access"
 
 
@@ -83,11 +83,11 @@ async def test_full_access_needs_explicit_idle_permission_selection(runtime):
     assert project["permission"] == "read_only"
     run = (await service.dispatch("run.start", {"session_id": session["id"], "request_id": "hold",
         "prompt": "Hold a synthetic conversation"}))["run"]
-    await backend.started.wait()
+    await asyncio.wait_for(backend.started.wait(), 30)
     with pytest.raises(KiraError, match="active work"):
         await service.dispatch("project.update", {"project_id": project["id"], "permission": "full_access"})
     backend.release.set()
-    await service.tasks[run["id"]]
+    await asyncio.wait_for(service.tasks[run["id"]], 30)
     result = await service.dispatch("project.update", {"project_id": project["id"], "permission": "full_access"})
     assert result["project"]["permission"] == "full_access"
 

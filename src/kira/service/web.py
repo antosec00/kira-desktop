@@ -17,6 +17,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from kira.domain.contracts import MAX_FRAME_BYTES, Json, KiraError
+from kira.domain.providers import WEB_BACKENDS as WEB_BACKENDS  # Re-exported for existing importers.
 from kira.domain.computer import (
     COMPUTER_MUTATIONS, MAX_COMPUTER_OBSERVATIONS, computer_tool_specs,
     validate_computer_arguments,
@@ -42,7 +43,6 @@ MAX_REQUESTS = 2048
 MAX_STREAM_RECEIPTS = 128
 MAX_INPUT_STREAMS = 32
 MAX_COMPUTER_CALLS = 128
-WEB_BACKENDS = frozenset({"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web", "claude_code"})
 
 
 @dataclass
@@ -91,6 +91,14 @@ def validate_arguments(action: str, arguments: Json) -> None:
             raise KiraError("INVALID_ARGUMENT", "Unsupported browser argument value")
         if "maxLength" in field and len(value.encode("utf-8")) > field["maxLength"]:
             raise KiraError("INVALID_ARGUMENT", "Browser text exceeds its size limit")
+
+
+def _worker_exited(engine: Any) -> bool:
+    """Whether the browser engine was closed or its worker process has exited."""
+    if getattr(engine, "_closed", False):
+        return True
+    process = getattr(engine, "_process", None)
+    return process is not None and getattr(process, "returncode", None) is not None
 
 
 def private_directory(path: Path) -> Path:
@@ -308,8 +316,8 @@ class Web:
                 await self._publish(actor, "frame", payload)
         elif message.get("event") == "state":
             allowed = {"tabs", "tab_id", "url", "title", "loading", "can_back", "can_forward", "manual",
-                       "surface_id", "surface_mode", "surface_error", "auth_pending", "auth_needs_manual",
-                       "auth_provider", "auth_operation", "auth_origin", "auth_result"}
+                       "surface_id", "surface_mode", "surface_error", "surface_error_code", "auth_pending",
+                       "auth_needs_manual", "auth_provider", "auth_operation", "auth_origin", "auth_result"}
             changes = {key: payload[key] for key in allowed if key in payload and actor.state.get(key) != payload[key]}
             if not changes:
                 return
@@ -637,7 +645,7 @@ class Web:
                 count = self.store.db.execute("SELECT COUNT(*) FROM browser_sessions WHERE state!='stopped'").fetchone()[0]
                 if count >= MAX_BROWSERS:
                     raise KiraError("BROWSER_BUSY", "Close an existing browser before opening another chat browser")
-                from kira.tools.browser import BrowserSession, engine_available
+                from kira.tools.browser import BrowserSession, BrowserStartError, engine_available
 
                 if not engine_available(self.engine_path):
                     raise KiraError("BROWSER_UNAVAILABLE", "Install Kira's browser with kira-desktop browser-install for the selected profile")
@@ -645,10 +653,7 @@ class Web:
                 generation = self.service.provider_routing.current_generation(session["id"])
                 browser_id = new_id()
                 root = private_directory(self.service.paths.data / ("browser-profiles" if persistent else "browser-temporary"))
-                identity = encode([session["id"], session["backend"],
-                                   session["settings"].get("openai_account_id"), generation])
-                key = hashlib.sha256(identity.encode()).hexdigest() if persistent else browser_id
-                profile = private_directory(root / key)
+                profile = private_directory(self._retained_profile(root, session) if persistent else root / browser_id)
                 artifacts = private_directory(private_directory(self.service.paths.artifacts / "browser") / (run_id or browser_id))
                 async def event(message: Json) -> None:
                     assert actor is not None
@@ -674,6 +679,9 @@ class Web:
                     raise
                 except (OSError, RuntimeError, KiraError) as exc:
                     await self._close_actor(actor)
+                    if isinstance(exc, BrowserStartError):
+                        # The worker's code and fixed public text, such as a sandbox restriction.
+                        raise KiraError(exc.code, str(exc)) from exc
                     raise KiraError("BROWSER_UNAVAILABLE", "The isolated browser could not start; inspect engine installation and desktop sandbox support") from exc
                 self.store.db.execute("UPDATE browser_sessions SET state='active',updated_at=? WHERE id=?", (now(), browser_id))
                 await self._publish(actor, "state", self.snapshot(session)["browser"])
@@ -681,6 +689,27 @@ class Web:
                 actor.last_run_id = run_id
                 self.store.db.execute("UPDATE browser_sessions SET last_run_id=?,updated_at=? WHERE id=?", (run_id, now(), actor.id))
             return actor.engine
+
+    def _retained_profile(self, root: Path, session: Json) -> Path:
+        """One retained profile per chat, provider and account, across provider generations.
+
+        A profile kept under a key that also named a provider generation is
+        adopted, most recent generation first, instead of starting empty. Other
+        profile directories are never deleted.
+        """
+        def key(*identity: Any) -> str:
+            return hashlib.sha256(encode([session["id"], session["backend"],
+                                          session["settings"].get("openai_account_id"), *identity]).encode()).hexdigest()
+
+        profile = root / key()
+        if not profile.exists() and not profile.is_symlink():
+            for row in self.store.all("SELECT generation FROM session_provider_generations WHERE session_id=? "
+                                      "AND backend=? ORDER BY generation DESC", (session["id"], session["backend"])):
+                legacy = root / key(row["generation"])
+                if legacy.is_dir() and not legacy.is_symlink():
+                    legacy.rename(profile)
+                    break
+        return profile
 
     def _check_actor(self, actor: BrowserActor, run_id: str, cancel: asyncio.Event) -> None:
         if cancel.is_set():
@@ -827,26 +856,6 @@ class Web:
             if action not in BROWSER_ACTIONS:
                 raise KiraError("UNSUPPORTED", "Unsupported browser action")
             validate_arguments(action, arguments)
-            if action == "close":
-                if cancel.is_set():
-                    raise KiraError("CANCELLED", "Browser request was cancelled")
-                actor = self.actors.get(session["id"])
-                if actor is None:
-                    unknown = self.store.db.execute(
-                        "SELECT 1 FROM browser_sessions WHERE session_id=? AND state='unknown' LIMIT 1",
-                        (session["id"],)).fetchone()
-                    if unknown:
-                        raise KiraError("BROWSER_CLEANUP", "Browser cleanup is not confirmed")
-                    result = {"ok": True, "closed": True, "already_closed": True}
-                else:
-                    if not self._current(actor):
-                        raise KiraError("STALE_BROWSER", "The browser belongs to an older chat configuration")
-                    await self._close_actor(actor, user_closed=True)
-                    result = {"ok": True, "closed": True, "already_closed": False}
-                result = self.service.redactor.clean(result)
-                await self.service.emit(run_id, "tool.completed", {"tool_id": call_id, "name": name,
-                                                                       "result": result})
-                return result
             if action == "search":
                 action = "navigate"
                 arguments = {"url": "https://www.google.com/search?q=" +
@@ -1146,7 +1155,9 @@ class Web:
             client.browser_ids.discard(actor.id)
             client.browser_frames.pop(actor.id, None)
         actor.viewers.clear()
-        self.actors.pop(actor.session["id"], None)
+        # The chat may already have a newer browser, opened while this one closed.
+        if self.actors.get(actor.session["id"]) is actor:
+            del self.actors[actor.session["id"]]
         self.sessions.pop(actor.id, None)
         actor.seq += 1
         message = {"version": 1, "browser_event": {"type": "state", "project_id": actor.session["project_id"],
@@ -1160,8 +1171,11 @@ class Web:
             raise KiraError("BROWSER_CLEANUP", "Browser cleanup is not confirmed; its reservation is retained")
 
     async def _retire_failed_engine(self, actor: BrowserActor, result: Json) -> None:
+        """Close a browser that is gone; a failed or timed-out action alone keeps it open."""
         error = result.get("error")
-        if isinstance(error, dict) and error.get("code") in {"browser_closed", "browser_unavailable"}:
+        if not isinstance(error, dict) or result.get("ok"):
+            return
+        if error.get("code") in {"browser_closed", "browser_unavailable"} or _worker_exited(actor.engine):
             self.previews.setdefault(actor.session["id"], {})["error"] = str(error.get("message", "Browser stopped"))
             await self._close_actor(actor)
 
@@ -1208,8 +1222,9 @@ class Web:
             raise KiraError("BROWSER_CLEANUP", "Browser cleanup must finish before changing its account")
 
     def shutdown_busy(self) -> bool:
-        return any(actor.state.get("manual") for actor in self.actors.values()) or bool(
-            self.store.db.execute("SELECT 1 FROM browser_sessions WHERE state='unknown'").fetchone())
+        """A browser under manual control is live user work. An unconfirmed
+        cleanup record is durable and checked again at the next start."""
+        return any(actor.state.get("manual") for actor in self.actors.values())
 
     async def close_run(self, run_id: str) -> None:
         # Keep a chat browser across successful turns while its desktop is
@@ -1231,7 +1246,7 @@ class Web:
                         continue
                     await self._close_actor(actor)
 
-    def finalized(self, run_id: str, cleaned: bool) -> None:
+    def finalized(self, run_id: str) -> None:
         self.manual.discard(run_id)
         self.images.pop(run_id, None)
         self.closed_runs.discard(run_id)
@@ -1250,11 +1265,13 @@ class Web:
             self._remove_temporary(row["id"])
         return True
 
-    async def recover(self) -> None:
+    async def recover(self, *, rebooted: bool = False) -> None:
         await self.processes.recover()
         for row in self.store.all("SELECT id FROM browser_sessions WHERE state!='stopped'"):
             registered = self.store.db.execute("SELECT 1 FROM browser_processes WHERE run_id=?", (row["id"],)).fetchone()
-            cleaned = registered is not None and await self.processes.cleanup(row["id"])
+            # A worker that never registered its process can only be ruled out
+            # by a reboot since the previous service start.
+            cleaned = await self.processes.cleanup(row["id"]) if registered is not None else rebooted
             self.store.db.execute("UPDATE browser_sessions SET state=?,manual=0,error=?,updated_at=? WHERE id=?",
                 ("stopped" if cleaned else "unknown", None if cleaned else "Browser cleanup identity unavailable", now(), row["id"]))
             if cleaned:
@@ -1262,8 +1279,6 @@ class Web:
         # Remove only verified ownership paths, never discover arbitrary profiles.
         for row in self.store.all("SELECT id FROM browser_sessions WHERE state='stopped' AND persistent=0"):
             self._remove_temporary(row["id"])
-        for row in self.store.all("SELECT run_id FROM provider_processes WHERE state='stopped'"):
-            self._remove_temporary(row["run_id"])
 
     async def close(self) -> None:
         for actor in tuple(self.actors.values()):

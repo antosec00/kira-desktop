@@ -8,11 +8,12 @@ le segnalazioni sono benvenute e trattate con cura.
 
 ## Segnalare una vulnerabilità
 
-**Non aprire una issue pubblica** per un problema di sicurezza.
-
-- Usa la segnalazione privata di GitHub su questo repository
-  (*Security → Report a vulnerability*), oppure
-- contatta il manutentore tramite il profilo GitHub del proprietario del repository.
+**Non aprire una issue pubblica** per un problema di sicurezza. Usa la
+segnalazione privata delle vulnerabilità di GitHub: nella scheda **Security** del
+repository premi **Report a vulnerability**, oppure apri direttamente
+<https://github.com/antosec00/kira-desktop/security/advisories/new>. La
+segnalazione resta visibile solo a te e ai manutentori del repository finché non
+viene pubblicato un avviso.
 
 Includi la versione (`kira-desktop --version`), il provider coinvolto, il
 permesso del progetto in uso e una riproduzione che non contenga le tue
@@ -23,8 +24,7 @@ sarà pubblicata con una nota nella versione successiva.
 
 | Versione | Supporto |
 | --- | --- |
-| Ultima versione su `main` | Sì |
-| Linea di sviluppo `dev/<versione>` | Nel limite del possibile; le versioni di sviluppo non vanno installate sopra un profilo utente attivo |
+| Ultima versione pubblicata (pagina Releases, ramo `main`) | Sì |
 | Versioni precedenti | No |
 
 ## Che cosa protegge Kira, in breve

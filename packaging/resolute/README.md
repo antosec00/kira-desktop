@@ -1,7 +1,7 @@
 # Ubuntu 26.04 application package
 
-This separate target builds the same Kira Desktop 0.5.0 source and IPC contract
-with Ubuntu 26.04's CPython 3.14. Noble remains the default build target and keeps
+This separate target builds the same Kira Desktop source and IPC contract with
+Ubuntu 26.04's CPython 3.14. Noble remains the default build target and keeps
 its Python 3.12 ABI dependency. The shared project metadata and `uv.lock` cover
 both interpreters without changing the pinned runtime library versions.
 
@@ -23,9 +23,9 @@ Python >=3.14,<3.15 and glibc >=2.43. This package must not be installed on Nobl
 
 Outputs:
 
-- `dist/resolute/kira-desktop_0.5.0_amd64.deb`
+- `dist/resolute/kira-desktop_<version>_amd64.deb`
 - `dist/resolute/SHA256SUMS`
-- `dist/resolute/kira-desktop-0.5.0-build.json`
+- `dist/resolute/kira-desktop-<version>-build.json`
 
 The build record includes the exact container image, interpreter and Qt versions,
 source/runtime/build lock hashes, selected Python distributions, installed builder
@@ -36,7 +36,7 @@ The package validator installs into an owned disposable Ubuntu 26.04 container,
 then runs the installed QML and actual user service outside the checkout as an
 unprivileged user. It exercises persistence, backup/export, clipboard, offscreen
 and Xvfb/XCB rendering, and package upgrade/removal/reinstallation with preserved
-data. The default evidence directory is `build/targets/resolute/evidence/`.
+data. The default evidence directory is `build/releases/<version>/resolute/package/`.
 This establishes container installation and application behavior. It does not
 establish a native Plasma/Wayland desktop, hardware support, or a live provider
 connection; those require separate system acceptance.

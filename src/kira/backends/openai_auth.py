@@ -42,6 +42,10 @@ AUTH_REQUEST_TIMEOUT = 20.0
 MAX_STORE = 2_097_152
 MAX_RESPONSE = 1_048_576
 MAX_ACCOUNTS = 32
+# Tolerated difference between this machine's clock and the issuer's when
+# validating ID-token times; a clock running behind would otherwise reject a
+# freshly issued token and discard the tokens rotated with it.
+CLOCK_SKEW_SECONDS = 120
 TERMINAL_REFRESH_ERRORS = frozenset({
     "invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired",
     "refresh_token_invalidated", "refresh_token_reused",
@@ -446,6 +450,7 @@ class ChatGPTAuth:
                 raise ValueError
             key = jwt.PyJWK.from_dict(matches[0], algorithm="RS256")
             claims = jwt.decode(token, key.key, algorithms=["RS256"], audience=client_id, issuer=ISSUER,
+                                leeway=CLOCK_SKEW_SECONDS,
                                 options={"require": ["exp", "iat", "iss", "aud", "sub"]})
             _text(claims.get("sub"), 512)
             _number(claims["exp"])

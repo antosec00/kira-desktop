@@ -50,7 +50,7 @@ new continuation. Omit it to inherit the source team's current limit. This choic
 does not change the original team, model, permissions or recorded results.
 This continuation is also deferred until the originating turn completes
 successfully and cleanup is confirmed. Return to the user after queuing it.
-The existing **Continue Team / Continua team** interface action remains available.
+The user can also continue from the interface with **Continue Team / Continua team**.
 The chat's Team details and the Team view expose **Rounds on resume / Round alla
 ripresa · 0 = illimitati** before resuming. Editing that field alone starts no work.
 
@@ -64,7 +64,7 @@ enable a missing provider transport or grant permission.
 
 ## Talking while a Team works and receiving its result
 
-New delegations arm one automatic result response in their originating chat.
+Each delegation arms one automatic result response in its originating chat.
 Return from the delegating turn; do not poll for the Team before it can start.
 When the Team settles and cleanup is confirmed, Kira receives actual outcomes
 and evidence references. A busy chat or explicit user queue delays this response.

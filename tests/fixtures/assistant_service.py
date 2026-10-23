@@ -111,6 +111,8 @@ class AssistantFixtureBackend:
 
 
 async def main():
+    if not os.environ.get("KIRA_HOME"):
+        raise SystemExit("This fixture service only runs on an isolated KIRA_HOME profile")
     control = Path(os.environ["KIRA_TEST_ASSISTANT_CONTROL"])
     service = Service(backend_factory=lambda *_: AssistantFixtureBackend(service, control))
     await service.start()

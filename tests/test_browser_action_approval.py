@@ -219,8 +219,10 @@ async def test_untrusted_provider_approval_cannot_offer_or_grant_browser_policy(
     pending = asyncio.create_task(context.approve(approval_request))
     approval = await pending_approval(service, context)
     assert approval.get("allow_always") is not True
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as failure:
         await decide(service, context, approval, "accept_always")
+    # A provider request has no trusted Kira browser-action binding.
+    assert failure.value.code == "INVALID_ARGUMENT"
     assert policy(service, session) == "ask" and not pending.done()
     await decide(service, context, approval, "decline")
     assert (await pending)["decision"] == "decline"
@@ -236,8 +238,10 @@ async def test_always_never_confirms_manual_login(computer_service):
     assert approval.get("allow_always") is not True
     await set_policy(service, project, session, "always")
     assert not pending.done()
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as failure:
         await decide(service, context, approval, "accept_always")
+    # Manual login is never an eligible browser action for a persistent grant.
+    assert failure.value.code == "INVALID_ARGUMENT"
     await decide(service, context, approval, "decline")
     assert not (await pending)["ok"]
     assert service.web.actors[session["id"]].state["manual"]
@@ -252,8 +256,9 @@ async def test_stale_trusted_binding_cannot_persist_always(computer_service, fie
     approval = await pending_approval(service, context, tool="browser.click")
     binding = service.browser_action_approvals[(context.run_id, approval["approval_id"])]
     binding[field] = value
-    with pytest.raises(KiraError):
+    with pytest.raises(KiraError) as failure:
         await decide(service, context, approval, "accept_always")
+    assert failure.value.code == "PERMISSION_DENIED"
     assert policy(service, session) == "ask" and not pending.done()
     await decide(service, context, approval, "decline")
     assert not (await pending)["ok"]
@@ -400,14 +405,14 @@ async def test_policy_only_update_is_live_but_other_settings_keep_idle_guard(com
     context = await computer.start(computer_service)
     generation = service.provider_routing.current_generation(session["id"])
     before = service.store.one("sessions", session["id"])
-    with pytest.raises(KiraError):
-        await set_policy(service, project, session, "always", browser_persistent=True)
-    with pytest.raises(KiraError):
-        await set_policy(service, project, session, "always", web_search="cached")
-    with pytest.raises(KiraError):
-        await set_policy(service, project, session, "always", browser_enabled=False)
-    with pytest.raises(KiraError):
+    # Any setting besides the consent policy is refused by the active-work guard.
+    for extra in ({"browser_persistent": True}, {"web_search": "cached"}, {"browser_enabled": False}):
+        with pytest.raises(KiraError) as failure:
+            await set_policy(service, project, session, "always", **extra)
+        assert failure.value.code == "BUSY"
+    with pytest.raises(KiraError) as failure:
         await set_policy(service, project, session, None)
+    assert failure.value.code == "INVALID_ARGUMENT"
     assert service.store.one("sessions", session["id"]) == before
     await set_policy(service, project, session, "always")
     assert policy(service, session) == "always"

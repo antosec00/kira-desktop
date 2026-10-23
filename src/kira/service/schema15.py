@@ -1,7 +1,7 @@
-"""Schema 15: opt-in Studio worlds, immutable revisions and request receipts.
+"""Opt-in Studio worlds, immutable revisions and request receipts.
 
-M1 stores one poster scene per project. The schema leaves room for future multi-
-scene worlds without granting execution, host access or provider tool authority.
+Each project has one Studio scene. Studio records grant no execution, host
+access or provider tool authority.
 """
 
 STUDIO_SCHEMA = """

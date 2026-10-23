@@ -55,7 +55,7 @@ async def start(fixture, mode="execute"):
     service, provider, _, session = fixture
     await service.dispatch("run.start", {"session_id": session["id"], "request_id": str(uuid4()),
         "prompt": "Use a synthetic project-owned Python tool", "mode": mode})
-    return await asyncio.wait_for(provider.started.get(), 3)
+    return await asyncio.wait_for(provider.started.get(), 30)
 
 
 async def call(context, action, payload=None, *, call_id=None):
@@ -133,7 +133,10 @@ async def test_create_test_reuse_immutable_tool_and_durable_evidence(project_too
 async def test_zero_exit_is_insufficient_and_failed_tests_block_run(project_tools, source, code):
     service, _, _, _ = project_tools
     context = await start(project_tools)
-    registered = await register(context, source, manifest(timeout_seconds=1))
+    # Only the case that must time out gets a short limit; the others keep the
+    # default, which leaves room for the real worker's interpreter start-up.
+    definition = manifest(timeout_seconds=1) if code == "TIMEOUT" else manifest()
+    registered = await register(context, source, definition)
     tool = ref(registered)
     outcome = await call(context, "test", tool)
     assert not outcome["ok"] and not outcome["test"]["passed"]
@@ -339,7 +342,12 @@ async def test_worker_has_clean_environment_project_cwd_and_no_site_import(proje
     service, _, _, _ = project_tools
     context = await start(project_tools)
     monkeypatch.setenv("KIRA_TEST_SECRET_TOKEN", "synthetic-secret-never-inherited")
-    source = "import os,sys,json\nprint(json.dumps({'sum': int('KIRA_TEST_SECRET_TOKEN' in os.environ) + int('site' in sys.modules)}))"
+    # Each term counts one isolation failure: inherited secret, site import, or a
+    # working directory other than the project root.
+    source = ("import os,sys,json\n"
+              f"outside = not os.path.samefile(os.getcwd(), {str(context.root)!r})\n"
+              "print(json.dumps({'sum': int('KIRA_TEST_SECRET_TOKEN' in os.environ)"
+              " + int('site' in sys.modules) + int(outside)}))")
     definition = manifest(tests=[{"name": "isolated imports", "arguments": {"a": 0, "b": 0}, "expected": {"sum": 0}}])
     tool = await qualified_tool(context, source, definition)
     outcome = await call(context, "run", {**tool, "arguments": {"a": 0, "b": 0}})

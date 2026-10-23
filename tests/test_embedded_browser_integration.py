@@ -54,6 +54,8 @@ async def spin(qapp, condition, timeout=40):
     qapp.processEvents()
 
 
+@pytest.mark.skipif(not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
+                    reason="PLAYWRIGHT_BROWSERS_PATH must name the installed browser engine")
 @pytest.mark.skipif(os.environ.get("KIRA_TEST_BROWSER") != "1", reason="Explicit live-browser integration opt-in")
 async def test_real_embedded_page_survives_turns_and_manual_handoff(qapp, tmp_path):
     engine_root = Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"])
@@ -107,8 +109,7 @@ async def test_real_embedded_page_survives_turns_and_manual_handoff(qapp, tmp_pa
             assert not service.store.all("SELECT * FROM project_reservations")
             assert service.store.db.execute("SELECT state FROM browser_processes WHERE run_id=?", (browser_id,)).fetchone()[0] == "active"
             # Captures only synthetic chat/public page, never a personal session.
-            screenshot = Path("build/embedded-browser-qt.png").absolute()
-            screenshot.parent.mkdir(exist_ok=True)
+            screenshot = tmp_path / "embedded-browser-qt.png"
             assert window.grabWindow().save(str(screenshot))
             workspace.web.command("ui_takeover", {})
             await spin(qapp, lambda: workspace.web.controlling and not workspace.web.commandBusy)

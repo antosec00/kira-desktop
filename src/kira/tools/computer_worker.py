@@ -10,7 +10,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from kira.domain.contracts import Json
-from kira.tools.browser import browser_error
+from kira.tools.browser import BrowserErrorPage, browser_error
 from kira.tools.web_network import validate_url
 
 if TYPE_CHECKING:
@@ -199,6 +199,8 @@ class ComputerEngine:
             self.observation = None
             if isinstance(exc, asyncio.CancelledError):
                 raise
+            if isinstance(exc, BrowserErrorPage):
+                return failure("browser_error_page", str(exc))
             return failure("computer_observation_failed", "The page could not be observed consistently; request a new observation")
 
     async def _matches(self, observation: Json) -> bool:

@@ -21,7 +21,7 @@ behind every answer.
 | **Claude Code · personal use** (experimental) | `claude-code` extra from source; sign-in already done in Claude Code | The provider (Claude Code built-in tools) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | No | Yes | Yes | No |
 
 The "Who executes the tools" column is the most important difference between
-providers. With Ollama, OpenAI direct and DeepSeek the model *asks* Kira to
+providers. With Ollama, Direct OpenAI and DeepSeek the model *asks* Kira to
 read a file, run a command or open a page, and Kira performs the operation
 applying the project's permissions, modes and approvals. With Codex and Claude
 Code, file operations and commands are executed by the provider's runtime; Kira
@@ -103,10 +103,21 @@ Ollama's catalog declares whether a model "supports tools", but the declaration
 is not enough. The first time a chat asks a model for tools, Kira runs a short
 check with no side effects: it asks the model to return a random value through
 a function call and checks that the response is a valid call with that exact
-value. If the check succeeds, tools are enabled for that model for as long as
-the service keeps running; if it fails, the model remains available for
-conversation only and the chat shows a "chat only" notice. The chat receipts
-record the outcome of the check.
+value. The outcome applies to that model on that endpoint for as long as the
+service keeps running; the check is repeated if the model is updated or the
+chat's reasoning setting changes. If it succeeds, tools are enabled; if the
+model answers without the expected call, it remains available for conversation
+only and the chat flags it with the notice
+`Chat-only mode: tool capability was not verified`. A connection error during
+the check stops the turn with its message, and the check runs again on the next
+turn. The outcome stays among the run's recorded events.
+
+On the **Models** page the model card shows **Verified tools** once the check
+has passed for that model on that endpoint since the service started; an
+updated model returns to **Tool support advertised · checked on first use**
+until it is checked again. The page only reads recorded outcomes and never runs
+a check. The check and the card work the same way with DeepSeek Account, which
+uses this tool loop.
 
 With tools verified and **Tools** enabled in the chat, the model receives the
 Kira tools allowed by the context: files and commands according to the project
@@ -185,6 +196,9 @@ attempt per run and does not apply to other server errors.
 - Very large catalogs or proxies that compress responses may be rejected (Kira
   requests uncompressed responses and limits the size of the metadata); the
   error is visible and no endpoint is changed.
+- An error returned by Ollama reports the server's text together with the HTTP
+  code, for example when the model requires more system memory than is
+  available.
 
 **Stop** closes the stream to Ollama and cancels the local work started by Kira;
 it does not guarantee that the server stops generating immediately.
@@ -327,7 +341,7 @@ reset date and, when present, the credit balance as a provider string, with no
 inferred currency. **Refresh** performs a new read; it does not create turns,
 does not redeem resets and does not buy credits. A missing value stays **Not
 available**: it means neither zero nor unlimited. The Codex account may differ
-from the one connected to OpenAI direct, and Kira does not treat them as the
+from the one connected to Direct OpenAI, and Kira does not treat them as the
 same account based on e-mail or plan.
 
 ### Reasoning summary
@@ -362,9 +376,9 @@ output does not show them in clear text.
 Usage shares your plan's availability and the specific limits assigned to the
 Kira app. They are managed at
 [ChatGPT → Settings → Usage](https://chatgpt.com/settings/usage); in Kira,
-**Manage usage**, **Plan usage ↗** and **Copy link** lead to the same page. The
-integration does not expose weekly quotas or credits: Kira does not infer them
-from the response tokens and does not replace them with the Codex account data.
+**Plan usage ↗** and **Copy link** lead to the same page. The integration does
+not expose weekly quotas or credits: Kira does not infer them from the response
+tokens and does not replace them with the Codex account data.
 An app limit error (`subscription_sharing_usage_limit_exceeded`) is shown
 prominently and does not mean that the whole plan is exhausted, nor does it
 indicate a reset time. Kira never switches to a paid API key.
@@ -420,8 +434,8 @@ on this path and which Kira does not request. Details and consents in
 
 ### Persistent context and compaction
 
-The direct provider has no thread saved on the server: Kira sends the history
-with every request and keeps a typed state across turns and restarts, bound to
+Direct OpenAI has no thread saved on the server: Kira sends the history with
+every request and keeps a typed state across turns and restarts, bound to
 chat, account and model. It reads the whole original history in order and
 compacts it automatically near the working limit of the selected model, with no
 fixed cut-off of requests. You can force a compaction with **Compact now** in
@@ -450,10 +464,11 @@ settings. Finish the direct work first and empty or complete the queue.
 
 ## DeepSeek Account (experimental)
 
-DeepSeek Account uses your DeepSeek account, with the DeepSeek Harness sign-in
-as the protocol reference. Inference happens on `api.deepseek.com`; the tools
-are Kira's. It is an experimental integration that follows a rapidly evolving
-project.
+DeepSeek Account uses the sign-in with your DeepSeek account, with the DeepSeek
+Harness flow as the protocol reference: you do not enter an API key, except in
+DeeperSeeker mode (see below). Inference happens on `api.deepseek.com`; the
+tools are Kira's. It is an experimental integration that follows a rapidly
+evolving project.
 
 ### Sign-in
 
@@ -465,18 +480,20 @@ not read cookies and does not import Harness code. After signing in, press
 list) and choose the model. **Cancel sign-in** aborts a sign-in in progress.
 
 Read the notice in the panel before signing in: the account exchange may create
-on the DeepSeek platform a managed key that the local logout might not revoke.
-**Sign out from Kira** deletes the local grant and asks DeepSeek to close the
-account session, but cannot guarantee the revocation of that key: check it in
-your DeepSeek account.
+a managed key on the DeepSeek platform that the local logout might not revoke.
+**Disconnect from Kira** deletes the local grant and asks DeepSeek to end the
+account session without checking the outcome; it does not open the site's
+logout and cannot guarantee the revocation of that key: check it in your
+DeepSeek account.
 
 ### Tools, images and context
 
-The provider uses the same Kira tool loop described for Ollama: files, commands,
-browser, Kira's Computer, questions, Team, Research and goals, with the
-service's permission and approval checks. An old "tools disabled" preference
-saved for Ollama does not disable DeepSeek's tools. The model's internal
-reasoning is discarded and not shown.
+The provider uses the same Kira tool loop described for Ollama, including the
+check on first use: files, commands, browser, Kira's Computer, questions, Team,
+Research and goals, with the service's permission and approval checks. With
+DeepSeek, Kira's tools always stay enabled: a chat's **Tools** option turned off
+does not disable them. The model's internal reasoning is discarded and not
+shown.
 
 Attached images are sent only if the model selected in the catalog declares
 vision; text-only models reject images.
@@ -491,12 +508,12 @@ repeated. You can also compact by hand from **Context and memory**.
 
 ### Interruption on incomplete JSON
 
-If DeepSeek ends a response with the JSON of a tool call incomplete, Kira
-discards all the calls of that response, marks the turn as interrupted and
-records that execution did not start. It does not retry automatically: check
-the tools already completed in the same turn and continue with an explicit
-request. Authentication, quota, rate-limit and server errors stop the turn with
-their message.
+If DeepSeek ends a response with an incomplete tool-call JSON, Kira discards
+all the calls of that response, marks the turn as interrupted and records that
+execution did not start. It does not retry automatically: check the tools
+already completed in the same turn and continue with an explicit request.
+Authentication, quota, rate-limit and server errors stop the turn with their
+message.
 
 ### Use DeeperSeeker mode
 
@@ -505,15 +522,17 @@ instance instead of the account. Enter the **DeeperSeeker address** (for
 example `http://127.0.0.1:4000`) and the **DeeperSeeker API key**, then press
 **Save DeeperSeeker connection**. The key is saved in a private file of the
 profile, with permissions restricted to your user, and is no longer shown nor
-included in the status or in exported settings. The address must be HTTP or
-HTTPS, with no credentials, query or fragments; keep the instance on loopback
-unless remote access is deliberately protected. The proxy must already be
-running and reachable from the Kira service.
+included in the status or in exported settings. The address must use HTTPS, or
+plain HTTP only on this computer (`127.0.0.1`, `::1` or `localhost`), with no
+credentials, query or fragments: the instance receives the key and the whole
+chat context. The proxy must already be running and reachable from the Kira
+service.
 
 Kira reads the catalog from the proxy and sends requests to its messages
 endpoint. Tools, permissions and context remain managed by Kira; image support
-and context capabilities are taken from the proxy's catalog when present.
-Disable the option and save to return to account sign-in.
+and context capabilities are taken from the proxy's catalog when present. To go
+back to the account, clear **Use DeeperSeeker** and press **Disable
+DeeperSeeker**; the saved key stays in the profile.
 
 ## DeepSeek Web (experimental)
 
@@ -531,9 +550,10 @@ saves it in a private file of the profile, verifies it with `chat.deepseek.com`
 and shows the outcome. The token is sent only to that origin.
 
 Then choose the **DeepSeek Web · experimental** provider and one of the two
-exposed models: **DeepSeek V4 Flash (web)** or **DeepSeek Reasoner (web)**. The
-catalog is defined in Kira because the site does not offer a queryable model
-list.
+exposed models: **DeepSeek V4 Flash (web)** or **DeepSeek Reasoner (web)**.
+**DeepSeek Reasoner (web)** turns on the site's thinking mode (DeepThink);
+**DeepSeek V4 Flash (web)** does not. The catalog is defined in Kira because the
+site does not offer a queryable model list.
 
 This provider does not use the PKCE sign-in of DeepSeek Account, does not use
 DeeperSeeker and does not call the account API: the two integrations are
@@ -545,13 +565,15 @@ The site does not offer native function calling, so Kira mediates the tools
 with a text protocol: the model writes a JSON call in a strict format, one per
 message, and Kira parses it before executing anything. DeepSeek's DSML wrappers
 and a single matching Markdown code block are also accepted; prose around the
-call is rejected. If the call is malformed, Kira asks for a correction up to
-two times in a row; a valid call resets the counter. Every execution goes
-through Kira's permissions, modes and approvals.
+call is rejected. If the call is malformed or names a tool that is not
+registered, Kira asks for a correction up to two times in a row; a valid call
+resets the counter. If it is still invalid after two corrections, the turn ends
+as interrupted without running any tool from that response, and the remote chat
+is kept. Every execution goes through Kira's permissions, modes and approvals.
 
-Browser and web search (text-based), project tools, files, commands and
-questions are available. **Kira's Computer** is not available. Team and
-autonomous goals are not supported with this provider.
+The browser (screenshots included) and web search, project tools, files,
+commands and questions are available. **Kira's Computer** is not available.
+Team and autonomous goals are not supported with this provider.
 
 ### Images
 
@@ -571,13 +593,19 @@ it sends a compact request with the current state, and renews the full start if
 the instructions, project memory, mode, permissions, settings or available tools
 change. Tool loop continuations send only the new results.
 
-If the stream is interrupted before a complete response, or if the Kira service
-stops during a turn, the continuation restarts from the last confirmed message
-in the same remote chat: the model receives an excerpt of the interrupted
-request and of the tools already completed, with the instruction not to repeat
-them. If the remote reference is missing or does not match the account and
-model, Kira opens a new remote chat starting from the local history, without
-guessing which thread to use.
+If the site ends the response before it is complete, the turn ends as
+interrupted (the queue pauses), no tool from that response runs and the remote
+chat is kept. On the next request, as after the Kira service stops during a
+turn, the continuation restarts from the last confirmed message in the same
+remote chat: the model receives an excerpt of the interrupted request and of the
+tools already completed, with the instruction not to repeat them. If the remote
+reference is missing or does not match the account and model, Kira opens a new
+remote chat, without guessing which thread to use. It starts from Kira's
+instructions, the project context and the current request; earlier messages
+stay in Kira's history.
+
+**Stop** cancels the current request right away and the turn is recorded as
+cancelled.
 
 ### Disconnecting
 
@@ -599,13 +627,16 @@ uv sync --frozen --extra claude-code
 uv run kira-desktop
 ```
 
-A `uv sync` without `--extra claude-code` removes the support again.
+A `uv sync` without `--extra claude-code` removes the support again. The extra
+also contains the Claude Code executable, which Kira uses first; if it is
+missing, Kira uses `claude` on the `PATH`.
 
 Kira has no sign-in button for Claude Code and does not read, save or forward
 its credentials. If the model list reports that Claude Code is not connected,
-open a terminal, run `claude`, use `/login`, then press **Refresh** in
-**Models**. The catalog and the effort levels are read from Claude Code without
-sending any prompt; the status shows only the plan name.
+open a terminal, run `claude` (Claude Code installed separately, which shares
+the same sign-in), use `/login`, then press **Refresh** in **Models**. The
+catalog and the effort levels are read from Claude Code without sending any
+prompt; the status shows only the plan name.
 
 **Do not distribute a Kira build with this provider enabled.** Anthropic's terms
 ask those who build products on the Agent SDK to use API key authentication;
@@ -639,7 +670,7 @@ Background commands are not available: Claude Code terminates with the Kira
 run, so a command must finish within the `Bash` time limit. Claude Code's
 automatic per-folder memory is disabled: memory is managed by Kira with
 **Project memory**, the chat notes, the cross-chat excerpts and the **Research**
-record, where the model can propose records that you decide whether to accept.
+registry, where the model can propose records that you decide whether to accept.
 
 ### Kira tools, browser and images
 
@@ -697,8 +728,8 @@ Claude Code does not provide Kira with a public reasoning summary.
 You can change model and reasoning level from the model chip without creating
 another chat; the change applies from the next request. To change provider,
 choose the provider in the chip's window: a window lets you check model,
-reasoning and, for the direct provider, account, before pressing **Continue in
-this chat**. Kira offers the last choices saved for that provider; the first
+reasoning and, for Direct OpenAI, account, before pressing **Continue in this
+chat**. Kira offers the last choices saved for that provider; the first
 time you must choose a model. If the saved model is no longer available, it is
 not replaced with another one. You can cancel and keep the current
 configuration.
@@ -711,7 +742,7 @@ you will be able to send it only to a model that supports vision.
 encrypted native state and provider-specific capabilities. Kira passes the new
 provider a portable context within declared limits: with Codex, Ollama,
 DeepSeek and Claude Code an excerpt of the conversation and of the tool
-outcomes; with OpenAI direct the whole paginated archive in its persistent
+outcomes; with Direct OpenAI the whole paginated archive in its persistent
 context. Project instructions, important notes and goal are supplied
 separately. Previous tool calls are historical data: they are never re-run
 during a switch.
@@ -732,17 +763,18 @@ native branch at an intermediate point is possible only for the requests of the
 active Codex generation; at the end of the chat the branch is always available
 and portable branches copy the dialogue even across provider boundaries.
 
-**Account change in the direct provider:** the first transition to the direct
-provider binds the selected or active account; later transitions keep that
-binding even if you changed the account for new chats. To use another account,
-choose the direct provider again in the chip's window and select the account.
-Kira verifies sign-in and plan permission before confirming.
+**Account change with Direct OpenAI:** the first transition to Direct OpenAI
+binds the selected or active account; later transitions keep that binding even
+if you changed the account for new chats. To use another account, choose Direct
+OpenAI again in the chip's window and select the account. Kira verifies sign-in
+and plan permission before confirming.
 
 **Model or reasoning only:** changing model or reasoning level within the same
 provider and account is a configuration change: the native reference (Codex
-thread, Claude Code session, DeepSeek Web remote chat) stays the same.
-Reasoning is kept if the new model supports it, otherwise it returns to the
-provider's default. Provider-specific options (Codex service tier, Ollama's
+thread, Claude Code session) stays the same. DeepSeek Web keeps its remote chat
+when only the reasoning level changes and opens a new one when the model
+changes, because each remote chat is bound to its model. Reasoning is kept if
+the new model supports it, otherwise it returns to the provider's default. Provider-specific options (Codex service tier, Ollama's
 **Requested context**) stay with that provider and come back when you select it
 again; the shared tool settings apply to all.
 
@@ -760,16 +792,16 @@ it does not change the chat's provider.
 | Provider | Account data | Local measures |
 | --- | --- | --- |
 | Codex | Quota windows, percentages, reset, credits read from the Codex account (**Refresh**) | Tokens from the provider's last report |
-| OpenAI direct | The chat's account and the **Plan usage ↗** link; no quota exposed | Tokens recorded in the last seven days for this profile |
+| Direct OpenAI | The chat's account and the **Plan usage ↗** link; no quota exposed | Tokens recorded in the last seven days for this profile |
 | Ollama | No account | Tokens, durations and context loaded from the last response; model RAM/VRAM if Ollama reports them |
-| DeepSeek Account / Web | No quota exposed | Tokens reported by the responses |
+| DeepSeek Account | No quota exposed | Tokens reported by the responses |
+| DeepSeek Web | No quota exposed | None: the site reports no token counts |
 | Claude Code | 5-hour and weekly windows reported by Claude Code, extra usage | Turn and last-request tokens, model window |
 
 The summary always distinguishes **last request**, **conversation totals** and
 **context capacity**. The capacity is the model's window (from the catalog or
-from the provider), not a measure of the tokens left; in the direct provider it
-may appear before the first response because it is read from the account's
-catalog. For Ollama the view separates the size of the installed model, the
+from the provider), not a measure of the tokens left; with Direct OpenAI it may
+appear before the first response because it is read from the account's catalog. For Ollama the view separates the size of the installed model, the
 context declared by the model, the requested context, the loaded context and
 the allocated memory: the device's total memory is not inferred from the
 model's allocation.

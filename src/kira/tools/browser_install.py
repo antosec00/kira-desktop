@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from kira.domain.contracts import KiraError
 from kira.domain.paths import Paths
 
 
@@ -24,7 +25,11 @@ def install_browser(paths: Paths | None = None) -> int:
     package_root = str(Path(spec.origin).parent.parent)
     fd = os.open(destination / ".install.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise KiraError("BUSY", "Another browser engine installation is running for this "
+                            "profile; wait for it to finish") from None
         # Keep previously installed revisions for running browsers and rollback.
         # The child gets no provider credentials or inherited HTTP proxy settings.
         environment = {key: value for key, value in os.environ.items()

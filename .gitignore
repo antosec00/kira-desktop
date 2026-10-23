@@ -9,8 +9,7 @@ dist/
 *.egg-info/
 .coverage
 # Raw reports and screenshots can contain personal paths and provider identifiers.
-docs/evidence/*
-!docs/evidence/README.md
+docs/evidence/
 # Keep local credentials and application state out of source control.
 .env
 .env.*
@@ -25,4 +24,3 @@ docs/evidence/*
 auth.json
 credentials.json
 *:Zone.Identifier
-build-package.log

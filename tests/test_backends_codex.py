@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import shlex
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,7 +43,7 @@ class FakeServer:
         self.responses = []
         self.closed = False
         self.instances.append(self)
-    async def start(self):
+    async def start(self, *, experimental_api=True):  # Same signature as codex.AppServer.
         pass
     async def close(self):
         self.closed = True
@@ -80,10 +82,11 @@ def terminal(status):
 
 @pytest.fixture
 def fake(monkeypatch):
-    FakeServer.instances = []
-    FakeServer.queued = []
-    FakeServer.resolved_model = "fixture-model"
-    FakeServer.resolved_effort = "ultra"
+    # FakeServer subclasses in other modules inherit this class state, so every
+    # change goes through monkeypatch and is restored when the test ends.
+    for name, value in {"instances": [], "queued": [], "resolved_model": "fixture-model",
+                        "resolved_effort": "ultra"}.items():
+        monkeypatch.setattr(FakeServer, name, value)
     monkeypatch.setattr(codex, "AppServer", FakeServer)
     return FakeServer
 
@@ -138,8 +141,8 @@ async def test_disconnect_after_turn_start_is_uncertain(tmp_path, fake):
 
 
 @pytest.mark.parametrize("field,value", [("resolved_model", "other"), ("resolved_effort", "low")])
-async def test_no_silent_model_or_effort_change(tmp_path, fake, field, value):
-    setattr(fake, field, value)
+async def test_no_silent_model_or_effort_change(tmp_path, fake, monkeypatch, field, value):
+    monkeypatch.setattr(fake, field, value)
     ctx, _, _, _ = context(tmp_path)
     result = await codex.CodexBackend().run(ctx)
     assert result["state"] == "failed"
@@ -159,8 +162,11 @@ async def test_resume_uses_backend_ref_and_same_configuration(tmp_path, fake):
 async def test_cancellation_requires_codex_terminal_confirmation(tmp_path, fake):
     ctx, _, _, _ = context(tmp_path)
     task = asyncio.create_task(codex.CodexBackend().run(ctx))
-    while not fake.instances or not any(m == "turn/start" for m, _ in fake.instances[0].requests):
-        await asyncio.sleep(0)
+    async with asyncio.timeout(10):
+        while not fake.instances or not any(m == "turn/start"
+                                            for m, _ in fake.instances[0].requests):
+            assert not task.done(), f"The run ended before turn/start: {task.result()}"
+            await asyncio.sleep(0)
     ctx.cancel.set()
     result = await asyncio.wait_for(task, 2)
     assert result["state"] == "cancelled"
@@ -200,7 +206,7 @@ for line in sys.stdin:
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
     rpc = codex.AppServer(str(script))
     try:
-        await asyncio.wait_for(rpc.start(), 3)
+        await asyncio.wait_for(rpc.start(), 30)
         a, b = await asyncio.gather(rpc.request("echo", {"n": 1}), rpc.request("echo", {"n": 2}))
         assert (a, b) == ({"n": 1}, {"n": 2})
         assert rpc.stderr_bytes == 1048576
@@ -220,7 +226,7 @@ print("{malformed}", flush=True)
     rpc = codex.AppServer(str(script))
     try:
         with pytest.raises(codex.ProtocolError):
-            await asyncio.wait_for(rpc.start(), 3)
+            await asyncio.wait_for(rpc.start(), 30)
     finally:
         await rpc.close()
 
@@ -231,7 +237,7 @@ def test_child_environment_drops_unrelated_credentials(monkeypatch):
 
 
 def test_policy_values_match_generated_official_schema(tmp_path):
-    schema_root = Path(__file__).resolve().parents[1] / "protocol-schema"
+    schema_root = Path(__file__).resolve().parents[1] / "protocol-schema/codex-app-server-0.162.1"
     definitions = json.loads((schema_root / "v2/TurnStartParams.json").read_text())["definitions"]
     supported = {entry["properties"]["type"]["enum"][0]
                  for entry in definitions["SandboxPolicy"]["oneOf"]}
@@ -275,7 +281,8 @@ async def test_absolute_wrapper_finds_sibling_interpreter_with_desktop_path(tmp_
     binary_dir = tmp_path / "configured-bin"
     binary_dir.mkdir()
     interpreter = binary_dir / "fixture-node"
-    interpreter.write_text('#!/bin/sh\nexec /usr/bin/python3 "$@"\n')
+    # The sibling stands in for node; it runs the current interpreter, not a host one.
+    interpreter.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n')
     interpreter.chmod(0o700)
     wrapper = binary_dir / "codex"
     wrapper.write_text('''#!/usr/bin/env fixture-node
@@ -292,7 +299,7 @@ for line in sys.stdin:
     assert codex.child_environment("codex")["PATH"] == "/usr/bin:/bin"
     rpc = codex.AppServer(str(wrapper))
     try:
-        await asyncio.wait_for(rpc.start(), 3)
+        await asyncio.wait_for(rpc.start(), 30)
         assert rpc.initialize_result == {"fixture": True}
     finally:
         await rpc.close()

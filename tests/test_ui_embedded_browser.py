@@ -324,15 +324,17 @@ def test_engine_recreation_uses_new_provider_with_same_live_image_store(browser,
     for _ in range(2):
         engine = create_engine(workspace)
         window = engine.rootObjects()[0]
-        qtbot.wait(30)
-        provider = engine.imageProvider("kira-browser")
-        size = QSize()
-        assert not provider.requestImage(controller.frameUrl.removeprefix("image://kira-browser/"), size, QSize()).isNull()
-        assert size == QSize(640, 400)
-        window.setProperty("closeConfirmed", True)
-        window.close()
-        engine.deleteLater()
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        try:
+            qtbot.wait(30)
+            provider = engine.imageProvider("kira-browser")
+            size = QSize()
+            assert not provider.requestImage(controller.frameUrl.removeprefix("image://kira-browser/"), size, QSize()).isNull()
+            assert size == QSize(640, 400)
+        finally:
+            window.setProperty("closeConfirmed", True)
+            window.close()
+            engine.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         # Closing a window stops display but leaves the pure Python store usable.
         bitmap = decode_frame(frame())
         controller.frames.publish("recreated", bitmap)

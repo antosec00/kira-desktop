@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from kira.service.server import Service
 
 EVENTS = frozenset({"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"})
+# Providers that only report that no public summary exists.
+STATUS_ONLY_PROVIDERS = frozenset({"ollama", "deepseek_account", "deepseek_web", "claude_code"})
+PROVIDERS = frozenset({"codex", "openai_chatgpt"}) | STATUS_ONLY_PROVIDERS
 MAX_BYTES = 65_536
 MAX_PARTS = 64
 
@@ -72,8 +75,7 @@ class ReasoningSummaries:
         if not isinstance(payload, dict) or payload.get("source") != "provider_summary":
             return
         provider = payload.get("provider")
-        if not isinstance(provider, str) or provider not in {"codex", "openai_chatgpt", "ollama",
-                                                          "deepseek_account", "claude_code"}:
+        if not isinstance(provider, str) or provider not in PROVIDERS:
             return
         binding = self.service.store.db.execute("SELECT b.backend,r.state FROM run_provider_bindings b "
             "JOIN runs r ON r.id=b.run_id WHERE b.run_id=?", (run_id,)).fetchone()
@@ -87,12 +89,12 @@ class ReasoningSummaries:
                 return
             if self.service.redactor.text(reason) != reason:
                 return
-            if provider in {"ollama", "deepseek_account", "claude_code"} and status != "unavailable":
+            if provider in STATUS_ONLY_PROVIDERS and status != "unavailable":
                 return
             data = self.runs.setdefault(run_id, Summary(provider))
             self._status(run_id, data, status, reason)
             return
-        if provider in {"ollama", "deepseek_account", "claude_code"}:
+        if provider in STATUS_ONLY_PROVIDERS:
             return
         item_id, content = payload.get("item_id"), payload.get("content")
         if (not isinstance(item_id, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,256}", item_id)

@@ -18,7 +18,7 @@ flowchart LR
   Service --> DB[(SQLite in modalità WAL)]
   Service --> Artifacts[Artefatti, allegati e catture private]
   Service --> Ollama[Ollama: API nativa] & OpenAI[OpenAI diretto: Responses HTTP/SSE]
-  Service --> DSAccount[DeepSeek Account: API con chiave] & DSWeb[DeepSeek Web: sessione web]
+  Service --> DSAccount[DeepSeek Account: accesso con l'account] & DSWeb[DeepSeek Web: sessione web]
   Service --> Codex[Codex App Server gestito] & Claude[Claude Code via Agent SDK]
   Service --> Browser[Worker browser: Chromium su display Xvfb privato]
   Ollama & OpenAI & DSAccount & DSWeb -->|richieste validate| Tools[Strumenti di Kira: file, comandi, browser, Computer]
@@ -41,8 +41,9 @@ I provider si dividono in due famiglie:
   mentre Kira gestisce un piccolo ciclo di strumenti proprio: il modello chiede
   uno strumento, il servizio valida la richiesta, la esegue e restituisce il
   risultato. OpenAI diretto usa un gestore OAuth del servizio e un trasporto
-  Responses HTTP/SSE senza passare da Codex App Server; DeepSeek Account usa una
-  chiave API; DeepSeek Web riusa una sessione web e risolve la sfida
+  Responses HTTP/SSE senza passare da Codex App Server; DeepSeek Account usa
+  l'accesso con il tuo account DeepSeek (oppure un'istanza DeeperSeeker con
+  chiave API); DeepSeek Web riusa una sessione web e risolve la sfida
   proof-of-work con un modulo WebAssembly eseguito in wasmtime. I file delle
   credenziali sono configurazione privata e non entrano nelle esportazioni.
 - **Codex e Claude Code** possiedono i propri strumenti nativi. Kira osserva le
@@ -61,8 +62,9 @@ Il modello dei dati segue una gerarchia semplice:
   memoria.
 - Una **chat** (sessione ordinaria) ha un nome, appartiene a un solo progetto e
   conserva il proprio riferimento al provider e la propria cronologia. Cambiare
-  provider crea una nuova sessione: un identificatore di thread nativo non viene
-  mai trasferito da un provider all'altro.
+  provider nella stessa chat ritira la generazione corrente del provider e ne
+  apre una nuova senza riferimento nativo: un identificatore di thread nativo
+  non viene mai trasferito da un provider all'altro.
 - Una **esecuzione** (run) possiede gli eventi sequenziati e le prove reali di
   strumenti e artefatti.
 
@@ -78,11 +80,14 @@ schedulati in parallelo, gli scrittori restano esclusivi finché il provider non
 ha completato la pulizia.
 
 Dopo un riavvio del servizio il lavoro non terminato viene **interrotto, non
-ripetuto**. Una cancellazione richiesta è distinta da una cancellazione
-confermata, e l'interfaccia le mostra in modo diverso. Un esito positivo
-riportato dal provider non è una verifica indipendente di ogni affermazione del
-modello: la chat mostra messaggi e ricevute degli strumenti, la sezione Attività
-conserva il riepilogo del ciclo di vita di ogni esecuzione.
+ripetuto**. Una pulizia che non ha registrato l'identità di alcun processo non è
+verificabile prima di un riavvio del sistema: resta in sospeso fino al riavvio
+del computer, poi il successivo avvio la rilascia. Una cancellazione richiesta è
+distinta da una cancellazione confermata, e l'interfaccia le mostra in modo
+diverso. Un esito positivo riportato dal provider non è una verifica
+indipendente di ogni affermazione del modello: la chat mostra messaggi e
+ricevute degli strumenti, la sezione Attività conserva il riepilogo del ciclo di
+vita di ogni esecuzione.
 
 Il servizio possiede anche la coda delle richieste, i metadati di archivio e
 diramazione delle chat, gli obiettivi e le identità delle azioni native. Le
@@ -100,19 +105,21 @@ dell'interfaccia leggono questi record, non creano lavoro sostitutivo.
 
 ## Contesto e permessi
 
-Le istruzioni e la memoria mantenute dall'utente sono ispezionabili. Su
-richiesta Kira aggiunge estratti limitati da al massimo cinque altre chat
-ordinarie dello stesso progetto (6000 caratteri aggiuntivi in totale), con il
-riferimento alla fonte e l'etichetta di affermazione non verificata; esclude
-progetti esterni, chat archiviate e sessioni dei Team. Il blocco fornito al
-modello resta registrato come evento. Questo contesto non rimuove ciò che un
-thread persistente del provider ha già ricevuto e non limita i permessi sul
-file system degli strumenti.
+Le istruzioni e la memoria mantenute dall'utente sono ispezionabili. Salvo che
+il progetto lo disattivi (`share_session_summaries:false`), Kira aggiunge
+estratti limitati da al massimo cinque altre chat ordinarie dello stesso
+progetto (6000 caratteri aggiuntivi in totale), con il riferimento alla fonte e
+l'etichetta di affermazione non verificata; esclude progetti esterni, chat
+archiviate, sessioni dei Team e chat con un'altra identità Anima. Il blocco
+fornito al modello resta registrato come evento. Questo contesto non rimuove ciò
+che un thread persistente del provider ha già ricevuto e non limita i permessi
+sul file system degli strumenti.
 
 Il servizio applica i permessi **indipendentemente dall'interfaccia**:
 
 - Gli strumenti file integrati validano che i percorsi stiano dentro il progetto
-  e verificano gli hash attesi prima di modificare un file.
+  (fuori solo con **Accesso completo**) e verificano gli hash attesi prima di
+  modificare un file.
 - I comandi arbitrari (vettore `argv`, senza shell) richiedono il permesso
   **Host fidato** o **Accesso completo** e agiscono come l'utente: la cartella di
   lavoro non è una sandbox.
@@ -148,7 +155,7 @@ importate sono PNG privati e non conferiscono nuovi permessi di esecuzione.
 | Posizione predefinita | Contenuto e proprietario |
 | --- | --- |
 | `~/.config/kira/ui.json` | Preferenze dell'interfaccia, validate e salvate atomicamente (GUI) |
-| `~/.config/kira/composer.json` | Bozze limitate e cronologia dei messaggi inviati (GUI) |
+| `~/.config/kira/composer.json` | Bozze limitate, cronologia dei messaggi inviati e identità in sospeso delle richieste della chat (GUI) |
 | `~/.local/share/kira/kira.sqlite3` | Progetti, chat, eventi, Team, coda, obiettivi e impostazioni (scrive solo il servizio) |
 | `~/.local/share/kira/artifacts/` | Output catturato, con limiti di dimensione (servizio) |
 | `~/.local/share/kira/attachments/` | Immagini importate dall'interfaccia |
@@ -158,6 +165,7 @@ importate sono PNG privati e non conferiscono nuovi permessi di esecuzione.
 | `~/.local/share/kira/exports/` | Esportazioni private troppo grandi per una risposta IPC |
 | `~/.local/share/kira/browser-engine/`, `browser-profiles/`, `browser-temporary/` | Chromium scaricato e profili del browser isolato (servizio) |
 | `~/.local/state/kira/` | Stato e log del servizio staccato |
+| `~/.local/state/kira/souls-ui/`, `research-ui/`, `knowledge-ui/` | Bozze e identità in sospeso di Anima, Ricerca e strumenti di progetto (GUI) |
 | `$XDG_RUNTIME_DIR/kira/service.sock` | Socket IPC privato; in mancanza, cade nella cartella di stato |
 | Cartella del progetto scelta dall'utente | I file reali del progetto, separati dai dati dell'applicazione |
 
@@ -204,15 +212,16 @@ del progetto e i rapporti dei compagni di Team sono dati: non possono alterare
 il contratto operativo né selezionare un'altra identità di esecuzione tramite gli
 argomenti di uno strumento.
 
-I thread nativi di Codex ricevono gli strumenti `kira` tramite un **ponte MCP
-temporaneo**: un descrittore privato e un relay su socket Unix dello stesso
-utente, legati a quel `RunContext`. Solo gli strumenti Kira registrati ricevono
-l'approvazione esplicita per thread; gli altri strumenti, la sandbox e le
-impostazioni dell'account mantengono le loro policy. Il relay non espone una
-superficie RPC generica verso il servizio e il suo bootstrap installato è
-ancorato alla posizione fidata del pacchetto. Claude Code riceve gli stessi
-strumenti da un **server MCP interno** avviato dall'adapter dentro il processo
-del servizio, con i nomi `mcp__kira__<strumento>` visibili nelle ricevute.
+I thread nativi di Codex ricevono gli strumenti `kira` (e, con un obiettivo
+autonomo, quelli dell'obiettivo) tramite un **ponte MCP temporaneo**: un
+descrittore privato e un relay su socket Unix dello stesso utente, legati a quel
+`RunContext`. Solo gli strumenti Kira registrati ricevono l'approvazione
+esplicita per thread; gli altri strumenti, la sandbox e le impostazioni
+dell'account mantengono le loro policy. Il relay non espone una superficie RPC
+generica verso il servizio e il suo bootstrap installato è ancorato alla
+posizione fidata del pacchetto. Claude Code riceve gli strumenti di Kira da un
+**server MCP interno** avviato dall'adapter dentro il processo del servizio,
+con i nomi `mcp__kira__<strumento>` visibili nelle ricevute.
 
 Quando l'assistente delega un lavoro a un Team, il servizio salva atomicamente
 l'intenzione di delega, il risultato della chiamata e l'evento d'origine, e
@@ -231,10 +240,10 @@ Il browser isolato e il **Computer di Kira** sono un unico attore posseduto dal
 servizio (`service/web.py`), che coordina il worker Chromium e il worker che
 osserva e agisce sullo schermo. Ogni strumento del modello (`browser.search`,
 `browser.navigate`, `computer.observe`, `computer.act`…) passa dal servizio, che
-verifica il consenso del progetto, registra l'azione come evento e restituisce
-al modello un risultato limitato. Il consenso può essere revocato mentre il
-browser è aperto; una richiesta in attesa di approvazione conserva la propria
-identità. Anche il passaggio di controllo tra utente e Kira (**Prendi il
-controllo**, **Restituisci a Kira**) è uno stato del servizio, non
-dell'interfaccia. Dettagli d'uso e limiti sono in
+verifica permesso del progetto, modalità e consenso della chat, registra
+l'azione come evento e restituisce al modello un risultato limitato. Il
+consenso può essere revocato mentre il browser è aperto; una richiesta in
+attesa di approvazione conserva la propria identità. Anche il passaggio di
+controllo tra utente e Kira (**Prendi il controllo**, **Restituisci a Kira**) è
+uno stato del servizio, non dell'interfaccia. Dettagli d'uso e limiti sono in
 [Browser e Computer](BROWSER_E_COMPUTER.md).

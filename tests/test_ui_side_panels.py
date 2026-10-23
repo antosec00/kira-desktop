@@ -11,6 +11,7 @@ from PySide6.QtTest import QTest
 from kira.domain.paths import Paths
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
+from test_ui_support import wait_laid_out, wait_opened
 
 
 def evaluate(obj, code):
@@ -83,7 +84,8 @@ def test_panels_are_nonmodal_one_at_a_time_and_fit_workspace(panels, qtbot, qtlo
     for name in ("workspaceDialog", "researchDialog", "assistantEnvironmentDialog", "contextDialog", "usageDialog"):
         panel = window.findChild(QObject, name)
         evaluate(panel, "open()")
-        qtbot.wait(50)
+        close = window.findChild(QObject, name + "Close")
+        wait_opened(qtbot, panel, close)
         assert panel.property("opened") and panel.property("sidePanel")
         assert not panel.property("modal")
         assert evaluate(panel, "panelHost.activePanel === this")
@@ -92,7 +94,6 @@ def test_panels_are_nonmodal_one_at_a_time_and_fit_workspace(panels, qtbot, qtlo
         content = panel.property("contentItem")
         assert QRectF(0, 0, *size).adjusted(-1, -1, 1, 1).contains(bounds(content))
         assert content.height() > 100
-        close = window.findChild(QObject, name + "Close")
         assert QRectF(0, 0, *size).contains(bounds(close))
         previous = panel
     host = window.findChild(QObject, "kiraPanelHost")
@@ -109,16 +110,16 @@ def test_chat_remains_editable_panel_expands_and_escape_closes(panels, qtbot):
     workspace, _, window, calls = panels
     panel = window.findChild(QObject, "researchDialog")
     evaluate(panel, "open()")
-    qtbot.wait(40)
     prompt = window.findChild(QObject, "prompt")
+    wait_opened(qtbot, panel, prompt)
     click(window, prompt)
     for letter in "draft":
         QTest.keyClick(window, ord(letter.upper()))
     assert workspace.draftText == "DRAFT"
     assert panel.property("opened")
     click(window, window.findChild(QObject, "researchDialogExpand"))
-    qtbot.wait(30)
-    assert panel.property("expanded")
+    qtbot.waitUntil(lambda: panel.property("expanded") is True)
+    wait_laid_out(qtbot, panel.property("contentItem"))
     assert window.findChild(QObject, "kiraPanelHost").property("reservedWidth") == 0
     assert QRectF(0, 0, window.width(), window.height()).contains(bounds(panel.property("contentItem")))
     QTest.keyClick(window, Qt.Key.Key_Escape)

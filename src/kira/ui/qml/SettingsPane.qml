@@ -115,7 +115,11 @@ Item {
                         textRole: "name"
                         valueRole: "code"
                         currentIndex: localization.languages.findIndex(function(language) { return language.code === localization.language })
-                        onActivated: localization.setLanguage(currentValue)
+                        // A refused language leaves the previous one active: show that one again.
+                        onActivated: {
+                            localization.setLanguage(currentValue)
+                            currentIndex = Qt.binding(function() { return localization.languages.findIndex(function(language) { return language.code === localization.language }) })
+                        }
                         Accessible.name: qsTr("Lingua dell’interfaccia")
                     }
                     AppearancePane { Layout.fillWidth: true }
@@ -348,7 +352,7 @@ Item {
                     ReadText { text: workspace.resourcesText; Layout.fillWidth: true; font: appearance.codeFont }
                     Rule {}
                     Heading { text: qsTr("Scorciatoie") }
-                    Note { text: qsTr("Ctrl+K · Cerca progetti e azioni\nCtrl+N · Nuovo progetto\nCtrl+L · Scrivi nella chat\nCtrl+Invio · Invia messaggio\nCtrl+Shift+R · Riprendi il progetto\nCtrl+Shift+Q · Apri le domande\nCtrl+Shift+C · Copia la conversazione") }
+                    Note { objectName: "settingsShortcuts"; text: qsTr("Ctrl+Invio · Invia messaggio\nCtrl+B · Barra laterale: intera, solo icone o nascosta\nCtrl+K · Cerca progetti e azioni\nCtrl+N · Nuovo progetto\nCtrl+L · Scrivi nella chat\nCtrl+Shift+N · Nuova chat nel progetto\nCtrl+Shift+P · Azioni rapide\nCtrl+Shift+R · Riprendi lavoro\nCtrl+Shift+Q · Apri le domande\nCtrl+Shift+C · Copia la conversazione") }
                     Note {
                         Layout.topMargin: 16
                         Layout.bottomMargin: 28

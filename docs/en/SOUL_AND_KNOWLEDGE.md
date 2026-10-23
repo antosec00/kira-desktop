@@ -168,7 +168,8 @@ before saving.
   result in the chat): the link says where an interpretation comes from, it
   does not make it correct.
 - Reasoning summaries and the model's statements about itself are not valid
-  sources, and a recalled memory cannot confirm itself.
+  sources, and a recalled memory cannot confirm itself, not even through the
+  copy of a Kira tool call that Codex or Claude Code records.
 - Preferences and lessons are not proof of work done or progress on a goal:
   they describe how to collaborate, not what has been done.
 
@@ -176,11 +177,13 @@ before saving.
 
 ### In an existing chat
 
-To choose another identity in a chat already under way, the chat's work must
-be stopped and any autonomous goal paused (see
-[Autonomous goals](AUTONOMOUS_GOALS.md)); the panel reminds you with a note.
-The switch closes the current provider session and opens a new one with the
-same provider, model and reasoning settings.
+To choose another identity in a chat already under way, the project's work
+must be stopped, the chat must have no queued requests and any autonomous goal
+must be paused (see [Autonomous goals](AUTONOMOUS_GOALS.md)); the panel reminds
+you with a note. The switch closes the current provider session and opens a
+new one with the same provider, model and reasoning settings. It also closes
+the chat's browser, keeping a retained profile; if you are controlling the
+browser, return control to Kira or close it first.
 
 The chat history remains: the switch is a style choice for the conversation,
 not a deletion of what the model had already received. Automatic excerpts
@@ -195,9 +198,9 @@ identity there.
 
 - **Copy profile** copies the profile of the selected identity to the
   clipboard; **Import profile** pastes it on this or another installation with
-  **Create from profile**. The profile contains name, core and preferences,
-  **without** conversations, lessons, sources or previous revisions. Importing
-  always creates a new independent identity.
+  **Create from profile**. The profile contains name, core, learning mode and
+  preferences, **without** conversations, lessons, sources or previous
+  revisions. Importing always creates a new independent identity.
 - **Duplicate** creates a local copy with the same profile, from which to start
   a variant.
 - **Archive** retires the identity: it will no longer be used in later turns
@@ -257,8 +260,9 @@ has verified a result.
 
 When a capability is missing, you can ask Kira to prepare a reusable tool for
 the project: a Python script that receives a JSON object on stdin and returns
-a JSON object on stdout. Kira can also propose one on its own during an
-authorized activity. Tools belong to the project.
+on stdout a JSON value matching its declared output schema. Kira can also
+propose one on its own during an authorized activity. Tools belong to the
+project.
 
 ### The Project tools tab
 
