@@ -51,10 +51,11 @@ The `./dist/...` path is that of a package built in the checkout; if you
 downloaded it, point to the folder where it is. The `./` prefix is required for
 `apt` to recognize a local file.
 
-The package installs the `/usr/bin/kira-desktop` command, the application code
-with all its Python dependencies (Qt included) in `/opt/kira-desktop/`, the
-**Kira Desktop** entry of the application menu with its icon, the systemd user
-service `/usr/lib/systemd/user/kira-desktop.service` and, in
+The package installs the `/usr/bin/kira-desktop` command and its short name
+`/usr/bin/kira`, the application code with all its Python dependencies (Qt
+included) in `/opt/kira-desktop/`, the **Kira Desktop** entry of the application
+menu with its icon, the systemd user service
+`/usr/lib/systemd/user/kira-desktop.service` and, in
 `/usr/share/doc/kira-desktop/`, the license, the list of dependencies and the
 documentation.
 
@@ -76,8 +77,8 @@ interpreter on its own and creates an isolated virtual environment in the
 project folder.
 
 ```sh
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 uv sync --frozen
 uv run kira-desktop
 ```
@@ -103,19 +104,19 @@ own; from source you have to take care of it yourself, otherwise the isolated
 browser does not open.
 
 All the commands in this guide also apply from source: replace `kira-desktop`
-with `uv run kira-desktop`, run from the root of the checkout. Remember that
-from source the interface and the service load the checkout's code: do not
-modify the files while Kira is in use; prepare the changes separately and
-activate them with the [upgrade procedure](#upgrading).
+with `uv run kira-desktop` (or `uv run kira`), run from the root of the
+checkout. Remember that from source the interface and the service load the
+checkout's code: do not modify the files while Kira is in use; prepare the
+changes separately and activate them with the [upgrade procedure](#upgrading).
 
 ## First launch and useful commands
 
-Start Kira from the application menu or with `kira-desktop`. The interface
-looks for the Kira service (the process that owns the database and talks to the
-providers): if it is not running, it starts it, through systemd in the package
-installation or as a background process from source or when you use a custom
-profile. The service keeps working even when you close the window, as long as
-your user session stays open.
+Start Kira from the application menu or with `kira-desktop` (or `kira`). The
+interface looks for the Kira service (the process that owns the database and
+talks to the providers): if it is not running, it starts it, through systemd in
+the package installation or as a background process from source or when you use
+a custom profile. The service keeps working even when you close the window, as
+long as your user session stays open.
 
 The folder from which you launch the command has no effect: it neither selects
 nor creates a project. Choose the project and the chat from the interface. After
@@ -123,7 +124,8 @@ a restart of the system or of WSL, start the app again: the service restarts
 and the interrupted work is shown with its recorded state, without repeating
 operations with an uncertain outcome.
 
-These commands work from any folder:
+These commands work from any folder. `kira` is the short name of
+`kira-desktop` and takes the same arguments, for example `kira doctor`.
 
 | Command | What it does |
 | --- | --- |

@@ -48,11 +48,12 @@ Il percorso `./dist/...` è quello di un pacchetto costruito nel checkout; se lo
 hai scaricato, indica la cartella in cui si trova. Il prefisso `./` è necessario
 perché `apt` riconosca un file locale.
 
-Il pacchetto installa il comando `/usr/bin/kira-desktop`, il codice
-dell'applicazione con tutte le dipendenze Python (Qt compreso) in
-`/opt/kira-desktop/`, la voce **Kira Desktop** del menu delle applicazioni con la
-sua icona, il servizio utente systemd `/usr/lib/systemd/user/kira-desktop.service`
-e, in `/usr/share/doc/kira-desktop/`, licenza, elenco delle dipendenze e
+Il pacchetto installa il comando `/usr/bin/kira-desktop` e il suo nome breve
+`/usr/bin/kira`, il codice dell'applicazione con tutte le dipendenze Python (Qt
+compreso) in `/opt/kira-desktop/`, la voce **Kira Desktop** del menu delle
+applicazioni con la sua icona, il servizio utente systemd
+`/usr/lib/systemd/user/kira-desktop.service` e, in
+`/usr/share/doc/kira-desktop/`, licenza, elenco delle dipendenze e
 documentazione.
 
 Il pacchetto è volutamente conservativo. Non esegue `pip` come root e non tocca il
@@ -72,8 +73,8 @@ che scarica da solo l'interprete Python adatto e crea un ambiente virtuale
 isolato nella cartella del progetto.
 
 ```sh
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 uv sync --frozen
 uv run kira-desktop
 ```
@@ -98,19 +99,20 @@ Il pacchetto `.deb` le dichiara come dipendenze e `apt` le installa da solo; dal
 sorgente devi pensarci tu, altrimenti il browser isolato non si apre.
 
 Tutti i comandi di questa guida valgono anche dal sorgente: sostituisci
-`kira-desktop` con `uv run kira-desktop`, eseguito dalla radice del checkout.
-Ricorda che dal sorgente l'interfaccia e il servizio caricano il codice del
-checkout: non modificare i file mentre Kira è in uso, prepara le modifiche a
-parte e attivale con la [procedura di aggiornamento](#aggiornamento).
+`kira-desktop` con `uv run kira-desktop` (oppure `uv run kira`), eseguito dalla
+radice del checkout. Ricorda che dal sorgente l'interfaccia e il servizio
+caricano il codice del checkout: non modificare i file mentre Kira è in uso,
+prepara le modifiche a parte e attivale con la [procedura di
+aggiornamento](#aggiornamento).
 
 ## Primo avvio e comandi utili
 
-Avvia Kira dal menu delle applicazioni o con `kira-desktop`. L'interfaccia cerca il
-servizio di Kira (il processo che possiede il database e dialoga con i provider):
-se non è in esecuzione lo avvia, tramite systemd nell'installazione da pacchetto
-oppure come processo in background dal sorgente o quando usi un profilo
-personalizzato. Il servizio continua a lavorare anche quando chiudi la finestra,
-finché la tua sessione utente resta aperta.
+Avvia Kira dal menu delle applicazioni o con `kira-desktop` (oppure `kira`).
+L'interfaccia cerca il servizio di Kira (il processo che possiede il database e
+dialoga con i provider): se non è in esecuzione lo avvia, tramite systemd
+nell'installazione da pacchetto oppure come processo in background dal sorgente
+o quando usi un profilo personalizzato. Il servizio continua a lavorare anche
+quando chiudi la finestra, finché la tua sessione utente resta aperta.
 
 La cartella da cui lanci il comando non ha alcun effetto: non seleziona né crea un
 progetto. Scegli progetto e chat dall'interfaccia. Dopo un riavvio del sistema o
@@ -118,7 +120,8 @@ di WSL, avvia di nuovo l'app: il servizio riparte e il lavoro interrotto viene
 mostrato con il suo stato registrato, senza ripetere operazioni dall'esito
 incerto.
 
-Questi comandi funzionano da qualsiasi cartella:
+Questi comandi funzionano da qualsiasi cartella. `kira` è il nome breve di
+`kira-desktop` e accetta gli stessi argomenti, per esempio `kira doctor`.
 
 | Comando | Cosa fa |
 | --- | --- |

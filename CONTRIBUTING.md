@@ -29,8 +29,8 @@ ogni modifica sono in [AGENTS.md](AGENTS.md); il comportamento delle funzioni
 Ubuntu 24.04 (Python 3.12) o 26.04 (Python 3.14), in modo nativo o su WSL2/WSLg.
 
 ```sh
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 uv sync --frozen --extra claude-code   # l'extra è facoltativo
 export KIRA_HOME="$HOME/kira-dev-profile"   # mai sviluppare sul profilo reale
 uv run kira-desktop

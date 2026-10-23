@@ -78,8 +78,9 @@ or run from any folder:
 kira-desktop
 ```
 
-`kira-desktop --version` prints the installed version. In WSL a working
-graphical session is required, for example WSLg.
+The short name `kira` does the same. `kira-desktop --version` prints the
+installed version. In WSL a working graphical session is required, for example
+WSLg.
 
 To start from the source code, open a terminal in the root of the repository
 (where `pyproject.toml` is):

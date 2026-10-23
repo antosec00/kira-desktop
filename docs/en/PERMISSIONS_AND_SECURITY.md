@@ -185,7 +185,8 @@ way may stay open even after Kira is closed.
 
 ## Command line and local IPC
 
-The installed command is `kira-desktop`; from a source checkout use
+The installed command is `kira-desktop`, also available under the short name
+`kira`; from a source checkout use
 `uv run kira-desktop` from the repository root with the same arguments.
 
 ```sh

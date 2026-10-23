@@ -78,10 +78,12 @@ def build() -> None:
     for cache in lib.rglob("__pycache__"):
         shutil.rmtree(cache)
     shutil.copy2(ROOT / "packaging/launcher.py", dest / "launcher.py")
-    binary = stage / "usr/bin/kira-desktop"
-    binary.parent.mkdir(parents=True)
-    binary.write_text('#!/bin/sh\nexec /usr/bin/python3 -I /opt/kira-desktop/launcher.py "$@"\n')
-    binary.chmod(0o755)
+    (stage / "usr/bin").mkdir(parents=True)
+    # `kira` is the short name of the same launcher.
+    for name in ("kira-desktop", "kira"):
+        binary = stage / "usr/bin" / name
+        binary.write_text('#!/bin/sh\nexec /usr/bin/python3 -I /opt/kira-desktop/launcher.py "$@"\n')
+        binary.chmod(0o755)
     placements = {
         "packaging/kira-desktop.desktop": "usr/share/applications/kira-desktop.desktop",
         "src/kira/ui/assets/kira-mascot.png": "usr/share/pixmaps/kira-desktop.png",

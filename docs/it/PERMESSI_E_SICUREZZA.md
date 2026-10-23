@@ -190,7 +190,8 @@ lanciata in questo modo può restare aperta anche dopo la chiusura di Kira.
 
 ## Riga di comando e IPC locale
 
-Il comando installato è `kira-desktop`; da un checkout del sorgente usa
+Il comando installato è `kira-desktop`, disponibile anche con il nome breve
+`kira`; da un checkout del sorgente usa
 `uv run kira-desktop` dalla radice del repository con gli stessi argomenti.
 
 ```sh

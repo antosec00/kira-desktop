@@ -77,8 +77,9 @@ applicazioni oppure esegui da qualsiasi cartella:
 kira-desktop
 ```
 
-`kira-desktop --version` stampa la versione installata. In WSL serve una
-sessione grafica funzionante, per esempio WSLg.
+Il nome breve `kira` fa la stessa cosa. `kira-desktop --version` stampa la
+versione installata. In WSL serve una sessione grafica funzionante, per esempio
+WSLg.
 
 Per avviare dal codice sorgente, apri il terminale nella radice del repository
 (dove si trova `pyproject.toml`):

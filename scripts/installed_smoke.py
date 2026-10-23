@@ -300,6 +300,10 @@ def main():
             status="confermato", command="python3 check_files.py",
         )
         QTest.qWait(100)
+        # Tool receipts start collapsed; the output and its toggle live inside.
+        if hasattr(workspace.transcript, "setReceiptExpanded"):
+            workspace.transcript.setReceiptExpanded(row, True)
+            QTest.qWait(80)
 
         def find_item(root, name):
             if root.objectName() == name:
@@ -568,7 +572,9 @@ def main():
             }))
         """))
         assert rows and all(row and row["textFormat"] == 0 for row in rows)
-        assert [row["text"] for row in rows] == ["Ollama", "Codex", "OpenAI diretto · ChatGPT"]
+        assert [row["text"] for row in rows] == [
+            "Ollama", "Codex", "OpenAI diretto · ChatGPT", "DeepSeek Account",
+            "DeepSeek Web · sperimentale", "Claude Code · uso personale"]
         assert {row["highlighted"] for row in rows} == {False, True}
         for row in rows:
             light, dark = sorted((luminance(row["foreground"]), luminance(row["background"])),

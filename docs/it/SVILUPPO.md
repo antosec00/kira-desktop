@@ -28,7 +28,7 @@ confini tra processi e il modello di recupero.
 
 ```
 src/kira/
-  cli.py            punto d'ingresso kira-desktop (GUI, diagnostics, doctor, stop-service, rpc…)
+  cli.py            punto d'ingresso kira-desktop e kira (GUI, diagnostics, doctor, stop-service, rpc…)
   client.py         client IPC lato GUI e avvio del servizio
   backends/         adapter dei provider, client_tools.py (ponte degli strumenti Kira),
                     kira_mcp.py (relay MCP per Codex), deepseek_pow_solver.wasm
@@ -60,8 +60,8 @@ WSL2/WSLg. Per il browser isolato servono anche i pacchetti di sistema `xvfb` e
 `libxtst6`.
 
 ```sh
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 uv sync --frozen --extra claude-code        # l'extra è facoltativo
 export KIRA_HOME="$HOME/kira-dev-profile"   # mai sviluppare sul profilo reale
 uv run kira-desktop                         # avvia la GUI e, se serve, il servizio
@@ -234,7 +234,8 @@ Che cosa contiene il pacchetto:
 - le dipendenze Python **immutabili** sotto `/opt/kira-desktop/lib/`, installate
   dal lock `packaging/requirements.lock.txt` senza `pip` privilegiato;
 - un launcher che usa il Python di sistema e antepone quella cartella al
-  percorso di importazione;
+  percorso di importazione, installato come `/usr/bin/kira-desktop` e con il
+  nome breve `/usr/bin/kira`;
 - l'unità systemd utente, il file `.desktop` e la mascotte in
   `/usr/share/pixmaps/kira-desktop.png`;
 - in `/usr/share/doc/kira-desktop/`: la licenza di Kira (`copyright`), le licenze

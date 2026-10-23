@@ -90,8 +90,8 @@ modo nativo o in WSL2 con WSLg. Il desktop di riferimento è KDE Plasma/Wayland.
 
 ```sh
 # 1. Installa uv (https://docs.astral.sh/uv/) e clona il repository
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 
 # 2. Installa le dipendenze bloccate (aggiungi l'extra Claude Code se lo vuoi)
 uv sync --frozen                     # oppure: uv sync --frozen --extra claude-code

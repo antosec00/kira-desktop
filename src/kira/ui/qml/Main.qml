@@ -1295,7 +1295,7 @@ ApplicationWindow {
                                                 palette.dark: window.muted
                                                 id: backendBox; objectName: "backendBox"
                                                 Layout.preferredWidth: ["openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend) >= 0 ? (chatColumn.width < 650 ? 160 : 255) : 110; implicitHeight: 35
-                                                model: ["ollama", "codex", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek Account"), qsTr("DeepSeek Web · sperimentale"), qsTr("Claude Code · uso personale")]
+                                                model: ["Ollama", "Codex", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek Account"), qsTr("DeepSeek Web · sperimentale"), qsTr("Claude Code · uso personale")]
                                                 currentIndex: ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend)
                                                 onActivated: { workspace.setBackend(["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"][currentIndex]); currentIndex = Qt.binding(function() { return ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code"].indexOf(workspace.backend) }) }
                                                 enabled: !workspace.busy && !assistant.active

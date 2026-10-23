@@ -38,13 +38,14 @@ dependencies = [
 claude-code = ["claude-agent-sdk==0.2.168"]
 
 [project.urls]
-Homepage = "https://github.com/antosec00/kira-desktop-app"
-Documentation = "https://github.com/antosec00/kira-desktop-app/blob/main/docs/README.md"
-Releases = "https://github.com/antosec00/kira-desktop-app/releases"
-Issues = "https://github.com/antosec00/kira-desktop-app/issues"
+Homepage = "https://github.com/antosec00/kira-desktop"
+Documentation = "https://github.com/antosec00/kira-desktop/blob/main/docs/README.md"
+Releases = "https://github.com/antosec00/kira-desktop/releases"
+Issues = "https://github.com/antosec00/kira-desktop/issues"
 
 [project.scripts]
 kira-desktop = "kira.cli:main"
+kira = "kira.cli:main"
 kira-service = "kira.service.server:main"
 
 [dependency-groups]

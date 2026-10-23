@@ -30,7 +30,7 @@ boundaries and the recovery model.
 
 ```
 src/kira/
-  cli.py            kira-desktop entry point (GUI, diagnostics, doctor, stop-service, rpc…)
+  cli.py            kira-desktop and kira entry point (GUI, diagnostics, doctor, stop-service, rpc…)
   client.py         GUI-side IPC client and service startup
   backends/         provider adapters, client_tools.py (Kira tool bridge),
                     kira_mcp.py (MCP relay for Codex), deepseek_pow_solver.wasm
@@ -62,8 +62,8 @@ WSL2/WSLg. The isolated browser also needs the `xvfb` and `libxtst6` system
 packages.
 
 ```sh
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 uv sync --frozen --extra claude-code        # the extra is optional
 export KIRA_HOME="$HOME/kira-dev-profile"   # never develop on the real profile
 uv run kira-desktop                         # starts the GUI and, if needed, the service
@@ -237,7 +237,8 @@ What the package contains:
   installed from the `packaging/requirements.lock.txt` lock without privileged
   `pip`;
 - a launcher that uses the system Python and prepends that folder to the import
-  path;
+  path, installed as `/usr/bin/kira-desktop` and under the short name
+  `/usr/bin/kira`;
 - the systemd user unit, the `.desktop` file and the mascot in
   `/usr/share/pixmaps/kira-desktop.png`;
 - in `/usr/share/doc/kira-desktop/`: Kira's licence (`copyright`), the Qt

@@ -26,8 +26,8 @@ before it can be merged. Engineering rules that apply to every change are in
 Ubuntu 24.04 (Python 3.12) or 26.04 (Python 3.14), natively or on WSL2/WSLg.
 
 ```sh
-git clone https://github.com/antosec00/kira-desktop-app.git
-cd kira-desktop-app
+git clone https://github.com/antosec00/kira-desktop.git
+cd kira-desktop
 uv sync --frozen --extra claude-code   # the extra is optional
 export KIRA_HOME="$HOME/kira-dev-profile"   # never develop against your real profile
 uv run kira-desktop

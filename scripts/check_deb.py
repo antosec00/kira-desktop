@@ -221,7 +221,8 @@ print(json.dumps(result))
         self.report["python"] = self.inside("python3", "--version", quiet=True).strip()
         expected_python = "Python 3.14." if self.target == "resolute" else "Python 3.12."
         assert self.report["python"].startswith(expected_python), self.report["python"]
-        files = ["/usr/bin/kira-desktop", "/usr/share/applications/kira-desktop.desktop",
+        files = ["/usr/bin/kira-desktop", "/usr/bin/kira",
+                 "/usr/share/applications/kira-desktop.desktop",
                  "/usr/lib/systemd/user/kira-desktop.service",
                  "/usr/share/pixmaps/kira-desktop.png",
                  "/opt/kira-desktop/lib/kira/ui/qml/Main.qml",
@@ -232,6 +233,8 @@ print(json.dumps(result))
         self.report["installed_files"] = files
         self.report["launcher_version"] = self.inside("/usr/bin/kira-desktop", "--version",
                                                      user=True, quiet=True).strip()
+        short_version = self.inside("/usr/bin/kira", "--version", user=True, quiet=True).strip()
+        assert short_version == self.report["launcher_version"], short_version
         self.record("fresh_install", debian_version=version)
         original = self.smoke("installed-offscreen")
         self.smoke("installed-xcb", "xcb")
@@ -262,6 +265,7 @@ print(json.dumps(result))
                     "kira-desktop", timeout=300)
         self.inside("python3", "-c", "from pathlib import Path; "
                     "assert not Path('/usr/bin/kira-desktop').exists(); "
+                    "assert not Path('/usr/bin/kira').exists(); "
                     "assert not Path('/usr/share/applications/kira-desktop.desktop').exists(); "
                     "assert not Path('/usr/lib/systemd/user/kira-desktop.service').exists()")
         assert self.user_files() == before_removal
