@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kira-desktop"
-version = "0.18.0"
+version = "0.18.1"
 description = "A native desktop harness for AI projects, chats, tools and collaborating agents"
 readme = "README.md"
 license = "MIT"
@@ -49,7 +49,7 @@ kira = "kira.cli:main"
 kira-service = "kira.service.server:main"
 
 [dependency-groups]
-dev = ["pytest==9.0.2", "pytest-asyncio==1.3.0", "ruff==0.15.6", "mypy==1.19.1", "pytest-qt==4.5.0"]
+dev = ["pytest==9.0.3", "pytest-asyncio==1.3.0", "ruff==0.15.6", "mypy==1.19.1", "pytest-qt==4.5.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kira"]

@@ -517,7 +517,8 @@ model: before retrying, check the actions already performed.
 
 ### The reasoning summary
 
-When the provider supplies it (Codex and Direct OpenAI), **Reasoning summary**
+When the provider supplies it (Codex, Direct OpenAI and DeepSeek Web with
+DeepSeek Reasoner), **Reasoning summary**
 appears below the chat: a compact preview that you can expand and select, with
 the indication of the provider and of any incomplete parts. You can also
 consult the summaries of earlier runs of the same chat. It is the provider's
@@ -525,7 +526,8 @@ public summary: it does not certify that an operation was performed, and
 **Thinking…** keeps indicating processing. **Show reasoning summaries** in
 **Settings → Work** hides or shows the panel without interrupting the work. If
 the provider does not send a summary, Kira says so and continues; with Ollama,
-DeepSeek and Claude Code the summary is not available.
+DeepSeek Account and Claude Code the summary is not available. For DeepSeek Web
+it is the reasoning that the site itself shows.
 
 ## Managing chats
 
@@ -734,7 +736,7 @@ before interrupting, a limit on the wait, not on the total duration.
 | **Codex** | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | Yes | Yes (up to 4) | Yes | Yes | Yes |
 | **DeepSeek Account** (experimental) | Yes | Yes, vision models only | Yes | Yes | No |
-| **DeepSeek Web** (experimental) | Browser yes, Computer no | Yes | No | No | No |
+| **DeepSeek Web** (experimental) | Browser yes, Computer no | Yes | No | No | Yes, with DeepSeek Reasoner |
 | **Claude Code · personal use** (experimental) | Yes | Yes (up to 4 PNGs) | No | Yes | No |
 
 Record proposals for the Research registry are available with all providers,

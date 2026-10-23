@@ -1,4 +1,8 @@
-"""Bounded public provider summaries, separate from answers and private state."""
+"""Bounded reasoning text that providers show their users, separate from answers.
+
+Codex and OpenAI send public summaries; DeepSeek Web sends the reasoning its own
+site displays. None of it is execution evidence or private provider state.
+"""
 
 from dataclasses import dataclass, field
 import re
@@ -12,8 +16,8 @@ if TYPE_CHECKING:
 
 EVENTS = frozenset({"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"})
 # Providers that only report that no public summary exists.
-STATUS_ONLY_PROVIDERS = frozenset({"ollama", "deepseek_account", "deepseek_web", "claude_code"})
-PROVIDERS = frozenset({"codex", "openai_chatgpt"}) | STATUS_ONLY_PROVIDERS
+STATUS_ONLY_PROVIDERS = frozenset({"ollama", "deepseek_account", "claude_code"})
+PROVIDERS = frozenset({"codex", "openai_chatgpt", "deepseek_web"}) | STATUS_ONLY_PROVIDERS
 MAX_BYTES = 65_536
 MAX_PARTS = 64
 

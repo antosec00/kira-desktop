@@ -1687,7 +1687,8 @@ class Service:
                              guidance=guidance,
                              provider_started=lambda pid: self.processes.register(run_id, pid),
                              **(context_options or {}))
-            if session["backend"] in {"ollama", "deepseek_account", "deepseek_web", CLAUDE_CODE_BACKEND}:
+            # DeepSeek Web announces its own status: it depends on the selected model.
+            if session["backend"] in {"ollama", "deepseek_account", CLAUDE_CODE_BACKEND}:
                 await self.emit(run_id, "reasoning.summary.status", {
                     "source": "provider_summary", "provider": session["backend"],
                     "status": "unavailable", "reason": "provider_no_public_summary"})

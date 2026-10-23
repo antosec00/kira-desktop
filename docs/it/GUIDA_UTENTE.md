@@ -533,7 +533,8 @@ modello: prima di riprovare, controlla le azioni già eseguite.
 
 ### Il riepilogo del ragionamento
 
-Quando il provider lo fornisce (Codex e OpenAI diretto), sotto la chat compare
+Quando il provider lo fornisce (Codex, OpenAI diretto e DeepSeek Web con
+DeepSeek Reasoner), sotto la chat compare
 **Riepilogo del ragionamento**: un'anteprima compatta che puoi espandere e
 selezionare, con l'indicazione del provider e di eventuali parti incomplete.
 Puoi consultare anche i riepiloghi delle esecuzioni precedenti della stessa
@@ -541,8 +542,9 @@ chat. È il riepilogo pubblico del provider: non certifica che un'operazione sia
 stata eseguita, e **Sto pensando…** continua a indicare elaborazione. **Mostra
 riepiloghi del ragionamento** in **Impostazioni → Lavoro** nasconde o mostra il
 pannello senza interrompere il lavoro. Se il provider non invia un riepilogo,
-Kira lo indica e prosegue; con Ollama, DeepSeek e Claude Code il riepilogo non è
-disponibile.
+Kira lo indica e prosegue; con Ollama, DeepSeek Account e Claude Code il
+riepilogo non è disponibile. Per DeepSeek Web è il ragionamento che il sito
+stesso mostra.
 
 ## Gestire le chat
 
@@ -760,7 +762,7 @@ limite sull'attesa, non sulla durata totale.
 | **Codex** | No (usa i propri strumenti nativi) | No (percorsi come testo) | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
 | **DeepSeek Account** (sperimentale) | Sì | Sì, solo modelli con visione | Sì | Sì | No |
-| **DeepSeek Web** (sperimentale) | Browser sì, Computer no | Sì | No | No | No |
+| **DeepSeek Web** (sperimentale) | Browser sì, Computer no | Sì | No | No | Sì, con DeepSeek Reasoner |
 | **Claude Code · uso personale** (sperimentale) | Sì | Sì (fino a 4 PNG) | No | Sì | No |
 
 Le proposte di schede per il registro Ricerca sono disponibili con tutti i

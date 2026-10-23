@@ -116,6 +116,119 @@ def test_deepseek_web_stream_keeps_numeric_response_message_id(event):
     assert stream.message_id == 123456789
 
 
+def streamed(events):
+    stream = DeepSeekWebStream()
+    for event in events:
+        stream.apply(event)
+    return stream.texts()
+
+
+FINISHED = {"p": "response/status", "o": "SET", "v": "FINISHED"}
+
+
+def test_elided_path_and_operation_keep_reasoning_out_of_the_reply():
+    # The site omits "p" and "o" that repeat the previous event's. Read naively,
+    # this turn showed ", sono qui. Rispondo in italiano, breve.C! Sì, ci sono."
+    events = [
+        {"v": {"response": {"message_id": 2, "fragments": [{"id": 1, "type": "THINK", "content": ""}]}}},
+        {"p": "response/fragments/-1/content", "o": "APPEND", "v": "Ciao"},
+        {"v": ","}, {"v": " sono qui."}, {"v": " Rispondo in italiano, breve."},
+        {"p": "response/fragments/-1/elapsed_secs", "o": "SET", "v": 0.9},
+        {"p": "response/fragments", "o": "APPEND", "v": [{"id": 2, "type": "RESPONSE", "content": "C"}]},
+        {"p": "response/fragments/-1/content", "v": "iao"},
+        {"v": "!"}, {"v": " Sì, ci sono."}, {"v": " Come posso aiutarti?"},
+        FINISHED,
+    ]
+
+    assert streamed(events) == ("Ciao! Sì, ci sono. Come posso aiutarti?",
+                                "Ciao, sono qui. Rispondo in italiano, breve.")
+
+
+def test_reasoning_streamed_right_after_the_snapshot_stays_reasoning():
+    events = [
+        {"v": {"response": {"fragments": [{"type": "THINK", "content": "The"}]}}},
+        {"v": " user"}, {"v": " asks who I am."},
+        {"p": "response/fragments/-1/content", "o": "APPEND", "v": " Answer in Italian."},
+        {"p": "response/fragments", "v": [{"type": "RESPONSE", "content": "S"}]},
+        {"p": "response/fragments/-1/content", "v": "ono"}, {"v": " Kira."},
+        FINISHED,
+    ]
+
+    assert streamed(events) == ("Sono Kira.", "The user asks who I am. Answer in Italian.")
+
+
+def test_batch_members_use_paths_relative_to_the_batch():
+    stream = DeepSeekWebStream()
+    stream.apply({"v": {"response": {"fragments": [{"type": "RESPONSE", "content": "Done"}]}}})
+    stream.apply({"p": "response", "o": "BATCH", "v": [
+        {"p": "fragments/-1/content", "o": "APPEND", "v": " here."},
+        {"p": "accumulated_token_usage", "v": 12}, {"p": "status", "v": "FINISHED"}]})
+
+    assert stream.texts() == ("Done here.", "") and stream.finished
+
+
+def test_value_after_a_non_text_patch_extends_the_last_fragment():
+    events = [
+        {"v": {"response": {"fragments": [{"type": "RESPONSE", "content": "Hello"}]}}},
+        {"p": "response/fragments/-1/elapsed_secs", "o": "SET", "v": 1.5},
+        {"v": " world"},
+    ]
+
+    assert streamed(events) == ("Hello world", "")
+
+
+SITE_NOTICE = {"id": 3, "type": "TIP", "style": "WARNING", "hide_on_wip": True,
+               "content": "This response is AI-generated, for reference only."}
+
+
+def test_site_notice_fragments_never_reach_the_reply():
+    # The site appends this notice to some replies; read as reply text, it
+    # broke valid tool calls into "malformed" envelopes.
+    call = json.dumps({"kira_tool_call": {"name": "list_files", "arguments": {"path": "."}}})
+    events = [
+        {"v": {"response": {"fragments": [{"type": "THINK", "content": "Listing first."}]}}},
+        {"p": "response/fragments", "o": "APPEND", "v": [{"type": "RESPONSE", "content": call}]},
+        {"p": "response/fragments", "o": "APPEND", "v": [SITE_NOTICE]},
+        FINISHED,
+    ]
+
+    visible, thinking = streamed(events)
+    assert (visible, thinking) == (call, "Listing first.")
+    assert DeepSeekWebBackend._parse_tool_calls(visible, True, {}) == [
+        {"name": "list_files", "arguments": {"path": "."}}]
+
+
+def test_tool_call_wrapped_in_tool_call_tags_is_accepted():
+    text = '<tool_call>\n{"kira_tool_call": {"name": "list_files", "arguments": {"path": "."}}}\n</tool_call>'
+
+    assert DeepSeekWebBackend._parse_tool_calls(text, True, {}) == [
+        {"name": "list_files", "arguments": {"path": "."}}]
+
+
+def test_literal_line_breaks_inside_a_tool_call_string_are_accepted():
+    text = '{"kira_tool_call": {"name": "write_file", "arguments": {"path": "notes.md", "content": "# Title\n\n\tBody"}}}'
+
+    calls = DeepSeekWebBackend._parse_tool_calls(text, True, {})
+    assert calls[0]["arguments"]["content"] == "# Title\n\n\tBody"
+
+
+def test_malformed_envelope_error_says_where_it_broke():
+    with pytest.raises(DeepSeekWebError) as raised:
+        DeepSeekWebBackend._parse_tool_calls('{"kira_tool_call": {"name": "list_files"} trailing', True, {})
+
+    message = str(raised.value)
+    assert "at character" in message and message.endswith("no tool was executed")
+
+
+def test_legacy_reasoning_and_content_paths_continue_separately():
+    events = [
+        {"p": "response/thinking_content", "v": "Checking"}, {"v": " the request."},
+        {"p": "response/content", "v": "Answer"}, {"v": " ready."},
+    ]
+
+    assert streamed(events) == ("Answer ready.", "Checking the request.")
+
+
 def test_deepseek_remote_session_accepts_numeric_parent_message_id():
     token = "synthetic-token"
     ctx = SimpleNamespace(run_id="run-2", model="deepseek-reasoner")

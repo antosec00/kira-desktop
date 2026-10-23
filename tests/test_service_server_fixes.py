@@ -310,13 +310,37 @@ async def test_unregistered_browser_cleanup_is_resolved_after_a_reboot(rebooted)
                        check, rebooted=rebooted)
 
 
-# SC-9: DeepSeek Web reports that it offers no public summary.
-async def test_deepseek_web_summary_status_is_recorded(env):
-    service, _, project = env
+# SC-9: DeepSeek Web announces its own status and its displayed reasoning is recorded.
+async def test_deepseek_web_reasoning_is_recorded_as_a_provider_summary(env):
+    service, provider, project = env
+    marker = {"source": "provider_summary", "provider": "deepseek_web"}
+
+    async def reasoning_turn(ctx):
+        await ctx.emit("reasoning.summary.status", {**marker, "status": "requested"})
+        await ctx.emit("reasoning.summary.completed", {
+            **marker, "item_id": "summary:0", "content": "Synthetic site reasoning",
+            "complete": True, "truncated": False})
+        await ctx.emit("message.completed", {"content": "Synthetic answer"})
+        return {"state": "completed"}
+
+    provider.run = reasoning_turn
     run = await start(service, await chat(service, project, "deepseek_web"))
     await finish(service, run["id"])
     assert [event["payload"] for event in events(service, run["id"], "reasoning.summary.status")] == [
-        {"source": "provider_summary", "provider": "deepseek_web", "status": "unavailable",
+        {**marker, "status": "requested"}]
+    assert [event["payload"]["content"] for event in events(
+        service, run["id"], "reasoning.summary.completed")] == ["Synthetic site reasoning"]
+    assert "Synthetic site reasoning" not in json.dumps(
+        [event["payload"] for event in events(service, run["id"], "message.completed")])
+
+
+# Providers without any public summary keep the service's own status.
+async def test_status_only_provider_summary_status_is_recorded(env):
+    service, _, project = env
+    run = await start(service, await chat(service, project, "deepseek_account"))
+    await finish(service, run["id"])
+    assert [event["payload"] for event in events(service, run["id"], "reasoning.summary.status")] == [
+        {"source": "provider_summary", "provider": "deepseek_account", "status": "unavailable",
          "reason": "provider_no_public_summary"}]
 
 

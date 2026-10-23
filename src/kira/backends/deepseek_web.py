@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
@@ -26,6 +27,7 @@ import httpx
 
 from kira.backends.client_tools import MAX_CLIENT_TOOL_BYTES, ClientToolBridge, validate_tools
 from kira.backends.ollama import StreamError, cancellable
+from kira.backends.reasoning_summary import PublicSummaries
 from kira.domain.contracts import Backend, Json, KiraError, RunContext
 from kira.domain.questions import question_tool_specs, validate_request
 
@@ -38,6 +40,10 @@ MAX_TOOL_RESULT_BYTES = 65_536
 MAX_DEEPSEEK_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_DEEPSEEK_IMAGES_PER_RUN = 20
 MAX_TOOL_FORMAT_RETRIES = 2
+# The site sometimes closes a request without any reply (busy, rate limited).
+# Nothing ran and the remote chat did not change, so the same request is resent.
+EMPTY_REPLY_RETRY_SECONDS = (5, 15, 30)
+TRANSIENT_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
 MAX_POW_FIELD_CHARS = 1024
 # Raw SSE bytes per completion, including patches and reasoning text that the
 # visible-text limit does not count.
@@ -60,6 +66,9 @@ WEB_CAPABILITIES: Json = {"streaming": False, "tools": True, "cancellation": Tru
                           "usage": False, "images": True, "context_controls": False}
 # Provider-supplied response fragments kept per completion.
 MAX_STREAM_FRAGMENTS = 1024
+# The reasoning the site shows reaches the reasoning panel in small batches.
+THINKING_BATCH_CHARS = 160
+THINKING_BATCH_SECONDS = 0.25
 
 
 def _valid_message_id(value: Any) -> bool:
@@ -83,6 +92,37 @@ class DeepSeekWebAuthError(DeepSeekWebError):
 
 class DeepSeekWebIncompleteStreamError(DeepSeekWebError):
     """DeepSeek closed a response before a complete assistant message arrived."""
+
+    def __init__(self, message: str, *, empty: bool = False, signal: str = "") -> None:
+        super().__init__(message)
+        # No reasoning and no reply arrived: resending the request is safe.
+        self.empty = empty
+        # Structure of what the site reported (types and codes), never its text.
+        self.signal = signal
+
+
+def _provider_signal(event: Any) -> str:
+    """Describe a site notice or error envelope by its structure, never by its text."""
+    if not isinstance(event, dict) or "p" in event or "v" in event:
+        return ""
+    kind = event.get("type")
+    notice = kind.lower() if isinstance(kind, str) else ""
+    data = event.get("data")
+    is_notice = notice in {"error", "hint", "warning", "toast", "notice"}
+    is_envelope = "code" in event and ("msg" in event or "data" in event)
+    if not (is_notice or is_envelope or "finish_reason" in event):
+        return ""
+    parts = []
+    if is_notice:
+        parts.append(f"type {notice}")
+    for label, value in (("code", event.get("code")),
+                         ("biz_code", data.get("biz_code") if isinstance(data, dict) else None)):
+        if type(value) is int and value:
+            parts.append(f"{label} {value}")
+    finish = event.get("finish_reason")
+    if isinstance(finish, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", finish):
+        parts.append(f"finish_reason {finish}")
+    return ", ".join(parts) or "notice"
 
 
 def _b64(data: bytes) -> str:
@@ -719,6 +759,16 @@ class DeepSeekWebBackend(Backend):
             hif_leim = await self._hif_leim_value()
             for image in current_images:
                 pending_file_ids.append(await self._upload_image(token, image, hif_leim, ctx.cancel))
+        # The web client's DeepThink mode is what makes the Reasoner model reason;
+        # the reasoning the site shows goes to Kira's reasoning panel, never to the reply.
+        thinking_enabled = ctx.model == REASONER_MODEL or bool(ctx.settings.get("reasoning_effort"))
+        summaries = PublicSummaries(ctx, "deepseek_web")
+        if thinking_enabled:
+            await summaries.status("requested")
+        else:
+            await summaries.status("unavailable", "thinking_disabled")
+        completions = 0
+        empty_replies = 0
         tool_rounds = 0
         configured_rounds = int(ctx.settings.get("max_tool_rounds", 0))
         max_rounds = min(configured_rounds, MAX_TOOL_ROUNDS) if configured_rounds else MAX_TOOL_ROUNDS
@@ -738,9 +788,7 @@ class DeepSeekWebBackend(Backend):
                     "parent_message_id": parent_message_id,
                     "prompt": current_prompt,
                     "ref_file_ids": list(pending_file_ids),
-                    # The web client's DeepThink mode is what makes the Reasoner model reason.
-                    "thinking_enabled": (ctx.model == REASONER_MODEL
-                                         or bool(ctx.settings.get("reasoning_effort"))),
+                    "thinking_enabled": thinking_enabled,
                     "search_enabled": False,
                     "model": ctx.model or DEFAULT_MODEL,
                     "messages": messages,
@@ -748,11 +796,23 @@ class DeepSeekWebBackend(Backend):
                 }
                 if pending_file_ids:
                     body["model_type"] = "vision"
+                relay = (_ThinkingRelay(summaries, f"completion:{completions}")
+                         if thinking_enabled else None)
+                completions += 1
                 try:
                     text, message_id = await self._stream_completion(
                         ctx, token, target_path, pow_header, body, limit, tool_rounds,
-                        hif_leim=hif_leim if pending_file_ids else "")
-                except DeepSeekWebIncompleteStreamError:
+                        hif_leim=hif_leim if pending_file_ids else "", relay=relay)
+                except DeepSeekWebIncompleteStreamError as exc:
+                    signal = f" ({exc.signal})" if exc.signal else ""
+                    if exc.empty and empty_replies < len(EMPTY_REPLY_RETRY_SECONDS):
+                        delay = EMPTY_REPLY_RETRY_SECONDS[empty_replies]
+                        empty_replies += 1
+                        await ctx.emit("backend.notice", {
+                            "message": f"DeepSeek Web sent no reply{signal}; resending the same "
+                                       f"request in {delay} s", "retry": empty_replies})
+                        await asyncio.sleep(delay)
+                        continue
                     await ctx.emit("backend.notice", {
                         "message": "DeepSeek response ended early; preserving the remote chat for continuation"})
                     # The next turn resumes from the last confirmed message of
@@ -760,10 +820,14 @@ class DeepSeekWebBackend(Backend):
                     await ctx.emit("session.updated", {"backend_ref": self._remote_session_ref(
                         ctx, token, session_id, parent_message_id, context_fingerprint,
                         interrupted=True)})
+                    reason = (f"DeepSeek Web sent no reply, also after {empty_replies} new attempts{signal}"
+                              if exc.empty else
+                              f"DeepSeek Web ended the response before it was complete{signal}")
                     return {"state": "interrupted", "error": (
-                        "DeepSeek Web ended the response before it was complete; no tool from that "
-                        "response was executed. The remote chat is kept: continue explicitly."),
+                        f"{reason}; no tool from that response was executed. The remote chat is "
+                        "kept: continue explicitly."),
                         "outcome": _unfinished_outcome(ctx, tool_rounds, "incomplete_response")}
+                empty_replies = 0
                 pending_file_ids.clear()
                 if ctx.cancel.is_set():
                     return _cancelled()
@@ -1006,6 +1070,14 @@ class DeepSeekWebBackend(Backend):
         return body or text
 
     @staticmethod
+    def _unwrap_tool_call_tags(text: str) -> str:
+        """Accept one call wrapped in <tool_call> tags, a habit of DeepSeek models."""
+        stripped = text.strip()
+        if stripped.startswith("<tool_call>") and stripped.endswith("</tool_call>"):
+            return stripped[len("<tool_call>"):-len("</tool_call>")].strip() or text
+        return text
+
+    @staticmethod
     def _parse_tool_calls(text: str, enabled: bool, name_aliases: dict[str, str]) -> list[Json] | None:
         # Some DeepSeek Web models emit DSML with full-width pipe glyphs.
         # Normalize that presentation variant before strict envelope parsing.
@@ -1053,13 +1125,23 @@ class DeepSeekWebBackend(Backend):
                 raise DeepSeekWebError("Malformed DeepSeek DSML calls; no tool was executed")
             return calls
 
-        json_text = DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json"})
+        json_text = DeepSeekWebBackend._unwrap_tool_call_tags(
+            DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json"}))
         try:
             value = json.loads(json_text, parse_constant=_reject_json_constant)
-        except (ValueError, TypeError, RecursionError):
-            if '"kira_tool_call"' in text:
-                raise DeepSeekWebError("Malformed Kira JSON tool envelope; no tool was executed")
-            return None
+        except (ValueError, TypeError, RecursionError) as exc:
+            if '"kira_tool_call"' not in text:
+                return None
+            try:
+                # Literal line breaks or tabs inside a long string are the model's
+                # most common slip, and they mean exactly what they show.
+                value = json.loads(json_text, parse_constant=_reject_json_constant, strict=False)
+            except (ValueError, TypeError, RecursionError):
+                # Say where the envelope broke, so that the correction can fix it.
+                detail = (f" ({exc.msg} at character {exc.pos})"
+                          if isinstance(exc, json.JSONDecodeError) else "")
+                raise DeepSeekWebError(
+                    f"Malformed Kira JSON tool envelope{detail}; no tool was executed") from None
         if not isinstance(value, dict) or "kira_tool_call" not in value:
             return None
         if len(text.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
@@ -1247,8 +1329,9 @@ class DeepSeekWebBackend(Backend):
 
     async def _stream_completion(self, ctx: RunContext, token: str, target_path: str,
                                  pow_header: str, body: Json, limit: int,
-                                 round_index: int, *, hif_leim: str = "") -> tuple[str, str | int | None]:
-        """Return the visible reply and its message ID; private reasoning is discarded."""
+                                 round_index: int, *, hif_leim: str = "",
+                                 relay: _ThinkingRelay | None = None) -> tuple[str, str | int | None]:
+        """Return the visible reply and its message ID; reasoning only reaches the relay."""
         stream_trace = os.environ.get("KIRA_DEEPSEEK_WEB_TRACE") == "1"
         stream_state = DeepSeekWebStream(trace=stream_trace)
         text = ""
@@ -1269,45 +1352,103 @@ class DeepSeekWebBackend(Backend):
                 await self.accounts.expire(token)
                 raise DeepSeekWebAuthError("Web token rejected during completion")
             if response.status_code >= 400:
-                raise DeepSeekWebError(f"DeepSeek web completion returned HTTP {response.status_code}"
-                                       + await _error_code_suffix(response))
+                status = f"HTTP {response.status_code}" + await _error_code_suffix(response)
+                if response.status_code in TRANSIENT_HTTP_STATUSES:
+                    raise DeepSeekWebIncompleteStreamError(
+                        f"DeepSeek web completion returned {status}", empty=True, signal=status)
+                raise DeepSeekWebError(f"DeepSeek web completion returned {status}")
+            signals: list[str] = []
             async for line in _bounded_lines(response, MAX_STREAM_BYTES):
-                if not line.startswith("data:"):
+                if line.startswith("data:"):
+                    payload = line[5:].strip()
+                elif line.startswith("{"):
+                    # A plain JSON body instead of a stream, such as an error envelope.
+                    payload = line.strip()
+                else:
                     continue
-                payload = line[5:].strip()
                 if not payload or payload == "[DONE]":
                     continue
                 try:
                     event = json.loads(payload)
                 except ValueError:
                     continue
+                signal = _provider_signal(event)
+                if signal:
+                    if signal not in signals and len(signals) < 4:
+                        signals.append(signal)
+                    continue
                 text = stream_state.apply(event)
                 if len(text.encode("utf-8")) > limit:
                     raise DeepSeekWebError("Web response exceeded configured output limit")
+                if relay is not None:
+                    await relay.feed(stream_state.thinking)
         if stream_trace:
             print("[deepseek_web_stream_trace] " + json.dumps(
                 {"round": round_index, "message_id_header_names": message_id_header_names,
                  **stream_state.diagnostics()},
                 ensure_ascii=True, separators=(",", ":")), file=sys.stderr, flush=True)
         if not text.strip() or not stream_state.finished:
+            if relay is not None:
+                await relay.feed(stream_state.thinking, force=True)
             raise DeepSeekWebIncompleteStreamError(
-                "DeepSeek stream ended before a complete response; no tool was executed")
+                "DeepSeek stream ended before a complete response; no tool was executed",
+                empty=not text.strip() and not stream_state.thinking.strip(),
+                signal="; ".join(signals))
+        if relay is not None:
+            await relay.finish(stream_state.thinking)
         return text, stream_state.message_id
+
+
+class _ThinkingRelay:
+    """Forward one completion's reasoning, as the site shows it, to the reasoning panel."""
+
+    def __init__(self, summaries: PublicSummaries, key: str) -> None:
+        self.summaries = summaries
+        self.key = key
+        self.sent = ""
+        self.flushed_at = time.monotonic()
+
+    async def feed(self, thinking: str, *, force: bool = False) -> None:
+        if thinking == self.sent:
+            return
+        if not thinking.startswith(self.sent):
+            # The site rewrote its reasoning: show the current text instead.
+            await self.summaries.update(self.key, 0, thinking, complete=False)
+        elif (force or len(thinking) - len(self.sent) >= THINKING_BATCH_CHARS
+              or time.monotonic() - self.flushed_at >= THINKING_BATCH_SECONDS):
+            await self.summaries.update(self.key, 0, thinking[len(self.sent):],
+                                        complete=False, delta=True)
+        else:
+            return
+        self.sent = thinking
+        self.flushed_at = time.monotonic()
+
+    async def finish(self, thinking: str) -> None:
+        if thinking:
+            await self.summaries.update(self.key, 0, thinking, complete=True)
 
 
 class DeepSeekWebStream:
     """Apply DeepSeek web fragment patches and track the visible reply text.
 
-    Reasoning fragments are kept apart so that they never reach the reply.
+    Reasoning fragments are kept apart so that they never reach the reply. The
+    site omits an event's "p" and "o" when they repeat the previous event's, so
+    a bare value continues the last patched path with the last operation.
     """
 
     _THINK_TYPES = {"THINK", "THINKING", "REASONING", "ANALYSIS"}
+    # Only these fragments are the reply; others, such as the site's TIP notice
+    # "This response is AI-generated, for reference only.", are page interface.
+    _REPLY_TYPES = {"RESPONSE", "TEXT", ""}
 
     def __init__(self, *, trace: bool = False) -> None:
         self.fragments: list[Json] = []
         self.has_fragments = False
         self.direct_text = ""
         self.direct_thinking = ""
+        self.thinking = ""
+        self.last_path = ""
+        self.last_op = ""
         self.finished = False
         self.message_id: str | int | None = None
         self.trace_enabled = trace
@@ -1379,7 +1520,7 @@ class DeepSeekWebStream:
         if field == "content" and isinstance(value, str):
             previous = fragment.get("content", "")
             previous = previous if isinstance(previous, str) else ""
-            if operation in {"APPEND", "ADD"}:
+            if operation in {"", "APPEND", "ADD"}:
                 fragment["content"] = previous + value
             elif operation in {"REPLACE", "SET"}:
                 fragment["content"] = value
@@ -1391,8 +1532,12 @@ class DeepSeekWebStream:
 
     def _append_text_delta(self, value: str) -> None:
         if self.has_fragments:
-            if self.fragments and str(self.fragments[-1].get("type", "")).upper() not in self._THINK_TYPES:
-                fragment = self.fragments[-1]
+            # A continuation belongs to the fragment being streamed, which may be
+            # reasoning; it never starts a visible fragment of its own.
+            streamed = [fragment for fragment in self.fragments
+                        if str(fragment.get("type", "")).upper() in self._THINK_TYPES | self._REPLY_TYPES]
+            if streamed:
+                fragment = streamed[-1]
                 previous = fragment.get("content", "")
                 fragment["content"] = (previous if isinstance(previous, str) else "") + value
             else:
@@ -1403,7 +1548,7 @@ class DeepSeekWebStream:
     def _replace_text(self, value: str) -> None:
         if self.has_fragments:
             for fragment in reversed(self.fragments):
-                if str(fragment.get("type", "")).upper() not in self._THINK_TYPES:
+                if str(fragment.get("type", "")).upper() in self._REPLY_TYPES:
                     fragment["content"] = value
                     return
             self._add([{"type": "TEXT", "content": value}])
@@ -1426,7 +1571,10 @@ class DeepSeekWebStream:
                 if self.finished:
                     break
                 if isinstance(update, dict):
-                    self._apply_update(str(update.get("p", "")), str(update.get("o", "")),
+                    nested = str(update.get("p", ""))
+                    if nested and nested != path and not nested.startswith(path + "/"):
+                        nested = f"{path}/{nested}"
+                    self._apply_update(nested, str(update.get("o", "")),
                                        update.get("v"), depth=depth + 1)
             return
         if self._apply_patch(path, op, value):
@@ -1434,7 +1582,7 @@ class DeepSeekWebStream:
         path_text = path.lower()
         if isinstance(value, str) and ("thinking" in path_text or "reasoning" in path_text):
             self.direct_thinking = (self.direct_thinking + value
-                                    if operation in {"APPEND", "ADD"} else value)
+                                    if operation in {"", "APPEND", "ADD"} else value)
         elif isinstance(value, str) and (not path_text or "content" in path_text):
             if operation in {"", "APPEND", "ADD"}:
                 self._append_text_delta(value)
@@ -1449,13 +1597,40 @@ class DeepSeekWebStream:
                     value["response"].get("fragments"), list):
                 self.fragments = self._items(value["response"]["fragments"])
                 self.has_fragments = True
+                self.last_path = self.last_op = ""
             elif isinstance(value.get("fragments"), list):
                 self.fragments = self._items(value["fragments"])
                 self.has_fragments = True
+                self.last_path = self.last_op = ""
             else:
                 direct = value.get("content", value.get("text"))
                 if isinstance(direct, str):
                     self._append_text_delta(direct)
+
+    def texts(self) -> tuple[str, str]:
+        """The visible reply and the reasoning the site shows, kept apart."""
+        return self._texts()
+
+    def _resolve(self, event: Json) -> tuple[str, str]:
+        """Restore the path and operation the site omitted because they repeat."""
+        raw_path, raw_op = event.get("p"), event.get("o")
+        explicit_op = raw_op if isinstance(raw_op, str) and raw_op else ""
+        inherited = "" if self.last_op.upper() == "BATCH" else self.last_op
+        if isinstance(raw_path, str) and raw_path:
+            path, op = raw_path, explicit_op or inherited
+        elif isinstance(event.get("v"), str) and self._text_path(self.last_path):
+            path, op = self.last_path, explicit_op or inherited
+        else:
+            # No text path to continue: the value extends the last fragment.
+            return "", explicit_op
+        self.last_path, self.last_op = path, op
+        return path, op
+
+    @staticmethod
+    def _text_path(path: str) -> bool:
+        lowered = path.lower()
+        return lowered.endswith("content") or "thinking" in lowered or "reasoning" in lowered
+
     def _texts(self) -> tuple[str, str]:
         visible: list[str] = []
         private: list[str] = []
@@ -1466,7 +1641,7 @@ class DeepSeekWebStream:
             kind = str(fragment.get("type", "")).upper()
             if kind in self._THINK_TYPES:
                 private.append(value)
-            else:
+            elif kind in self._REPLY_TYPES:
                 visible.append(value)
         if self.has_fragments:
             return "".join(visible), "".join(private)
@@ -1568,14 +1743,16 @@ class DeepSeekWebStream:
         if isinstance(snapshot, list):
             self.fragments = self._items(snapshot)
             self.has_fragments = True
+            self.last_path = self.last_op = ""
         else:
-            self._apply_update(str(event.get("p", "")), str(event.get("o", "")),
-                               event.get("v"))
+            path, op = self._resolve(event)
+            self._apply_update(path, op, event.get("v"))
             direct = event.get("content", event.get("text"))
             if isinstance(direct, str):
                 self._append_text_delta(direct)
 
         text, thinking = self._texts()
+        self.thinking = thinking
         if self.trace_enabled and len(self.trace) < 80:
             raw_path = event.get("p", "")
             safe_path = ""

@@ -15,7 +15,7 @@ a ogni risposta.
 | **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) | No (usa i propri strumenti nativi) | No (percorsi come testo) | Sì | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli** o **Impostazioni → Connessioni** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
 | **DeepSeek Account** (sperimentale) | **Modelli → DeepSeek Account → Accedi con DeepSeek**, oppure **Usa DeeperSeeker** | Kira | Sì | Sì, solo modelli con visione | Sì | Sì | Sì | No |
-| **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | No |
+| **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | Sì, con DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Extra `claude-code` dal sorgente; accesso già fatto in Claude Code | Il provider (strumenti integrati di Claude Code) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | No | Sì | Sì | No |
 
 La colonna «Chi esegue gli strumenti» è la differenza più importante tra i
@@ -571,8 +571,10 @@ Kira lo salva in un file privato del profilo, lo verifica con
 Poi scegli il provider **DeepSeek Web · sperimentale** e uno dei due modelli
 esposti: **DeepSeek V4 Flash (web)** oppure **DeepSeek Reasoner (web)**.
 **DeepSeek Reasoner (web)** attiva la modalità di ragionamento del sito
-(DeepThink); **DeepSeek V4 Flash (web)** no. Il catalogo è definito in Kira
-perché il sito non offre un elenco modelli interrogabile.
+(DeepThink); **DeepSeek V4 Flash (web)** no. Il ragionamento che il sito mostra
+compare nel pannello [Riepilogo del ragionamento](#riepilogo-del-ragionamento)
+mentre il modello lavora, sempre separato dalla risposta. Il catalogo è
+definito in Kira perché il sito non offre un elenco modelli interrogabile.
 
 Questo provider non usa l'accesso PKCE di DeepSeek Account, non usa
 DeeperSeeker e non chiama l'API dell'account: le due integrazioni sono
@@ -583,10 +585,14 @@ indipendenti e si scollegano separatamente.
 Il sito non offre il function calling nativo, quindi Kira media gli strumenti
 con un protocollo testuale: il modello scrive una chiamata JSON in un formato
 rigido, una per messaggio, e Kira la analizza prima di eseguire qualsiasi cosa.
-Sono accettati anche gli involucri DSML di DeepSeek e un singolo blocco di codice
-Markdown corrispondente; la prosa attorno alla chiamata viene rifiutata. Se la
-chiamata è malformata o indica uno strumento non registrato, Kira chiede una
-correzione fino a due volte di seguito; una chiamata valida azzera il contatore.
+Sono accettati anche gli involucri DSML di DeepSeek, un singolo blocco di codice
+Markdown corrispondente e i tag `<tool_call>`; gli a capo scritti direttamente
+nei testi lunghi valgono come tali, mentre la prosa attorno alla chiamata viene
+rifiutata. Gli avvisi che il sito aggiunge sotto le risposte (come «This
+response is AI-generated, for reference only.») non fanno parte né della
+risposta né della chiamata. Se la chiamata è malformata o indica uno strumento
+non registrato, Kira chiede una correzione indicando dove la chiamata si
+interrompe, fino a due volte di seguito; una chiamata valida azzera il contatore.
 Se resta non valida dopo due correzioni, il turno termina come interrotto senza
 eseguire strumenti di quella risposta e la chat remota viene conservata. Ogni
 esecuzione passa da permessi, modalità e approvazioni di Kira.
@@ -614,7 +620,13 @@ corrente, e rinnova l'avvio completo se cambiano istruzioni, memoria del
 progetto, modalità, permessi, impostazioni o strumenti disponibili. Le
 continuazioni del ciclo strumenti inviano solo i nuovi risultati.
 
-Se il sito termina la risposta prima che sia completa, il turno termina come
+Se il sito chiude una richiesta senza produrre né ragionamento né risposta (per
+esempio perché è occupato o limita la frequenza, anche con HTTP 429 o 5xx),
+Kira invia di nuovo la stessa richiesta dopo 5, 15 e 30 secondi e lo segnala
+nell'attività: nessuno strumento è partito e la chat remota non è cambiata.
+L'errore finale riporta solo il tipo e i codici di quanto segnalato dal sito,
+mai il suo testo. Se invece il sito termina la risposta prima che sia completa,
+o non risponde nemmeno dopo i tre nuovi tentativi, il turno termina come
 interrotto (la coda va in pausa), nessuno strumento di quella risposta viene
 eseguito e la chat remota viene conservata. Alla richiesta successiva, come dopo
 un arresto del servizio Kira durante un turno, la continuazione riparte
@@ -879,16 +891,19 @@ quello corrente.
 | Codex | Sì |
 | OpenAI diretto · ChatGPT | Sì |
 | Ollama | No (il ragionamento interno grezzo resta escluso) |
-| DeepSeek Account / Web | No |
+| DeepSeek Account | No |
+| DeepSeek Web | Sì, con DeepSeek Reasoner (web): il ragionamento che il sito mostra |
 | Claude Code · uso personale | No |
 
-Il riepilogo è il testo pubblico che il provider decide di condividere; non è
-il ragionamento privato e non certifica che un'operazione sia stata eseguita o
-un obiettivo raggiunto: per quello valgono le ricevute degli strumenti e gli
-esiti registrati. **Sto pensando…** continua a indicare elaborazione; un
-riepilogo non è una risposta finale. I riepiloghi non entrano nel contesto
-portabile, nelle diramazioni, nella ricerca della cronologia né tra le prove di
-un obiettivo; nelle esportazioni Markdown e JSON compaiono etichettati a parte.
+Il riepilogo è il testo pubblico che il provider decide di condividere (per
+DeepSeek Web, il ragionamento che `chat.deepseek.com` mostra nella propria
+pagina); non è il ragionamento privato e non certifica che un'operazione sia
+stata eseguita o un obiettivo raggiunto: per quello valgono le ricevute degli
+strumenti e gli esiti registrati. **Sto pensando…** continua a indicare
+elaborazione; un riepilogo non è una risposta finale. I riepiloghi non entrano
+nel contesto portabile, nelle diramazioni, nella ricerca della cronologia né tra
+le prove di un obiettivo; nelle esportazioni Markdown e JSON compaiono
+etichettati a parte.
 
 Per esecuzione vengono conservate al massimo 64 parti e 64 KiB di testo; le
 parti omesse sono segnalate. In **Impostazioni**, **Mostra riepiloghi del

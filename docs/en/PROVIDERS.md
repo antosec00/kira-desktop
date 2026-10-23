@@ -17,7 +17,7 @@ behind every answer.
 | **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **DeepSeek Account** (experimental) | **Models → DeepSeek Account → Sign in with DeepSeek**, or **Use DeeperSeeker** | Kira | Yes | Yes, vision models only | Yes | Yes | Yes | No |
-| **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | No |
+| **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | Yes, with DeepSeek Reasoner (web) |
 | **Claude Code · personal use** (experimental) | `claude-code` extra from source; sign-in already done in Claude Code | The provider (Claude Code built-in tools) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | No | Yes | Yes | No |
 
 The "Who executes the tools" column is the most important difference between
@@ -552,7 +552,9 @@ and shows the outcome. The token is sent only to that origin.
 Then choose the **DeepSeek Web · experimental** provider and one of the two
 exposed models: **DeepSeek V4 Flash (web)** or **DeepSeek Reasoner (web)**.
 **DeepSeek Reasoner (web)** turns on the site's thinking mode (DeepThink);
-**DeepSeek V4 Flash (web)** does not. The catalog is defined in Kira because the
+**DeepSeek V4 Flash (web)** does not. The reasoning that the site shows appears
+in the [Reasoning summary](#reasoning-summary) panel while the model works,
+always separate from the answer. The catalog is defined in Kira because the
 site does not offer a queryable model list.
 
 This provider does not use the PKCE sign-in of DeepSeek Account, does not use
@@ -563,11 +565,14 @@ independent and are disconnected separately.
 
 The site does not offer native function calling, so Kira mediates the tools
 with a text protocol: the model writes a JSON call in a strict format, one per
-message, and Kira parses it before executing anything. DeepSeek's DSML wrappers
-and a single matching Markdown code block are also accepted; prose around the
-call is rejected. If the call is malformed or names a tool that is not
-registered, Kira asks for a correction up to two times in a row; a valid call
-resets the counter. If it is still invalid after two corrections, the turn ends
+message, and Kira parses it before executing anything. DeepSeek's DSML
+wrappers, a single matching Markdown code block and `<tool_call>` tags are also
+accepted; line breaks written directly inside long texts count as such, while
+prose around the call is rejected. The notices that the site adds below replies
+(such as "This response is AI-generated, for reference only.") are part of
+neither the reply nor the call. If the call is malformed or names a tool that is
+not registered, Kira asks for a correction that says where the call breaks, up
+to two times in a row; a valid call resets the counter. If it is still invalid after two corrections, the turn ends
 as interrupted without running any tool from that response, and the remote chat
 is kept. Every execution goes through Kira's permissions, modes and approvals.
 
@@ -593,9 +598,14 @@ it sends a compact request with the current state, and renews the full start if
 the instructions, project memory, mode, permissions, settings or available tools
 change. Tool loop continuations send only the new results.
 
-If the site ends the response before it is complete, the turn ends as
-interrupted (the queue pauses), no tool from that response runs and the remote
-chat is kept. On the next request, as after the Kira service stops during a
+If the site closes a request without producing any reasoning or reply (for
+example because it is busy or limits the request rate, also with HTTP 429 or
+5xx), Kira sends the same request again after 5, 15 and 30 seconds and shows it
+in the activity: no tool ran and the remote chat did not change. The final error
+reports only the type and codes of what the site signalled, never its text. If
+instead the site ends the response before it is complete, or still does not
+answer after the three new attempts, the turn ends as interrupted (the queue
+pauses), no tool from that response runs and the remote chat is kept. On the next request, as after the Kira service stops during a
 turn, the continuation restarts from the last confirmed message in the same
 remote chat: the model receives an excerpt of the interrupted request and of the
 tools already completed, with the instruction not to repeat them. If the remote
@@ -844,16 +854,17 @@ an old run is never presented as the current one.
 | Codex | Yes |
 | Direct OpenAI · ChatGPT | Yes |
 | Ollama | No (the raw internal reasoning stays excluded) |
-| DeepSeek Account / Web | No |
+| DeepSeek Account | No |
+| DeepSeek Web | Yes, with DeepSeek Reasoner (web): the reasoning that the site shows |
 | Claude Code · personal use | No |
 
-The summary is the public text that the provider decides to share; it is not
-the private reasoning and does not certify that an operation was performed or
-a goal reached: for that, the tool receipts and the recorded outcomes apply.
+The summary is the public text that the provider decides to share (for DeepSeek
+Web, the reasoning that `chat.deepseek.com` shows on its own page); it is not
+the private reasoning and does not certify that an operation was performed or a
+goal reached: for that, the tool receipts and the recorded outcomes apply.
 **Thinking…** keeps indicating processing; a summary is not a final answer.
 Summaries do not enter the portable context, branches, history search or the
-proof of a goal; in Markdown and JSON exports they appear labeled
-separately.
+proof of a goal; in Markdown and JSON exports they appear labeled separately.
 
 Per run, at most 64 parts and 64 KiB of text are kept; omitted parts are
 flagged. In **Settings**, **Show reasoning summaries** hides or shows the panel
