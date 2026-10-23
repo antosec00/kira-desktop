@@ -620,7 +620,13 @@ corrente, e rinnova l'avvio completo se cambiano istruzioni, memoria del
 progetto, modalità, permessi, impostazioni o strumenti disponibili. Le
 continuazioni del ciclo strumenti inviano solo i nuovi risultati.
 
-Se il sito termina la risposta prima che sia completa, il turno termina come
+Se il sito chiude una richiesta senza produrre né ragionamento né risposta (per
+esempio perché è occupato o limita la frequenza, anche con HTTP 429 o 5xx),
+Kira invia di nuovo la stessa richiesta dopo 5, 15 e 30 secondi e lo segnala
+nell'attività: nessuno strumento è partito e la chat remota non è cambiata.
+L'errore finale riporta solo il tipo e i codici di quanto segnalato dal sito,
+mai il suo testo. Se invece il sito termina la risposta prima che sia completa,
+o non risponde nemmeno dopo i tre nuovi tentativi, il turno termina come
 interrotto (la coda va in pausa), nessuno strumento di quella risposta viene
 eseguito e la chat remota viene conservata. Alla richiesta successiva, come dopo
 un arresto del servizio Kira durante un turno, la continuazione riparte

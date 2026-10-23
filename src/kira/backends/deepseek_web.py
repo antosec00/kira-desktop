@@ -40,6 +40,10 @@ MAX_TOOL_RESULT_BYTES = 65_536
 MAX_DEEPSEEK_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_DEEPSEEK_IMAGES_PER_RUN = 20
 MAX_TOOL_FORMAT_RETRIES = 2
+# The site sometimes closes a request without any reply (busy, rate limited).
+# Nothing ran and the remote chat did not change, so the same request is resent.
+EMPTY_REPLY_RETRY_SECONDS = (5, 15, 30)
+TRANSIENT_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
 MAX_POW_FIELD_CHARS = 1024
 # Raw SSE bytes per completion, including patches and reasoning text that the
 # visible-text limit does not count.
@@ -88,6 +92,37 @@ class DeepSeekWebAuthError(DeepSeekWebError):
 
 class DeepSeekWebIncompleteStreamError(DeepSeekWebError):
     """DeepSeek closed a response before a complete assistant message arrived."""
+
+    def __init__(self, message: str, *, empty: bool = False, signal: str = "") -> None:
+        super().__init__(message)
+        # No reasoning and no reply arrived: resending the request is safe.
+        self.empty = empty
+        # Structure of what the site reported (types and codes), never its text.
+        self.signal = signal
+
+
+def _provider_signal(event: Any) -> str:
+    """Describe a site notice or error envelope by its structure, never by its text."""
+    if not isinstance(event, dict) or "p" in event or "v" in event:
+        return ""
+    kind = event.get("type")
+    notice = kind.lower() if isinstance(kind, str) else ""
+    data = event.get("data")
+    is_notice = notice in {"error", "hint", "warning", "toast", "notice"}
+    is_envelope = "code" in event and ("msg" in event or "data" in event)
+    if not (is_notice or is_envelope or "finish_reason" in event):
+        return ""
+    parts = []
+    if is_notice:
+        parts.append(f"type {notice}")
+    for label, value in (("code", event.get("code")),
+                         ("biz_code", data.get("biz_code") if isinstance(data, dict) else None)):
+        if type(value) is int and value:
+            parts.append(f"{label} {value}")
+    finish = event.get("finish_reason")
+    if isinstance(finish, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,32}", finish):
+        parts.append(f"finish_reason {finish}")
+    return ", ".join(parts) or "notice"
 
 
 def _b64(data: bytes) -> str:
@@ -733,6 +768,7 @@ class DeepSeekWebBackend(Backend):
         else:
             await summaries.status("unavailable", "thinking_disabled")
         completions = 0
+        empty_replies = 0
         tool_rounds = 0
         configured_rounds = int(ctx.settings.get("max_tool_rounds", 0))
         max_rounds = min(configured_rounds, MAX_TOOL_ROUNDS) if configured_rounds else MAX_TOOL_ROUNDS
@@ -767,7 +803,16 @@ class DeepSeekWebBackend(Backend):
                     text, message_id = await self._stream_completion(
                         ctx, token, target_path, pow_header, body, limit, tool_rounds,
                         hif_leim=hif_leim if pending_file_ids else "", relay=relay)
-                except DeepSeekWebIncompleteStreamError:
+                except DeepSeekWebIncompleteStreamError as exc:
+                    signal = f" ({exc.signal})" if exc.signal else ""
+                    if exc.empty and empty_replies < len(EMPTY_REPLY_RETRY_SECONDS):
+                        delay = EMPTY_REPLY_RETRY_SECONDS[empty_replies]
+                        empty_replies += 1
+                        await ctx.emit("backend.notice", {
+                            "message": f"DeepSeek Web sent no reply{signal}; resending the same "
+                                       f"request in {delay} s", "retry": empty_replies})
+                        await asyncio.sleep(delay)
+                        continue
                     await ctx.emit("backend.notice", {
                         "message": "DeepSeek response ended early; preserving the remote chat for continuation"})
                     # The next turn resumes from the last confirmed message of
@@ -775,10 +820,14 @@ class DeepSeekWebBackend(Backend):
                     await ctx.emit("session.updated", {"backend_ref": self._remote_session_ref(
                         ctx, token, session_id, parent_message_id, context_fingerprint,
                         interrupted=True)})
+                    reason = (f"DeepSeek Web sent no reply, also after {empty_replies} new attempts{signal}"
+                              if exc.empty else
+                              f"DeepSeek Web ended the response before it was complete{signal}")
                     return {"state": "interrupted", "error": (
-                        "DeepSeek Web ended the response before it was complete; no tool from that "
-                        "response was executed. The remote chat is kept: continue explicitly."),
+                        f"{reason}; no tool from that response was executed. The remote chat is "
+                        "kept: continue explicitly."),
                         "outcome": _unfinished_outcome(ctx, tool_rounds, "incomplete_response")}
+                empty_replies = 0
                 pending_file_ids.clear()
                 if ctx.cancel.is_set():
                     return _cancelled()
@@ -1303,17 +1352,30 @@ class DeepSeekWebBackend(Backend):
                 await self.accounts.expire(token)
                 raise DeepSeekWebAuthError("Web token rejected during completion")
             if response.status_code >= 400:
-                raise DeepSeekWebError(f"DeepSeek web completion returned HTTP {response.status_code}"
-                                       + await _error_code_suffix(response))
+                status = f"HTTP {response.status_code}" + await _error_code_suffix(response)
+                if response.status_code in TRANSIENT_HTTP_STATUSES:
+                    raise DeepSeekWebIncompleteStreamError(
+                        f"DeepSeek web completion returned {status}", empty=True, signal=status)
+                raise DeepSeekWebError(f"DeepSeek web completion returned {status}")
+            signals: list[str] = []
             async for line in _bounded_lines(response, MAX_STREAM_BYTES):
-                if not line.startswith("data:"):
+                if line.startswith("data:"):
+                    payload = line[5:].strip()
+                elif line.startswith("{"):
+                    # A plain JSON body instead of a stream, such as an error envelope.
+                    payload = line.strip()
+                else:
                     continue
-                payload = line[5:].strip()
                 if not payload or payload == "[DONE]":
                     continue
                 try:
                     event = json.loads(payload)
                 except ValueError:
+                    continue
+                signal = _provider_signal(event)
+                if signal:
+                    if signal not in signals and len(signals) < 4:
+                        signals.append(signal)
                     continue
                 text = stream_state.apply(event)
                 if len(text.encode("utf-8")) > limit:
@@ -1329,7 +1391,9 @@ class DeepSeekWebBackend(Backend):
             if relay is not None:
                 await relay.feed(stream_state.thinking, force=True)
             raise DeepSeekWebIncompleteStreamError(
-                "DeepSeek stream ended before a complete response; no tool was executed")
+                "DeepSeek stream ended before a complete response; no tool was executed",
+                empty=not text.strip() and not stream_state.thinking.strip(),
+                signal="; ".join(signals))
         if relay is not None:
             await relay.finish(stream_state.thinking)
         return text, stream_state.message_id

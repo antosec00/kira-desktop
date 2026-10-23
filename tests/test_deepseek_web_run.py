@@ -6,6 +6,7 @@ import json
 import httpx
 import pytest
 
+from kira.backends import deepseek_web
 from kira.backends.deepseek_web import (
     MAX_STREAM_FRAGMENTS, WEB, DeepSeekWebBackend, DeepSeekWebError, DeepSeekWebStream, PowSolver,
 )
@@ -15,6 +16,11 @@ STANDARD_CAPABILITIES = {"streaming", "tools", "cancellation", "resume", "usage"
                          "context_controls"}
 CHALLENGE = {"algorithm": "DeepSeekHashV1", "challenge": "c", "salt": "s", "signature": "sig",
              "difficulty": 1, "expire_at": 1, "target_path": "/api/v0/chat/completion"}
+
+
+@pytest.fixture(autouse=True)
+def _immediate_retries(monkeypatch):
+    monkeypatch.setattr(deepseek_web, "EMPTY_REPLY_RETRY_SECONDS", (0, 0, 0))
 
 
 @pytest.fixture(autouse=True)
@@ -270,11 +276,52 @@ async def test_stop_closes_a_streaming_response_promptly():
 
 async def test_http_error_reports_status_and_code_but_never_the_body():
     events = []
-    error = httpx.Response(429, json={"code": 42901, "msg": "SYNTHETIC-PROVIDER-BODY", "data": None})
+    error = httpx.Response(400, json={"code": 40001, "msg": "SYNTHETIC-PROVIDER-BODY", "data": None})
     with pytest.raises(DeepSeekWebError) as raised:
         await run(Site(error), events)
 
-    assert str(raised.value) == "DeepSeek web completion returned HTTP 429 (code 42901)"
+    assert str(raised.value) == "DeepSeek web completion returned HTTP 400 (code 40001)"
+
+
+def busy():
+    return httpx.Response(429, json={"code": 42901, "msg": "SYNTHETIC-PROVIDER-BODY", "data": None})
+
+
+async def test_rate_limited_request_is_resent_and_then_answered():
+    site = Site(busy(), busy(), answer("Done."))
+    events = []
+    result = await run(site, events)
+
+    assert result["state"] == "completed" and result["outcome"]["content"] == "Done."
+    assert len(site.prompts) == 3 and len(set(site.prompts)) == 1
+    notices = [payload["message"] for payload in kinds(events, "backend.notice")]
+    assert notices[:2] == ["DeepSeek Web sent no reply (HTTP 429 (code 42901)); resending the same "
+                           "request in 0 s"] * 2
+    assert "SYNTHETIC-PROVIDER-BODY" not in json.dumps([events, result])
+
+
+async def test_persistent_empty_replies_interrupt_after_three_new_attempts():
+    envelope = {"code": 0, "data": {"biz_code": 3, "biz_msg": "SYNTHETIC-PROVIDER-BODY"}}
+    site = Site(*(httpx.Response(200, json=envelope) for _ in range(4)))
+    events = []
+    result = await run(site, events)
+
+    assert result["state"] == "interrupted" and len(site.prompts) == 4
+    assert result["error"].startswith(
+        "DeepSeek Web sent no reply, also after 3 new attempts (biz_code 3); no tool")
+    assert result["outcome"]["tool_execution"] == "not_started"
+    assert "SYNTHETIC-PROVIDER-BODY" not in json.dumps([events, result])
+
+
+async def test_site_error_notice_is_never_read_as_reply_text():
+    site = Site(sse({"type": "error", "content": "SYNTHETIC-PROVIDER-BODY", "finish_reason": "busy"}),
+                answer("Done."))
+    events = []
+    result = await run(site, events)
+
+    assert result["outcome"]["content"] == "Done." and len(site.prompts) == 2
+    assert "type error, finish_reason busy" in kinds(events, "backend.notice")[0]["message"]
+    assert "SYNTHETIC-PROVIDER-BODY" not in json.dumps([events, result])
 
 
 async def test_oversized_http_error_body_is_not_read_to_the_end():
@@ -287,9 +334,9 @@ async def test_oversized_http_error_body_is_not_read_to_the_end():
                 yield b"x" * 65_536
 
     with pytest.raises(DeepSeekWebError) as raised:
-        await run(Site(httpx.Response(500, stream=Large())), [])
+        await run(Site(httpx.Response(400, stream=Large())), [])
 
-    assert str(raised.value) == "DeepSeek web completion returned HTTP 500"
+    assert str(raised.value) == "DeepSeek web completion returned HTTP 400"
     assert len(pulled) <= 2
 
 

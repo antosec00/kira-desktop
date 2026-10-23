@@ -598,9 +598,14 @@ it sends a compact request with the current state, and renews the full start if
 the instructions, project memory, mode, permissions, settings or available tools
 change. Tool loop continuations send only the new results.
 
-If the site ends the response before it is complete, the turn ends as
-interrupted (the queue pauses), no tool from that response runs and the remote
-chat is kept. On the next request, as after the Kira service stops during a
+If the site closes a request without producing any reasoning or reply (for
+example because it is busy or limits the request rate, also with HTTP 429 or
+5xx), Kira sends the same request again after 5, 15 and 30 seconds and shows it
+in the activity: no tool ran and the remote chat did not change. The final error
+reports only the type and codes of what the site signalled, never its text. If
+instead the site ends the response before it is complete, or still does not
+answer after the three new attempts, the turn ends as interrupted (the queue
+pauses), no tool from that response runs and the remote chat is kept. On the next request, as after the Kira service stops during a
 turn, the continuation restarts from the last confirmed message in the same
 remote chat: the model receives an excerpt of the interrupted request and of the
 tools already completed, with the instruction not to repeat them. If the remote
