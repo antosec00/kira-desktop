@@ -373,4 +373,4 @@ commits are in English; the source documentation is in `docs/it/`.
 
 For security issues follow [SECURITY.md](../../SECURITY.en.md) instead of
 opening a public issue; the community rules are in the
-[Code of conduct](../../CODE_OF_CONDUCT.md).
+[Code of conduct](../../CODE_OF_CONDUCT.en.md).

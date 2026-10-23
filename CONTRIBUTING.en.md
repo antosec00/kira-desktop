@@ -95,4 +95,4 @@ Use the issue templates. For anything security-related, follow
 
 ## Code of conduct
 
-This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.en.md).

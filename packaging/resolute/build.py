@@ -124,7 +124,7 @@ def build_inside() -> None:
     size = sum(path.stat().st_size for path in stage.rglob("*") if path.is_file()) // 1024
     (control / "control").write_text(
         f"Package: kira-desktop\nVersion: {VERSION}\nArchitecture: amd64\n"
-        "Maintainer: Kira Desktop contributors <kira@example.invalid>\n"
+        "Maintainer: antosec00 <antosec00@gmail.com>\n"
         f"Installed-Size: {size}\nDepends: {dependencies()}\n"
         f"Section: devel\nPriority: optional\nHomepage: {noble['HOMEPAGE']}\n"
         "X-Kira-Target: resolute\n"

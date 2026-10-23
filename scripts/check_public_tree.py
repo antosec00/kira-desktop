@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REVIEWED_BINARY = {
     "src/kira/ui/assets/kira-mascot.png":
-        "f46917623b21b61c37996a3d439b2538efe1d30cb77bb8ed7197a54c3bf04f8f",
+        "dea48d04e0e98f719ebaf425d90ebfc8a0373ba5f5d9a2d1d0b54bd099c8f134",
     # Documentation screenshots rendered by scripts/render_doc_screenshots.py from synthetic data.
     "docs/images/chat-dark.png":
         "04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23",

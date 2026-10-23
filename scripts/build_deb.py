@@ -58,7 +58,8 @@ def remove_local_install_provenance(library: Path) -> None:
 def documentation_placements() -> dict[str, str]:
     """Ship the documentation with its repository layout so relative links keep working."""
     sources = ["README.md", "README.en.md", "CONTRIBUTING.md", "CONTRIBUTING.en.md",
-               "SECURITY.md", "SECURITY.en.md", "CODE_OF_CONDUCT.md", "LICENSE", "docs/README.md"]
+               "SECURITY.md", "SECURITY.en.md", "CODE_OF_CONDUCT.md", "CODE_OF_CONDUCT.en.md",
+               "LICENSE", "docs/README.md"]
     for folder, pattern in (("docs/it", "*.md"), ("docs/en", "*.md"), ("docs/images", "*.png")):
         sources += sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / folder).glob(pattern))
     missing = [name for name in sources if not (ROOT / name).is_file()]
@@ -145,7 +146,7 @@ def build() -> None:
     size = sum(p.stat().st_size for p in stage.rglob("*") if p.is_file()) // 1024
     (control / "control").write_text(
         f"Package: kira-desktop\nVersion: {VERSION}\nArchitecture: amd64\n"
-        "Maintainer: Kira Desktop contributors <kira@example.invalid>\n"
+        "Maintainer: antosec00 <antosec00@gmail.com>\n"
         f"Installed-Size: {size}\nDepends: {DEPENDS}\n"
         f"Section: devel\nPriority: optional\nHomepage: {HOMEPAGE}\n"
         "Description: Native desktop harness for AI projects, chats, tools and agents\n"

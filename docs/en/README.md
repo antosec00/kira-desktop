@@ -42,6 +42,6 @@ are. It is written in Italian; the English translation is in `docs/en/`.
 | Reference of IPC, events, permissions, provider interface and limits | [Contracts](CONTRACTS.md) |
 | Code map, environment, checks, tests, packages, how to add providers, languages and preferences | [Development](DEVELOPMENT.md) |
 | Dependency licenses | [Third-party licenses](THIRD_PARTY_LICENSES.md) |
-| Contribution rules, security reports, code of conduct | [CONTRIBUTING](../../CONTRIBUTING.en.md), [SECURITY](../../SECURITY.en.md), [CODE_OF_CONDUCT](../../CODE_OF_CONDUCT.md) |
+| Contribution rules, security reports, code of conduct | [CONTRIBUTING](../../CONTRIBUTING.en.md), [SECURITY](../../SECURITY.en.md), [CODE_OF_CONDUCT](../../CODE_OF_CONDUCT.en.md) |
 
 The images used by the documentation are in [`../images/`](../images/).
