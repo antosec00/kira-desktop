@@ -1021,6 +1021,14 @@ class DeepSeekWebBackend(Backend):
         return body or text
 
     @staticmethod
+    def _unwrap_tool_call_tags(text: str) -> str:
+        """Accept one call wrapped in <tool_call> tags, a habit of DeepSeek models."""
+        stripped = text.strip()
+        if stripped.startswith("<tool_call>") and stripped.endswith("</tool_call>"):
+            return stripped[len("<tool_call>"):-len("</tool_call>")].strip() or text
+        return text
+
+    @staticmethod
     def _parse_tool_calls(text: str, enabled: bool, name_aliases: dict[str, str]) -> list[Json] | None:
         # Some DeepSeek Web models emit DSML with full-width pipe glyphs.
         # Normalize that presentation variant before strict envelope parsing.
@@ -1068,13 +1076,23 @@ class DeepSeekWebBackend(Backend):
                 raise DeepSeekWebError("Malformed DeepSeek DSML calls; no tool was executed")
             return calls
 
-        json_text = DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json"})
+        json_text = DeepSeekWebBackend._unwrap_tool_call_tags(
+            DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json"}))
         try:
             value = json.loads(json_text, parse_constant=_reject_json_constant)
-        except (ValueError, TypeError, RecursionError):
-            if '"kira_tool_call"' in text:
-                raise DeepSeekWebError("Malformed Kira JSON tool envelope; no tool was executed")
-            return None
+        except (ValueError, TypeError, RecursionError) as exc:
+            if '"kira_tool_call"' not in text:
+                return None
+            try:
+                # Literal line breaks or tabs inside a long string are the model's
+                # most common slip, and they mean exactly what they show.
+                value = json.loads(json_text, parse_constant=_reject_json_constant, strict=False)
+            except (ValueError, TypeError, RecursionError):
+                # Say where the envelope broke, so that the correction can fix it.
+                detail = (f" ({exc.msg} at character {exc.pos})"
+                          if isinstance(exc, json.JSONDecodeError) else "")
+                raise DeepSeekWebError(
+                    f"Malformed Kira JSON tool envelope{detail}; no tool was executed") from None
         if not isinstance(value, dict) or "kira_tool_call" not in value:
             return None
         if len(text.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
@@ -1355,6 +1373,9 @@ class DeepSeekWebStream:
     """
 
     _THINK_TYPES = {"THINK", "THINKING", "REASONING", "ANALYSIS"}
+    # Only these fragments are the reply; others, such as the site's TIP notice
+    # "This response is AI-generated, for reference only.", are page interface.
+    _REPLY_TYPES = {"RESPONSE", "TEXT", ""}
 
     def __init__(self, *, trace: bool = False) -> None:
         self.fragments: list[Json] = []
@@ -1449,8 +1470,10 @@ class DeepSeekWebStream:
         if self.has_fragments:
             # A continuation belongs to the fragment being streamed, which may be
             # reasoning; it never starts a visible fragment of its own.
-            if self.fragments:
-                fragment = self.fragments[-1]
+            streamed = [fragment for fragment in self.fragments
+                        if str(fragment.get("type", "")).upper() in self._THINK_TYPES | self._REPLY_TYPES]
+            if streamed:
+                fragment = streamed[-1]
                 previous = fragment.get("content", "")
                 fragment["content"] = (previous if isinstance(previous, str) else "") + value
             else:
@@ -1461,7 +1484,7 @@ class DeepSeekWebStream:
     def _replace_text(self, value: str) -> None:
         if self.has_fragments:
             for fragment in reversed(self.fragments):
-                if str(fragment.get("type", "")).upper() not in self._THINK_TYPES:
+                if str(fragment.get("type", "")).upper() in self._REPLY_TYPES:
                     fragment["content"] = value
                     return
             self._add([{"type": "TEXT", "content": value}])
@@ -1554,7 +1577,7 @@ class DeepSeekWebStream:
             kind = str(fragment.get("type", "")).upper()
             if kind in self._THINK_TYPES:
                 private.append(value)
-            else:
+            elif kind in self._REPLY_TYPES:
                 visible.append(value)
         if self.has_fragments:
             return "".join(visible), "".join(private)

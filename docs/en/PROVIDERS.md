@@ -565,11 +565,14 @@ independent and are disconnected separately.
 
 The site does not offer native function calling, so Kira mediates the tools
 with a text protocol: the model writes a JSON call in a strict format, one per
-message, and Kira parses it before executing anything. DeepSeek's DSML wrappers
-and a single matching Markdown code block are also accepted; prose around the
-call is rejected. If the call is malformed or names a tool that is not
-registered, Kira asks for a correction up to two times in a row; a valid call
-resets the counter. If it is still invalid after two corrections, the turn ends
+message, and Kira parses it before executing anything. DeepSeek's DSML
+wrappers, a single matching Markdown code block and `<tool_call>` tags are also
+accepted; line breaks written directly inside long texts count as such, while
+prose around the call is rejected. The notices that the site adds below replies
+(such as "This response is AI-generated, for reference only.") are part of
+neither the reply nor the call. If the call is malformed or names a tool that is
+not registered, Kira asks for a correction that says where the call breaks, up
+to two times in a row; a valid call resets the counter. If it is still invalid after two corrections, the turn ends
 as interrupted without running any tool from that response, and the remote chat
 is kept. Every execution goes through Kira's permissions, modes and approvals.
 

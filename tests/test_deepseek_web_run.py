@@ -163,6 +163,31 @@ async def test_long_reasoning_streams_in_batches_before_the_reply():
     assert kinds(events, "reasoning.summary.completed")[-1]["content"] == thinking
 
 
+SITE_NOTICE = {"type": "TIP", "style": "WARNING", "hide_on_wip": True,
+               "content": "This response is AI-generated, for reference only."}
+
+
+def with_site_notice(text, *, message_id):
+    return sse({"response_message_id": message_id},
+               {"v": {"response": {"fragments": [{"type": "THINK", "content": "Planning."},
+                                                 {"type": "RESPONSE", "content": text}]}}},
+               {"p": "response/fragments", "o": "APPEND", "v": [SITE_NOTICE]},
+               {"p": "response/status", "o": "SET", "v": "FINISHED"})
+
+
+async def test_site_notice_after_a_tool_call_does_not_need_a_correction():
+    call = json.dumps({"kira_tool_call": {"name": "list_files", "arguments": {"path": "."}}})
+    site = Site(with_site_notice(call, message_id=2), with_site_notice("No files yet.", message_id=3))
+    events = []
+    result = await run(site, events)
+
+    assert result["state"] == "completed"
+    assert result["outcome"]["content"] == "No files yet."
+    # The call ran at once: the second prompt carries its result, not a correction.
+    assert len(site.prompts) == 2 and site.prompts[1].startswith("Kira tool results")
+    assert "AI-generated" not in json.dumps([kinds(events, "message.completed"), result])
+
+
 async def test_flash_model_reports_that_it_does_not_reason():
     site = Site(answer("Done."))
     events = []

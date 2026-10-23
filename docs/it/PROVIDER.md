@@ -585,10 +585,14 @@ indipendenti e si scollegano separatamente.
 Il sito non offre il function calling nativo, quindi Kira media gli strumenti
 con un protocollo testuale: il modello scrive una chiamata JSON in un formato
 rigido, una per messaggio, e Kira la analizza prima di eseguire qualsiasi cosa.
-Sono accettati anche gli involucri DSML di DeepSeek e un singolo blocco di codice
-Markdown corrispondente; la prosa attorno alla chiamata viene rifiutata. Se la
-chiamata è malformata o indica uno strumento non registrato, Kira chiede una
-correzione fino a due volte di seguito; una chiamata valida azzera il contatore.
+Sono accettati anche gli involucri DSML di DeepSeek, un singolo blocco di codice
+Markdown corrispondente e i tag `<tool_call>`; gli a capo scritti direttamente
+nei testi lunghi valgono come tali, mentre la prosa attorno alla chiamata viene
+rifiutata. Gli avvisi che il sito aggiunge sotto le risposte (come «This
+response is AI-generated, for reference only.») non fanno parte né della
+risposta né della chiamata. Se la chiamata è malformata o indica uno strumento
+non registrato, Kira chiede una correzione indicando dove la chiamata si
+interrompe, fino a due volte di seguito; una chiamata valida azzera il contatore.
 Se resta non valida dopo due correzioni, il turno termina come interrotto senza
 eseguire strumenti di quella risposta e la chat remota viene conservata. Ogni
 esecuzione passa da permessi, modalità e approvazioni di Kira.
