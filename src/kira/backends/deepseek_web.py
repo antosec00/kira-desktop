@@ -428,8 +428,20 @@ class DeepSeekWebBackend(Backend):
         if response.status_code == 401:
             raise DeepSeekWebAuthError("Web token rejected while creating chat session")
         response.raise_for_status()
-        data = response.json().get("data", {}).get("biz_data", {})
-        session_id = data.get("id") or data.get("chat_session_id")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise DeepSeekWebError("DeepSeek returned an invalid chat session response") from exc
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(data, dict) and data.get("biz_code") not in (None, 0):
+            raise DeepSeekWebError(f"DeepSeek rejected the chat session (code {data.get('biz_code')})")
+        biz = data.get("biz_data") if isinstance(data, dict) else None
+        biz = biz if isinstance(biz, dict) else {}
+        # The web client nests the new thread under chat_session; older
+        # responses returned its id directly in biz_data.
+        nested = biz.get("chat_session")
+        session_id = ((nested.get("id") if isinstance(nested, dict) else None)
+                      or biz.get("id") or biz.get("chat_session_id"))
         if not isinstance(session_id, str) or not session_id:
             raise DeepSeekWebError("DeepSeek did not return a chat session id")
         return session_id

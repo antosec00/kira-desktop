@@ -264,6 +264,47 @@ async def test_web_vision_upload_uses_pow_and_waits_for_file_processing(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("biz_data", "expected"), [
+    ({"chat_session": {"id": "nested-chat", "seq_id": 1}, "ttl_seconds": 259200}, "nested-chat"),
+    ({"id": "flat-chat"}, "flat-chat"),
+    ({"chat_session_id": "legacy-chat"}, "legacy-chat"),
+])
+async def test_web_chat_session_id_is_read_from_current_and_older_shapes(biz_data, expected):
+    def handler(request):
+        assert request.url.path == "/api/v0/chat_session/create"
+        return httpx.Response(200, json={"code": 0, "data": {"biz_code": 0, "biz_data": biz_data}})
+
+    backend = DeepSeekWebBackend(SimpleNamespace(token="opaque"))
+    await backend.client.aclose()
+    backend.client = httpx.AsyncClient(base_url="https://chat.deepseek.com",
+                                       transport=httpx.MockTransport(handler))
+    try:
+        assert await backend._create_session("opaque") == expected
+    finally:
+        await backend.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("body", "message"), [
+    ({"code": 0, "data": {"biz_code": 0, "biz_data": {"chat_session": {}}}}, "did not return"),
+    ({"code": 0, "data": {"biz_code": 0, "biz_data": None}}, "did not return"),
+    ({"code": 0, "data": None}, "did not return"),
+    ({"code": 0, "data": {"biz_code": 3, "biz_msg": "busy", "biz_data": None}}, r"\(code 3\)"),
+])
+async def test_web_chat_session_without_id_fails_safely(body, message):
+    backend = DeepSeekWebBackend(SimpleNamespace(token="opaque"))
+    await backend.client.aclose()
+    backend.client = httpx.AsyncClient(
+        base_url="https://chat.deepseek.com",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)))
+    try:
+        with pytest.raises(DeepSeekWebError, match=message):
+            await backend._create_session("opaque")
+    finally:
+        await backend.close()
+
+
+@pytest.mark.asyncio
 async def test_web_stream_lines_are_split_across_chunks_and_bounded():
     from kira.backends.deepseek_web import _bounded_lines
 
