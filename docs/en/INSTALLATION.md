@@ -459,7 +459,8 @@ change is not repeated automatically when you reopen.
    running, it says so without starting one.
 7. **Update the code**: download and install the new package as in
    [Installing from the package](#installing-from-the-package), or update the
-   checkout and repeat `uv sync --frozen`.
+   checkout and repeat `uv sync --frozen`, with `--extra claude-code` if you
+   use Claude Code: without the extra the command removes its support.
 8. **Restart with the same profile** (same `KIRA_HOME` or same XDG variables)
    and check the selected project and chat, provider, model, reasoning effort,
    preferences and drafts.

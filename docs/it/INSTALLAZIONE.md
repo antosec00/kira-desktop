@@ -463,7 +463,8 @@ cambio di codice non viene ripetuta automaticamente alla riapertura.
    avviarne uno.
 7. **Aggiorna il codice**: scarica e installa il nuovo pacchetto come in
    [Installazione da pacchetto](#installazione-da-pacchetto), oppure aggiorna il
-   checkout e ripeti `uv sync --frozen`.
+   checkout e ripeti `uv sync --frozen`, con `--extra claude-code` se usi
+   Claude Code: senza l'extra il comando ne rimuove il supporto.
 8. **Riavvia con lo stesso profilo** (stesso `KIRA_HOME` o stesse variabili
    XDG) e verifica progetto e chat selezionati, provider, modello, sforzo di
    ragionamento, preferenze e bozze.
