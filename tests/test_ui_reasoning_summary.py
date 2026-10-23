@@ -167,6 +167,17 @@ def test_unavailable_provider_never_creates_fabricated_content(view, status):
     assert not workspace.transcript.rows
 
 
+def test_deepseek_web_reasoning_is_shown_with_its_provider_name(view):
+    workspace, _ = view
+    active(workspace)
+    summary(workspace, "Synthetic site reasoning", kind="completed", complete=True,
+            provider="deepseek_web", item_id="summary:0")
+    assert workspace.reasoning.current["text"] == "Synthetic site reasoning"
+    assert workspace.reasoning.current["provider"] == "DeepSeek Web · sperimentale"
+    assert workspace.reasoning.current["status"] == "Ricevuto dal provider"
+    assert not workspace.transcript.rows
+
+
 def test_only_public_projection_and_bounded_text_items(view):
     workspace, _ = view
     active(workspace)

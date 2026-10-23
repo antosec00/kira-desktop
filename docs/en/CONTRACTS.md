@@ -539,11 +539,12 @@ implicitly.
 | `steering.requested` / `.submitted` / `.accepted` / `.failed` | identity and delivery state | The result reports `queued, submitted, provider_accepted, not_delivered, unknown`. |
 | `team.delegation` | `{delegation_id, team_id, goal, state, source:"kira_service", summary?, error?, counts}` | Coalesced progress of the delegation on the originating run. |
 | `goal.state` | public state of the autonomous goal | Emitted on the goal's latest run. |
-| `reasoning.summary.delta` / `.completed` / `.status` | `{item_id, provider, source:"provider_summary", content?}` / `{..., status, reason?}` | Public summary offered by the provider; 64 parts, 65,536 bytes and 256 ID characters per run. |
+| `reasoning.summary.delta` / `.completed` / `.status` | `{item_id, provider, source:"provider_summary", content?}` / `{..., status, reason?}` | Public summary offered by the provider, or the reasoning that DeepSeek Web shows on its site; 64 parts, 65,536 bytes and 256 ID characters per run. |
 
-General rules: no event contains the model's private reasoning; DeepSeek's
-internal thinking blocks are discarded and public summaries are a separate
-channel. `tool.*` events coming from Codex or Claude Code are **observations**
+General rules: no event contains the model's private reasoning; DeepSeek
+Account's internal thinking blocks are discarded, the reasoning that DeepSeek Web
+shows on its site reaches only the summary channel and never the answer, and
+public summaries are a separate channel. `tool.*` events coming from Codex or Claude Code are **observations**
 of their native tools: Kira does not execute them.
 
 ### Team events

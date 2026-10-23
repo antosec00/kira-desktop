@@ -602,8 +602,9 @@ credentials.
 | **Show reasoning summaries** | yes / no | Shows or hides the **Reasoning summary** panel under the chat without interrupting the work. |
 
 The **Reasoning summary** is the public summary that some providers (Codex,
-Direct OpenAI) supply during processing; it does not certify that an operation
-happened and is not the final response; with Ollama, DeepSeek and Claude Code it
-is not available. Themes, fonts, column width and interface language are in
-[Appearance and language](APPEARANCE_AND_LANGUAGE.md); the choice of provider
-and model in [Providers](PROVIDERS.md).
+Direct OpenAI) supply during processing, or the reasoning that DeepSeek Web
+shows on its own site with DeepSeek Reasoner; it does not certify that an
+operation happened and is not the final response; with Ollama, DeepSeek Account
+and Claude Code it is not available. Themes, fonts, column width and interface
+language are in [Appearance and language](APPEARANCE_AND_LANGUAGE.md); the
+choice of provider and model in [Providers](PROVIDERS.md).

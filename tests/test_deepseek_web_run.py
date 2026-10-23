@@ -122,14 +122,62 @@ def kinds(events, kind):
     return [payload for name, payload in events if name == kind]
 
 
-async def test_private_reasoning_never_reaches_events_or_the_outcome():
+def summary_events(events):
+    return [(name, payload) for name, payload in events if name.startswith("reasoning.summary.")]
+
+
+async def test_reasoning_reaches_only_the_reasoning_panel():
     events = []
-    result = await run(Site(answer("Visible answer", thinking="SYNTHETIC-PRIVATE-REASONING")), events)
+    result = await run(Site(answer("Visible answer", thinking="SYNTHETIC-SITE-REASONING")), events)
 
     assert result["state"] == "completed"
     assert result["outcome"]["content"] == "Visible answer"
     assert kinds(events, "message.completed") == [{"content": "Visible answer", "item_id": "web:0"}]
-    assert "SYNTHETIC-PRIVATE-REASONING" not in json.dumps([events, result])
+    assert kinds(events, "reasoning.summary.status") == [
+        {"provider": "deepseek_web", "source": "provider_summary", "status": "requested"}]
+    assert kinds(events, "reasoning.summary.completed") == [
+        {"item_id": "summary:0", "provider": "deepseek_web", "source": "provider_summary",
+         "content": "SYNTHETIC-SITE-REASONING", "complete": True, "truncated": False}]
+    others = [event for event in events if not event[0].startswith("reasoning.summary.")]
+    assert "SYNTHETIC-SITE-REASONING" not in json.dumps([others, result])
+
+
+async def test_long_reasoning_streams_in_batches_before_the_reply():
+    thinking = "".join(f" step {index}." for index in range(120))
+    pieces = [thinking[start:start + 9] for start in range(0, len(thinking), 9)]
+    site_events = [{"response_message_id": 2},
+                   {"v": {"response": {"fragments": [{"type": "THINK", "content": ""}]}}},
+                   {"p": "response/fragments/-1/content", "o": "APPEND", "v": pieces[0]},
+                   *({"v": piece} for piece in pieces[1:]),
+                   {"p": "response/fragments", "o": "APPEND", "v": [{"type": "RESPONSE", "content": "Fin"}]},
+                   {"p": "response/fragments/-1/content", "v": "ished."},
+                   {"p": "response/status", "o": "SET", "v": "FINISHED"}]
+    events = []
+    result = await run(Site(sse(*site_events)), events)
+
+    assert result["outcome"]["content"] == "Finished."
+    deltas = kinds(events, "reasoning.summary.delta")
+    assert 1 < len(deltas) < len(pieces) / 4
+    assert "".join(delta["content"] for delta in deltas) == thinking[:len("".join(
+        delta["content"] for delta in deltas))]
+    assert kinds(events, "reasoning.summary.completed")[-1]["content"] == thinking
+
+
+async def test_flash_model_reports_that_it_does_not_reason():
+    site = Site(answer("Done."))
+    events = []
+    instance = backend(site)
+    ctx = context(events)
+    ctx.session["model"] = "deepseek-v4-flash"
+    try:
+        result = await asyncio.wait_for(instance.run(ctx), 5)
+    finally:
+        await instance.close()
+
+    assert result["state"] == "completed" and site.bodies[0]["thinking_enabled"] is False
+    assert summary_events(events) == [
+        ("reasoning.summary.status", {"provider": "deepseek_web", "source": "provider_summary",
+                                      "status": "unavailable", "reason": "thinking_disabled"})]
 
 
 async def test_incomplete_response_interrupts_the_turn_and_keeps_the_remote_chat():

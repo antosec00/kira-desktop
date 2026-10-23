@@ -15,7 +15,7 @@ a ogni risposta.
 | **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) | No (usa i propri strumenti nativi) | No (percorsi come testo) | Sì | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli** o **Impostazioni → Connessioni** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
 | **DeepSeek Account** (sperimentale) | **Modelli → DeepSeek Account → Accedi con DeepSeek**, oppure **Usa DeeperSeeker** | Kira | Sì | Sì, solo modelli con visione | Sì | Sì | Sì | No |
-| **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | No |
+| **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | Sì, con DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Extra `claude-code` dal sorgente; accesso già fatto in Claude Code | Il provider (strumenti integrati di Claude Code) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | No | Sì | Sì | No |
 
 La colonna «Chi esegue gli strumenti» è la differenza più importante tra i
@@ -571,8 +571,10 @@ Kira lo salva in un file privato del profilo, lo verifica con
 Poi scegli il provider **DeepSeek Web · sperimentale** e uno dei due modelli
 esposti: **DeepSeek V4 Flash (web)** oppure **DeepSeek Reasoner (web)**.
 **DeepSeek Reasoner (web)** attiva la modalità di ragionamento del sito
-(DeepThink); **DeepSeek V4 Flash (web)** no. Il catalogo è definito in Kira
-perché il sito non offre un elenco modelli interrogabile.
+(DeepThink); **DeepSeek V4 Flash (web)** no. Il ragionamento che il sito mostra
+compare nel pannello [Riepilogo del ragionamento](#riepilogo-del-ragionamento)
+mentre il modello lavora, sempre separato dalla risposta. Il catalogo è
+definito in Kira perché il sito non offre un elenco modelli interrogabile.
 
 Questo provider non usa l'accesso PKCE di DeepSeek Account, non usa
 DeeperSeeker e non chiama l'API dell'account: le due integrazioni sono
@@ -879,16 +881,19 @@ quello corrente.
 | Codex | Sì |
 | OpenAI diretto · ChatGPT | Sì |
 | Ollama | No (il ragionamento interno grezzo resta escluso) |
-| DeepSeek Account / Web | No |
+| DeepSeek Account | No |
+| DeepSeek Web | Sì, con DeepSeek Reasoner (web): il ragionamento che il sito mostra |
 | Claude Code · uso personale | No |
 
-Il riepilogo è il testo pubblico che il provider decide di condividere; non è
-il ragionamento privato e non certifica che un'operazione sia stata eseguita o
-un obiettivo raggiunto: per quello valgono le ricevute degli strumenti e gli
-esiti registrati. **Sto pensando…** continua a indicare elaborazione; un
-riepilogo non è una risposta finale. I riepiloghi non entrano nel contesto
-portabile, nelle diramazioni, nella ricerca della cronologia né tra le prove di
-un obiettivo; nelle esportazioni Markdown e JSON compaiono etichettati a parte.
+Il riepilogo è il testo pubblico che il provider decide di condividere (per
+DeepSeek Web, il ragionamento che `chat.deepseek.com` mostra nella propria
+pagina); non è il ragionamento privato e non certifica che un'operazione sia
+stata eseguita o un obiettivo raggiunto: per quello valgono le ricevute degli
+strumenti e gli esiti registrati. **Sto pensando…** continua a indicare
+elaborazione; un riepilogo non è una risposta finale. I riepiloghi non entrano
+nel contesto portabile, nelle diramazioni, nella ricerca della cronologia né tra
+le prove di un obiettivo; nelle esportazioni Markdown e JSON compaiono
+etichettati a parte.
 
 Per esecuzione vengono conservate al massimo 64 parti e 64 KiB di testo; le
 parti omesse sono segnalate. In **Impostazioni**, **Mostra riepiloghi del

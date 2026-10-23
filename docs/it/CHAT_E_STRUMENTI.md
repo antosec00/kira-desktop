@@ -614,8 +614,10 @@ e non toccano permessi dei progetti, modelli o credenziali.
 | **Mostra riepiloghi del ragionamento** | sì / no | Mostra o nasconde il pannello **Riepilogo del ragionamento** sotto la chat senza interrompere il lavoro. |
 
 Il **Riepilogo del ragionamento** è il riassunto pubblico che alcuni provider
-(Codex, OpenAI diretto) forniscono durante l'elaborazione; non certifica che
-un'operazione sia avvenuta e non è la risposta finale; con Ollama, DeepSeek e
-Claude Code non è disponibile. Temi, caratteri, larghezza della colonna e lingua
-dell'interfaccia sono in [Aspetto e lingua](ASPETTO_E_LINGUA.md); la scelta del
-provider e del modello in [Provider](PROVIDER.md).
+(Codex, OpenAI diretto) forniscono durante l'elaborazione, o il ragionamento che
+DeepSeek Web mostra sul proprio sito con DeepSeek Reasoner; non certifica che
+un'operazione sia avvenuta e non è la risposta finale; con Ollama, DeepSeek
+Account e Claude Code non è disponibile. Temi, caratteri, larghezza della
+colonna e lingua dell'interfaccia sono in [Aspetto e
+lingua](ASPETTO_E_LINGUA.md); la scelta del provider e del modello in
+[Provider](PROVIDER.md).

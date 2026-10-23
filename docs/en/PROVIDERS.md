@@ -17,7 +17,7 @@ behind every answer.
 | **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **DeepSeek Account** (experimental) | **Models → DeepSeek Account → Sign in with DeepSeek**, or **Use DeeperSeeker** | Kira | Yes | Yes, vision models only | Yes | Yes | Yes | No |
-| **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | No |
+| **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | Yes, with DeepSeek Reasoner (web) |
 | **Claude Code · personal use** (experimental) | `claude-code` extra from source; sign-in already done in Claude Code | The provider (Claude Code built-in tools) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | No | Yes | Yes | No |
 
 The "Who executes the tools" column is the most important difference between
@@ -552,7 +552,9 @@ and shows the outcome. The token is sent only to that origin.
 Then choose the **DeepSeek Web · experimental** provider and one of the two
 exposed models: **DeepSeek V4 Flash (web)** or **DeepSeek Reasoner (web)**.
 **DeepSeek Reasoner (web)** turns on the site's thinking mode (DeepThink);
-**DeepSeek V4 Flash (web)** does not. The catalog is defined in Kira because the
+**DeepSeek V4 Flash (web)** does not. The reasoning that the site shows appears
+in the [Reasoning summary](#reasoning-summary) panel while the model works,
+always separate from the answer. The catalog is defined in Kira because the
 site does not offer a queryable model list.
 
 This provider does not use the PKCE sign-in of DeepSeek Account, does not use
@@ -844,16 +846,17 @@ an old run is never presented as the current one.
 | Codex | Yes |
 | Direct OpenAI · ChatGPT | Yes |
 | Ollama | No (the raw internal reasoning stays excluded) |
-| DeepSeek Account / Web | No |
+| DeepSeek Account | No |
+| DeepSeek Web | Yes, with DeepSeek Reasoner (web): the reasoning that the site shows |
 | Claude Code · personal use | No |
 
-The summary is the public text that the provider decides to share; it is not
-the private reasoning and does not certify that an operation was performed or
-a goal reached: for that, the tool receipts and the recorded outcomes apply.
+The summary is the public text that the provider decides to share (for DeepSeek
+Web, the reasoning that `chat.deepseek.com` shows on its own page); it is not
+the private reasoning and does not certify that an operation was performed or a
+goal reached: for that, the tool receipts and the recorded outcomes apply.
 **Thinking…** keeps indicating processing; a summary is not a final answer.
 Summaries do not enter the portable context, branches, history search or the
-proof of a goal; in Markdown and JSON exports they appear labeled
-separately.
+proof of a goal; in Markdown and JSON exports they appear labeled separately.
 
 Per run, at most 64 parts and 64 KiB of text are kept; omitted parts are
 flagged. In **Settings**, **Show reasoning summaries** hides or shows the panel

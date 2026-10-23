@@ -540,11 +540,12 @@ non scadono mai e non vengono cancellati implicitamente.
 | `steering.requested` / `.submitted` / `.accepted` / `.failed` | identità e stato della consegna | Il risultato riporta `queued, submitted, provider_accepted, not_delivered, unknown`. |
 | `team.delegation` | `{delegation_id, team_id, goal, state, source:"kira_service", summary?, error?, counts}` | Progresso coalescente della delega sull'esecuzione d'origine. |
 | `goal.state` | stato pubblico dell'obiettivo autonomo | Emesso sull'ultima esecuzione dell'obiettivo. |
-| `reasoning.summary.delta` / `.completed` / `.status` | `{item_id, provider, source:"provider_summary", content?}` / `{..., status, reason?}` | Riepilogo pubblico offerto dal provider; 64 parti, 65.536 byte e 256 caratteri di ID per esecuzione. |
+| `reasoning.summary.delta` / `.completed` / `.status` | `{item_id, provider, source:"provider_summary", content?}` / `{..., status, reason?}` | Riepilogo pubblico offerto dal provider, o il ragionamento che DeepSeek Web mostra sul sito; 64 parti, 65.536 byte e 256 caratteri di ID per esecuzione. |
 
 Regole generali: nessun evento contiene il ragionamento privato del modello; i
-blocchi di pensiero interni di DeepSeek sono scartati e i riepiloghi pubblici
-sono un canale separato. Gli eventi `tool.*` provenienti da Codex o Claude Code
+blocchi di pensiero interni di DeepSeek Account sono scartati, il ragionamento
+che DeepSeek Web mostra sul sito arriva solo nel canale dei riepiloghi e mai
+nella risposta, e i riepiloghi pubblici sono un canale separato. Gli eventi `tool.*` provenienti da Codex o Claude Code
 sono **osservazioni** dei loro strumenti nativi: Kira non li esegue.
 
 ### Eventi dei Team

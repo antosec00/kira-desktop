@@ -1,4 +1,4 @@
-"""Bounded display of explicitly public provider summaries, never raw reasoning."""
+"""Bounded display of the reasoning text a provider shows its users, never hidden reasoning."""
 
 from __future__ import annotations
 
