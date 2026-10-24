@@ -323,29 +323,36 @@ def main():
                     return found
             return None
 
+        def settled(condition):
+            # A slow runner lays out after a change later than a fixed pause.
+            for _ in range(150):
+                QTest.qWait(20)
+                if condition():
+                    return True
+            return condition()
+
+        assert settled(lambda: all(find_item(window.contentItem(), f"{name}_{row}") is not None
+                                   for name in ("messageText", "outputToggle", "messageCopy")))
         text = find_item(window.contentItem(), f"messageText_{row}")
         toggle = find_item(window.contentItem(), f"outputToggle_{row}")
         copy = find_item(window.contentItem(), f"messageCopy_{row}")
-        assert text is not None and toggle is not None and copy is not None
-        assert toggle.isVisible() and toggle.property("text") == "Mostra tutto"
-        assert 0 < text.height() <= 144
+        assert settled(lambda: toggle.isVisible() and 0 < text.height() <= 144)
+        assert toggle.property("text") == "Mostra tutto"
         assert text.property("text") == workspace.transcript.rows[row]["previewBody"]
         assert text.property("text") != source
         QMetaObject.invokeMethod(copy, "clicked")
         assert app.clipboard().text() == source
         QMetaObject.invokeMethod(toggle, "clicked")
-        QTest.qWait(80)
+        assert settled(lambda: toggle.property("text") == "Riduci" and text.height() > 144)
         assert workspace.transcript.rows[row]["outputExpanded"] is True
-        assert toggle.property("text") == "Riduci" and text.height() > 144
         assert text.property("text") == source
         expression = QQmlExpression(QQmlEngine.contextForObject(text), text, "Number(textFormat)")
         value, _ = expression.evaluate()
         assert not expression.hasError() and value == 0
         assert not window.property("followOutput")
         QMetaObject.invokeMethod(toggle, "clicked")
-        QTest.qWait(80)
+        assert settled(lambda: toggle.property("text") == "Mostra tutto" and 0 < text.height() <= 144)
         assert workspace.transcript.rows[row]["outputExpanded"] is False
-        assert toggle.property("text") == "Mostra tutto" and 0 < text.height() <= 144
         assert workspace.transcript.rows[row]["body"] == source
         return {"available": True, "compact_height": text.height(),
                 "expand_collapse": True, "full_source_copy": True,
@@ -698,7 +705,8 @@ def main():
     timer.timeout.connect(check)
     timer.start()
     QTimer.singleShot(0, workspace.start)
-    QTimer.singleShot(25000, lambda: app.exit(2))
+    # A ceiling for slow runners, not a pause: a healthy run ends long before.
+    QTimer.singleShot(60000, lambda: app.exit(2))
     code = app.exec()
     workspace.close()
     engine.deleteLater()
