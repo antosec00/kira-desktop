@@ -94,6 +94,14 @@ cui lanci il comando non diventa automaticamente un progetto: lo scegli
 nell'interfaccia. Requisiti, pacchetti, profili e percorsi dei dati sono in
 [Installazione](INSTALLAZIONE.md).
 
+All'avvio compare subito una piccola finestra con Kira; quando l'interfaccia è
+pronta, una schermata di caricamento con la mascotte mostra i passi reali:
+avvio del servizio locale, caricamento di progetti e chat, modelli del provider
+selezionato. Scompare da sola quando Kira è pronta e comunque non oltre pochi
+secondi dal collegamento al servizio; se l'attesa si allunga, **Continua senza
+attendere** ti fa entrare mentre il resto finisce di caricare. Con **Riduci le
+animazioni** la schermata resta ferma.
+
 ### La guida iniziale
 
 Al primo avvio la schermata iniziale offre **Come funziona Kira**, che apre la

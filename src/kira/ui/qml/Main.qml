@@ -1764,6 +1764,8 @@ ApplicationWindow {
     }
     ActionPalette { id: actionPalette; parent: Overlay.overlay; onSelected: function(action) { window.chooseAction(action) }; onClosed: window.commandStart = -1 }
     ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay; onClosed: window.mentionStart = -1 }
+    // Covers the window, popups included, until the startup stages are done.
+    KiraLoadingScreen { parent: Overlay.overlay }
     WorkbenchDialog { id: workbenchDialog; parent: Overlay.overlay }
     KiraFileDialog { id: chatMarkdownExport; mode: "save"; purpose: "export"; title: qsTr("Esporta chat"); nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; suggestedName: window.exportName(qsTr("chat")); onAccepted: workbench.exportChat(selectedFile.toString()) }
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }

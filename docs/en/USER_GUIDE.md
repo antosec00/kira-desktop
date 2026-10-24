@@ -94,6 +94,13 @@ launch the command from does not automatically become a project: you choose it
 in the interface. Requirements, packages, profiles and data paths are in
 [Installation](INSTALLATION.md).
 
+At launch a small window with Kira appears at once; when the interface is
+ready, a loading screen with the mascot shows the real steps: starting the local
+service, loading projects and chats, the models of the selected provider. It
+disappears by itself when Kira is ready, and in any case a few seconds after the
+service answers; if the wait gets longer, **Continue without waiting** lets you
+in while the rest finishes loading. With **Reduce motion** the screen stays still.
+
 ### Getting started
 
 On first launch the start screen offers **How Kira works**, which opens the

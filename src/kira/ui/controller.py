@@ -254,6 +254,10 @@ class BackgroundJob(QThread):
             self.failed.emit(str(exc))
 
 
+# The loading screen never outlasts this much time after the service answers.
+STARTUP_SCREEN_LIMIT_MS = 8000
+
+
 class Workspace(QObject):
     changed = Signal()
     transcriptChanged = Signal()
@@ -263,6 +267,7 @@ class Workspace(QObject):
     projectOpened = Signal()
     chatChanged = Signal()
     chatLoadingChanged = Signal()
+    startupChanged = Signal()
     loginReady = Signal(str)
     workspaceChanged = Signal()
     workspaceSaved = Signal()
@@ -306,6 +311,14 @@ class Workspace(QObject):
         self._service_recovery_timer.setSingleShot(True)
         self._service_recovery_timer.setInterval(5000)
         self._service_recovery_timer.timeout.connect(self._recover_local_service)
+        # The loading screen follows the real startup: service, projects, the
+        # selected provider's models. Only the application launch enables it.
+        self._startup_stage = "ready"
+        self._startup_backend = ""
+        self._startup_timer = QTimer(self)
+        self._startup_timer.setSingleShot(True)
+        self._startup_timer.setInterval(STARTUP_SCREEN_LIMIT_MS)
+        self._startup_timer.timeout.connect(self._finish_startup)
         self._projects: list[Json] = []
         self._project: Json = {}
         self._requested_project_id = ""
@@ -1471,6 +1484,31 @@ class Workspace(QObject):
         job.start()
 
     @Slot()
+    def beginStartupScreen(self) -> None:
+        """Called by the application launch before start(); tests leave it off."""
+        if not self.connected:
+            self._set_startup_stage("service")
+
+    @Slot()
+    def finishStartupScreen(self) -> None:
+        """The user may continue without waiting; the work goes on in the background."""
+        self._finish_startup()
+
+    def _set_startup_stage(self, stage: str) -> None:
+        if stage != self._startup_stage:
+            self._startup_stage = stage
+            self.startupChanged.emit()
+
+    def _finish_startup(self) -> None:
+        self._startup_timer.stop()
+        self._startup_backend = ""
+        self._set_startup_stage("ready")
+
+    @qt_property(str, notify=startupChanged)
+    def startupStage(self) -> str:
+        return self._startup_stage
+
+    @Slot()
     def start(self) -> None:
         self.client.connect_service()
 
@@ -1504,6 +1542,12 @@ class Workspace(QObject):
         self.discover("deepseek_account")
         self.deepseekAccount.refresh()
         self.refreshResources()
+        if self._startup_stage == "service":
+            # Wait for models only when the selected provider is queried at startup.
+            self._startup_backend = self._backend if any(
+                backend == self._backend for backend, _ in self._catalog_pending) else ""
+            self._set_startup_stage("projects")
+            self._startup_timer.start()
         if self._project:
             self.openProject(self._project["id"])
 
@@ -1564,6 +1608,11 @@ class Workspace(QObject):
         self._projects = result.get("projects", [])
         self.changed.emit()
         self.actionsChanged.emit()
+        if self._startup_stage == "projects":
+            if self._startup_backend:
+                self._set_startup_stage("models")
+            else:
+                self._finish_startup()
 
     @Slot(str, str, str, str)
     def createProject(self, name: str, folder: str, instructions: str, permission: str) -> None:
@@ -2052,6 +2101,10 @@ class Workspace(QObject):
             else:
                 self._catalogs[backend] = catalog
             self.changed.emit()
+            if backend == self._startup_backend:
+                self._startup_backend = ""
+                if self._startup_stage == "models":
+                    self._finish_startup()
 
         def failed(error: Json) -> None:
             received({"available": False, "models": [], "error_code": error.get("code", "REQUEST_FAILED"),
