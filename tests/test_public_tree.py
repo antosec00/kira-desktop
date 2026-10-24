@@ -33,7 +33,8 @@ def test_only_a_public_key_passes_as_a_published_pem():
     public = (Path(__file__).resolve().parents[1] / "packaging/release-signing-key.pub.pem").read_bytes()
     assert inspect_content("packaging/release-signing-key.pub.pem", public) == set()
     assert "private-file-or-raw-report" in inspect_content("packaging/release-signing-key.pem", public)
-    private = b"-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIA==\n-----END PRIVATE KEY-----\n"
+    marker = b"PRIVATE" + b" KEY-----"
+    private = b"-----BEGIN " + marker + b"\nsynthetic\n-----END " + marker + b"\n"
     assert "private-file-or-raw-report" in inspect_content("packaging/release-signing-key.pub.pem", private)
     assert "private-file-or-raw-report" in inspect_content("packaging/x.pub.pem", public + private)
 
