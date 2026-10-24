@@ -98,8 +98,12 @@ kira
 ```
 
 Per Ubuntu 26.04 usa `kira-desktop_ubuntu26.04_amd64.deb`. Tutte le versioni,
-con le impronte `SHA256SUMS` per controllare i file, sono nella pagina
-[Releases](https://github.com/antosec00/kira-desktop/releases). Su Windows
+con le impronte `SHA256SUMS` e la loro firma `SHA256SUMS.sig` per controllare i
+file, sono nella pagina
+[Releases](https://github.com/antosec00/kira-desktop/releases). Una volta
+installata, Kira cerca da sola le nuove versioni e le installa quando glielo
+chiedi, dopo averne verificato la firma
+([Installazione → Aggiornare da Kira](docs/it/INSTALLAZIONE.md#aggiornare-da-kira)). Su Windows
 installa prima Ubuntu in WSL: i passi sono in
 [Installazione → Su Windows con WSL](docs/it/INSTALLAZIONE.md#su-windows-con-wsl).
 

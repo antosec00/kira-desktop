@@ -56,12 +56,21 @@ PATTERNS = {
 }
 
 
+PUBLIC_KEY_PEM = re.compile(rb"-----BEGIN PUBLIC KEY-----\n[A-Za-z0-9+/=\n]+-----END PUBLIC KEY-----\n")
+
+
+def public_key_file(path: Path, data: bytes) -> bool:
+    """A published verification key: a .pub.pem holding one public key and nothing else."""
+    return path.name.endswith(".pub.pem") and PUBLIC_KEY_PEM.fullmatch(data) is not None
+
+
 def inspect_content(name: str, data: bytes) -> set[str]:
     problems = set()
     path = Path(name)
     if (name.startswith(("build/", "dist/", ".venv/"))
             or name.startswith("docs/evidence/")
-            or path.suffix in {".sqlite", ".sqlite3", ".db", ".pem", ".key", ".bundle"}
+            or (path.suffix in {".sqlite", ".sqlite3", ".db", ".pem", ".key", ".bundle"}
+                and not public_key_file(path, data))
             or path.name in {"auth.json", "credentials.json", "id_rsa", "id_ed25519", ".env"}
             or (path.name.startswith(".env.") and path.name != ".env.example")):
         problems.add("private-file-or-raw-report")

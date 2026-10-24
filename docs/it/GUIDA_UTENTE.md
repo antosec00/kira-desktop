@@ -194,6 +194,9 @@ strumenti, Modelli, Impostazioni e Guida iniziale, con il nome al passaggio del
 puntatore) e **Nascosta**. Il pulsante in alto a sinistra e **Ctrl+B** passano
 da uno stato all'altro; la scelta si salva in **Impostazioni → Lavoro → Barra
 laterale**. Il punto in basso indica il collegamento al servizio locale.
+Quando c'è una versione più nuova di Kira, sopra **Guida iniziale** compare
+**Aggiorna a <versione>**, che apre la finestra dell'aggiornamento (vedi
+[Aggiornamenti in breve](#aggiornamenti-in-breve)).
 
 Nell'elenco **Progetti e chat** una piccola marca indica la chat corrente;
 accanto alle chat del progetto aperto compaiono segnali di attività o di
@@ -1282,7 +1285,9 @@ termine. Le troncature dell'output vengono segnalate nelle ricevute.
 ### Dati locali
 
 **Backup del database**, **Aggiorna risorse** (rilegge RAM/GPU osservate),
-l'elenco delle **Scorciatoie** e la versione installata. Il pulsante
+**Aggiornamenti** (l'interruttore **Cerca aggiornamenti all'avvio e ogni
+giorno**, attivo in partenza, il pulsante **Cerca aggiornamenti** e l'esito
+dell'ultimo controllo), l'elenco delle **Scorciatoie** e la versione installata. Il pulsante
 **Diagnostica locale**, in cima alla pagina delle Impostazioni, mostra il
 rapporto diagnostico filtrato e permette di esportarlo dopo averlo letto.
 
@@ -1317,7 +1322,7 @@ percorsi:
 
 | Contenuto | Percorso predefinito |
 | --- | --- |
-| Database `kira.sqlite3`, `artifacts/`, `attachments/`, `image-attachments/`, `captures/`, `diagnostics/`, `exports/`, `browser-engine/`, `browser-profiles/`, `browser-temporary/` | `$HOME/.local/share/kira/` |
+| Database `kira.sqlite3`, `artifacts/`, `attachments/`, `image-attachments/`, `captures/`, `diagnostics/`, `exports/`, `updates/`, `browser-engine/`, `browser-profiles/`, `browser-temporary/` | `$HOME/.local/share/kira/` |
 | Preferenze dell'interfaccia | `$HOME/.config/kira/ui.json` |
 | Bozze della chat e cronologia riutilizzabile | `$HOME/.config/kira/composer.json` |
 | Bozze e identità in sospeso di Anima, Ricerca e strumenti del progetto | `composer.json` in `$HOME/.local/state/kira/souls-ui/`, `research-ui/` e `knowledge-ui/` |
@@ -1345,7 +1350,19 @@ correnti.
 
 ### Aggiornamenti in breve
 
-Prima di aggiornare: finisci il lavoro, metti in pausa la coda, chiudi il
+Kira controlla gli aggiornamenti all'avvio e ogni giorno; con il pacchetto o da
+un checkout dei sorgenti può anche installarli. **Aggiorna a <versione>** nella
+barra laterale (o il pulsante omonimo in **Impostazioni → Dati locali**) apre
+**Aggiornamento di Kira** con le novità. **Aggiorna ora** fa un backup coerente
+del database, scarica e verifica la firma del pacchetto (o controlla i
+sorgenti), ferma il servizio solo se non ha lavoro in corso, installa e riavvia
+Kira; se c'è lavoro attivo non cambia nulla. Se Kira non può chiedere la
+password (per esempio in WSL) ti mostra il comando `sudo apt install` da copiare
+nel terminale, poi **Riavvia Kira**. **Salta questa versione** la nasconde ai
+controlli automatici, **Più tardi** chiude la finestra. I dettagli sono in
+[Installazione → Aggiornare da Kira](INSTALLAZIONE.md#aggiornare-da-kira).
+
+Per aggiornare a mano: finisci il lavoro, metti in pausa la coda, chiudi il
 browser, fai il backup, chiudi la finestra ed esegui `kira-desktop stop-service`
 (dal sorgente `uv run kira-desktop stop-service`), che rifiuta l'arresto finché
 c'è lavoro in corso o un browser sotto il tuo controllo e ne indica il motivo.

@@ -20,6 +20,9 @@ docs/evidence/
 *.db
 *.db-*
 *.pem
+# Public release signing keys only; private keys never belong in the checkout.
+!packaging/release-signing-key.pub.pem
+!packaging/release-signing-key.previous.pub.pem
 *.key
 auth.json
 credentials.json

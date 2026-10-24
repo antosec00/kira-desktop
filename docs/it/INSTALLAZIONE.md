@@ -53,6 +53,23 @@ pubblicata; le versioni precedenti restano nella pagina Releases. `sha256sum`
 deve rispondere `OK`: se segnala un errore, non installare il file e scaricalo di
 nuovo.
 
+Ogni versione ha anche `SHA256SUMS.sig`, la firma Ed25519 di `SHA256SUMS` fatta
+con la chiave di pubblicazione di Kira. Per controllare che le impronte siano
+proprio quelle pubblicate, scarica nella stessa cartella la firma e la chiave
+pubblica `packaging/release-signing-key.pub.pem` del repository e verifica la
+firma prima di `sha256sum`:
+
+```sh
+wget https://github.com/antosec00/kira-desktop/releases/latest/download/SHA256SUMS.sig \
+     https://raw.githubusercontent.com/antosec00/kira-desktop/main/packaging/release-signing-key.pub.pem
+openssl pkeyutl -verify -pubin -inkey release-signing-key.pub.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+`openssl` deve rispondere `Signature Verified Successfully`; altrimenti non
+installare nulla. L'[aggiornamento da Kira](#aggiornare-da-kira) fa la stessa
+verifica con la chiave integrata nell'app.
+
 Il prefisso `./` è necessario perché `apt` riconosca un file locale; con
 `--no-remove`, `apt` si ferma invece di rimuovere altri pacchetti. Se `apt`
 avvisa che il download avviene «unsandboxed as root» perché l'utente `_apt` non
@@ -250,7 +267,8 @@ Dentro la cartella dati, accanto al database, ci sono `artifacts/` (file prodott
 dalle esecuzioni), `attachments/` (allegati e file incollati),
 `image-attachments/` (copie immutabili delle immagini allegate), `captures/`
 (catture di schermo), `diagnostics/` (rapporti esportati), `exports/`
-(esportazioni di chat e progetti) e le tre cartelle del browser isolato
+(esportazioni di chat e progetti), `updates/` (pacchetti scaricati
+dall'aggiornamento da Kira) e le tre cartelle del browser isolato
 `browser-engine/`, `browser-profiles/` e `browser-temporary/`. Le variabili XDG,
 se le imposti, devono contenere percorsi assoluti; una variabile impostata a un
 valore vuoto vale come non impostata.
@@ -425,9 +443,97 @@ o l'altro, per intero.
 
 ## Aggiornamento
 
-Esiste una sola procedura, valida sia per il pacchetto sia per il sorgente, e
-serve a non perdere il lavoro in corso. Un'esecuzione interrotta a metà da un
-cambio di codice non viene ripetuta automaticamente alla riapertura.
+Kira installata dal pacchetto o avviata da un checkout dei sorgenti si aggiorna
+quando glielo chiedi, come descritto in [Aggiornare da Kira](#aggiornare-da-kira).
+La [procedura manuale](#procedura-manuale) vale per ogni installazione ed è
+quella da seguire quando Kira non può aggiornarsi da sé. Entrambe servono a non
+perdere il lavoro in corso: un'esecuzione interrotta a metà da un cambio di
+codice non viene ripetuta automaticamente alla riapertura.
+
+Quando una versione più nuova apre un database esistente, lo aggiorna da sola
+dopo aver creato una copia coerente di sicurezza accanto al database
+(`kira.sqlite3.pre-*.bak`): conversazioni, progetti, permessi e riferimenti ai
+provider restano intatti. Il contrario non vale: **una versione più vecchia non
+apre un database più nuovo**. Per questo il backup va fatto prima di aggiornare,
+non dopo.
+
+Aggiornare il codice non cambia account, modelli, permessi dei progetti né il
+consenso del browser: quelli restano nel profilo.
+
+### Aggiornare da Kira
+
+Kira controlla se ci sono aggiornamenti 8 secondi dopo l'avvio e poi ogni 24
+ore finché resta aperta. In **Impostazioni → Dati locali → Aggiornamenti**
+l'interruttore **Cerca aggiornamenti all'avvio e ogni giorno** attiva o
+disattiva i controlli automatici e **Cerca aggiornamenti** ne esegue uno
+subito. Quando c'è una versione più nuova, nella barra laterale compare
+**Aggiorna a <versione>**, che apre la finestra **Aggiornamento di Kira** con le
+novità. Un controllo non installa niente: l'aggiornamento parte solo quando
+premi **Aggiorna ora**.
+
+Che cosa controlla e come aggiorna dipende dall'installazione:
+
+- **Pacchetto** (codice in `/opt/kira-desktop/`): Kira chiede a GitHub l'ultima
+  release pubblicata e la confronta con la versione installata. Per aggiornare
+  scarica il pacchetto della tua versione di Ubuntu (24.04 o 26.04) nella
+  cartella `updates/` dei dati del profilo, con permessi 0600, verifica la firma
+  Ed25519 `SHA256SUMS.sig` del file `SHA256SUMS` con la chiave pubblica
+  integrata in Kira e poi l'impronta SHA-256 del pacchetto. Una release senza
+  firma, con una firma non valida o con un'impronta diversa viene rifiutata e non
+  si installa nulla. Il pacchetto scaricato resta in `updates/`: dopo
+  l'aggiornamento puoi cancellarlo.
+- **Checkout dei sorgenti** (un clone git con il `pyproject.toml` di Kira): Kira
+  esegue `git fetch` e mostra gli oggetti dei nuovi commit del ramo remoto che il
+  checkout segue. Aggiorna con `git merge --ff-only` e `uv sync --frozen`,
+  conservando l'extra `claude-code` se è installato; se la sincronizzazione delle
+  dipendenze non riesce, torna al commit precedente con `git reset --keep`.
+  Modifiche non salvate ai file tracciati, un ramo locale che si è separato da
+  quello remoto o un checkout che non segue un ramo remoto bloccano
+  l'aggiornamento: in quei casi aggiorna con git seguendo la procedura manuale.
+- **Altre installazioni**: Kira segnala le nuove versioni e rimanda alla pagina
+  [Releases](https://github.com/antosec00/kira-desktop/releases); aggiorna con la
+  procedura manuale.
+
+**Aggiorna ora** esegue questi passi e li mostra nella finestra:
+
+1. **Backup del database**: salva le bozze e crea una copia coerente, come
+   l'omonimo pulsante (vedi
+   [Backup coerente del database](#backup-coerente-del-database)).
+2. **Download e verifica della firma** per il pacchetto, **Controllo dei
+   sorgenti** per il checkout.
+3. **Arresto del servizio quando è inattivo**: Kira chiede al servizio di
+   fermarsi e non lo riavvia finché l'aggiornamento è in corso. Se c'è lavoro
+   attivo (esecuzioni, Team, continuazioni automatiche, manutenzione del
+   contesto, diramazioni o compattazioni, un browser sotto controllo manuale) il
+   servizio rifiuta, nulla cambia e puoi riprovare quando ha finito.
+4. **Installazione**: per il pacchetto
+   `pkexec apt-get install -y --no-remove <pacchetto>`, con la richiesta della
+   password del sistema; per il checkout l'avanzamento del ramo e la
+   sincronizzazione descritti sopra.
+5. **Riavvio di Kira** sulla nuova versione, con lo stesso profilo.
+
+Se `pkexec` manca, o la richiesta della password viene chiusa o non può
+comparire (come di solito in WSL), Kira mostra il comando
+`sudo apt install --no-remove <percorso del pacchetto>` con un pulsante per
+copiarlo: eseguilo in un terminale e poi premi **Riavvia Kira**. **Annulla**
+rinuncia per ora e fa ripartire il servizio della versione installata. Se
+l'installazione non riesce resta la versione precedente, il suo servizio
+riparte e **Riprova** ripete l'aggiornamento.
+
+**Salta questa versione** (solo per il pacchetto) nasconde quella versione ai
+controlli automatici; **Cerca aggiornamenti** la mostra comunque. **Più tardi**
+chiude la finestra senza cambiare nulla. I passi 1-3 della procedura manuale
+(finire il lavoro, mettere in pausa la coda, chiudere il browser) restano utili
+anche qui, perché evitano che il servizio rifiuti l'arresto.
+
+I controlli contattano soltanto `api.github.com` (un checkout, il suo remoto
+git) e i download soltanto gli indirizzi di GitHub che servono i file delle
+release; oltre allo User-Agent `Kira-Desktop/<versione>` non parte alcun dato su
+di te.
+
+### Procedura manuale
+
+Questa procedura vale sia per il pacchetto sia per il sorgente.
 
 1. **Finisci il lavoro.** Lascia terminare le richieste attive, i Team e gli
    obiettivi autonomi (o mettili in pausa con `/obiettivo pausa`).
@@ -471,16 +577,6 @@ cambio di codice non viene ripetuta automaticamente alla riapertura.
 9. **Riprendi la coda** con **Coda → Riprendi coda** dopo aver controllato il
    lavoro interrotto. La coda resta in pausa finché non lo fai tu.
 
-Quando una versione più nuova apre un database esistente, lo aggiorna da sola
-dopo aver creato una copia coerente di sicurezza accanto al database
-(`kira.sqlite3.pre-*.bak`): conversazioni, progetti, permessi e riferimenti ai
-provider restano intatti. Il contrario non vale: **una versione più vecchia non
-apre un database più nuovo**. Per questo il backup va fatto prima di aggiornare,
-non dopo.
-
-Aggiornare il codice non cambia account, modelli, permessi dei progetti né il
-consenso del browser: quelli restano nel profilo.
-
 ### Tornare a una versione precedente
 
 Per fare rollback ti servono due cose: il pacchetto (o il checkout) della versione
@@ -490,7 +586,8 @@ quel backup manca, la copia di sicurezza automatica `kira.sqlite3.pre-*.bak`
 contiene il database com'era prima dell'aggiornamento, ma non gli altri file del
 profilo.
 
-1. Segui i passi 1-6 della procedura di aggiornamento con la versione attuale.
+1. Segui i passi 1-6 della [procedura manuale](#procedura-manuale) con la
+   versione attuale.
 2. Metti da parte, intatto, il profilo attuale: contiene il lavoro fatto dopo
    l'aggiornamento, che il rollback non conserva.
 3. Ripristina il backup compatibile, inclusi i file a cui fa riferimento

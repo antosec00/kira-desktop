@@ -55,6 +55,23 @@ published version; earlier versions remain on the Releases page. `sha256sum`
 must answer `OK`: if it reports an error, do not install the file; download it
 again.
 
+Every version also has `SHA256SUMS.sig`, the Ed25519 signature of `SHA256SUMS`
+made with Kira's release key. To check that the checksums are the published
+ones, download the signature and the repository's public key
+`packaging/release-signing-key.pub.pem` into the same folder and verify the
+signature before `sha256sum`:
+
+```sh
+wget https://github.com/antosec00/kira-desktop/releases/latest/download/SHA256SUMS.sig \
+     https://raw.githubusercontent.com/antosec00/kira-desktop/main/packaging/release-signing-key.pub.pem
+openssl pkeyutl -verify -pubin -inkey release-signing-key.pub.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+`openssl` must answer `Signature Verified Successfully`; otherwise do not
+install anything. [Updating from Kira](#updating-from-kira) makes the same check
+with the key built into the app.
+
 The `./` prefix is required for `apt` to recognize a local file; with
 `--no-remove`, `apt` stops instead of removing other packages. If `apt` warns
 that the download is performed "unsandboxed as root" because the `_apt` user
@@ -251,8 +268,9 @@ Inside the data folder, next to the database, there are `artifacts/` (files
 produced by runs), `attachments/` (attachments and pasted files),
 `image-attachments/` (immutable copies of attached images), `captures/`
 (screen captures), `diagnostics/` (exported reports), `exports/` (chat and
-project exports) and the three folders of the isolated browser
-`browser-engine/`, `browser-profiles/` and `browser-temporary/`. The XDG
+project exports), `updates/` (packages downloaded by updating from Kira) and
+the three folders of the isolated browser `browser-engine/`,
+`browser-profiles/` and `browser-temporary/`. The XDG
 variables, if you set them, must contain absolute paths; a variable set to an
 empty value counts as unset.
 
@@ -424,9 +442,96 @@ one or the other, in full.
 
 ## Upgrading
 
-There is a single procedure, valid for both the package and the source, and its
-purpose is not to lose the work in progress. A run interrupted halfway by a code
-change is not repeated automatically when you reopen.
+Kira installed from the package or started from a source checkout updates
+itself when you ask it to, as described in
+[Updating from Kira](#updating-from-kira). The
+[manual procedure](#manual-procedure) applies to every installation and is the
+one to follow when Kira cannot update itself. Both are meant not to lose the
+work in progress: a run interrupted halfway by a code change is not repeated
+automatically when you reopen.
+
+When a newer version opens an existing database, it upgrades it on its own
+after creating a consistent safety copy next to the database
+(`kira.sqlite3.pre-*.bak`): conversations, projects, permissions and provider
+references stay intact. The reverse does not hold: **an older version does not
+open a newer database**. This is why the backup must be made before upgrading,
+not after.
+
+Updating the code does not change accounts, models, project permissions or the
+browser consent: those stay in the profile.
+
+### Updating from Kira
+
+Kira checks for updates 8 seconds after it starts and then every 24 hours while
+it stays open. In **Settings → Local data → Updates** the
+**Check for updates at launch and every day** switch turns the automatic
+checks on or off and **Check for updates** runs one right away. When a newer
+version exists, **Update to <version>** appears in the sidebar and opens the
+**Kira update** window with what is new. A check installs nothing: the update
+starts only when you press **Update now**.
+
+What is checked and how the update works depends on the installation:
+
+- **Package** (code in `/opt/kira-desktop/`): Kira asks GitHub for the latest
+  published release and compares it with the installed version. To update, it
+  downloads the package for your Ubuntu version (24.04 or 26.04) into the
+  `updates/` folder of the profile's data, with 0600 permissions, verifies the
+  Ed25519 signature `SHA256SUMS.sig` of the `SHA256SUMS` file with the public
+  key built into Kira, then the SHA-256 checksum of the package. A release
+  without a signature, with an invalid signature or with a different checksum is
+  refused and nothing is installed. The downloaded package stays in `updates/`:
+  you can delete it after the update.
+- **Source checkout** (a git clone with Kira's `pyproject.toml`): Kira runs
+  `git fetch` and shows the subjects of the new commits on the remote branch the
+  checkout tracks. It updates with `git merge --ff-only` and `uv sync --frozen`,
+  keeping the `claude-code` extra if it is installed; if the dependency sync
+  fails, it goes back to the previous commit with `git reset --keep`.
+  Uncommitted changes to tracked files, a local branch that has diverged from
+  the remote one or a checkout that tracks no remote branch block the update: in
+  those cases update with git following the manual procedure.
+- **Other installations**: Kira reports new versions and points to the
+  [Releases](https://github.com/antosec00/kira-desktop/releases) page; update
+  with the manual procedure.
+
+**Update now** runs these steps and shows them in the window:
+
+1. **Back up database**: saves the drafts and creates a consistent copy, as
+   the button of the same name does (see
+   [Consistent database backup](#consistent-database-backup)).
+2. **Download and signature check** for the package, **Checking the sources**
+   for the checkout.
+3. **Stopping the service once it is idle**: Kira asks the service to stop and does not
+   restart it while the update is in progress. If there is active work (runs,
+   Teams, automatic continuations, context maintenance, branches or
+   compactions, a browser under manual control) the service refuses, nothing
+   changes and you can try again when it has finished.
+4. **Installation**: for the package
+   `pkexec apt-get install -y --no-remove <package>`, with the system password
+   prompt; for the checkout the branch fast-forward and the sync described
+   above.
+5. **Restarting Kira** on the new version, with the same profile.
+
+If `pkexec` is missing, or the password prompt is dismissed or cannot appear
+(as usually in WSL), Kira shows the command
+`sudo apt install --no-remove <package path>` with a button to copy it: run it
+in a terminal, then press **Restart Kira**. **Cancel** gives up for now and
+starts the service of the installed version again. If the installation fails
+the previous version stays, its service starts again and **Try again** repeats
+the update.
+
+**Skip this version** (package only) hides that version from the automatic
+checks; **Check for updates** still shows it. **Later** closes the window
+without changing anything. Steps 1-3 of the manual procedure (finishing the
+work, pausing the queue, closing the browser) are still useful here, because
+they keep the service from refusing to stop.
+
+The checks contact only `api.github.com` (a checkout, its git remote) and the
+downloads only the GitHub addresses that serve the release files; apart from the
+User-Agent `Kira-Desktop/<version>` no data about you is sent.
+
+### Manual procedure
+
+This procedure applies to both the package and the source.
 
 1. **Finish the work.** Let the active requests, the Teams and the autonomous
    goals finish (or pause them with `/goal pause`).
@@ -467,16 +572,6 @@ change is not repeated automatically when you reopen.
 9. **Resume the queue** with **Queue → Resume queue** after checking the
    interrupted work. The queue stays paused until you do it.
 
-When a newer version opens an existing database, it upgrades it on its own
-after creating a consistent safety copy next to the database
-(`kira.sqlite3.pre-*.bak`): conversations, projects, permissions and provider
-references stay intact. The reverse does not hold: **an older version does not
-open a newer database**. This is why the backup must be made before upgrading,
-not after.
-
-Updating the code does not change accounts, models, project permissions or the
-browser consent: those stay in the profile.
-
 ### Rolling back to a previous version
 
 To roll back you need two things: the package (or the checkout) of the previous
@@ -485,7 +580,8 @@ upgrade. The upgraded database cannot be "taken back". If that backup is
 missing, the automatic safety copy `kira.sqlite3.pre-*.bak` contains the
 database as it was before the upgrade, but not the other files of the profile.
 
-1. Follow steps 1-6 of the upgrade procedure with the current version.
+1. Follow steps 1-6 of the [manual procedure](#manual-procedure) with the
+   current version.
 2. Set aside, intact, the current profile: it contains the work done after the
    upgrade, which the rollback does not keep.
 3. Restore the compatible backup, including the files it references

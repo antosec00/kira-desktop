@@ -465,6 +465,16 @@ ApplicationWindow {
                     KButton { objectName: "modelsNavButton"; text: sidebar.rail ? "" : qsTr("Modelli"); iconName: "models"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; quietSelection: true; checked: window.page === 1; onClicked: window.page = 1; Accessible.name: qsTr("Modelli"); toolTipText: sidebar.rail ? qsTr("Modelli") : "" }
                     KButton { objectName: "settingsNavButton"; text: sidebar.rail ? "" : qsTr("Impostazioni"); iconName: "settings"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; quietSelection: true; checked: window.page === 3; onClicked: window.page = 3; Accessible.name: qsTr("Impostazioni"); toolTipText: sidebar.rail ? qsTr("Impostazioni") : "" }
                 }
+                KButton {
+                    objectName: "updateChip"
+                    visible: updates.available
+                    text: sidebar.rail ? "" : qsTr("Aggiorna a %1").arg(updates.latestVersion)
+                    iconName: "update"; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight
+                    subtle: true; quietSelection: true; checked: true; leftAligned: !sidebar.rail
+                    onClicked: updateDialog.open()
+                    Accessible.name: qsTr("Aggiornamento disponibile · %1").arg(updates.latestVersion)
+                    toolTipText: sidebar.rail ? qsTr("Aggiornamento disponibile · %1").arg(updates.latestVersion) : ""
+                }
                 KButton { objectName: "onboardingNavButton"; text: sidebar.rail ? "" : qsTr("Guida iniziale"); iconName: "help"; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; leftAligned: !sidebar.rail; onClicked: onboardingDialog.open(); Accessible.name: qsTr("Guida iniziale"); toolTipText: sidebar.rail ? qsTr("Guida iniziale") : "" }
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: sidebar.rail ? 26 : connectionLabel.implicitHeight + (window.compact ? 16 : 26)
@@ -1675,6 +1685,7 @@ ApplicationWindow {
                 SettingsPane {
                     onDiagnosticsRequested: diagnosticsDialog.open()
                     onSoulsRequested: soulDialog.open()
+                    onUpdateRequested: updateDialog.open()
                 }
                 Loader {
                     objectName: "teamPageLoader"
@@ -1766,6 +1777,7 @@ ApplicationWindow {
     ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay; onClosed: window.mentionStart = -1 }
     // Covers the window, popups included, until the startup stages are done.
     KiraLoadingScreen { parent: Overlay.overlay }
+    UpdateDialog { id: updateDialog }
     WorkbenchDialog { id: workbenchDialog; parent: Overlay.overlay }
     KiraFileDialog { id: chatMarkdownExport; mode: "save"; purpose: "export"; title: qsTr("Esporta chat"); nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; suggestedName: window.exportName(qsTr("chat")); onAccepted: workbench.exportChat(selectedFile.toString()) }
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }

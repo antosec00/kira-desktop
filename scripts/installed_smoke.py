@@ -212,6 +212,10 @@ def main():
     assert len(engine.rootObjects()) == 1
     assert os.environ.get("QML_DISK_CACHE_PATH") == cache_environment
     window = engine.rootObjects()[0]
+    # The installed package must recognise itself, so it updates from signed releases.
+    updates = engine.rootContext().contextProperty("updates")
+    assert updates is not None and updates.property("kind") == "package", updates and updates.property("kind")
+    report["update_kind"] = updates.property("kind")
     opened = False
     finished = False
     markdown_documents = []

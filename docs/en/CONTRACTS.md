@@ -789,10 +789,13 @@ configuration and events, peer UID verification).
 
 - **GUI and service must have the same version.** `hello` returns
   `app_version`; the GUI rejects a different service before sending any
-  command. To upgrade, follow the single procedure in
-  [Installation](INSTALLATION.md): finish the work, pause the queue, close the
-  browser, make the backup, close the GUI, stop the service with
-  `kira-desktop stop-service`, upgrade, restart.
+  command. To upgrade, follow [Installation](INSTALLATION.md#upgrading): by
+  hand, finish the work, pause the queue, close the browser, make the backup,
+  close the GUI, stop the service with `kira-desktop stop-service`, upgrade,
+  restart. Updating from Kira calls `database.backup`, then `service.shutdown`
+  after it stops restarting the service; a `BUSY` leaves everything as it was
+  and the service keeps running. After the installation it restarts the
+  interface, which starts the service of the new version.
 - **The database upgrades itself.** On startup over an older database the
   service first creates a consistent private backup and then applies the
   changes in a single transaction, without rewriting or deleting the existing

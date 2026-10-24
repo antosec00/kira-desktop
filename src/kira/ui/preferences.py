@@ -87,6 +87,8 @@ DEFAULTS = {
     "confirm_close": "active",
     "file_opener": "system",
     "default_permission": "read_only",
+    "check_updates": True,
+    "skipped_update_version": "",
     "selected_sessions": {},
     "appearance": deepcopy(APPEARANCE_DEFAULTS),
 }
@@ -94,8 +96,10 @@ DEFAULTS = {
 
 def valid_preference(key: str, value: object) -> bool:
     """Accept typed presentation values; bool is never a numeric font size."""
-    if key in {"onboarding_complete", "chatgpt_plan_welcome_seen", "model_controls_visible", "resume_hint_visible", "details_visible", "reduce_motion", "show_reasoning_summaries", "tool_labels"}:
+    if key in {"onboarding_complete", "chatgpt_plan_welcome_seen", "model_controls_visible", "resume_hint_visible", "details_visible", "reduce_motion", "show_reasoning_summaries", "tool_labels", "check_updates"}:
         return type(value) is bool
+    if key == "skipped_update_version":
+        return isinstance(value, str) and (value == "" or re.fullmatch(r"\d{1,4}\.\d{1,4}\.\d{1,4}", value) is not None)
     if key == "language":
         return supported_language(value)
     if key == "appearance":

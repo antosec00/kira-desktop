@@ -44,13 +44,15 @@ src/kira/
                     authentication bridge, project tool worker
   resources/        knowledge resources bundled with the package
   ui/               app.py (engine), controller.py (Workspace), models.py (transcript),
-                    *_controller.py, preferences.py, qml/, translations/, assets/
+                    *_controller.py, updates.py (updating from Kira), preferences.py,
+                    qml/, translations/, assets/
 tests/              synthetic pytest suite (pytest-qt, offscreen Qt, mock providers)
 scripts/            check_translations.py, check_public_tree.py, build_deb.py, check_deb.py,
                     installed_smoke.py, render_doc_screenshots.py, live_*.py,
                     deepseek_web_smoke.py, gui_evidence.py
 packaging/          Debian packaging for Ubuntu 24.04 (noble) and 26.04 (resolute):
-                    launcher, user unit, .desktop, licence texts, requirements lock
+                    launcher, user unit, .desktop, licence texts, requirements lock,
+                    public release signing key
 protocol-schema/    generated Codex App Server protocol JSON schemas, used by the tests
 docs/
   it/               Italian documentation
@@ -292,7 +294,8 @@ first load. An upgrade is not fixed by clearing unrelated caches or data.
    anything. Only on `main` does a second job, the only one with write access,
    attach them to a **draft** release `v<version>` under stable names
    (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`)
-   together with their `SHA256SUMS`. The draft's notes start from
+   together with `SHA256SUMS` and its signature `SHA256SUMS.sig` (see
+   [Release signing](#release-signing)). The draft's notes start from
    `.github/release-notes.md` and link the documentation of the built commit,
    so the links already work in the draft; if the draft already exists, the
    workflow only refreshes its commit and files and leaves the notes
@@ -303,7 +306,52 @@ first load. An upgrade is not fixed by clearing unrelated caches or data.
 5. Keep an exact copy of the published version as `release/<version>`.
 
 The stable names keep the `releases/latest/download/...` links used in the
-README and in [Installation](INSTALLATION.md#installing-from-the-package) valid.
+README and in [Installation](INSTALLATION.md#installing-from-the-package) valid,
+as well as updating from Kira, which looks for the packages under those names in
+the latest release.
+
+### Release signing
+
+Updating from Kira installs a package only when `SHA256SUMS.sig` verifies
+`SHA256SUMS` with the Ed25519 public key built into `src/kira/ui/updates.py`;
+`packaging/release-signing-key.pub.pem` holds the same key and a test checks
+that they match. The publish job signs `SHA256SUMS` with the repository secret
+`KIRA_RELEASE_SIGNING_KEY` (the Ed25519 private key in PEM format) through
+`openssl pkeyutl -sign -rawin`, verifies the signature with
+`packaging/release-signing-key.pub.pem` and attaches `SHA256SUMS.sig` to the
+draft. Without the secret the job stops: an unsigned release is not published.
+
+To try an update without GitHub, `KIRA_UPDATE_RELEASE_URL` points Kira at
+another address with the same JSON format as `releases/latest`, for example a
+local server in a test container. The signature stays mandatory and is always
+verified with the built-in key.
+
+To create a key pair, from the root of the checkout and with the private key in
+a private folder outside it:
+
+```sh
+(umask 077 && openssl genpkey -algorithm ed25519 -out <private folder>/release-signing-key.pem)
+openssl pkey -in <private folder>/release-signing-key.pem -pubout -out packaging/release-signing-key.pub.pem
+```
+
+Copy the content of the private key into the
+`KIRA_RELEASE_SIGNING_KEY` secret (**Settings → Secrets and variables →
+Actions**) and keep a private backup of it: it never goes into the repository. A
+new public key must also be copied into `RELEASE_PUBLIC_KEY` in
+`src/kira/ui/updates.py`.
+
+Existing installations know only the key built into their version. To replace
+the key, first publish a version that contains the new public key but is still
+signed with the old one; only the later versions can be signed with the new
+key. In the intermediate version the old public key stays in
+`packaging/release-signing-key.previous.pub.pem` and the secret still holds the
+old private key: the job accepts a signature that verifies with either public
+key. Once it is published, replace the secret with the new private key and
+remove the old public key file. Kira
+always asks for the latest release: an installation that has not
+received the intermediate version before the one signed with the new key
+refuses it and must be updated with the
+[manual procedure](INSTALLATION.md#manual-procedure).
 
 ## Customizing the interface
 

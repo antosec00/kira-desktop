@@ -42,13 +42,15 @@ src/kira/
                     autenticazione del browser, worker degli strumenti di progetto
   resources/        risorse di conoscenza incluse nel pacchetto
   ui/               app.py (motore), controller.py (Workspace), models.py (trascrizione),
-                    *_controller.py, preferences.py, qml/, translations/, assets/
+                    *_controller.py, updates.py (aggiornamento da Kira), preferences.py,
+                    qml/, translations/, assets/
 tests/              suite pytest sintetica (pytest-qt, Qt offscreen, provider finti)
 scripts/            check_translations.py, check_public_tree.py, build_deb.py, check_deb.py,
                     installed_smoke.py, render_doc_screenshots.py, live_*.py,
                     deepseek_web_smoke.py, gui_evidence.py
 packaging/          packaging Debian per Ubuntu 24.04 (noble) e 26.04 (resolute):
-                    launcher, unità utente, .desktop, testi delle licenze, lock dei requisiti
+                    launcher, unità utente, .desktop, testi delle licenze, lock dei requisiti,
+                    chiave pubblica di firma delle release
 protocol-schema/    schemi JSON generati del protocollo Codex App Server, usati dai test
 docs/
   it/               documentazione in italiano (questa cartella)
@@ -290,7 +292,8 @@ risolve cancellando cache o dati non correlati.
    Solo su `main` un secondo job, l'unico con permesso di scrittura, allega i
    pacchetti a una **bozza** di release `v<versione>` con nomi stabili
    (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`)
-   e il loro `SHA256SUMS`. Le note della bozza partono da
+   con `SHA256SUMS` e la sua firma `SHA256SUMS.sig` (vedi
+   [Firma delle release](#firma-delle-release)). Le note della bozza partono da
    `.github/release-notes.md` e collegano la documentazione del commit
    costruito, così i collegamenti funzionano già nella bozza; se la bozza
    esiste già, il workflow ne aggiorna solo il commit e i file, senza toccare
@@ -302,7 +305,51 @@ risolve cancellando cache o dati non correlati.
    `release/<versione>`.
 
 I nomi stabili mantengono validi i collegamenti `releases/latest/download/...`
-usati nel README e in [Installazione](INSTALLAZIONE.md#installazione-da-pacchetto).
+usati nel README e in [Installazione](INSTALLAZIONE.md#installazione-da-pacchetto)
+e dall'aggiornamento da Kira, che cerca i pacchetti con quei nomi nell'ultima
+release.
+
+### Firma delle release
+
+L'aggiornamento da Kira installa un pacchetto solo se `SHA256SUMS.sig` verifica
+`SHA256SUMS` con la chiave pubblica Ed25519 integrata in `src/kira/ui/updates.py`;
+`packaging/release-signing-key.pub.pem` contiene la stessa chiave e un test
+controlla che coincidano. Il job di pubblicazione firma `SHA256SUMS` con il
+segreto del repository `KIRA_RELEASE_SIGNING_KEY` (la chiave privata Ed25519 in
+formato PEM) tramite `openssl pkeyutl -sign -rawin`, verifica la firma con
+`packaging/release-signing-key.pub.pem` e allega `SHA256SUMS.sig` alla bozza.
+Senza il segreto il job si ferma: una release non firmata non viene pubblicata.
+
+Per provare l'aggiornamento senza GitHub, `KIRA_UPDATE_RELEASE_URL` indica a Kira
+un altro indirizzo con lo stesso formato JSON di `releases/latest`, per esempio
+un server locale in un container di prova. La firma resta obbligatoria e viene
+sempre verificata con la chiave integrata.
+
+Per creare una coppia di chiavi, dalla radice del checkout e con la chiave
+privata in una cartella privata fuori da esso:
+
+```sh
+(umask 077 && openssl genpkey -algorithm ed25519 -out <cartella privata>/release-signing-key.pem)
+openssl pkey -in <cartella privata>/release-signing-key.pem -pubout -out packaging/release-signing-key.pub.pem
+```
+
+Copia il contenuto della chiave privata nel segreto
+`KIRA_RELEASE_SIGNING_KEY` (**Settings → Secrets and variables → Actions**) e
+conservane un backup privato: non va mai nel repository. Una chiave pubblica
+nuova va anche copiata in `RELEASE_PUBLIC_KEY` in `src/kira/ui/updates.py`.
+
+Le installazioni esistenti conoscono solo la chiave integrata nella loro
+versione. Per sostituire la chiave, pubblica prima una versione che contiene la
+nuova chiave pubblica ma è ancora firmata con la vecchia; solo le versioni
+successive possono essere firmate con la nuova chiave. Nella versione intermedia
+la vecchia chiave pubblica resta in `packaging/release-signing-key.previous.pub.pem`
+e il segreto contiene ancora la vecchia chiave privata: il job accetta una firma
+che verifica con una delle due chiavi pubbliche. Dopo la sua pubblicazione
+sostituisci il segreto con la nuova chiave privata e rimuovi il file della
+vecchia chiave pubblica. Kira chiede sempre
+l'ultima release: un'installazione che non ha ricevuto la versione intermedia
+prima di quella firmata con la nuova chiave la rifiuta e va aggiornata con la
+[procedura manuale](INSTALLAZIONE.md#procedura-manuale).
 
 ## Personalizzazione dell'interfaccia
 

@@ -190,7 +190,9 @@ sections), **Icons only** (Search, Projects, Activity, Team, Knowledge and
 tools, Models, Settings and Getting started remain, with the name shown on
 hover) and **Hidden**. The button at the top left and **Ctrl+B** cycle through
 the states; the choice is saved in **Settings → Work → Sidebar**. The dot at
-the bottom indicates the connection to the local service.
+the bottom indicates the connection to the local service. When a newer version
+of Kira exists, **Update to <version>** appears above **Getting started** and
+opens the update window (see [Updates at a glance](#updates-at-a-glance)).
 
 In the **Projects and chats** list a small mark indicates the current chat;
 next to the chats of the open project appear signals of activity or attention
@@ -1246,6 +1248,8 @@ the receipts.
 ### Local data
 
 **Back up database**, **Refresh resources** (re-reads the observed RAM/GPU),
+**Updates** (the **Check for updates at launch and every day** switch, on by
+default, the **Check for updates** button and the outcome of the last check),
 the list of **Shortcuts** and the installed version. The **Local diagnostics**
 button, at the top of the Settings page, shows the filtered diagnostic report
 and lets you export it after reading it.
@@ -1282,7 +1286,7 @@ paths:
 
 | Content | Default path |
 | --- | --- |
-| Database `kira.sqlite3`, `artifacts/`, `attachments/`, `image-attachments/`, `captures/`, `diagnostics/`, `exports/`, `browser-engine/`, `browser-profiles/`, `browser-temporary/` | `$HOME/.local/share/kira/` |
+| Database `kira.sqlite3`, `artifacts/`, `attachments/`, `image-attachments/`, `captures/`, `diagnostics/`, `exports/`, `updates/`, `browser-engine/`, `browser-profiles/`, `browser-temporary/` | `$HOME/.local/share/kira/` |
 | Interface preferences | `$HOME/.config/kira/ui.json` |
 | Chat drafts and reusable history | `$HOME/.config/kira/composer.json` |
 | Drafts and pending identities of Soul, Research and project tools | `composer.json` in `$HOME/.local/state/kira/souls-ui/`, `research-ui/` and `knowledge-ui/` |
@@ -1309,7 +1313,19 @@ the WAL. Test the restore on a separate copy before replacing the current data.
 
 ### Updates at a glance
 
-Before updating: finish the work, pause the queue, close the browser, make the
+Kira checks for updates at launch and every day; with the package or from a
+source checkout it can also install them. **Update to <version>** in the
+sidebar (or the button of the same name in **Settings → Local data**) opens
+**Kira update** with what is new. **Update now** makes a consistent database
+backup, downloads the package and verifies its signature (or checks the
+sources), stops the service only if it has no work in progress, installs and
+restarts Kira; if work is active nothing changes. If Kira cannot ask for the
+password (for example in WSL) it shows you the `sudo apt install` command to
+copy into a terminal, then **Restart Kira**. **Skip this version** hides it from
+the automatic checks, **Later** closes the window. The details are in
+[Installation → Updating from Kira](INSTALLATION.md#updating-from-kira).
+
+To update by hand: finish the work, pause the queue, close the browser, make the
 backup, close the window and run `kira-desktop stop-service` (from source
 `uv run kira-desktop stop-service`), which refuses to stop while work is in
 progress or a browser is under your control, and says why. After the update
