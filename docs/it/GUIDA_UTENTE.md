@@ -94,6 +94,14 @@ cui lanci il comando non diventa automaticamente un progetto: lo scegli
 nell'interfaccia. Requisiti, pacchetti, profili e percorsi dei dati sono in
 [Installazione](INSTALLAZIONE.md).
 
+All'avvio compare subito una piccola finestra con Kira; quando l'interfaccia è
+pronta, una schermata di caricamento con la mascotte mostra i passi reali:
+avvio del servizio locale, caricamento di progetti e chat, modelli del provider
+selezionato. Scompare da sola quando Kira è pronta e comunque non oltre pochi
+secondi dal collegamento al servizio; se l'attesa si allunga, **Continua senza
+attendere** ti fa entrare mentre il resto finisce di caricare. Con **Riduci le
+animazioni** la schermata resta ferma.
+
 ### La guida iniziale
 
 Al primo avvio la schermata iniziale offre **Come funziona Kira**, che apre la
@@ -106,7 +114,9 @@ mostrarlo di nuovo da **Impostazioni → Lavoro**.
 ### Creare il primo progetto
 
 1. Premi **Nuovo progetto** (**Ctrl+N**), assegna un nome e scegli una cartella
-   esistente con **Sfoglia…**. Puoi aggiungere istruzioni specifiche per il
+   esistente con **Sfoglia…** (vedi
+   [Il selettore di cartelle e file](#il-selettore-di-cartelle-e-file)). Puoi
+   aggiungere istruzioni specifiche per il
    progetto: il modello le riceve a ogni turno.
 2. Scegli i permessi dalla tabella qui sotto e premi **Crea progetto**. Potrai
    cambiarli in seguito da **Azioni → Permessi del progetto**, quando nel
@@ -265,6 +275,42 @@ colore d'accento. I dati grezzi restituiti dal provider restano sotto **Dati
 del provider**, chiusi finché non li apri. Nessun valore viene inventato: ciò
 che il provider non dice resta sconosciuto.
 
+### Il selettore di cartelle e file
+
+**Sfoglia…** nel nuovo progetto, **Allega** nel campo di scrittura ed
+**Esporta** per chat e memoria aprono lo stesso selettore di Kira, con tema e
+caratteri dell'interfaccia.
+
+- **Percorso**: indietro e avanti (**Alt+←** e **Alt+→**), cartella superiore
+  (**Backspace**) e il percorso a segmenti, che puoi cliccare. Con **Ctrl+L** o
+  la matita scrivi o incolli un percorso, anche Windows (`C:\…`) o di rete WSL
+  (`\\wsl.localhost\…`); il percorso di un file apre la sua cartella con il
+  file selezionato.
+- **Luoghi**: Home e, quando esistono, Scrivania, Documenti e Scaricati; le
+  cartelle dei progetti di Kira; le cartelle usate di recente; su WSL i dischi
+  di Windows; la radice. Ogni selettore riparte dall'ultima cartella confermata
+  per lo stesso uso.
+- **Elenco**: cartelle prima, ordinabile per nome, data o dimensione con un clic
+  sull'intestazione. **Cerca in questa cartella** filtra per nome, **Ctrl+H**
+  mostra i file nascosti e digitando le prime lettere di un nome lo selezioni.
+  Doppio clic o **Invio** aprono una cartella o scelgono un file; con **Allega**,
+  **Ctrl** e **Shift** estendono la selezione e **Ctrl+A** seleziona tutti i file.
+- **Dettagli**: tipo, dimensione o numero di elementi, data, permessi e percorso,
+  con la miniatura delle immagini e le prime righe dei file di testo. Il
+  pannello si nasconde con il pulsante dei dettagli e non compare nelle finestre
+  strette.
+- **Azioni**, anche dal menu del tasto destro: **Nuova cartella**
+  (**Ctrl+Shift+N**), **Rinomina** (**F2**), **Copia percorso** (**Ctrl+C**),
+  **Apri nel gestore file** o con l'app predefinita (secondo **Apri i file
+  con**) e **Aggiorna** (**F5**). La rinomina non sostituisce mai un elemento
+  esistente e il selettore non elimina file.
+- **Salvataggio**: scegli la cartella e il nome; l'estensione si aggiunge se
+  manca e Kira chiede conferma prima di sostituire un file esistente.
+
+Puoi trascinare una cartella o un file nella finestra per aprirne la posizione.
+Le cartelle lente, come i dischi di Windows sotto WSL, si caricano senza
+bloccare l'interfaccia; ne vengono mostrati al massimo 5.000 elementi.
+
 ### Tema e colonna di lettura
 
 Il tema Kira è una grafite calda con accento ambra nella modalità scura e un
@@ -418,8 +464,8 @@ bozza non cancella i file già importati né le immagini dei messaggi inviati.
 con Ctrl+V; Kira riconosce i percorsi accessibili in WSL. Il trasferimento può
 richiedere un momento: aspetta l'anteprima o il riferimento prima di inviare.
 Il trascinamento diretto verso la finestra Linux dipende da WSLg: quando non
-arriva, usa copia/incolla o **Allega**. Nel selettore di file il disco C: è
-`/mnt/c`.
+arriva, usa copia/incolla o **Allega**. Nel selettore i dischi di Windows sono
+tra i luoghi (il disco C: è `/mnt/c`).
 
 ### Riferimenti ai file con `@`
 
@@ -1326,6 +1372,9 @@ indietro serve il backup fatto prima. La procedura completa è in
 | **Ctrl+V** / **Shift+Ins** | Incolla testo, percorsi o immagini dagli appunti |
 | **Esc** | Chiude la finestra del modello, il pannello a destra o un riquadro |
 | `@` | Cerca un file del progetto da inserire nel messaggio |
+
+Le scorciatoie del selettore di cartelle e file sono descritte in
+[Il selettore di cartelle e file](#il-selettore-di-cartelle-e-file).
 
 ## Domande frequenti e problemi comuni
 

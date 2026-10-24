@@ -94,6 +94,13 @@ launch the command from does not automatically become a project: you choose it
 in the interface. Requirements, packages, profiles and data paths are in
 [Installation](INSTALLATION.md).
 
+At launch a small window with Kira appears at once; when the interface is
+ready, a loading screen with the mascot shows the real steps: starting the local
+service, loading projects and chats, the models of the selected provider. It
+disappears by itself when Kira is ready, and in any case a few seconds after the
+service answers; if the wait gets longer, **Continue without waiting** lets you
+in while the rest finishes loading. With **Reduce motion** the screen stays still.
+
 ### Getting started
 
 On first launch the start screen offers **How Kira works**, which opens the
@@ -105,7 +112,9 @@ Kira remembers the choice and you can show it again from **Settings → Work**.
 ### Creating your first project
 
 1. Press **New project** (**Ctrl+N**), give it a name and choose an existing
-   folder with **Browse…**. You can add project-specific instructions: the
+   folder with **Browse…** (see
+   [The folder and file chooser](#the-folder-and-file-chooser)). You can add
+   project-specific instructions: the
    model receives them on every turn.
 2. Choose the permissions from the table below and press **Create project**.
    You can change them later from **Actions → Project permissions**, when there
@@ -260,6 +269,40 @@ levels; the selected card is outlined in the accent color. The raw data
 returned by the provider stays under **Provider data**, collapsed until you
 open it. No value is invented: what the provider does not say remains unknown.
 
+### The folder and file chooser
+
+**Browse…** in a new project, **Attach** in the composer and **Export** for
+chats and memory open the same Kira chooser, with the interface theme and fonts.
+
+- **Path**: back and forward (**Alt+←** and **Alt+→**), parent folder
+  (**Backspace**) and the path as segments you can click. With **Ctrl+L** or the
+  pencil you type or paste a path, also a Windows (`C:\…`) or WSL network
+  (`\\wsl.localhost\…`) one; the path of a file opens its folder with the file
+  selected.
+- **Places**: Home and, when they exist, Desktop, Documents and Downloads; the
+  folders of Kira projects; recently used folders; on WSL the Windows drives;
+  the root. Every chooser starts again from the last folder confirmed for the
+  same use.
+- **List**: folders first, sortable by name, date or size with a click on the
+  header. **Search this folder** filters by name, **Ctrl+H** shows hidden files
+  and typing the first letters of a name selects it. Double click or **Enter**
+  opens a folder or chooses a file; with **Attach**, **Ctrl** and **Shift**
+  extend the selection and **Ctrl+A** selects all files.
+- **Details**: type, size or number of items, date, permissions and path, with a
+  thumbnail of images and the first lines of text files. The details button
+  hides the panel, and it does not appear in narrow windows.
+- **Actions**, also from the right-click menu: **New folder** (**Ctrl+Shift+N**),
+  **Rename** (**F2**), **Copy path** (**Ctrl+C**), **Open in the file manager**
+  or with the default app (according to **Open files with**) and **Refresh**
+  (**F5**). Renaming never replaces an existing item and the chooser does not
+  delete files.
+- **Saving**: choose the folder and the name; the extension is added when
+  missing and Kira asks for confirmation before replacing an existing file.
+
+You can drag a folder or a file into the window to open its location. Slow
+folders, such as Windows drives under WSL, load without blocking the interface;
+at most 5,000 items are shown.
+
 ### Theme and reading column
 
 The Kira theme is a warm graphite with an amber accent in dark mode and an
@@ -407,8 +450,8 @@ delete already imported files nor the images of sent messages.
 them into Kira with Ctrl+V; Kira recognizes the paths accessible in WSL. The
 transfer may take a moment: wait for the preview or the reference before
 sending. Direct dragging towards the Linux window depends on WSLg: when it does
-not arrive, use copy/paste or **Attach**. In the file picker the C: drive is
-`/mnt/c`.
+not arrive, use copy/paste or **Attach**. In the chooser the Windows drives are
+among the places (the C: drive is `/mnt/c`).
 
 ### File references with `@`
 
@@ -1292,6 +1335,9 @@ beforehand. The complete procedure is in [Installation](INSTALLATION.md).
 | **Ctrl+V** / **Shift+Ins** | Paste text, paths or images from the clipboard |
 | **Esc** | Closes the model window, the panel on the right or a box |
 | `@` | Search for a project file to insert into the message |
+
+The shortcuts of the folder and file chooser are described in
+[The folder and file chooser](#the-folder-and-file-chooser).
 
 ## Frequently asked questions and common problems
 

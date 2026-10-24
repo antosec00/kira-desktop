@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 
 ApplicationWindow {
     font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic
@@ -145,6 +144,10 @@ ApplicationWindow {
         }
         commandStart = -1
         performAction(action)
+    }
+    // A suggested export name: the project and what is exported, without path characters.
+    function exportName(label) {
+        return ((workspace.project.name || "Kira") + " - " + label).replace(/[\\/:*?"<>|]+/g, "-")
     }
     function performAction(action) {
         if (action === "new_project") newProject.open()
@@ -1761,8 +1764,10 @@ ApplicationWindow {
     }
     ActionPalette { id: actionPalette; parent: Overlay.overlay; onSelected: function(action) { window.chooseAction(action) }; onClosed: window.commandStart = -1 }
     ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay; onClosed: window.mentionStart = -1 }
+    // Covers the window, popups included, until the startup stages are done.
+    KiraLoadingScreen { parent: Overlay.overlay }
     WorkbenchDialog { id: workbenchDialog; parent: Overlay.overlay }
-    FileDialog { id: chatMarkdownExport; title: qsTr("Esporta chat"); fileMode: FileDialog.SaveFile; nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; onAccepted: workbench.exportChat(selectedFile.toString()) }
+    KiraFileDialog { id: chatMarkdownExport; mode: "save"; purpose: "export"; title: qsTr("Esporta chat"); nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; suggestedName: window.exportName(qsTr("chat")); onAccepted: workbench.exportChat(selectedFile.toString()) }
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
     ActionDialog { id: actionDialog; parent: Overlay.overlay; onProjectSelected: { window.page = 0; window.followOutput = true } }
     DiagnosticsDialog { id: diagnosticsDialog; parent: Overlay.overlay }
@@ -1770,14 +1775,18 @@ ApplicationWindow {
     // The guide only navigates: provider, model and account stay the user's choice.
     OnboardingDialog { id: onboardingDialog; parent: Overlay.overlay; onCreateRequested: newProject.open(); onModelsRequested: window.page = 1 }
 
-    FolderDialog {
-        id: folderDialog; title: qsTr("Scegli la cartella del progetto")
-        onAccepted: rootInput.text = selectedFolder.toString()
+    KiraFileDialog {
+        id: folderDialog; objectName: "projectFolderDialog"; mode: "folder"; purpose: "project"
+        title: qsTr("Scegli la cartella del progetto")
+        subtitle: qsTr("Kira lavorerà in questa cartella con i permessi che scegli per il progetto.")
+        currentFolder: rootInput.text
+        onAccepted: rootInput.text = selectedPath
     }
     // The header exports the selected chat as Markdown; project memory stays JSON.
-    FileDialog {
+    KiraFileDialog {
         id: exportDialog; objectName: "projectExportDialog"; title: window.memoryExport ? qsTr("Esporta memoria") : qsTr("Esporta chat")
-        fileMode: FileDialog.SaveFile
+        mode: "save"; purpose: "export"
+        suggestedName: window.exportName(window.memoryExport ? qsTr("memoria") : qsTr("chat"))
         nameFilters: window.memoryExport ? [qsTr("JSON (*.json)"), qsTr("Testo (*.txt)"), qsTr("Tutti i file (*)")] : [qsTr("Markdown (*.md)")]
         defaultSuffix: window.memoryExport ? "json" : "md"
         onAccepted: { if (window.memoryExport) workspace.exportMemory(selectedFile.toString()); else workspace.exportTranscript(selectedFile.toString()) }

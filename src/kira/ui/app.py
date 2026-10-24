@@ -6,11 +6,13 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer, QUrl
 from PySide6.QtGui import QFont, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from kira import __version__
 from kira.ui.appearance import Appearance
 from kira.ui.attachments import AttachmentInputs
+from kira.ui.file_browser import FileBrowser
 from kira.ui.browser_frames import BrowserFrames
 from kira.ui.context_controller import ContextController
 from kira.ui.controller import Workspace
@@ -48,6 +50,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         attachment_inputs = AttachmentInputs(workspace.paths.data, engine, workspace=workspace)
         localization.changed.connect(attachment_inputs.retranslate)
         engine.rootContext().setContextProperty("attachmentInputs", attachment_inputs)
+        engine.rootContext().setContextProperty("fileBrowser", FileBrowser(workspace, engine))
         if isinstance(app, QGuiApplication):
             app.installEventFilter(attachment_inputs)
         engine.rootContext().setContextProperty("markdownRenderer", MarkdownRenderer(engine, appearance))
@@ -79,6 +82,48 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
     return engine
 
 
+def show_launch_splash(workspace: Workspace) -> QQmlApplicationEngine | None:
+    """A still picture of Kira while the main interface is being built."""
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("appearance", Appearance(workspace, engine))
+    directory = Path(__file__).parent / "qml"
+    # The first QML load of the process fixes the cache location for all of them.
+    with qml_disk_cache(directory, "Kira Desktop"):
+        engine.load(QUrl.fromLocalFile(str(directory / "KiraSplash.qml")))
+    roots = engine.rootObjects()
+    if not roots:
+        engine.deleteLater()
+        return None
+    roots[0].setProperty("version", __version__)
+    for _ in range(3):
+        QCoreApplication.processEvents()
+    return engine
+
+
+def close_launch_splash(splash: QQmlApplicationEngine | None, main_engine: QQmlApplicationEngine) -> None:
+    """Hand over to the main window once it has drawn its first frame."""
+    if splash is None:
+        return
+    closed = False
+
+    def close() -> None:
+        nonlocal closed
+        if closed:
+            return
+        closed = True
+        for root in splash.rootObjects():
+            if isinstance(root, QQuickWindow):
+                root.close()
+        splash.deleteLater()
+
+    windows = main_engine.rootObjects()
+    if windows and isinstance(windows[0], QQuickWindow):
+        windows[0].frameSwapped.connect(close)
+        QTimer.singleShot(4000, close)
+    else:
+        close()
+
+
 def main() -> int:
     configure_graphics()
     QQuickStyle.setStyle("Basic")
@@ -88,7 +133,11 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     app.setDesktopFileName("kira-desktop")
     workspace = Workspace()
+    # Before the interface loads, so the loading screen is opaque from its first frame.
+    workspace.beginStartupScreen()
+    splash = show_launch_splash(workspace)
     engine = create_engine(workspace)
+    close_launch_splash(splash, engine)
     if not engine.rootObjects():
         return 1
     QTimer.singleShot(0, workspace.start)
