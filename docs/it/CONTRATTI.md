@@ -790,10 +790,13 @@ prompt, configurazione ed eventi, verifica dell'UID del peer).
 
 - **GUI e servizio devono avere la stessa versione.** `hello` restituisce
   `app_version`; la GUI rifiuta un servizio diverso prima di inviare qualsiasi
-  comando. Per aggiornare segui la procedura unica in
-  [Installazione](INSTALLAZIONE.md): finisci il lavoro, metti in pausa la
-  coda, chiudi il browser, fai il backup, chiudi la GUI, ferma il servizio con
-  `kira-desktop stop-service`, aggiorna, riavvia.
+  comando. Per aggiornare segui [Installazione](INSTALLAZIONE.md#aggiornamento):
+  a mano finisci il lavoro, metti in pausa la coda, chiudi il browser, fai il
+  backup, chiudi la GUI, ferma il servizio con `kira-desktop stop-service`,
+  aggiorna, riavvia. L'aggiornamento da Kira chiama `database.backup`, poi
+  `service.shutdown` dopo aver smesso di riavviare il servizio; un `BUSY` lascia
+  tutto com'era e il servizio resta attivo. Dopo l'installazione riavvia
+  l'interfaccia, che avvia il servizio della nuova versione.
 - **Il database si aggiorna da solo.** All'avvio su un database più vecchio il
   servizio crea prima un backup privato coerente e poi applica le modifiche in
   una transazione, senza riscrivere né cancellare le righe esistenti: progetti,

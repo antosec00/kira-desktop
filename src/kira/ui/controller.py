@@ -307,6 +307,8 @@ class Workspace(QObject):
         self._diagnostics_loading = False
         self._diagnostics_export_path = ""
         self._service_recovery_pending = False
+        # An update stops the service on purpose: it must not be restarted meanwhile.
+        self._service_hold = False
         self._service_recovery_timer = QTimer(self)
         self._service_recovery_timer.setSingleShot(True)
         self._service_recovery_timer.setInterval(5000)
@@ -1567,8 +1569,17 @@ class Workspace(QObject):
         self.changed.emit()
         self._recover_local_service()
 
+    def holdService(self, hold: bool) -> None:
+        """While held, a stopped service is not restarted (an update is running)."""
+        self._service_hold = hold
+        if hold:
+            self._service_recovery_timer.stop()
+        else:
+            self._recover_local_service()
+
     def _recover_local_service(self) -> None:
-        if self._connected_value or self._service_recovery_pending or self.client.incompatible:
+        if (self._connected_value or self._service_recovery_pending or self.client.incompatible
+                or self._service_hold):
             return
         self._service_recovery_pending = True
         job = BackgroundJob(lambda: asyncio.run(ensure_service(self.paths)), self)

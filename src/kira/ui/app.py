@@ -24,6 +24,7 @@ from kira.ui.markdown import MarkdownRenderer
 from kira.ui.metrics import MetricsPresenter
 from kira.ui.qml_cache import qml_disk_cache
 from kira.ui.research_controller import ResearchController
+from kira.ui.updates import Updates
 
 
 def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
@@ -51,6 +52,9 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         localization.changed.connect(attachment_inputs.retranslate)
         engine.rootContext().setContextProperty("attachmentInputs", attachment_inputs)
         engine.rootContext().setContextProperty("fileBrowser", FileBrowser(workspace, engine))
+        updates = Updates(workspace, engine)
+        localization.changed.connect(updates.changed)
+        engine.rootContext().setContextProperty("updates", updates)
         if isinstance(app, QGuiApplication):
             app.installEventFilter(attachment_inputs)
         engine.rootContext().setContextProperty("markdownRenderer", MarkdownRenderer(engine, appearance))
@@ -141,6 +145,9 @@ def main() -> int:
     if not engine.rootObjects():
         return 1
     QTimer.singleShot(0, workspace.start)
+    updates = engine.rootContext().contextProperty("updates")
+    if isinstance(updates, Updates):
+        updates.startAutomaticChecks()
     result = app.exec()
     workspace.close()
     engine.deleteLater()

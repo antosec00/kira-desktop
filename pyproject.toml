@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kira-desktop"
-version = "0.19.0"
+version = "0.20.0"
 description = "A native desktop harness for AI projects, chats, tools and collaborating agents"
 readme = "README.md"
 license = "MIT"
@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "PySide6-Essentials==6.11.2",
+    "cryptography==50.0.2",
     "httpx==0.28.1",
     "markdown-it-py==4.0.0",
     "pydantic==2.12.5",

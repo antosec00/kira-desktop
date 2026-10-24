@@ -8,7 +8,10 @@
 ```sh
 cd "$(mktemp -d)"
 wget https://github.com/__REPOSITORY__/releases/download/__TAG__/kira-desktop_ubuntu24.04_amd64.deb \
-     https://github.com/__REPOSITORY__/releases/download/__TAG__/SHA256SUMS
+     https://github.com/__REPOSITORY__/releases/download/__TAG__/SHA256SUMS \
+     https://github.com/__REPOSITORY__/releases/download/__TAG__/SHA256SUMS.sig \
+     https://raw.githubusercontent.com/__REPOSITORY__/__COMMIT__/packaging/release-signing-key.pub.pem
+openssl pkeyutl -verify -pubin -inkey release-signing-key.pub.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
 sha256sum --check --ignore-missing SHA256SUMS
 sudo apt install --no-remove ./kira-desktop_ubuntu24.04_amd64.deb
 kira

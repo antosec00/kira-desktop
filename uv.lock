@@ -377,9 +377,10 @@ wheels = [
 
 [[package]]
 name = "kira-desktop"
-version = "0.19.0"
+version = "0.20.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "httpx" },
     { name = "markdown-it-py" },
     { name = "playwright" },
@@ -406,6 +407,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "claude-agent-sdk", marker = "extra == 'claude-code'", specifier = "==0.2.168" },
+    { name = "cryptography", specifier = "==50.0.2" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "markdown-it-py", specifier = "==4.0.0" },
     { name = "playwright", specifier = "==1.64.0" },

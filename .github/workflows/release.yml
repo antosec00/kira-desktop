@@ -2,8 +2,9 @@ name: Release packages
 # Run by hand. On any branch it builds both Ubuntu packages with the same scripts
 # used locally and validates each one in a disposable container. Only on main
 # does a separate job, the only one with write access, attach them to a draft
-# release for the version in pyproject.toml. Publishing the draft (which
-# creates the tag) stays a manual step on GitHub.
+# release for the version in pyproject.toml, with SHA256SUMS signed for the
+# in-app update. Publishing the draft (which creates the tag) stays a manual
+# step on GitHub.
 on:
   workflow_dispatch:
 permissions:
@@ -88,6 +89,42 @@ jobs:
         with:
           name: release-assets
           path: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          path: source
+          sparse-checkout: |
+            packaging/release-signing-key.pub.pem
+            packaging/release-signing-key.previous.pub.pem
+          sparse-checkout-cone-mode: false
+      - name: Sign the checksums
+        # Kira installs an update only when SHA256SUMS.sig verifies with the public
+        # key built into it; packaging/release-signing-key.pub.pem is that key. While
+        # the key is replaced, the release that ships the new key is still signed
+        # with the old one, kept as release-signing-key.previous.pub.pem.
+        env:
+          SIGNING_KEY: ${{ secrets.KIRA_RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::The KIRA_RELEASE_SIGNING_KEY secret is missing; unsigned releases are not published"
+            exit 1
+          fi
+          key="$RUNNER_TEMP/release-signing-key.pem"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$SIGNING_KEY" > "$key")
+          cd release/release-assets
+          openssl pkeyutl -sign -inkey "$key" -rawin -in SHA256SUMS -out SHA256SUMS.sig
+          keys="$GITHUB_WORKSPACE/source/packaging"
+          for public in "$keys/release-signing-key.pub.pem" "$keys/release-signing-key.previous.pub.pem"; do
+            if [ -f "$public" ] && openssl pkeyutl -verify -pubin -inkey "$public" \
+                -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig; then
+              echo "Signed for ${public##*/}"
+              exit 0
+            fi
+          done
+          echo "::error::The signing key matches no public key in packaging/"
+          exit 1
       - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}

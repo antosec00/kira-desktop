@@ -244,8 +244,9 @@ Tutti i dati di Kira restano in locale, nelle cartelle del tuo utente:
 
 - progetti, chat, eventi, ricevute, Team, coda, obiettivi e impostazioni nel
   database SQLite `kira.sqlite3` sotto `$HOME/.local/share/kira/`;
-- artefatti, allegati, immagini, schermate, diagnostica ed esportazioni nelle
-  sottocartelle dello stesso percorso;
+- artefatti, allegati, immagini, schermate, diagnostica, esportazioni e
+  pacchetti scaricati dagli aggiornamenti nelle sottocartelle dello stesso
+  percorso;
 - preferenze grafiche, bozze e accessi ai provider gestiti da Kira in
   `$HOME/.config/kira/`;
 - stato, log e bozze di Anima, Ricerca e strumenti di progetto in
@@ -257,10 +258,25 @@ permessi 0600. I file e le cartelle che gli strumenti e i comandi di Kira creano
 nei tuoi progetti hanno invece i permessi consueti (0644 e 0755).
 
 Kira non invia telemetria: non ci sono statistiche d'uso, segnalazioni
-automatiche di errori o aggiornamenti scaricati in silenzio. Il traffico di rete
-va soltanto ai provider che hai collegato, ai siti aperti nel browser integrato
-(da te o dall'agente, comprese le ricerche Google di `browser.search`) e, quando
-lo esegui tu, al download del motore con `kira-desktop browser-install`.
+automatiche di errori o aggiornamenti scaricati o installati in silenzio. Il
+traffico di rete va soltanto ai provider che hai collegato, ai siti aperti nel
+browser integrato (da te o dall'agente, comprese le ricerche Google di
+`browser.search`), ai controlli degli aggiornamenti descritti sotto e, quando lo
+esegui tu, al download del motore con `kira-desktop browser-install`.
+
+Il controllo degli aggiornamenti (8 secondi dopo l'avvio e ogni 24 ore, da
+disattivare in **Impostazioni → Dati locali → Aggiornamenti**) chiede a
+`api.github.com` l'ultima release; in un checkout dei sorgenti esegue invece
+`git fetch` sul remoto del checkout, senza mai chiedere credenziali. Il
+pacchetto si scarica dagli indirizzi di GitHub che servono i file delle release
+solo dopo **Aggiorna ora**. Oltre allo User-Agent `Kira-Desktop/<versione>` non
+parte alcun dato su di te. Nulla si installa senza che tu prema **Aggiorna
+ora**: Kira fa prima un backup coerente del database, accetta il pacchetto solo
+se la firma Ed25519 di `SHA256SUMS` è valida per la chiave integrata nell'app e
+l'impronta SHA-256 corrisponde, procede solo se il servizio inattivo accetta di
+fermarsi e installa con `pkexec apt-get install -y --no-remove`, che chiede la
+password del sistema, oppure ti mostra il comando `sudo apt install` da
+eseguire tu. I passi sono in [Installazione](INSTALLAZIONE.md#aggiornare-da-kira).
 
 ### Credenziali
 

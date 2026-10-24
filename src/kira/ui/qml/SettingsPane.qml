@@ -7,6 +7,7 @@ Item {
     objectName: "settingsPage"
     signal diagnosticsRequested()
     signal soulsRequested()
+    signal updateRequested()
     property int selectedSection: 0
     function showSection(index) {
         selectedSection = index
@@ -350,6 +351,53 @@ Item {
                         KButton { objectName: "settingsResourcesButton"; text: qsTr("Aggiorna risorse"); enabled: workspace.connected; onClicked: workspace.refreshResources() }
                     }
                     ReadText { text: workspace.resourcesText; Layout.fillWidth: true; font: appearance.codeFont }
+                    Rule {}
+                    Heading { text: qsTr("Aggiornamenti") }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 20
+                        Label { text: qsTr("Cerca aggiornamenti all’avvio e ogni giorno") }
+                        Toggle {
+                            objectName: "checkUpdatesChoice"
+                            checked: updates.enabled
+                            onToggled: updates.setEnabled(checked)
+                            Accessible.name: qsTr("Cerca aggiornamenti all’avvio e ogni giorno")
+                        }
+                    }
+                    Note {
+                        text: updates.kind === "source"
+                              ? qsTr("Questa è una cartella dei sorgenti: Kira controlla il ramo remoto con git e aggiorna con git e uv.")
+                              : updates.kind === "package"
+                                ? qsTr("Kira chiede a GitHub l’ultima release, scarica il pacchetto per la tua versione di Ubuntu e lo installa solo se la firma è valida.")
+                                : qsTr("Questa installazione non si aggiorna da Kira: usa la pagina delle release.")
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        KButton {
+                            objectName: "settingsCheckUpdates"
+                            text: updates.state === "checking" ? qsTr("Controllo in corso…") : qsTr("Cerca aggiornamenti")
+                            iconName: "refresh"
+                            enabled: updates.state !== "checking" && updates.state !== "updating"
+                            onClicked: updates.check()
+                        }
+                        KButton {
+                            objectName: "settingsOpenUpdate"
+                            visible: updates.available
+                            text: qsTr("Aggiorna a %1").arg(updates.latestVersion); primary: true
+                            onClicked: settingsPage.updateRequested()
+                        }
+                    }
+                    Note {
+                        objectName: "settingsUpdateStatus"
+                        visible: text.length > 0
+                        text: updates.state === "checking" ? ""
+                              : (updates.message.length ? updates.message
+                                 : updates.available ? qsTr("È disponibile Kira %1.").arg(updates.latestVersion) : "")
+                              + (updates.lastChecked.length ? (updates.message.length || updates.available ? "\n" : "")
+                                 + qsTr("Ultimo controllo: %1").arg(updates.lastChecked) : "")
+                    }
                     Rule {}
                     Heading { text: qsTr("Scorciatoie") }
                     Note { objectName: "settingsShortcuts"; text: qsTr("Ctrl+Invio · Invia messaggio\nCtrl+B · Barra laterale: intera, solo icone o nascosta\nCtrl+K · Cerca progetti e azioni\nCtrl+N · Nuovo progetto\nCtrl+L · Scrivi nella chat\nCtrl+Shift+N · Nuova chat nel progetto\nCtrl+Shift+P · Azioni rapide\nCtrl+Shift+R · Riprendi lavoro\nCtrl+Shift+Q · Apri le domande\nCtrl+Shift+C · Copia la conversazione") }

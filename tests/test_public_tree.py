@@ -29,6 +29,16 @@ def test_standard_paths_and_scoped_fixture_exceptions():
     assert inspect_content("README.md", fixture) == {"personal-home-path"}
 
 
+def test_only_a_public_key_passes_as_a_published_pem():
+    public = (Path(__file__).resolve().parents[1] / "packaging/release-signing-key.pub.pem").read_bytes()
+    assert inspect_content("packaging/release-signing-key.pub.pem", public) == set()
+    assert "private-file-or-raw-report" in inspect_content("packaging/release-signing-key.pem", public)
+    marker = b"PRIVATE" + b" KEY-----"
+    private = b"-----BEGIN " + marker + b"\nsynthetic\n-----END " + marker + b"\n"
+    assert "private-file-or-raw-report" in inspect_content("packaging/release-signing-key.pub.pem", private)
+    assert "private-file-or-raw-report" in inspect_content("packaging/x.pub.pem", public + private)
+
+
 def test_credential_database_and_unreviewed_image_rejected():
     token = b"ghp_" + b"X" * 36
     assert inspect_content("config.txt", token) == {"github-token"}

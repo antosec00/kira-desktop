@@ -237,8 +237,8 @@ All of Kira's data stays local, in your user's folders:
 
 - projects, chats, events, receipts, Teams, queue, goals and settings in the
   SQLite database `kira.sqlite3` under `$HOME/.local/share/kira/`;
-- artifacts, attachments, images, screenshots, diagnostics and exports in the
-  subfolders of the same path;
+- artifacts, attachments, images, screenshots, diagnostics, exports and the
+  packages downloaded by updates in the subfolders of the same path;
 - interface preferences, drafts and the provider sign-ins managed by Kira in
   `$HOME/.config/kira/`;
 - state, logs and the drafts of Soul, Research and project tools in
@@ -250,10 +250,25 @@ described in [Installation](INSTALLATION.md). Private files are created with
 your projects get the usual permissions (0644 and 0755) instead.
 
 Kira sends no telemetry: there are no usage statistics, automatic error reports
-or silently downloaded updates. Network traffic goes only to the providers you
-have connected, to the sites opened in the integrated browser (by you or by the
-agent, including the Google searches of `browser.search`) and, when you run it
-yourself, to the engine download of `kira-desktop browser-install`.
+or silently downloaded or installed updates. Network traffic goes only to the
+providers you have connected, to the sites opened in the integrated browser (by
+you or by the agent, including the Google searches of `browser.search`), to the
+update checks described below and, when you run it yourself, to the engine
+download of `kira-desktop browser-install`.
+
+The update check (8 seconds after startup and every 24 hours, which you can turn
+off in **Settings → Local data → Updates**) asks `api.github.com` for the latest
+release; in a source checkout it runs `git fetch` on the checkout's remote
+instead, never asking for credentials. The package is downloaded from the
+GitHub addresses that serve the release files only after **Update now**. Apart
+from the User-Agent `Kira-Desktop/<version>` no data about you is sent. Nothing
+is installed unless you press **Update now**: Kira first makes a consistent
+database backup, accepts the package only when the Ed25519 signature of
+`SHA256SUMS` is valid for the key built into the app and the SHA-256 checksum
+matches, goes ahead only if the idle service agrees to stop, and installs with
+`pkexec apt-get install -y --no-remove`, which asks for the system password, or
+shows you the `sudo apt install` command to run yourself. The steps are in
+[Installation](INSTALLATION.md#updating-from-kira).
 
 ### Credentials
 
