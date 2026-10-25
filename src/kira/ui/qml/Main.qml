@@ -1550,6 +1550,21 @@ ApplicationWindow {
                     ColumnLayout {
                         id: modelsPage
                         readonly property real sideMargin: modelsScroll.availableWidth < 900 ? 24 : Math.max(28, (modelsScroll.availableWidth - 960) / 2)
+                        // With a chat open, the provider buttons only show and configure a
+                        // provider; "Usa modello" is what moves the chat to it.
+                        property string viewedBackend: ""
+                        readonly property bool foreign: viewedBackend.length > 0 && viewedBackend !== workspace.backend && workspace.sessionId.length > 0
+                        readonly property string shownBackend: foreign ? viewedBackend : workspace.backend
+                        readonly property var viewedCatalog: { workspace.models; return foreign ? workspace.catalogFor(viewedBackend) : ({}) }
+                        function show(backend) {
+                            if (workspace.sessionId.length === 0 || backend === workspace.backend) {
+                                viewedBackend = ""
+                                workspace.setBackend(backend)
+                            } else {
+                                viewedBackend = backend
+                                workspace.discover(backend)
+                            }
+                        }
                         width: modelsScroll.availableWidth; spacing: 18
                         RowLayout {
                             Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; Layout.topMargin: 30
@@ -1558,17 +1573,17 @@ ApplicationWindow {
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Il modello giusto, scelto da te."); color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 11; font.weight: Font.DemiBold; font.letterSpacing: -0.2; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("La scelta riguarda Kira. La configurazione globale di Codex resta tua."); color: appearance.colors.textSecondary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             }
-                            KButton { objectName: "modelsRefreshButton"; text: qsTr("Aggiorna"); iconName: "refresh"; onClicked: workspace.discover(workspace.backend); toolTipText: qsTr("Aggiorna il catalogo del provider selezionato") }
+                            KButton { objectName: "modelsRefreshButton"; text: qsTr("Aggiorna"); iconName: "refresh"; onClicked: workspace.discover(modelsPage.shownBackend); toolTipText: qsTr("Aggiorna il catalogo del provider selezionato") }
                         }
                         // Providers are a segmented row; the selected one carries the page.
                         Flow {
                             Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; spacing: 6
-                            KButton { objectName: "ollamaBackendButton"; text: "Ollama"; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "ollama"; onClicked: workspace.setBackend("ollama") }
-                            KButton { objectName: "codexBackendButton"; text: "Codex"; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "codex"; onClicked: workspace.setBackend("codex") }
-                            KButton { objectName: "directBackendButton"; text: qsTr("OpenAI diretto · ChatGPT"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "openai_chatgpt"; onClicked: workspace.setBackend("openai_chatgpt") }
-                            KButton { objectName: "deepseekBackendButton"; text: qsTr("DeepSeek Account"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "deepseek_account"; onClicked: workspace.setBackend("deepseek_account") }
-                            KButton { objectName: "deepseekWebBackendButton"; text: qsTr("DeepSeek Web · sperimentale"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "deepseek_web"; onClicked: workspace.setBackend("deepseek_web") }
-                            KButton { objectName: "claudeCodeBackendButton"; text: qsTr("Claude Code · uso personale"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: workspace.backend === "claude_code"; onClicked: workspace.setBackend("claude_code") }
+                            KButton { objectName: "ollamaBackendButton"; text: "Ollama"; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "ollama"; onClicked: modelsPage.show("ollama") }
+                            KButton { objectName: "codexBackendButton"; text: "Codex"; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "codex"; onClicked: modelsPage.show("codex") }
+                            KButton { objectName: "directBackendButton"; text: qsTr("OpenAI diretto · ChatGPT"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "openai_chatgpt"; onClicked: modelsPage.show("openai_chatgpt") }
+                            KButton { objectName: "deepseekBackendButton"; text: qsTr("DeepSeek Account"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "deepseek_account"; onClicked: modelsPage.show("deepseek_account") }
+                            KButton { objectName: "deepseekWebBackendButton"; text: qsTr("DeepSeek Web · sperimentale"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "deepseek_web"; onClicked: modelsPage.show("deepseek_web") }
+                            KButton { objectName: "claudeCodeBackendButton"; text: qsTr("Claude Code · uso personale"); cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "claude_code"; onClicked: modelsPage.show("claude_code") }
                         }
                         // One status line: what the provider reported and the one action that follows.
                         Rectangle {
@@ -1578,25 +1593,25 @@ ApplicationWindow {
                             color: appearance.colors.surface; border.color: appearance.colors.border
                             RowLayout {
                                 id: providerStatusRow; anchors.fill: parent; anchors.margins: 12; anchors.leftMargin: 16; spacing: 12
-                                Rectangle { objectName: "providerStatusDot"; width: 10; height: 10; radius: 5; color: workspace.providerState === "error" ? appearance.colors.danger : workspace.providerState === "ok" ? appearance.colors.success : workspace.providerState === "warning" ? appearance.colors.warning : muted; Layout.alignment: Qt.AlignVCenter }
-                                ReadText { objectName: "providerStatusText"; text: workspace.providerText; Layout.fillWidth: true; color: workspace.providerUnavailable ? appearance.colors.danger : appearance.colors.text; wrapMode: Text.Wrap }
-                                KButton { objectName: "codexLoginButton"; text: qsTr("Accedi con Codex"); iconName: "external"; visible: workspace.backend === "codex"; onClicked: workspace.login() }
+                                Rectangle { objectName: "providerStatusDot"; width: 10; height: 10; radius: 5; color: modelsPage.foreign ? (modelsPage.viewedCatalog.available ? appearance.colors.success : modelsPage.viewedCatalog.error ? appearance.colors.warning : muted) : workspace.providerState === "error" ? appearance.colors.danger : workspace.providerState === "ok" ? appearance.colors.success : workspace.providerState === "warning" ? appearance.colors.warning : muted; Layout.alignment: Qt.AlignVCenter }
+                                ReadText { objectName: "providerStatusText"; text: !modelsPage.foreign ? workspace.providerText : modelsPage.viewedCatalog.available ? qsTr("%1 modelli disponibili. Questa chat usa %2: con «Usa modello» la continui con %3.").arg((modelsPage.viewedCatalog.models || []).length).arg(kformat.providerLabel(workspace.backend)).arg(kformat.providerLabel(modelsPage.viewedBackend)) : modelsPage.viewedCatalog.error ? qsTr("%1 non è ancora pronto: %2").arg(kformat.providerLabel(modelsPage.viewedBackend)).arg(modelsPage.viewedCatalog.error) : qsTr("Caricamento dei modelli…"); Layout.fillWidth: true; color: !modelsPage.foreign && workspace.providerUnavailable ? appearance.colors.danger : appearance.colors.text; wrapMode: Text.Wrap }
+                                KButton { objectName: "codexLoginButton"; text: qsTr("Accedi con Codex"); iconName: "external"; visible: modelsPage.shownBackend === "codex"; onClicked: workspace.login() }
                             }
                         }
-                        DirectAccountPane { objectPrefix: "modelsChatGPT"; visible: workspace.backend === "openai_chatgpt"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
-                        DeepSeekAccountPane { visible: workspace.backend === "deepseek_account"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
-                        DeepSeekWebPane { objectName: "deepseekWebPane"; visible: workspace.backend === "deepseek_web"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
-                        ReadText { objectName: "claudeCodePersonalNotice"; visible: workspace.backend === "claude_code"; text: qsTr("Claude Code usa l'accesso già fatto nel tuo Claude Code locale: Kira non legge né conserva le credenziali. Solo per uso personale: non distribuire Kira con questo provider. I permessi del progetto decidono gli strumenti di Claude Code; Kira blocca i percorsi fuori dal progetto e registra le azioni osservate."); Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; color: muted; wrapMode: Text.Wrap }
+                        DirectAccountPane { objectPrefix: "modelsChatGPT"; visible: modelsPage.shownBackend === "openai_chatgpt"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        DeepSeekAccountPane { visible: modelsPage.shownBackend === "deepseek_account"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        DeepSeekWebPane { objectName: "deepseekWebPane"; visible: modelsPage.shownBackend === "deepseek_web"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        ReadText { objectName: "claudeCodePersonalNotice"; visible: modelsPage.shownBackend === "claude_code"; text: qsTr("Claude Code usa l'accesso già fatto nel tuo Claude Code locale: Kira non legge né conserva le credenziali. Solo per uso personale: non distribuire Kira con questo provider. I permessi del progetto decidono gli strumenti di Claude Code; Kira blocca i percorsi fuori dal progetto e registra le azioni osservate."); Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; color: muted; wrapMode: Text.Wrap }
                         GridLayout {
                             Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin
                             columns: modelsScroll.availableWidth - modelsPage.sideMargin * 2 < 700 ? 1 : 2; columnSpacing: 14; rowSpacing: 14
                             Repeater {
-                                model: workspace.models
+                                model: modelsPage.foreign ? (modelsPage.viewedCatalog.models || []) : workspace.models
                                 delegate: Rectangle {
                                     id: modelCard
                                     required property var modelData
                                     objectName: "modelCard_" + modelData.id
-                                    readonly property bool selected: workspace.selectedModel === modelData.id
+                                    readonly property bool selected: !modelsPage.foreign && workspace.selectedModel === modelData.id
                                     readonly property var efforts: (modelData.supported_reasoning_efforts || []).map(function(value) { return typeof value === "string" ? value : String(value.reasoningEffort || value.reasoning_effort || "") })
                                     // Cards in one row share their height; the action stays at the bottom.
                                     Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumWidth: 0
@@ -1611,8 +1626,8 @@ ApplicationWindow {
                                             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelCard.modelData.name || modelCard.modelData.id; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 4; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Text { font.family: appearance.codeFont.family; textFormat: Text.PlainText; text: modelCard.modelData.id; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); elide: Text.ElideMiddle; Layout.maximumWidth: 200 }
                                         }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: workspace.backend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : workspace.backend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : workspace.backend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["openai_chatgpt", "deepseek_account"].indexOf(workspace.backend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelSize_" + modelCard.modelData.id; visible: !!modelCard.modelData.size_bytes || workspace.backend === "ollama"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg(Number(modelCard.modelData.size_bytes / 1073741824).toLocaleString(Qt.locale(localization.language), "f", 2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelsPage.shownBackend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : modelsPage.shownBackend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : modelsPage.shownBackend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["openai_chatgpt", "deepseek_account"].indexOf(modelsPage.shownBackend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelSize_" + modelCard.modelData.id; visible: !!modelCard.modelData.size_bytes || modelsPage.shownBackend === "ollama"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg(Number(modelCard.modelData.size_bytes / 1073741824).toLocaleString(Qt.locale(localization.language), "f", 2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
                                         Flow {
                                             visible: modelCard.efforts.length > 0
                                             Layout.fillWidth: true; spacing: 4
@@ -1631,7 +1646,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true; Layout.topMargin: 4
                                             Item { Layout.fillWidth: true }
                                             Text { visible: modelCard.selected; font.family: appearance.uiFont.family; textFormat: Text.PlainText; text: qsTr("Selezionato"); color: appearance.colors.accent; font.weight: Font.DemiBold; font.pixelSize: appearance.uiFont.pixelSize }
-                                            KButton { objectName: "useModel_" + modelCard.modelData.id; visible: !modelCard.selected; text: qsTr("Usa modello"); enabled: !workspace.busy && !assistant.active; onClicked: { workspace.setModel(modelCard.modelData.id); if (hasProject) window.page = 0 } }
+                                            KButton { objectName: "useModel_" + modelCard.modelData.id; visible: !modelCard.selected; text: qsTr("Usa modello"); enabled: !workspace.busy && !assistant.active; onClicked: { if (modelsPage.foreign) { providerSwitch.chooseModel(modelsPage.viewedBackend, modelCard.modelData.id); return } workspace.setModel(modelCard.modelData.id); if (hasProject) window.page = 0 } }
                                         }
                                     }
                                 }
@@ -1639,6 +1654,7 @@ ApplicationWindow {
                         }
                         // Raw provider data stay available, folded by default.
                         Rectangle {
+                            visible: !modelsPage.foreign
                             Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; Layout.bottomMargin: 30
                             implicitHeight: catalogColumn.implicitHeight + 2; radius: 12
                             color: appearance.colors.surface; border.color: appearance.colors.border
@@ -1783,7 +1799,11 @@ ApplicationWindow {
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
     ActionDialog { id: actionDialog; parent: Overlay.overlay; onProjectSelected: { window.page = 0; window.followOutput = true } }
     DiagnosticsDialog { id: diagnosticsDialog; parent: Overlay.overlay }
-    ProviderSwitchDialog { id: providerSwitchDialog; parent: Overlay.overlay }
+    ProviderSwitchDialog {
+        id: providerSwitchDialog; parent: Overlay.overlay
+        // A provider without access yet: show its setup on the models page.
+        onConfigureRequested: function(backend) { window.page = 1; modelsPage.viewedBackend = backend; workspace.discover(backend) }
+    }
     // The guide only navigates: provider, model and account stay the user's choice.
     OnboardingDialog { id: onboardingDialog; parent: Overlay.overlay; onCreateRequested: newProject.open(); onModelsRequested: window.page = 1 }
 

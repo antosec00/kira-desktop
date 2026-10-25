@@ -1034,6 +1034,11 @@ class Workspace(QObject):
         bound = self._session.get("settings", {}).get("openai_account_id") if self._backend == "openai_chatgpt" else ""
         return str(bound or self.directAccount.activeAccountId)
 
+    @Slot(str, result="QVariantMap")
+    def catalogFor(self, backend: str) -> Json:
+        """The models page shows another provider's catalog while the chat keeps its own."""
+        return deepcopy(self.provider_catalog(backend) or {})
+
     def provider_catalog(self, backend: str | None = None, account_id: str | None = None) -> Json | None:
         backend = backend or self._backend
         if backend != "openai_chatgpt":

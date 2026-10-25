@@ -119,6 +119,14 @@ class ProviderSwitchController(QObject):
 
     @Slot(str)
     def begin(self, backend: str) -> None:
+        self._begin(backend, "")
+
+    @Slot(str, str)
+    def chooseModel(self, backend: str, model: str) -> None:
+        """Continue the chat with a model picked on the models page; the user still confirms."""
+        self._begin(backend, model)
+
+    def _begin(self, backend: str, preset: str) -> None:
         if (backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
                             "claude_code"} or not self.workspace.sessionId
                 or not self.workspace.connected or self.workspace.busy or self.workspace.teams.busy
@@ -139,8 +147,8 @@ class ProviderSwitchController(QObject):
             if generation != self._generation or self._context != self._stamp():
                 return
             row: Json = next((row for row in result.get("providers", []) if row.get("backend") == backend), {})
-            self._model = str(row.get("model") or "")
-            self._effort = str(row.get("reasoning_effort") or "")
+            self._model = preset or str(row.get("model") or "")
+            self._effort = "" if preset and preset != row.get("model") else str(row.get("reasoning_effort") or "")
             if backend == "openai_chatgpt":
                 self._account = str(row.get("account_id") or self.workspace.directAccount.activeAccountId)
             self.refreshCatalog()

@@ -164,3 +164,92 @@ def test_direct_provider_can_reopen_account_choice_without_new_chat(view):
     workspace.setBackend("openai_chatgpt")
     assert calls[-1][0] == "session.providers"
     assert workspace.sessionId == "chat" and workspace.draftText == "Literal unfinished draft"
+
+
+def models_window(view):
+    from kira.ui.app import create_engine
+
+    workspace, _ = view
+    workspace._preferences["onboarding_complete"] = True
+    engine = create_engine(workspace)
+    window = engine.rootObjects()[0]
+    window.resize(1200, 800)
+    window.setProperty("page", 1)
+    return engine, window
+
+
+def close_window(engine, window):
+    window.setProperty("closeConfirmed", True)
+    window.close()
+    engine.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def visual(root, name):
+    if root.objectName() == name:
+        return root
+    for child in root.childItems():
+        if (found := visual(child, name)) is not None:
+            return found
+    return None
+
+
+def click(window, name):
+    from PySide6.QtCore import QMetaObject, QObject
+
+    button = window.findChild(QObject, name) or visual(window.contentItem(), name)
+    assert button is not None and button.property("visible"), name
+    QMetaObject.invokeMethod(button, "clicked")
+
+
+def test_models_page_shows_another_provider_without_switching_the_chat(view, qtbot, qtlog):
+    from PySide6.QtCore import QObject
+
+    workspace, calls = view
+    engine, window = models_window(view)
+    try:
+        qtbot.wait(40)
+        click(window, "deepseekWebBackendButton")
+        qtbot.wait(40)
+        # The setup pane is reachable and the chat keeps its provider: no switch dialog.
+        assert window.findChild(QObject, "deepseekWebPane").property("visible")
+        assert not window.findChild(QObject, "providerSwitchDialog").property("visible")
+        assert workspace.backend == "codex"
+        discover = [call for call in calls if call[:2] == ("backend.discover", {"backend": "deepseek_web"})]
+        discover[-1][2]({"available": True, "models": [{"id": "deepseek-reasoner", "name": "DeepSeek Reasoner"}]})
+        qtbot.wait(40)
+        assert visual(window.contentItem(), "modelCard_deepseek-reasoner") is not None
+        assert "Codex" in window.findChild(QObject, "providerStatusText").property("text")
+        # "Usa modello" continues the chat with that model, after the usual confirmation.
+        click(window, "useModel_deepseek-reasoner")
+        qtbot.wait(40)
+        assert window.findChild(QObject, "providerSwitchDialog").property("visible")
+        calls[-1][2]({"providers": [{"backend": "deepseek_web", "model": "", "reasoning_effort": ""}]})
+        calls[-1][2]({"available": True, "models": [{"id": "deepseek-reasoner", "name": "DeepSeek Reasoner"}]})
+        qtbot.wait(40)
+        assert workspace.providerSwitch.model == "deepseek-reasoner" and workspace.providerSwitch.canApply
+        assert workspace.backend == "codex"
+        assert not any("ReferenceError" in r.message or "TypeError" in r.message for r in qtlog.records)
+    finally:
+        close_window(engine, window)
+
+
+def test_switch_dialog_leads_to_the_setup_of_a_provider_without_access(view, qtbot):
+    from PySide6.QtCore import QObject
+
+    workspace, calls = view
+    engine, window = models_window(view)
+    try:
+        window.setProperty("page", 0)
+        workspace.setBackend("deepseek_web")
+        calls[-1][2]({"providers": []})
+        calls[-1][2]({"available": False, "models": [], "error": "No DeepSeek web token configured"})
+        qtbot.wait(40)
+        dialog = window.findChild(QObject, "providerSwitchDialog")
+        assert dialog.property("visible")
+        click(window, "switchProviderConfigure")
+        qtbot.waitUntil(lambda: not dialog.property("visible"))
+        assert window.property("page") == 1 and workspace.backend == "codex"
+        assert window.findChild(QObject, "deepseekWebPane").property("visible")
+    finally:
+        close_window(engine, window)
