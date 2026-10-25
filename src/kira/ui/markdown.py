@@ -119,7 +119,9 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
                 rendered = "\n".join(lines)
             else:
                 rendered = escape(content)
-            chunks.append(f'<pre style="{style.code}; margin:10px 0">{rendered}</pre>')
+            # Long lines wrap inside the block: the transcript has no horizontal scroll,
+            # so unwrapped lines would be cut off. Copy and the source view keep them intact.
+            chunks.append(f'<pre style="{style.code}; margin:10px 0; white-space:pre-wrap">{rendered}</pre>')
         elif kind == "code_inline":
             chunks.append(f'<code style="{style.code}">{escape(token.content)}</code>')
         elif kind in {"softbreak", "hardbreak"}:

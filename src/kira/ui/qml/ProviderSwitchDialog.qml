@@ -13,6 +13,8 @@ Dialog {
     closePolicy: providerSwitch.applying ? Popup.NoAutoClose : Popup.CloseOnEscape
     font: appearance.uiFont
     onRejected: providerSwitch.cancel()
+    signal configureRequested(string backend)
+    readonly property bool needsSetup: !providerSwitch.loading && providerSwitch.models.length === 0 && providerSwitch.error.length > 0
     KFormat { id: kformat }
     background: Rectangle { color: appearance.colors.surface; radius: 14; border.color: appearance.colors.border }
     Connections {
@@ -82,7 +84,16 @@ Dialog {
                 Layout.fillWidth: true; wrapMode: Text.Wrap; textFormat: Text.PlainText
                 font: appearance.uiFont; color: appearance.colors.warning
             }
-            KButton { text: qsTr("Aggiorna modelli"); enabled: !providerSwitch.loading && !providerSwitch.applying; onClicked: providerSwitch.refreshCatalog() }
+            Flow {
+                Layout.fillWidth: true; spacing: 8
+                KButton {
+                    objectName: "switchProviderConfigure"
+                    visible: dialog.needsSetup
+                    text: qsTr("Configura %1").arg(kformat.providerLabel(providerSwitch.backend)); primary: true
+                    onClicked: { const backend = providerSwitch.backend; providerSwitch.cancel(); dialog.close(); dialog.configureRequested(backend) }
+                }
+                KButton { text: qsTr("Aggiorna modelli"); enabled: !providerSwitch.loading && !providerSwitch.applying; onClicked: providerSwitch.refreshCatalog() }
+            }
         }
     }
     footer: RowLayout {

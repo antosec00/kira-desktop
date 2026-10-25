@@ -161,3 +161,12 @@ def test_nesting_limit_and_source_copy_contract(renderer):
     assert Tags(html).tags.count("blockquote") <= 20
     assert source.endswith("```py\nprint(1)\n```")
     assert renderer.render(source) == html
+
+
+def test_long_code_lines_wrap_inside_the_block_instead_of_being_cut():
+    source = "```xml\n" + '<base-config cleartextTrafficPermitted="false" />   <!-- chiuso subito -->\n' * 2 + "```"
+    document = QTextDocument()
+    document.setTextWidth(420)
+    document.setHtml(MarkdownRenderer().render(source))
+    assert document.size().width() <= 421
+    assert "chiuso subito" in document.toPlainText()
