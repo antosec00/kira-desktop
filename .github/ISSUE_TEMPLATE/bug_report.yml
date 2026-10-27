@@ -13,7 +13,7 @@ body:
     attributes:
       label: Kira version
       description: Output of `kira-desktop --version` (or `uv run kira-desktop --version`).
-      placeholder: Kira Desktop 0.20.2
+      placeholder: Kira Desktop 0.20.3
     validations:
       required: true
   - type: dropdown
