@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import re
 from types import SimpleNamespace
 
 import httpx
@@ -95,8 +96,9 @@ def test_deepseek_json_tool_call_with_surrounding_prose_is_still_rejected():
 
 
 def test_deepseek_system_prompt_requests_json_tool_envelopes_only():
-    ctx = SimpleNamespace(assistant_instructions="Kira rules", supplied_context="Project context")
-    schema = [{"type": "function", "name": "list_files", "parameters": {}}]
+    ctx = SimpleNamespace(assistant_instructions="Kira rules", supplied_context="Project context",
+                          permission="read_only")
+    schema = [{"type": "function", "function": {"name": "list_files", "parameters": {}}}]
 
     prompt = DeepSeekWebBackend._system_context(ctx, schema, vision=False)
 
@@ -252,14 +254,14 @@ def test_deepseek_prompt_fingerprint_tracks_live_scope_and_tool_catalog():
         settings={"tools": True, "reasoning_effort": None, "handoff": ""},
         model="deepseek-reasoner", mode="execute", assistant_instructions="Kira rules",
     )
-    schema = [{"type": "function", "name": "read_file", "parameters": {}}]
+    schema = [{"type": "function", "function": {"name": "read_file", "parameters": {}}}]
 
     original = DeepSeekWebBackend._context_fingerprint(ctx, schema, vision=True)
     assert DeepSeekWebBackend._context_fingerprint(ctx, schema, vision=True) == original
 
     changed_project = SimpleNamespace(**vars(ctx))
     changed_project.project = {**ctx.project, "permission": "read_only"}
-    changed_tool = [{"type": "function", "name": "list_files", "parameters": {}}]
+    changed_tool = [{"type": "function", "function": {"name": "list_files", "parameters": {}}}]
     assert DeepSeekWebBackend._context_fingerprint(changed_project, schema, vision=True) != original
     assert DeepSeekWebBackend._context_fingerprint(ctx, changed_tool, vision=True) != original
 
@@ -270,7 +272,7 @@ def test_deepseek_continuation_prompt_omits_bootstrap_context():
         session={"model": "deepseek-reasoner"}, model="deepseek-reasoner",
         mode="plan", prompt="Summarize the previous answer.",
     )
-    schemas = [{"type": "function", "name": "read_file", "parameters": {}}]
+    schemas = [{"type": "function", "function": {"name": "read_file", "parameters": {}}}]
 
     prompt = DeepSeekWebBackend._continuation_prompt(ctx, schemas, vision=True)
 
@@ -338,6 +340,64 @@ def test_browser_screenshot_is_advertised_only_for_vision_models():
 
     assert "browser__screenshot" not in {tool_name(item) for item in text_schemas}
     assert "browser__screenshot" in {tool_name(item) for item in vision_schemas}
+
+
+def catalog_context(permission, *, questions=False):
+    return SimpleNamespace(
+        settings={"tools": True}, permission=permission, client_tools=browser_tool_specs(),
+        request_input=object() if questions else None, read_input=object() if questions else None,
+        assistant_instructions="When asked, use browser.close.", supplied_context="",
+    )
+
+
+def test_catalog_uses_one_nested_function_shape_with_wire_names_in_descriptions():
+    ctx = catalog_context("full_access", questions=True)
+    schemas, aliases, question_aliases = DeepSeekWebBackend._tool_catalog(ctx, vision=True)
+
+    assert schemas and all(set(item) == {"type", "function"} and item["type"] == "function"
+                           and set(item["function"]) == {"name", "description", "parameters"}
+                           for item in schemas)
+    names = {item["function"]["name"] for item in schemas}
+    assert {"browser__close", "browser__close_tab", "questions__request_input"} <= names
+    assert aliases["browser__close"] == "browser.close"
+    assert question_aliases["questions__read_input"] == "read_input"
+    canonical = {alias.replace("__", ".", 1) for alias in names if "__" in alias}
+    for item in schemas:
+        description = item["function"]["description"]
+        assert not any(re.search(r"(?<![\w.])" + re.escape(name) + r"(?!\w)", description)
+                       for name in canonical), description
+
+
+@pytest.mark.parametrize("permission,scope", [
+    ("read_only", "Project paths only."),
+    ("project_write", "Project paths only."),
+    ("full_access", "external paths allowed as current OS user."),
+])
+def test_system_prompt_states_wire_names_and_path_scope_once(permission, scope):
+    ctx = catalog_context(permission)
+    schemas, _, _ = DeepSeekWebBackend._tool_catalog(ctx, vision=True)
+    prompt = DeepSeekWebBackend._system_context(ctx, schemas, vision=True)
+
+    # Shared instructions keep canonical names; the catalog header maps them.
+    assert "use browser.close." in prompt
+    assert "browser.close is browser__close" in prompt
+    assert "Use browser__screenshot when" in prompt
+    assert "Use browser.screenshot" not in prompt
+    assert prompt.count(scope) == 1
+    file_descriptions = [item["function"]["description"] for item in schemas
+                         if item["function"]["name"] in {"list_files", "read_file"}]
+    assert file_descriptions and not any(scope in text for text in file_descriptions)
+
+
+def test_system_prompt_without_file_tools_omits_path_scope():
+    ctx = catalog_context("read_only")
+    ctx.settings = {"tools": True}
+    schemas = [{"type": "function", "function": {
+        "name": "browser__close", "description": "Close.", "parameters": {}}}]
+    prompt = DeepSeekWebBackend._system_context(ctx, schemas, vision=False)
+
+    assert "Project paths only." not in prompt
+    assert "browser.close is browser__close" in prompt
 
 
 @pytest.mark.asyncio

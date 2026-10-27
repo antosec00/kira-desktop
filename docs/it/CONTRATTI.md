@@ -748,7 +748,12 @@ MCP `kira` gli strumenti `kira.*` con il loro nome (per esempio `help_search`) e
 gli strumenti dell'obiettivo come `goal__status` e `goal__checkpoint`. Gli eventi
 durevoli usano sempre `browser.*` e `computer.*`. Solo le definizioni tipizzate
 e i campi di identità delle chiamate sono tradotti; testo dell'utente, risultati
-e stato opaco del provider restano invariati.
+e stato opaco del provider restano invariati. Poiché DeepSeek Web riceve il
+catalogo come testo, la sua intestazione dichiara una sola volta la
+corrispondenza tra i nomi canonici delle istruzioni di Kira e le funzioni
+registrate (per esempio `browser.close` → `browser__close`) e l'ambito dei
+percorsi degli strumenti sui file; ogni voce usa la forma
+`{"type":"function","function":{...}}`.
 
 Limiti comuni: 64 KiB per definizione, argomenti e risultato di ogni chiamata;
 cache di deduplicazione da 2.048 chiamate e 8 MiB per run; timeout di 60 s per

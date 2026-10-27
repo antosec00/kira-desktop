@@ -747,7 +747,11 @@ without Computer); Claude Code sees `mcp__kira__browser__*` and
 tools as `goal__status` and `goal__checkpoint`. Durable events always use
 `browser.*` and `computer.*`. Only the typed definitions and the identity
 fields of the calls are translated; user text, results and opaque provider
-state stay unchanged.
+state stay unchanged. Because DeepSeek Web receives its catalog as text, its
+header states once how the canonical names in Kira instructions correspond to
+the registered functions (for example `browser.close` → `browser__close`) and
+the path scope of the file tools; every entry uses the
+`{"type":"function","function":{...}}` shape.
 
 Common limits: 64 KiB per definition, arguments and result of every call; a
 deduplication cache of 2,048 calls and 8 MiB per run; 60 s timeout per call,
