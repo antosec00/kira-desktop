@@ -794,7 +794,7 @@ ApplicationWindow {
                                         var offset = readingAnchorOffset
                                         appearanceRelayout = true
                                         cancelFlick()
-                                        Qt.callLater(function() {
+                                        function applyAnchor() {
                                             conversation.forceLayout()
                                             var visibleItem = conversation.itemAtIndex(row)
                                             if (visibleItem) {
@@ -802,8 +802,14 @@ ApplicationWindow {
                                                 var maximum = Math.max(minimum, minimum + conversation.contentHeight - conversation.height)
                                                 conversation.contentY = Math.max(minimum, Math.min(maximum, visibleItem.y - offset))
                                             }
-                                            conversation.appearanceRelayout = false
-                                            conversation.rememberReadingAnchor()
+                                        }
+                                        Qt.callLater(function() {
+                                            applyAnchor()
+                                            Qt.callLater(function() {
+                                                applyAnchor()
+                                                conversation.appearanceRelayout = false
+                                                conversation.rememberReadingAnchor()
+                                            })
                                         })
                                     }
                                     boundsBehavior: Flickable.StopAtBounds
@@ -939,8 +945,15 @@ ApplicationWindow {
                                         onMotionAvailableChanged: scheduleViewportUpdate()
                                         Connections {
                                             target: conversation
-                                            enabled: entry.motionAvailable
-                                            function onContentYChanged() { entry.scheduleViewportUpdate() }
+                                            enabled: entry.motionAvailable || entry.showSource
+                                            function onContentYChanged() {
+                                                if (entry.showSource && !conversation.layoutStepping
+                                                    && (entry.y + entry.height < conversation.contentY - 450
+                                                        || entry.y > conversation.contentY + conversation.height + 450)) {
+                                                    entry.showSource = false
+                                                }
+                                                entry.scheduleViewportUpdate()
+                                            }
                                             function onHeightChanged() { entry.scheduleViewportUpdate() }
                                         }
                                         readonly property bool stateNeedsAttention: ["failed", "interrupted", "cancelled", "errore", "incompleto"].indexOf(status) >= 0
@@ -949,7 +962,10 @@ ApplicationWindow {
                                         ListView.onPooled: pooled = true
                                         ListView.onReused: { pooled = false; showSource = false }
                                         width: Math.min(conversation.width - conversationBar.width - 8, appearance.fullWidth ? Infinity : 900)
-                                        x: Math.max(0, (conversation.width - conversationBar.width - 8 - width) / 2)
+                                        readonly property real targetX: Math.max(0, (conversation.width - conversationBar.width - 8 - width) / 2)
+                                        x: targetX
+                                        onTargetXChanged: x = targetX
+                                        onXChanged: if (!pooled && x !== targetX) x = targetX
                                         visible: !toolGroupHidden && !pooled
                                         height: toolGroupHidden ? 0 : (groupHeader.visible ? groupHeader.height : 0)
                                             + (card.visible ? card.implicitHeight + (groupHeader.visible ? 6 : 0) : 0)
