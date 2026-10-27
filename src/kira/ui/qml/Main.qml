@@ -714,14 +714,39 @@ ApplicationWindow {
                                     // Visible delegates own their spacing so collapsed
                                     // group members do not accumulate empty gaps.
                                     clip: true; spacing: 0; model: transcriptModel
-                                    cacheBuffer: 450
-                                    reuseItems: true
+                                    cacheBuffer: 10000000
+                                    reuseItems: false
                                     // Keep layout active while replay is staged, but reveal only
                                     // after the final rows have been positioned at the latest reply.
                                     opacity: historyReady && !workspace.chatLoading ? 1 : 0
                                     enabled: historyReady && !workspace.chatLoading
                                     property bool historyReady: !workspace.chatLoading
                                     property bool followPending: false
+                                    property bool layoutStepping: false
+                                    function scrollToEnd() {
+                                        layoutStepping = true
+                                        forceLayout()
+                                        if (count > 0 && (!itemAtIndex(0) || !itemAtIndex(count - 1))) {
+                                            if (!itemAtIndex(0)) {
+                                                positionViewAtBeginning()
+                                                forceLayout()
+                                            }
+                                            var probe = 0
+                                            var steps = 0
+                                            while (!itemAtIndex(count - 1) && steps < count) {
+                                                while (probe + 1 < count && itemAtIndex(probe + 1)) probe++
+                                                var last = itemAtIndex(probe)
+                                                if (!last) break
+                                                contentY = last.y + Math.max(0, last.height - 1)
+                                                forceLayout()
+                                                steps++
+                                            }
+                                        }
+                                        positionViewAtEnd()
+                                        forceLayout()
+                                        positionViewAtEnd()
+                                        layoutStepping = false
+                                    }
                                     function scheduleFollow() {
                                         if (workspace.chatLoading || followPending) return
                                         if (!window.followOutput && historyReady) return
@@ -731,10 +756,7 @@ ApplicationWindow {
                                     function finishFollow() {
                                         if (!workspace.chatLoading) {
                                             if (window.followOutput || !historyReady) {
-                                                forceLayout()
-                                                positionViewAtEnd()
-                                                forceLayout()
-                                                positionViewAtEnd()
+                                                scrollToEnd()
                                             }
                                             historyReady = true
                                         }
@@ -748,7 +770,16 @@ ApplicationWindow {
                                     onWidthChanged: preserveReadingAnchor()
                                     onContentYChanged: rememberReadingAnchor()
                                     function rememberReadingAnchor() {
-                                        if (window.followOutput || appearanceRelayout) return
+                                        if (layoutStepping || appearanceRelayout) return
+                                        if (count > 0 && height > 0) {
+                                            var minimum = originY
+                                            var maximum = Math.max(minimum, minimum + contentHeight - height)
+                                            if (contentY < minimum || contentY > maximum) {
+                                                contentY = Math.max(minimum, Math.min(maximum, contentY))
+                                                return
+                                            }
+                                        }
+                                        if (window.followOutput) return
                                         var row = indexAt(width / 2, contentY + 1)
                                         if (row < 0) row = indexAt(width / 2, contentY + spacing + 1)
                                         var visibleItem = itemAtIndex(row)
@@ -919,7 +950,7 @@ ApplicationWindow {
                                         ListView.onReused: { pooled = false; showSource = false }
                                         width: Math.min(conversation.width - conversationBar.width - 8, appearance.fullWidth ? Infinity : 900)
                                         x: Math.max(0, (conversation.width - conversationBar.width - 8 - width) / 2)
-                                        visible: !toolGroupHidden
+                                        visible: !toolGroupHidden && !pooled
                                         height: toolGroupHidden ? 0 : (groupHeader.visible ? groupHeader.height : 0)
                                             + (card.visible ? card.implicitHeight + (groupHeader.visible ? 6 : 0) : 0)
                                             + (entry.kind === "tool" ? 3 : window.compact ? 12 : 22)
@@ -1057,7 +1088,7 @@ ApplicationWindow {
                                     color: muted
                                     font: appearance.uiFont
                                 }
-                                KButton { anchors.right: parent.right; anchors.rightMargin: 35; anchors.bottom: parent.bottom; anchors.bottomMargin: 16; text: qsTr("↓  Ultimi aggiornamenti"); visible: !window.followOutput && conversation.historyReady && !workspace.chatLoading; onClicked: { window.followOutput = true; conversation.positionViewAtEnd() } }
+                                KButton { anchors.right: parent.right; anchors.rightMargin: 35; anchors.bottom: parent.bottom; anchors.bottomMargin: 16; text: qsTr("↓  Ultimi aggiornamenti"); visible: !window.followOutput && conversation.historyReady && !workspace.chatLoading; onClicked: { window.followOutput = true; conversation.scrollToEnd() } }
                             }
                             RunErrorPanel {
                                 failure: workspace.runFailure
