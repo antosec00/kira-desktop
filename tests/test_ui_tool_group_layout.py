@@ -5,7 +5,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QMetaObject, QPoint, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QMetaObject, QPoint, QPointF, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlEngine, QQmlExpression
 from PySide6.QtTest import QTest
@@ -281,3 +281,97 @@ def test_group_labels_retranslate_without_changing_original_tool_results(group_u
     assert header.property("expanded")
     assert workspace.transcript.plain_text() == before
     assert workspace.transcript.rows[0]["raw"] == '{"value": "Chiudi"}'
+
+
+def test_mixed_height_conversation_scrollbar_drag_keeps_delegates_visible_and_disjoint(group_ui, qtbot):
+    workspace, window, _ = group_ui
+    conversation = control(window, "conversation")
+    bar = control(window, "conversationScrollBar")
+    thumb = item(bar, "scrollThumb")
+
+    workspace.transcript.begin_batch()
+    workspace.transcript.append(kind="user", title="TU", body="Synthetic greeting", status="Completato")
+    workspace.transcript.append(kind="assistant", title="KIRA", body="Short synthetic reply", status="Completato")
+    workspace.transcript.append(kind="state", title="Completato", body="Completed.", status="completed")
+    workspace.transcript.append(kind="user", title="TU", body="Inspect the synthetic repository", status="Completato")
+    for index in range(14):
+        append_tool(workspace, f"batch-a-{index}", run_id="run-a",
+                    body="\n".join(f"line {line}: synthetic tool output" for line in range(220)))
+    workspace.transcript.append(
+        kind="assistant", title="KIRA",
+        body="\n\n".join(f"### Section {section}\n" + "\n".join(
+            f"- Item {point}: detailed synthetic explanation." for point in range(8)) for section in range(12)),
+        status="Completato",
+    )
+    workspace.transcript.append(kind="state", title="Completato", body="Completed.", status="completed")
+    workspace.transcript.append(kind="user", title="TU", body="Evaluate the synthetic architecture", status="Completato")
+    for index in range(3):
+        append_tool(workspace, f"batch-b-{index}", run_id="run-b",
+                    body="\n".join(f"line {line}: synthetic check" for line in range(180)))
+    workspace.transcript.append(
+        kind="assistant", title="KIRA",
+        body="\n\n".join(f"### Analysis {section}\n" + "\n".join(
+            f"- Detail {point}: synthetic architectural note." for point in range(10)) for section in range(15)),
+        status="Completato",
+    )
+    workspace.transcript.append(kind="state", title="Completato", body="Completed.", status="completed")
+    workspace.transcript.end_batch()
+    qtbot.wait(100)
+
+    def assert_viewport_consistent():
+        content_y = conversation.property("contentY")
+        view_height = conversation.height()
+        origin_y = conversation.property("originY")
+        content_height = conversation.property("contentHeight")
+        maximum_y = max(origin_y, origin_y + content_height - view_height)
+        assert origin_y - 1 <= content_y <= maximum_y + 1
+        content_item = conversation.property("contentItem")
+        visible_entries = [
+            child for child in content_item.childItems()
+            if child.objectName().startswith("messageEntry_") and child.isVisible() and child.height() > 0
+        ]
+        visible_entries.sort(key=lambda entry: entry.property("index"))
+        for previous, current in zip(visible_entries, visible_entries[1:]):
+            assert previous.y() + previous.height() <= current.y() + 1
+        in_viewport = [
+            entry for entry in visible_entries
+            if entry.y() + entry.height() > content_y and entry.y() < content_y + view_height
+        ]
+        assert in_viewport
+
+    assert_viewport_consistent()
+    settled_height = conversation.property("contentHeight")
+
+    start = thumb.mapToScene(thumb.boundingRect().center()).toPoint()
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=start)
+    for fraction in (0.85, 0.65, 0.45, 0.25, 0.05, 0.01):
+        target = bar.mapToScene(QPointF(bar.width() / 2, bar.height() * fraction)).toPoint()
+        QTest.mouseMove(window, target, delay=15)
+        qtbot.wait(15)
+        assert_viewport_consistent()
+        assert conversation.property("contentHeight") == pytest.approx(settled_height, abs=2)
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=target)
+    qtbot.wait(40)
+
+    evaluate(conversation, "positionViewAtIndex(4, ListView.Beginning); forceLayout()")
+    qtbot.wait(30)
+    click(window, control(window, "toolGroupToggle", 4))
+    qtbot.wait(40)
+    click(window, control(window, "toolReceipt", 4))
+    qtbot.wait(40)
+    click(window, control(window, "outputToggle", 4))
+    qtbot.wait(60)
+    expanded_height = conversation.property("contentHeight")
+    assert expanded_height > settled_height + 2500
+    assert_viewport_consistent()
+
+    start = thumb.mapToScene(thumb.boundingRect().center()).toPoint()
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=start)
+    for fraction in (0.15, 0.35, 0.55, 0.75, 0.95, 0.5, 0.05, 0.98):
+        target = bar.mapToScene(QPointF(bar.width() / 2, bar.height() * fraction)).toPoint()
+        QTest.mouseMove(window, target, delay=15)
+        qtbot.wait(15)
+        assert_viewport_consistent()
+        assert conversation.property("contentHeight") == pytest.approx(expanded_height, abs=2)
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=target)
+
