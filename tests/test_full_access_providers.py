@@ -41,6 +41,12 @@ def test_file_tool_catalog_uses_explicit_effective_permissions(permission, expec
     else:
         assert all("Project paths only." in tool["function"]["description"]
                    for tool in file_tools)
+    compact = local_tool_schemas(permission, path_scope_in_descriptions=False)
+    assert [tool["function"]["name"] for tool in compact] == [
+        tool["function"]["name"] for tool in schemas]
+    assert not any("Project paths only." in tool["function"]["description"]
+                   or "external paths allowed" in tool["function"]["description"]
+                   for tool in compact)
     assert TOOL_SCHEMAS == before
 
 

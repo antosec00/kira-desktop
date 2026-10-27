@@ -79,13 +79,19 @@ TOOL_SCHEMAS = [
 ]
 
 
-def local_tool_schemas(permission: str) -> list[Json]:
-    """Offer the effective service scope without mutating shared schemas."""
-    path_scope = (
-        " Absolute or project-relative paths; external paths allowed as current OS user."
-        if permission == "full_access" else
-        " Project paths only."
-    )
+def local_path_scope(permission: str) -> str:
+    """Describe the file-tool path scope granted by the effective permission."""
+    return ("Absolute or project-relative paths; external paths allowed as current OS user."
+            if permission == "full_access" else "Project paths only.")
+
+
+def local_tool_schemas(permission: str, *, path_scope_in_descriptions: bool = True) -> list[Json]:
+    """Offer the effective service scope without mutating shared schemas.
+
+    Text-injected catalogs may state the path scope once instead of repeating
+    it in every file-tool description.
+    """
+    path_scope = " " + local_path_scope(permission) if path_scope_in_descriptions else ""
     result = []
     for tool in TOOL_SCHEMAS:
         function = tool["function"]
