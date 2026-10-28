@@ -1102,6 +1102,95 @@ class DeepSeekWebBackend(Backend):
         return text
 
     @staticmethod
+    def _repair_json_tool_envelope(text: str) -> str | None:
+        """Repair common LLM slips in standalone kira_tool_call JSON envelopes.
+
+        Deeply nested calls (such as questions__request_input) often drop the
+        final outer '}' or leave literal quotes inside a prose string value.
+        Only standalone JSON objects starting with '{' are considered; surrounding
+        prose or truncated strings are never synthesized.
+        """
+        s = text.strip()
+        if not s.startswith("{") or '"kira_tool_call"' not in s or s[-1:] not in {"}", "]"}:
+            return None
+        out: list[str] = []
+        stack: list[str] = []
+        in_string = False
+        is_value_string = False
+        escaped = False
+        last_sig = ""
+        n = len(s)
+        for i, ch in enumerate(s):
+            if in_string:
+                if escaped:
+                    out.append(ch)
+                    escaped = False
+                elif ch == "\\":
+                    out.append(ch)
+                    escaped = True
+                elif ch == '"':
+                    j = i + 1
+                    while j < n and s[j] in " \t\r\n":
+                        j += 1
+                    next_ch = s[j] if j < n else ""
+                    if is_value_string:
+                        valid_close = next_ch in {",", "}", "]"}
+                        if next_ch == ",":
+                            k = j + 1
+                            while k < n and s[k] in " \t\r\n":
+                                k += 1
+                            if stack and stack[-1] == "}" and (k >= n or s[k] != '"'):
+                                valid_close = False
+                    else:
+                        valid_close = next_ch == ":"
+                    if valid_close:
+                        in_string = False
+                        last_sig = '"'
+                        out.append(ch)
+                    else:
+                        out.append('\\"')
+                else:
+                    out.append(ch)
+            else:
+                if ch == '"':
+                    in_string = True
+                    is_value_string = last_sig in {":", "[", ","} and (
+                        not stack or stack[-1] == "]" or last_sig == ":"
+                    )
+                    out.append(ch)
+                elif ch == "{":
+                    stack.append("}")
+                    last_sig = ch
+                    out.append(ch)
+                elif ch == "[":
+                    stack.append("]")
+                    last_sig = ch
+                    out.append(ch)
+                elif ch in {"}", "]"}:
+                    if stack and stack[-1] == ch:
+                        stack.pop()
+                        last_sig = ch
+                        out.append(ch)
+                    elif ch == "}" and not stack and all(c == "}" for c in s[i:]):
+                        # Drop 1-2 redundant closing braces at the very end.
+                        break
+                    else:
+                        return None
+                elif ch not in " \t\r\n":
+                    last_sig = ch
+                    out.append(ch)
+                else:
+                    out.append(ch)
+        if in_string:
+            return None
+        if 1 <= len(stack) <= 2 and all(ch == "}" for ch in stack):
+            out.extend(reversed(stack))
+            stack.clear()
+        if stack:
+            return None
+        return "".join(out)
+
+    @staticmethod
     def _parse_tool_calls(text: str, enabled: bool, name_aliases: dict[str, str]) -> list[Json] | None:
         # Some DeepSeek Web models emit DSML with full-width pipe glyphs.
         # Normalize that presentation variant before strict envelope parsing.
@@ -1161,11 +1250,27 @@ class DeepSeekWebBackend(Backend):
                 # most common slip, and they mean exactly what they show.
                 value = json.loads(json_text, parse_constant=_reject_json_constant, strict=False)
             except (ValueError, TypeError, RecursionError):
-                # Say where the envelope broke, so that the correction can fix it.
-                detail = (f" ({exc.msg} at character {exc.pos})"
-                          if isinstance(exc, json.JSONDecodeError) else "")
-                raise DeepSeekWebError(
-                    f"Malformed Kira JSON tool envelope{detail}; no tool was executed") from None
+                repaired = DeepSeekWebBackend._repair_json_tool_envelope(json_text)
+                if repaired is not None:
+                    try:
+                        value = json.loads(
+                            repaired, parse_constant=_reject_json_constant, strict=False
+                        )
+                    except (ValueError, TypeError, RecursionError):
+                        value = None
+                else:
+                    value = None
+                if value is None:
+                    # Say where the envelope broke, so that the correction can fix it.
+                    if isinstance(exc, json.JSONDecodeError):
+                        snippet = json_text[max(0, exc.pos - 24):min(len(json_text), exc.pos + 16)]
+                        snippet = snippet.replace("\n", "\\n")
+                        detail = f" ({exc.msg} at character {exc.pos} near {snippet!r})"
+                    else:
+                        detail = ""
+                    raise DeepSeekWebError(
+                        f"Malformed Kira JSON tool envelope{detail}; no tool was executed"
+                    ) from None
         if not isinstance(value, dict) or "kira_tool_call" not in value:
             return None
         if len(text.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
@@ -1178,7 +1283,7 @@ class DeepSeekWebBackend(Backend):
             raise DeepSeekWebError("Malformed Kira JSON tool call; no tool was executed")
         if not enabled:
             raise DeepSeekWebError("Kira tools are disabled for this run")
-        return [{"name": call["name"], "arguments": call["arguments"]}]
+        return [{"name": name_aliases.get(call["name"], call["name"]), "arguments": call["arguments"]}]
 
     @staticmethod
     def _dsml_attributes(raw: str) -> dict[str, str]:

@@ -800,8 +800,24 @@ class Workspace(QObject):
 
     @qt_property("QVariantList", notify=changed)
     def sessions(self) -> list[Json]:
-        return [{**s, "label": str(s.get("title") or tr("Nuova chat"))}
-                for s in self._sessions if not s.get("archived")]
+        latest_by_session: dict[str, str] = {}
+        for run in self._runs.values():
+            sid = str(run.get("session_id") or "")
+            stamp = str(run.get("updated_at") or run.get("created_at") or "")
+            if sid and stamp > latest_by_session.get(sid, ""):
+                latest_by_session[sid] = stamp
+        rows: list[Json] = []
+        for s in self._sessions:
+            if s.get("archived"):
+                continue
+            sid = str(s.get("id") or "")
+            stamp = max(str(s.get("updated_at") or s.get("created_at") or ""), latest_by_session.get(sid, ""))
+            rows.append({
+                **s,
+                "label": str(s.get("title") or tr("Nuova chat")),
+                **({"updated_at": stamp} if stamp else {}),
+            })
+        return rows
 
     @qt_property(str, notify=changed)
     def sessionTitle(self) -> str:

@@ -31,4 +31,20 @@ QtObject {
         const language = typeof localization !== "undefined" ? localization.language : ""
         return moment.toLocaleString(Qt.locale(language), "d MMM yyyy, HH:mm")
     }
+
+    function relativeTime(value) {
+        const text = String(value || "")
+        const moment = new Date(text)
+        if (!text.length || isNaN(moment.getTime())) return ""
+        const minutes = Math.max(1, Math.floor((Date.now() - moment.getTime()) / 60000))
+        if (minutes < 60) return minutes + "m"
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) return hours + "h"
+        const language = typeof localization !== "undefined" ? localization.language : "it"
+        const days = Math.floor(hours / 24)
+        if (days < 30) return days + (language === "en" ? "d" : "g")
+        const months = Math.floor(days / 30)
+        if (months < 12) return months + "mo"
+        return Math.floor(days / 365) + (language === "en" ? "y" : "a")
+    }
 }
