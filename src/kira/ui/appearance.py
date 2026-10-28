@@ -81,6 +81,7 @@ def palette(style: dict[str, str], dark: bool, contrast: int) -> dict[str, str]:
     base, text, accent = (style["background"] or base, style["foreground"] or text,
                           style["accent"] or accent)
     shade = "#000000" if dark else "#ffffff"
+    ink = "#ffffff" if dark else "#000000"
     accent_text = _readable_text(accent)
     accent_toward = "#ffffff" if accent_text == "#000000" else "#000000"
     colors = {
@@ -88,7 +89,9 @@ def palette(style: dict[str, str], dark: bool, contrast: int) -> dict[str, str]:
         "background": base, "surface": _mix(base, text, 0.035),
         "surfaceAlt": _mix(base, text, 0.065), "surfaceRaised": _mix(base, text, 0.11),
         "sidebar": _mix(base, shade, 0.12),
-        "text": text, "textSecondary": _mix(base, text, 0.72 + contrast * 0.002),
+        "text": text, "textStrong": _mix(text, ink, 0.55),
+        "proseText": _mix(base, text, 0.88 if dark else 0.92),
+        "textSecondary": _mix(base, text, 0.72 + contrast * 0.002),
         "muted": _mix(base, text, 0.55 + contrast * 0.003),
         "border": _mix(base, text, 0.12 + contrast * 0.0018),
         "accent": accent, "accentText": accent_text, "accentSoft": _mix(base, accent, 0.16),
@@ -100,6 +103,8 @@ def palette(style: dict[str, str], dark: bool, contrast: int) -> dict[str, str]:
         "warning": "#efc77c" if dark else "#87560e",
         "success": "#87d5ab" if dark else "#246a42",
         "codeBackground": _mix(base, shade, 0.22), "codeText": text,
+        "inlineCodeBackground": _mix(base, text, 0.095 if dark else 0.08),
+        "inlineCodeText": _mix(accent, ink, 0.16) if dark else _mix(accent, "#000000", 0.24),
     }
     for name in ("danger", "warning", "success"):
         colors[name + "Background"] = _mix(base, colors[name], 0.12)

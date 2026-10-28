@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kira-desktop"
-version = "0.20.4"
+version = "0.20.5"
 description = "A native desktop harness for AI projects, chats, tools and collaborating agents"
 readme = "README.md"
 license = "MIT"

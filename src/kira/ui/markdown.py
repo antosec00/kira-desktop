@@ -28,6 +28,7 @@ MAX_CACHE_BYTES = 2 * 1024 * 1024
 MAX_CACHE_ENTRIES = 64
 _CONTROL = re.compile(r"[\x00-\x20\x7f-\x9f\\]")
 _CODE_STYLE = "font-family:monospace; color:#dbe6f8; background-color:#10171d"
+_INLINE_CODE_STYLE = "font-family:monospace; color:#e5af82; background-color:#292e33"
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,11 @@ class RenderStyle:
     removed: str = ""
     smart: bool = False
     language: str = "it"
+    inline_code: str = _INLINE_CODE_STYLE
+    body: str = "#d0d5da"
+    strong: str = "#f5f7f8"
+    muted: str = "#9aa3ad"
+    rule: str = "#2a313a"
 
 
 DEFAULT_STYLE = RenderStyle()
@@ -94,6 +100,35 @@ def _plain_inline(tokens: list[Token]) -> str:
     )
 
 
+def _open_tag(tag: str, style: RenderStyle, start: int = 1) -> str:
+    if tag == "p":
+        return f'<p style="line-height:150%; margin-top:6px; margin-bottom:10px; color:{style.body}">'
+    if tag == "li":
+        return f'<li style="line-height:150%; margin-top:4px; margin-bottom:6px; color:{style.body}">'
+    if tag == "ul":
+        return '<ul style="margin-top:6px; margin-bottom:10px">'
+    if tag == "ol":
+        return f'<ol start="{start}" style="margin-top:6px; margin-bottom:10px">'
+    if tag == "blockquote":
+        return (f'<blockquote style="line-height:150%; margin-top:8px; margin-bottom:10px; '
+                f'margin-left:14px; color:{style.muted}">')
+    if tag == "strong":
+        return f'<strong style="color:{style.strong}; font-weight:700">'
+    if tag == "h1":
+        return (f'<h1 style="font-size:x-large; font-weight:700; line-height:130%; '
+                f'margin-top:16px; margin-bottom:8px; color:{style.strong}">')
+    if tag == "h2":
+        return (f'<h2 style="font-size:large; font-weight:700; line-height:135%; '
+                f'margin-top:14px; margin-bottom:6px; color:{style.strong}">')
+    if tag == "h3":
+        return (f'<h3 style="font-size:large; font-weight:600; line-height:138%; '
+                f'margin-top:12px; margin-bottom:5px; color:{style.strong}">')
+    if tag in {"h4", "h5", "h6"}:
+        return (f'<{tag} style="font-size:medium; font-weight:600; line-height:140%; '
+                f'margin-top:10px; margin-bottom:4px; color:{style.strong}">')
+    return f"<{tag}>"
+
+
 def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> str:
     chunks: list[str] = []
     link_closers: list[str] = []
@@ -121,9 +156,11 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
                 rendered = escape(content)
             # Long lines wrap inside the block: the transcript has no horizontal scroll,
             # so unwrapped lines would be cut off. Copy and the source view keep them intact.
-            chunks.append(f'<pre style="{style.code}; margin:10px 0; white-space:pre-wrap">{rendered}</pre>')
+            chunks.append(
+                f'<pre style="{style.code}; line-height:140%; margin:10px 0; white-space:pre-wrap">{rendered}</pre>'
+            )
         elif kind == "code_inline":
-            chunks.append(f'<code style="{style.code}">{escape(token.content)}</code>')
+            chunks.append(f'<code style="{style.inline_code}">{escape(token.content)}</code>')
         elif kind in {"softbreak", "hardbreak"}:
             chunks.append("<br>" if kind == "hardbreak" else "\n")
         elif kind == "image":
@@ -137,7 +174,7 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
         elif kind == "link_close":
             chunks.append(link_closers.pop() if link_closers else "")
         elif kind == "hr":
-            chunks.append("<hr>")
+            chunks.append(f'<hr style="background-color:{style.rule}; margin-top:10px; margin-bottom:10px">')
         elif token.tag in {"th", "td"}:
             if token.nesting == -1:
                 chunks.append(f"</{token.tag}>")
@@ -156,9 +193,9 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
                 chunks.append(f"</{token.tag}>")
             elif token.tag == "ol":
                 start = token.attrGet("start") or 1
-                chunks.append(f'<ol start="{int(start)}">')
+                chunks.append(_open_tag("ol", style, int(start)))
             else:
-                chunks.append(f"<{token.tag}>")
+                chunks.append(_open_tag(token.tag, style))
         # Unknown token types are intentionally not interpreted as HTML.
     return "".join(chunks)
 
@@ -197,13 +234,27 @@ class MarkdownRenderer(QObject):
         # Escape font names in addition to preference validation. No source text
         # or user-provided CSS is used as a style declaration.
         family = escape(font.family(), quote=True)
-        code = (f"font-family:'{family}'; font-size:{font.pixelSize()}px; "
-                f"font-weight:{font.weight().value}; font-style:{'italic' if font.italic() else 'normal'}; "
-                f"color:{colors['codeText']}; background-color:{colors['codeBackground']}")
+        font_base = (f"font-family:'{family}'; font-size:{font.pixelSize()}px; "
+                     f"font-weight:{font.weight().value}; "
+                     f"font-style:{'italic' if font.italic() else 'normal'}; ")
+        code = f"{font_base}color:{colors['codeText']}; background-color:{colors['codeBackground']}"
+        inline_text = colors.get("inlineCodeText", colors["codeText"])
+        inline_bg = colors.get("inlineCodeBackground", colors["codeBackground"])
+        inline_code = f"{font_base}color:{inline_text}; background-color:{inline_bg}"
         values = self._appearance.values
         colored = values["diff_indicators"] == "color"
-        style = RenderStyle(code, colors["accent"], colors["success"] if colored else "",
-                            colors["danger"] if colored else "", values["smart_punctuation"] is True)
+        style = RenderStyle(
+            code=code,
+            link=colors["accent"],
+            added=colors["success"] if colored else "",
+            removed=colors["danger"] if colored else "",
+            smart=values["smart_punctuation"] is True,
+            inline_code=inline_code,
+            body=colors.get("proseText", colors.get("text", "#d0d5da")),
+            strong=colors.get("textStrong", colors.get("text", "#f5f7f8")),
+            muted=colors.get("textSecondary", colors.get("muted", "#9aa3ad")),
+            rule=colors.get("border", "#2a313a"),
+        )
         return self._render(text, style)
 
     def _render(self, text: str, style: RenderStyle) -> str:
@@ -235,4 +286,5 @@ class MarkdownRenderer(QObject):
         style, source = key
         return (sys.getsizeof(key) + sys.getsizeof(style) + sys.getsizeof(source)
                 + sys.getsizeof(rendered) + sum(sys.getsizeof(value) for value in (
-                    style.code, style.link, style.added, style.removed, style.language)))
+                    style.code, style.link, style.added, style.removed, style.language,
+                    style.inline_code, style.body, style.strong, style.muted, style.rule)))
