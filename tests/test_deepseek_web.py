@@ -222,6 +222,35 @@ def test_malformed_envelope_error_says_where_it_broke():
     assert "at character" in message and message.endswith("no tool was executed")
 
 
+def test_nested_question_tool_call_repairs_missing_outer_brace_and_unescaped_quotes():
+    from kira.domain.questions import validate_request
+
+    missing_outer_brace = (
+        '{"kira_tool_call":{"name":"questions__request_input","arguments":{"blocking":true,'
+        '"questions":[{"id":"goal","header":"Obiettivo","question":"Qual è il tuo obiettivo '
+        'principale con questo progetto \\"Diventare un hacker\\"?","options":[{"label":'
+        '"Imparare le basi dell\'hacking etico"},{"label":"Costruire un laboratorio di test"},'
+        '{"label":"Allenarmi con le CTF"},{"label":"Altro"}]},{"id":"level","header":"Livello",'
+        '"question":"Qual è il tuo livello di esperienza attuale con sicurezza informatica e '
+        'programmazione?","options":[{"label":"Principiante"},{"label":"Intermedio"},'
+        '{"label":"Avanzato"}]},{"id":"learning","header":"Metodo","question":"Come preferisci '
+        'imparare?","options":[{"label":"Esercizi pratici"},{"label":"Guide scritte"},'
+        '{"label":"Video"},{"label":"Mix di tutto"}]}]}}'
+    )
+    assert len(missing_outer_brace) == 782
+    calls = DeepSeekWebBackend._parse_tool_calls(missing_outer_brace, True, {})
+    assert calls is not None and len(calls) == 1
+    assert calls[0]["name"] == "questions__request_input"
+    normalized = validate_request({"request_id": "ds-1", **calls[0]["arguments"]})
+    assert [q["id"] for q in normalized["questions"]] == ["goal", "level", "learning"]
+
+    unescaped_and_missing_brace = missing_outer_brace.replace(
+        '\\"Diventare un hacker\\"', '"Diventare un hacker"'
+    )
+    calls_unescaped = DeepSeekWebBackend._parse_tool_calls(unescaped_and_missing_brace, True, {})
+    assert calls_unescaped == calls
+
+
 def test_legacy_reasoning_and_content_paths_continue_separately():
     events = [
         {"p": "response/thinking_content", "v": "Checking"}, {"v": " the request."},

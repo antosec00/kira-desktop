@@ -177,19 +177,30 @@ def test_direct_chat_tools_open_the_context_panel_for_every_direct_provider(ui, 
 
 
 def test_provider_identifiers_are_shown_with_selector_labels(ui, qtbot):
+    from datetime import UTC, datetime, timedelta
+
     workspace, window, calls, localization = ui
-    workspace._sessions = [workspace._session.copy(), {"id": "web", "project_id": "p", "backend": "openai_chatgpt",
-                                                       "model": "gpt-synthetic", "title": "Direct chat"}]
+    five_hours_ago = (datetime.now(UTC) - timedelta(hours=5, minutes=2)).isoformat()
+    workspace._sessions = [
+        workspace._session.copy(),
+        {"id": "web", "project_id": "p", "backend": "openai_chatgpt",
+         "model": "gpt-synthetic", "title": "Direct chat"},
+        {"id": "ds", "project_id": "p", "backend": "deepseek_web",
+         "model": "deepseek-reasoner", "title": "Test domande", "updated_at": five_hours_ago},
+    ]
     workspace.changed.emit()
     qtbot.wait(40)
     tooltip = named(window, "chatSelect_web").property("toolTipText")
     assert tooltip == "Direct chat · OpenAI diretto · ChatGPT · gpt-synthetic"
     assert "openai_chatgpt" not in tooltip
+    assert named(window, "chatSelect_ds").property("toolTipText") == "Test domande · DeepSeek Web"
+    assert named(window, "chatAge_ds").property("text") == "5h"
     assert evaluate(window, 'kformat.providerLabel("deepseek_account")') == "DeepSeek Account"
     assert evaluate(window, 'kformat.providerLabel("future_provider")') == "future_provider"
     localization.setLanguage("en")
     qtbot.wait(60)
     assert named(window, "chatSelect_web").property("toolTipText") == "Direct chat · Direct OpenAI · ChatGPT · gpt-synthetic"
+    assert named(window, "chatSelect_ds").property("toolTipText") == "Test domande · DeepSeek Web"
 
 
 def test_reasoning_level_follows_one_rule_in_composer_and_provider_switch(ui, qtbot):

@@ -47,11 +47,16 @@ class ProjectChats:
                 "ORDER BY created_at,id LIMIT 1", (session["id"],),
             ).fetchone()
             title = normalized_title(row[0]) if row else "Nuova chat"
+        last_activity = self.store.db.execute(
+            "SELECT MAX(COALESCE(updated_at,created_at)) FROM runs WHERE session_id=?",
+            (session["id"],),
+        ).fetchone()
+        updated_at = (last_activity[0] if last_activity and last_activity[0] else None) or session.get("created_at", "")
         metadata = self.store.all("SELECT archived,parent_session_id,source_run_id,fork_mode FROM session_workbench WHERE session_id=?", (session["id"],))
         generation = self.store.db.execute(
             "SELECT COALESCE(MAX(generation),0) FROM session_provider_generations WHERE session_id=?",
             (session["id"],)).fetchone()[0]
-        return {**session, "provider_generation": generation, "title": title or "Nuova chat", "archived": False,
+        return {**session, "updated_at": updated_at, "provider_generation": generation, "title": title or "Nuova chat", "archived": False,
                 **({**metadata[0], "archived": bool(metadata[0]["archived"])} if metadata else {})}
 
     def list(self, project_id: str, offset: int, limit: int, archived: bool = False) -> Json:

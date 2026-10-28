@@ -400,19 +400,37 @@ ApplicationWindow {
                                         checked: workspace.sessionId === chatEntry.modelData.id
                                         quietSelection: true; selectionMark: true
                                         subtle: true; leftAligned: true
-                                        toolTipText: text + " · " + kformat.providerLabel(chatEntry.modelData.backend) + " · " + chatEntry.modelData.model
+                                        toolTipText: text + " · " + (chatEntry.modelData.backend === "deepseek_web" ? "DeepSeek Web" : kformat.providerLabel(chatEntry.modelData.backend) + " · " + chatEntry.modelData.model)
                                             + (chatEntry.indicatorVisible ? " · " + chatEntry.activity.label : "")
                                         Accessible.name: qsTr("Apri chat %1").arg(text)
                                             + (chatEntry.indicatorVisible ? " · " + chatEntry.activity.label : "")
                                         contentItem: Item {
                                             Text {
                                                 anchors.fill: parent
-                                                leftPadding: 10; rightPadding: chatEntry.indicatorVisible ? 25 : 10
+                                                leftPadding: 10
+                                                rightPadding: (chatAgeLabel.visible ? chatAgeLabel.implicitWidth + 14 : 10) + (chatEntry.indicatorVisible ? 18 : 0)
                                                 text: chatSelect.text; font: chatSelect.font; color: chatSelect.foreground
                                                 textFormat: Text.PlainText; elide: Text.ElideRight
                                                 verticalAlignment: Text.AlignVCenter
                                             }
+                                            Text {
+                                                id: chatAgeLabel
+                                                objectName: "chatAge_" + chatEntry.modelData.id
+                                                anchors.right: chatEntry.indicatorVisible ? chatStatusIcon.left : parent.right
+                                                anchors.rightMargin: chatEntry.indicatorVisible ? 6 : 8
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: { localization.revision; return kformat.relativeTime(chatEntry.modelData.updated_at || chatEntry.modelData.created_at) }
+                                                visible: text.length > 0
+                                                color: appearance.colors.muted
+                                                font.family: appearance.uiFont.family
+                                                font.styleName: appearance.uiFont.styleName
+                                                font.weight: appearance.uiFont.weight
+                                                font.italic: appearance.uiFont.italic
+                                                font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 2)
+                                                textFormat: Text.PlainText
+                                            }
                                             StatusIndicator {
+                                                id: chatStatusIcon
                                                 objectName: "chatStatus_" + chatEntry.modelData.id
                                                 anchors.right: parent.right; anchors.rightMargin: 7
                                                 anchors.verticalCenter: parent.verticalCenter
