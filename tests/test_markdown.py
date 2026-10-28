@@ -170,3 +170,27 @@ def test_long_code_lines_wrap_inside_the_block_instead_of_being_cut():
     document.setHtml(MarkdownRenderer().render(source))
     assert document.size().width() <= 421
     assert "chiuso subito" in document.toPlainText()
+
+
+def test_readable_typography_metrics_for_headings_lists_and_inline_code(renderer):
+    source = (
+        "## Cosa cambia in pratica\n\n---\n\n"
+        "1. **Primo punto**: usa `masscan` sulla rete.\n"
+        "2. **Secondo punto**: usa `tshark`.\n"
+    )
+    html = renderer.render(source)
+    document = QTextDocument()
+    document.setHtml(html)
+    heading = document.find("Cosa cambia in pratica").block()
+    item_one = document.find("Primo punto").block()
+    item_two = document.find("Secondo punto").block()
+    inline_code = document.find("masscan").charFormat()
+    strong_fmt = document.find("Primo punto").charFormat()
+    prose_fmt = document.find("sulla rete").charFormat()
+    assert heading.blockFormat().lineHeight() == 135.0
+    assert item_one.blockFormat().lineHeight() == 150.0
+    assert item_one.blockFormat().bottomMargin() >= 6.0
+    assert item_two.blockFormat().topMargin() >= 4.0
+    assert inline_code.foreground().color().name() != prose_fmt.foreground().color().name()
+    assert strong_fmt.foreground().color().name() != prose_fmt.foreground().color().name()
+
