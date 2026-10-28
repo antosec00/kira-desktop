@@ -317,7 +317,7 @@ def test_real_qml_dialog_is_literal_accessible_and_responsive(editor, qtbot, qtl
     engine.rootContext().setContextProperty("workspace", workspace)
     qml_dir = Path(ui_app.__file__).resolve().parent / "qml"
     engine.loadData(('import QtQuick\nimport QtQuick.Controls\nimport "' + QUrl.fromLocalFile(str(qml_dir)).toString() + '"\n'
-                    'ApplicationWindow { visible: true; width: 1080; height: 840; KiraSoulsDialog { id: panel; Component.onCompleted: open() } }').encode(), QUrl.fromLocalFile(str(qml_dir / "SoulTest.qml")))
+                    f'ApplicationWindow {{ visible: true; width: {size[0]}; height: {size[1]}; KiraSoulsDialog {{ id: panel; Component.onCompleted: open() }} }}').encode(), QUrl.fromLocalFile(str(qml_dir / "SoulTest.qml")))
     assert engine.rootObjects()
     window = engine.rootObjects()[0]
     window.resize(*size)
