@@ -36,15 +36,13 @@ def question_tool_specs() -> Json:
             "description": "Persistent user questions; never permission or credential requests.",
             "tools": [
                 {"type": "function", "name": "request_input",
-                 "description": "Ask one to three questions. Kira provides the durable ID. "
-                                "blocking=false allows independent work while the user answers.",
+                 "description": "Ask 1-3 structured questions. Each item in questions requires an ASCII id and question text, with optional options:[{label}].",
                  "inputSchema": {"type": "object", "properties": {
                      "blocking": {"type": "boolean"}, "questions": {"type": "array",
                          "items": question, "minItems": 1, "maxItems": 3}},
                      "required": ["blocking", "questions"], "additionalProperties": False}},
                 {"type": "function", "name": "read_input",
-                 "description": "Read this run's question. wait=true waits for an answer; "
-                                "a pending result is never an answer or approval.",
+                 "description": "Read a question answer by request_id (wait=true waits; pending is never approval).",
                  "inputSchema": {"type": "object", "properties": {
                      "request_id": {"type": "string"}, "wait": {"type": "boolean"}},
                      "required": ["request_id", "wait"], "additionalProperties": False}},
