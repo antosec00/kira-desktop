@@ -44,6 +44,8 @@ from kira.ui.provider_switch import ProviderSwitchController
 from kira.ui.team_controller import TeamController
 from kira.ui.web_controller import WebController, browser_approval_description
 from kira.ui.studio_controller import StudioController
+from kira.ui.canvas_controller import CanvasController
+from kira.ui.mcp_controller import McpController
 
 Json = dict[str, Any]
 STATE_LABELS = {
@@ -403,6 +405,8 @@ class Workspace(QObject):
         self.accountUsage = AccountUsageController(self)
         self._web = WebController(self)
         self._studio = StudioController(self)
+        self._canvas = CanvasController(self)
+        self.mcpServers = McpController(self)
         self._soul_controller: Any = None
         self._reasoning = ReasoningController(self)
         self.chatChanged.connect(self.draftImagesChanged.emit)
@@ -414,6 +418,14 @@ class Workspace(QObject):
     @qt_property(QObject, constant=True)
     def studio(self) -> StudioController:
         return self._studio
+
+    @qt_property(QObject, constant=True)
+    def canvas(self) -> CanvasController:
+        return self._canvas
+
+    @qt_property(QObject, constant=True)
+    def mcp(self) -> McpController:
+        return self.mcpServers
 
     @qt_property(QObject, constant=True)
     def reasoning(self) -> ReasoningController:
@@ -430,6 +442,7 @@ class Workspace(QObject):
         self.inputs.retranslate()
         self.teams.retranslate()
         self.workbench.retranslate()
+        self._canvas.retranslate()
         self.assistant.retranslate()
         self.directAccount.changed.emit()
         self.deepseekAccount.changed.emit()
@@ -2796,6 +2809,9 @@ class Workspace(QObject):
 
     def _receive_settings(self, result: Json) -> None:
         self._settings = result.get("settings", {})
+        if "mcp_servers" in result:
+            self.mcpServers._apply_servers({"servers": result["mcp_servers"]})
+            self.mcpServers.changed.emit()
         self.changed.emit()
 
     @Slot(str, str, int, int, int)

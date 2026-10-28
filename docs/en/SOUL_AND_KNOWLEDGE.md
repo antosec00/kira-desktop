@@ -321,3 +321,50 @@ outcome of the contract and the tests from unverified external effects. An
 interrupted or uncertain operation is not repeated on its own: if a cleanup is
 not confirmed, Kira reports it and blocks conflicting work on the project
 until it is resolved.
+
+## External MCP servers
+
+Alongside tools built inside a single project, you can connect third-party or
+local **Model Context Protocol (MCP)** servers (for example GitHub, Postgres,
+Notion, Sentry, Linear) from **Settings → Connections → External MCP servers**.
+Discovered tools become available across all 6 providers (**Ollama**,
+**DeepSeek Web**, **DeepSeek Account**, **Direct OpenAI · ChatGPT**, **Codex**
+and **Claude Code**) without bloating the initial conversation prompt.
+
+### Configuration and import
+
+- **Add MCP server**: lets you configure a local server over **`stdio`**
+  (executable command, arguments and optional `KEY=VALUE` environment variables)
+  or a remote **`HTTP / SSE`** endpoint (URL and optional HTTP headers).
+- **Import `mcpServers` JSON**: lets you paste a standard `{"mcpServers": {...}}`
+  JSON configuration directly from Claude Desktop or Cursor.
+- **Verify and discover tools**: runs the MCP JSON-RPC 2.0 handshake
+  (`initialize` → `tools/list`), updates the server status and displays the
+  count and names of the discovered tools.
+- **Enabled / Disabled** and **Read-only server**: you can toggle each server
+  with one click and mark it as read-only when its tools only perform
+  side-effect-free queries.
+
+### Security and permissions
+
+Configurations are stored privately (`0600`) in
+`$HOME/.config/kira/mcp/servers.json`. Environment variable values and HTTP
+header values are never shown in the UI after saving (only key names are
+listed) and are automatically registered in the service's secret redactor.
+
+| MCP operation | Required mode | Project permission |
+| --- | --- | --- |
+| Start/call a local `stdio` server | Any (if `read_only`) or **Execute** | **Trusted host** or **Full access** |
+| Call an MCP tool marked `read_only` over `HTTP / SSE` | **Plan**, **Review** or **Execute** | **Read only** or higher |
+| Call a non-read-only MCP tool | **Execute** | **Project write** (`HTTP / SSE`) or **Trusted host** (`stdio`) |
+
+### How the model uses it (`kira.mcp_tools`)
+
+When at least one external MCP server is enabled, Kira exposes the
+`kira.mcp_tools` gateway tool with four actions:
+
+- `list_servers`: lists enabled MCP servers and their discovered tool names;
+- `list_tools`: searches available tools (filtering by `server_id` or `query`);
+- `describe`: returns the JSON `inputSchema` of a specific tool on demand;
+- `call`: invokes the tool on the target MCP server (`server_id`, `tool_name`, `arguments`) and records a tool receipt in the chat.
+

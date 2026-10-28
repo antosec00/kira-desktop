@@ -9,9 +9,9 @@
   {
     "id": "permissions",
     "title": "Permissions and current capabilities",
-    "summary": "Separate callable tools, project permissions, model transport and manual consent.",
-    "keywords": "permissions permessi autorizzazioni accesso strumenti capacità execute esegui sola lettura host sandbox codex full_access full access accesso completo external files percorsi esterni",
-    "revision": "2772f8991e8e36e6610208b3"
+    "summary": "Separate callable tools, project permissions, OS sandboxing, checkpoints, model transport and manual consent.",
+    "keywords": "permissions permessi autorizzazioni accesso strumenti capacità execute esegui sola lettura host sandbox landlock bubblewrap bwrap checkpoint rollback ripristino shadow git codex full_access full access accesso completo external files percorsi esterni",
+    "revision": "7be597c04fbde74b7c24742a"
   },
   {
     "id": "context",
@@ -23,9 +23,9 @@
   {
     "id": "tool-building",
     "title": "Build and reuse a project tool",
-    "summary": "Discover missing capabilities, register a project script and verify its exact immutable revision.",
-    "keywords": "tool tools strumenti strumento creare costruire programma script python riusare riutilizzare registro test procedura procedure",
-    "revision": "9bb0ca9df11d645e98d697db"
+    "summary": "Discover missing capabilities, query the semantic codebase AST index, use the interactive Canvas, register a project script, or call external MCP servers.",
+    "keywords": "tool tools strumenti strumento creare costruire programma script python riusare riutilizzare registro test procedura procedure mcp mcp_tools mcpservers server esterni stdio sse code_index ast rag semantico indice simboli call graph chiamate canvas mermaid svg html preview diff hunk patch_lines artefatti",
+    "revision": "4805cfd09fa1c48010de2482"
   },
   {
     "id": "verification",

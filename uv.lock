@@ -377,7 +377,7 @@ wheels = [
 
 [[package]]
 name = "kira-desktop"
-version = "0.20.5"
+version = "0.21.6"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

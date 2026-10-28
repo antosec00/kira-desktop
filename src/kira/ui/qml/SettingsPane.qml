@@ -335,6 +335,9 @@ Item {
                             onClicked: workspace.saveSettings(endpointInput.text, binaryInput.text, timeoutInput.value, roundsInput.value, outputInput.value)
                         }
                     }
+                    Rule {}
+                    Heading { text: qsTr("Server MCP esterni") }
+                    McpServersPane {}
                     Item { implicitHeight: 20 }
                 }
                 ColumnLayout {

@@ -1282,6 +1282,14 @@ durante il lavoro. Dettagli in [Aspetto e lingua](ASPETTO_E_LINGUA.md).
 impostazioni** e, mentre c'è lavoro in corso, restano in sola lettura fino al
 termine. Le troncature dell'output vengono segnalate nelle ricevute.
 
+Sotto le impostazioni dei provider trovi **Server MCP esterni**, dove puoi
+aggiungere server Model Context Protocol tramite **`stdio`** o **`HTTP / SSE`**,
+importare direttamente un JSON `mcpServers` (compatibile con Claude Desktop o
+Cursor), verificare la connessione con rilevamento degli strumenti e attivare o
+disattivare ciascun server per tutte le chat (`kira.mcp_tools`; vedi [Anima e
+conoscenza](ANIMA_E_CONOSCENZA.md#server-mcp-esterni)).
+
+
 ### Dati locali
 
 **Backup del database**, **Aggiorna risorse** (rilegge RAM/GPU osservate),

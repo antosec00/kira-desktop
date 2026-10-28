@@ -42,22 +42,26 @@ ampio da sola.
 | --- | --- | --- | --- |
 | **Sola lettura** | Lettura e ricerca dentro il progetto; le modifiche sono rifiutate | Negati | Modalità di sola lettura di Codex |
 | **Scrittura nel progetto** | Lettura e scrittura dentro il progetto | Negati | Sandbox workspace di Codex |
-| **Host fidato** | Lettura e scrittura dentro il progetto | Eseguiti con il tuo utente sul sistema dove gira Kira | Accesso completo di Codex |
-| **Accesso completo** | Lettura e scrittura in tutti i percorsi accessibili al tuo utente, anche fuori dal progetto | Eseguiti con il tuo utente | Accesso completo di Codex |
+| **Host fidato** | Lettura e scrittura dentro il progetto | Eseguiti con confinamento OS (`workspace_write` Landlock / Bubblewrap: scrittura limitata alla radice del progetto e `/tmp`) | Accesso completo di Codex |
+| **Accesso completo** | Lettura e scrittura in tutti i percorsi accessibili al tuo utente, anche fuori dal progetto | Eseguiti con il tuo utente senza restrizioni di sandbox | Accesso completo di Codex |
 
 Alcune precisazioni importanti:
 
 - «Host» indica il sistema dove gira Kira. Se la avvii in WSL, l'host è
   quell'ambiente Linux, con le cartelle Windows montate che il tuo utente può
   raggiungere.
-- **Host fidato** non è una sandbox. Un comando eseguito con il tuo utente può
-  toccare qualsiasi cosa il tuo utente possa toccare: la cartella del progetto
-  limita gli strumenti di file di Kira, non i comandi. Scegli questo permesso
-  solo per progetti di cui ti fidi davvero.
+- Con **Host fidato**, i comandi avviati da Kira (`run_command` e i worker Python
+  degli strumenti di progetto) vengono confinati a livello di kernel tramite
+  **Linux Landlock LSM** (o **Bubblewrap** `bwrap` quando disponibile) in modalità
+  `workspace_write`: possono leggere ed eseguire i binari di sistema ma il kernel
+  blocca con `EACCES` qualsiasi creazione, modifica, rinomina o cancellazione di
+  file fuori dalla cartella del progetto e dalle directory temporanee (`/tmp`).
+  La lettura del file system e la rete restano quelle dell'utente: scegli questo
+  permesso solo per progetti di cui ti fidi.
 - Fuori da **Accesso completo**, lo strumento di scrittura di Kira rifiuta con
   `PATH_DENIED` i percorsi dentro `.git`: i metadati Git contengono hook e filtri
   che Git esegue poi con il tuo utente. Con **Host fidato** i comandi restano
-  comunque liberi di modificarli.
+  comunque liberi di modificare la cartella del progetto.
 - Le politiche di Codex limitano scritture e rete secondo il suo runtime, ma non
   promettono che solo la cartella del progetto sia leggibile. Codex tratta
   **Host fidato** e **Accesso completo** allo stesso modo; la differenza fra i

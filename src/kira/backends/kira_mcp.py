@@ -27,8 +27,11 @@ from kira import __version__
 from kira.backends.client_tools import KIRA_CLIENT_TOOL_NAMES, ClientToolBridge, ClientToolError, encoded
 from kira.domain.assistant import assistant_tool_specs
 from kira.domain.autonomous_goals import GOAL_TOOL_NAMES, goal_tool_specs
+from kira.domain.canvas import canvas_tool_specs
+from kira.domain.code_index import code_index_tool_specs
 from kira.domain.research import research_tool_specs
 from kira.domain.knowledge import knowledge_tool_specs
+from kira.domain.mcp_servers import mcp_tool_specs
 from kira.domain.project_tools import PROJECT_TOOL_CALL_TIMEOUT, PROJECT_TOOL_NAMES, project_tool_specs
 from kira.domain.souls import soul_tool_specs
 from kira.domain.studio import studio_tool_specs
@@ -56,7 +59,8 @@ def mcp_tool_name(name: str) -> str:
 def _relay_specs() -> dict[str, Json]:
     """Typed definitions of every relayable tool, keyed by registered name."""
     kira = [*assistant_tool_specs()[0]["tools"], *research_tool_specs(), *knowledge_tool_specs(),
-            *project_tool_specs(), *soul_tool_specs(), *studio_tool_specs()]
+            *project_tool_specs(), *soul_tool_specs(), *studio_tool_specs(), *mcp_tool_specs(),
+            *code_index_tool_specs(), *canvas_tool_specs()]
     specs = {f"{MCP_SERVER_NAME}.{tool['name']}": tool for tool in kira}
     specs.update({f"goal.{tool['name']}": tool for tool in goal_tool_specs(writable=True)["tools"]})
     return specs

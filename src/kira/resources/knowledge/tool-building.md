@@ -67,3 +67,39 @@ After a recorded test pass, run that same enabled revision with
 replacing the illustrative ID and revision with the actual returned values.
 The expected result for this example is `{"value":9}`. Tests and runs still require
 Execute with trusted-host or full-access; this example does not grant that permission.
+
+## External MCP servers
+
+When the user has enabled external Model Context Protocol servers in Settings,
+Kira registers `kira.mcp_tools` for the turn. Use:
+
+- `{"action":"list_servers","payload":{}}` to list enabled MCP servers and their discovered tool names;
+- `{"action":"list_tools","payload":{"server_id":"optional","query":"optional"}}` to search tools across enabled servers;
+- `{"action":"describe","payload":{"server_id":"SERVER_ID","tool_name":"TOOL_NAME"}}` to inspect the JSON `inputSchema` of a specific tool before calling it;
+- `{"action":"call","payload":{"server_id":"SERVER_ID","tool_name":"TOOL_NAME","arguments":{...}}}` to invoke the tool.
+
+Local `stdio` MCP servers require `trusted-host` or `full-access` project permission.
+Non-read-only MCP tools require `Execute` mode and write or host permissions; servers
+or tools marked `read_only` can also be called in `Plan` and `Review`. Environment
+variables and HTTP headers remain private in the service and are redacted from tool outputs.
+
+## Semantic codebase index (`kira.code_index`)
+
+Kira maintains a per-project semantic and structural codebase index (`$KIRA_HOME/data/code_index/<project_id>/index.db`)
+combining AST symbol extraction, SQLite FTS5 lexical matching, 256-dim semantic vector
+embeddings, and a call/dependency graph. Use `kira.code_index` in any mode (`Execute`, `Plan`, `Review`, `Recap`):
+
+- `{"action":"search","payload":{"query":"...","path":"optional","kind":"optional","language":"optional","limit":8}}` for hybrid semantic + BM25 + AST chunk retrieval;
+- `{"action":"symbols","payload":{"query":"optional","path":"optional","kind":"optional","limit":25}}` to list functions, classes, methods, or QML components;
+- `{"action":"graph","payload":{"symbol":"ClassName.method","path":"optional","limit":25}}` to inspect definitions, callers (`who calls this symbol`), callees (`what this symbol calls`), imports, and importers;
+- `{"action":"status","payload":{}}` or `{"action":"rebuild","payload":{"force":true}}` to inspect or refresh the index.
+
+## Interactive Canvas & Live Preview (`kira.canvas`)
+
+Kira provides a side-by-side interactive Canvas (`CanvasPane.qml`) with offline SVG/HTML live preview, versioned revisions, inline line-range patching, and hunk-level diff accept/reject. Use `kira.canvas`:
+
+- `{"action":"create","payload":{"title":"...","kind":"mermaid|html|svg|markdown|code","content":"...","language":"optional","summary":"optional"}}` to create a live artifact rendered immediately in the side-by-side Canvas;
+- `{"action":"patch_lines","payload":{"artifact_id":"ID","start_line":10,"end_line":20,"replacement":"...","summary":"optional"}}` to rewrite only a targeted range of lines (e.g. when the user selects lines in the Canvas editor and asks Kira to improve them);
+- `{"action":"update","payload":{"artifact_id":"ID","content":"...","title":"optional","summary":"optional"}}` to save a full new revision;
+- `{"action":"list","payload":{}}`, `{"action":"get","payload":{"artifact_id":"ID"}}`, or `{"action":"diff","payload":{"artifact_id":"ID"}}` to inspect existing Canvas artifacts and their unified diff hunks.
+

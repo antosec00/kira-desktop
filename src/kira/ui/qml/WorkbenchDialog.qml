@@ -10,13 +10,14 @@ Dialog {
     font: appearance.uiFont
     property string section: "queue"
     property string contextStamp: ""
-    property var sections: ["queue", "history", "chat", "archives", "changes", "goal"]
+    property var sections: ["queue", "history", "chat", "archives", "changes", "codeindex", "goal"]
     function activate(name) {
         section = name
         if (name === "queue") workbench.refreshQueue()
         else if (name === "history") workbench.searchHistory(historySearch.text)
         else if (name === "archives") workbench.refreshArchives()
         else if (name === "changes") workbench.refreshChanges("")
+        else if (name === "codeindex") workbench.refreshCodeIndex()
         else if (name === "goal") workbench.refreshGoal()
     }
     function confirmCompact() { compactDialog.open() }
@@ -33,7 +34,7 @@ Dialog {
         spacing: 10
         KComboBox {
             objectName: "workbenchSection"; Layout.fillWidth: true
-            model: [qsTr("Coda del progetto"), qsTr("Cronologia dei messaggi inviati"), qsTr("Gestisci chat"), qsTr("Chat archiviate"), qsTr("Modifiche"), qsTr("Obiettivo della chat")]
+            model: [qsTr("Coda del progetto"), qsTr("Cronologia dei messaggi inviati"), qsTr("Gestisci chat"), qsTr("Chat archiviate"), qsTr("Modifiche"), qsTr("Indice semantico AST"), qsTr("Obiettivo della chat")]
             currentIndex: Math.max(0, dialog.sections.indexOf(dialog.section))
             Accessible.name: qsTr("Sezione degli strumenti")
             onActivated: dialog.activate(dialog.sections[index])
@@ -138,8 +139,27 @@ Dialog {
             ColumnLayout {
                 RowLayout {
                     KButton { text: qsTr("Aggiorna"); enabled: workspace.connected && !workbench.loading; onClicked: workbench.refreshChanges("") }
+                    KButton { objectName: "createCheckpointButton"; text: qsTr("Salva checkpoint"); enabled: workspace.connected && !workspace.busy && !teams.busy && !workbench.loading; onClicked: workbench.createCheckpoint("") }
+                    KButton { objectName: "openCanvasFromChangesButton"; text: qsTr("Apri Canvas"); subtle: true; enabled: workspace.connected; onClicked: { dialog.close(); workspace.canvas.showCanvas() } }
                     KButton { text: qsTr("Richiedi revisione"); enabled: !workspace.busy && !teams.busy; onClicked: { workbench.setMode("review"); workbench.useHistory(qsTr("Esamina le modifiche del progetto e segnala problemi concreti, senza modificare file.")); dialog.close() } }
                     Item { Layout.fillWidth: true }
+                }
+                Text { objectName: "checkpointStatusLabel"; visible: workbench.checkpointStatus.length > 0; text: workbench.checkpointStatus; font: appearance.uiFont; color: appearance.colors.accent; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
+                RowLayout {
+                    visible: workbench.checkpoints.length > 0
+                    Layout.fillWidth: true; spacing: 8
+                    KComboBox {
+                        id: checkpointChoice; objectName: "checkpointChoice"; Layout.fillWidth: true
+                        model: (workbench.checkpoints || []).map(function(cp) {
+                            var kindTag = cp.kind === "auto_run" ? qsTr("Auto") : (cp.kind === "pre_restore_backup" ? qsTr("Backup") : qsTr("Manuale"))
+                            return {id: cp.id, kind: cp.kind, label: "[" + kindTag + "] " + cp.label + " (" + (cp.files_changed || 0) + " file)"}
+                        })
+                        textRole: "label"; valueRole: "id"
+                        Accessible.name: qsTr("Checkpoint del workspace")
+                    }
+                    KButton { objectName: "inspectCheckpointButton"; text: qsTr("Diff checkpoint"); subtle: true; enabled: checkpointChoice.count > 0 && !workbench.loading; onClicked: workbench.inspectCheckpoint(checkpointChoice.currentValue) }
+                    KButton { objectName: "undoCheckpointButton"; text: qsTr("Annulla turno"); enabled: checkpointChoice.count > 0 && !workspace.busy && !teams.busy && !workbench.loading; onClicked: workbench.restoreCheckpoint(checkpointChoice.currentValue, "before") }
+                    KButton { objectName: "restoreCheckpointButton"; text: qsTr("Ripristina stato"); subtle: true; enabled: checkpointChoice.count > 0 && !workspace.busy && !teams.busy && !workbench.loading; onClicked: workbench.restoreCheckpoint(checkpointChoice.currentValue, "after") }
                 }
                 Text { visible: workbench.changes.available === false; text: workbench.changes.reason || qsTr("Le differenze Git non sono disponibili per questo progetto."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
                 KComboBox {
@@ -148,8 +168,94 @@ Dialog {
                     textRole: "label"; valueRole: "path"; Accessible.name: qsTr("File da confrontare")
                     onActivated: workbench.refreshChanges(currentValue)
                 }
+                ListView {
+                    id: workspaceHunkList
+                    objectName: "workspaceHunkList"
+                    visible: workbench.workspaceHunks.length > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: visible ? Math.min(180, contentHeight) : 0
+                    clip: true
+                    spacing: 6
+                    model: workbench.workspaceHunks
+                    ScrollBar.vertical: KScrollBar {}
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: workspaceHunkList.width
+                        implicitHeight: wsHunkRow.implicitHeight + 14
+                        color: appearance.colors.surfaceAlt
+                        radius: 8
+                        border.color: appearance.colors.border
+                        RowLayout {
+                            id: wsHunkRow
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            spacing: 8
+                            Text {
+                                text: (modelData.path || "") + " · " + (modelData.header || "") + " (+" + (modelData.added_count || 0) + " / -" + (modelData.removed_count || 0) + ")"
+                                font: appearance.codeFont
+                                color: appearance.colors.accent
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                textFormat: Text.PlainText
+                            }
+                            KButton {
+                                objectName: "acceptWorkspaceHunk_" + modelData.index
+                                text: qsTr("Accetta blocco")
+                                subtle: true
+                                enabled: !workbench.loading && !workspace.busy
+                                onClicked: workbench.applyWorkspaceHunk(modelData.path || "", modelData.index || 0, "accept")
+                            }
+                            KButton {
+                                objectName: "rejectWorkspaceHunk_" + modelData.index
+                                text: qsTr("Rifiuta blocco")
+                                enabled: !workbench.loading && !workspace.busy
+                                onClicked: workbench.applyWorkspaceHunk(modelData.path || "", modelData.index || 0, "reject")
+                            }
+                        }
+                    }
+                }
                 ScrollView { Layout.fillWidth: true; Layout.fillHeight: true; clip: true; ReadText { objectName: "projectDiffText"; width: parent.width; text: workbench.changes.diff || qsTr("Nessuna differenza da mostrare."); font: appearance.codeFont; wrapMode: TextEdit.NoWrap } }
                 Text { visible: Boolean(workbench.changes.truncated); text: qsTr("Differenze limitate per dimensione. Seleziona un file per approfondire."); font: appearance.uiFont; color: appearance.colors.warning; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
+            }
+            ColumnLayout {
+                spacing: 8
+                RowLayout {
+                    Text { objectName: "codeIndexSummaryLabel"; text: workbench.codeIndexSummary; font: appearance.uiFont; color: appearance.colors.accent; Layout.fillWidth: true; wrapMode: Text.Wrap; textFormat: Text.PlainText }
+                    KButton { objectName: "rebuildCodeIndexButton"; text: qsTr("Ricostruisci indice"); enabled: workspace.connected && !workbench.loading; onClicked: workbench.rebuildCodeIndex() }
+                }
+                RowLayout {
+                    TextField { id: codeSearchField; objectName: "codeIndexSearchField"; Layout.fillWidth: true; font: appearance.uiFont; selectByMouse: true; placeholderText: qsTr("Cerca simboli AST, funzioni, classi o concetti semantici…"); onAccepted: workbench.searchCodeIndex(text) }
+                    KButton { objectName: "codeIndexSearchButton"; text: qsTr("Cerca"); primary: true; enabled: workspace.connected && codeSearchField.text.trim().length > 0 && !workbench.loading; onClicked: workbench.searchCodeIndex(codeSearchField.text) }
+                }
+                ListView {
+                    id: codeIndexList; objectName: "codeIndexResultsList"; Layout.fillWidth: true; Layout.fillHeight: true
+                    model: workbench.codeIndexResults; spacing: 8; clip: true; ScrollBar.vertical: KScrollBar {}
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: codeIndexList.width; implicitHeight: codeResultCol.implicitHeight + 18
+                        color: appearance.colors.surfaceAlt; border.color: appearance.colors.border; radius: 10
+                        ColumnLayout {
+                            id: codeResultCol; anchors.fill: parent; anchors.margins: 9; spacing: 4
+                            RowLayout {
+                                Text { text: "[" + (modelData.kind || "symbol") + "] " + (modelData.qualified_name || modelData.symbol || ""); font: appearance.uiFont; color: appearance.colors.accent; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                                Text { text: (modelData.path || "") + ":" + (modelData.start_line || 1) + "-" + (modelData.end_line || 1); font: appearance.codeFont; color: appearance.colors.muted; textFormat: Text.PlainText }
+                            }
+                            Text { text: modelData.signature || ""; font: appearance.codeFont; color: appearance.colors.text; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                            Text { visible: Boolean(modelData.docstring); text: modelData.docstring || ""; font: appearance.uiFont; color: appearance.colors.muted; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; textFormat: Text.PlainText }
+                            RowLayout {
+                                Item { Layout.fillWidth: true }
+                                KButton { text: qsTr("Grafo chiamate"); subtle: true; onClicked: workbench.inspectCodeGraph(modelData.qualified_name || modelData.symbol || "", modelData.path || "") }
+                                KButton { text: qsTr("Cita nella bozza"); subtle: true; onClicked: { workbench.useHistory((modelData.path || "") + ":" + (modelData.start_line || 1) + " (" + (modelData.qualified_name || modelData.symbol || "") + ")"); dialog.close() } }
+                            }
+                        }
+                    }
+                    Text { anchors.centerIn: parent; visible: codeIndexList.count === 0; text: qsTr("Inserisci una query per cercare funzioni, classi e frammenti semantici nel progetto."); font: appearance.uiFont; color: appearance.colors.muted; textFormat: Text.PlainText }
+                }
+                ScrollView {
+                    visible: workbench.codeIndexGraphText.length > 0
+                    Layout.fillWidth: true; Layout.preferredHeight: visible ? 130 : 0; clip: true
+                    ReadText { objectName: "codeIndexGraphView"; width: parent.width; text: workbench.codeIndexGraphText; font: appearance.codeFont; wrapMode: TextEdit.Wrap }
+                }
             }
             ColumnLayout {
                 Text { text: qsTr("Kira prosegue per cicli fino all’obiettivo, senza un limite predefinito. Mantiene un riepilogo e le evidenze; si ferma se serve il tuo intervento. Il completamento è una valutazione del modello."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }

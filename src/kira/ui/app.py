@@ -40,6 +40,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
     with qml_disk_cache(directory, "Kira Desktop"):
         engine = QQmlApplicationEngine()
         engine.addImageProvider("kira-browser", BrowserFrames(workspace.web.frames))
+        engine.addImageProvider("kira-canvas", BrowserFrames(workspace.canvas.frames))
         localization = Localization(workspace, engine, engine)
         engine.rootContext().setContextProperty("localization", localization)
         appearance = Appearance(workspace, engine)
@@ -67,6 +68,8 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         engine.rootContext().setContextProperty("assistant", workspace.assistant)
         engine.rootContext().setContextProperty("directAccount", workspace.directAccount)
         engine.rootContext().setContextProperty("deepseekAccount", workspace.deepseekAccount)
+        engine.rootContext().setContextProperty("mcpServers", workspace.mcpServers)
+        engine.rootContext().setContextProperty("canvas", workspace.canvas)
         engine.rootContext().setContextProperty("accountUsage", workspace.accountUsage)
         engine.rootContext().setContextProperty("providerSwitch", workspace.providerSwitch)
         engine.rootContext().setContextProperty("chatContext", ContextController(workspace, engine))

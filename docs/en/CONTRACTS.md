@@ -60,8 +60,8 @@ a run to a session; the sessions of Team members cannot be started with
 | --- | --- | --- |
 | `read_only` | **Read only** | Only reading and searching files inside the project; no commands. |
 | `project_write` | **Project write** | Writing files with Kira's tools, limited to the project root; for Codex this corresponds to the `workspace-write` sandbox. No arbitrary commands. |
-| `trusted_host` | **Trusted host** | Arbitrary commands executed as the current user. **It is not a sandbox.** |
-| `full_access` | **Full access** | Like Trusted host, and in addition the file tools accept paths outside the project, within the limits of the system user's permissions. No automatic administrative privilege. |
+| `trusted_host` | **Trusted host** | Arbitrary commands confined at OS level (`workspace_write` Landlock / Bubblewrap: writes restricted to project root and `/tmp`). |
+| `full_access` | **Full access** | Like Trusted host without sandbox restrictions, and in addition the file tools accept paths outside the project, within the limits of the system user's permissions. No automatic administrative privilege. |
 
 The sets used by the code are: write = `project_write, trusted_host,
 full_access`; host = `trusted_host, full_access`. The **Plan**, **Review** and
@@ -146,7 +146,8 @@ refuses to continue if `app_version` does not match its own. The
 `workspaces`, `desktop_actions`, `diagnostics`, `teams`, `input_questions`,
 `workbench`, `prompt_queue`, `run_modes`, `chat_goals`, `autonomous_goals`,
 `provider_continuity`, `image_attachments`, `embedded_browser`,
-`project_research`, `knowledge`, `project_tools`, `personalized_souls`).
+`project_research`, `knowledge`, `project_tools`, `personalized_souls`,
+`os_sandbox`, `shadow_checkpoints`, `semantic_code_index`).
 
 ### Validation rules
 
@@ -195,6 +196,15 @@ Convention: `method {parameters} → {result}`; `?` marks an optional field.
 | `project.context` | `{project_id, session_id?}` → `{content, sources, truncated, enabled, chars}` | Shows the block of excerpts from other chats that Kira will supply on the next turn. |
 | `project.files` | `{project_id, query?, limit?}` → `{files:[], truncated, scanned, gitignore, limits:{entries, depth, matches}}` | Search contained in the root for `@` mentions; `limit` 1–200 (40), `query` up to 1,000 UTF-8 bytes; at most 10,000 entries and depth 32 explored. |
 | `project.changes` | `{project_id, path?}` → `{diff, truncated, ...}` | Staged/unstaged/untracked Git changes as inert text; runs no hooks, filters or external drivers; response limited to 650 KB. |
+| `checkpoint.list` | `{project_id, session_id?}` → `{checkpoints:[]}` | List of Shadow Git project checkpoints (up to 50 `auto_run`, `manual`, `pre_restore_backup` entries). |
+| `checkpoint.create` | `{project_id, session_id?, label?}` → `{checkpoint}` | Captures a manual snapshot of the working tree in the shadow Git repository without touching the user's `.git`. Requires an idle project. |
+| `checkpoint.diff` | `{project_id, checkpoint_id}` → `{checkpoint, files:[], diff, truncated}` | Read-only diff of the checkpoint against `parent_tree` (or the current working tree). |
+| `checkpoint.restore` | `{project_id, checkpoint_id, target?:"before"\|"after", session_id?}` → `{ok, checkpoint, target, restored_tree, restored_files, removed_files, backup_checkpoint}` | Atomically restores project files using `O_NOFOLLOW` descriptors, automatically creating a `pre_restore_backup` first. Requires an idle project and write permission. |
+| `codeindex.status` | `{project_id}` → `{status}` | Incrementally syncs the project's AST/semantic index and returns counts of files, symbols, call-graph edges, imports and languages. |
+| `codeindex.rebuild` | `{project_id, force?:bool}` → `{status}` | Rebuilds the project's semantic and AST symbol index (`$KIRA_HOME/data/code_index/<project_id>/index.db`). |
+| `codeindex.search` | `{project_id, query, path?, kind?, language?, limit?}` → `{ok, query, results:[], total_indexed_symbols, total_indexed_files}` | Hybrid retrieval (AST symbols + SQLite FTS5 BM25 + 256-dim semantic vector cosine similarity); `limit` 1–25 (8). |
+| `codeindex.symbols` | `{project_id, query?, path?, kind?, limit?}` → `{ok, symbols:[]}` | Lists or filters AST symbols (`function`, `class`, `method`, `component`, `interface`, `struct`, ...); `limit` 1–60 (25). |
+| `codeindex.graph` | `{project_id, symbol?, path?, limit?}` → `{ok, definitions:[], callers:[], callees:[], imports:[], importers:[]}` | Returns definitions, callers, callees, imports and importer files for a symbol or file path. |
 | `project.export` | `{project_id}` → `{text}` or `{path, format:"json", bytes}` | Up to 700 KB the JSON is inline; beyond that it is written to `exports/` in the data folder and the response gives its path. No truncation of the transcript. The interface does not offer it: use `kira-desktop rpc project.export '{"project_id": "…"}'`. |
 
 ### Sessions and chats
@@ -407,6 +417,13 @@ proposals are born not accepted and `untested` and cannot accept themselves.
 | `project.tools.get` | `{project_id, session_id, tool_id, revision?}` → revision with source, input/output definitions, tests and limits |
 | `project.tools.history` | `{project_id, session_id, tool_id, cursor?, limit?}` → revisions |
 | `project.tools.configure` | `{project_id, session_id, tool_id, expected_revision, request_id, enabled}` → enables or revokes a revision |
+| `mcp.servers.list` | `{}` → `{servers:[...]}` (never exposing `env` or `headers` values, only `env_keys` and `header_keys`) |
+| `mcp.servers.save` | `{id?, name, transport:"stdio"\|"http", command?, args?, env?, cwd?, url?, headers?, enabled?, read_only?, timeout_seconds?}` → `{server, servers}` |
+| `mcp.servers.import` | `{json}` → `{imported, servers}` (`{"mcpServers": {...}}` format compatible with Claude Desktop/Cursor) |
+| `mcp.servers.toggle` | `{server_id, enabled?, read_only?}` → `{server, servers}` |
+| `mcp.servers.delete` | `{server_id}` → `{deleted, servers}` |
+| `mcp.servers.test` | `{server_id}` → `{ok, server, tools, error, servers}` (runs `initialize` and `tools/list` on the MCP server) |
+
 
 `knowledge.read` accepts only recognized references, never arbitrary paths or
 URLs. Reads start neither inference nor programs. A project tool is a UTF-8
@@ -726,6 +743,9 @@ which no argument can change. Recognized namespaces: `team`, `kira`,
 | `kira.help_search` | `{query, scope?, limit?, cursor?}` | `scope` ∈ `all\|app\|capabilities\|chat\|project\|tools\|soul`. |
 | `kira.help_read` | `{ref, offset?, limit?}` | Recognized references only. |
 | `kira.project_tools` | `{action, payload}` | `action` ∈ `describe\|search\|read\|register\|test\|run`. |
+| `kira.code_index` | `{action, payload}` | `action` ∈ `status\|search\|symbols\|graph\|rebuild`. Hybrid semantic + BM25 + AST search, symbol explorer and call/dependency graph for the current project; also allowed in read-only modes. |
+| `kira.canvas` | `{action, payload}` | `action` ∈ `list\|get\|create\|update\|patch_lines\|diff`. Creates and updates interactive artifacts in the side-by-side Canvas (`mermaid`, `html`, `svg`, `markdown`, `code`), applies surgical line-range patches (`patch_lines`) and computes hunk-level diffs. |
+| `kira.mcp_tools` | `{action, payload}` | `action` ∈ `list_servers\|list_tools\|describe\|call`. Attached when at least one external MCP server is enabled; `stdio` requires `trusted_host`/`full_access`, non-`read_only` tools require **Execute**. |
 | `kira.research_list` / `research_read` / `research_propose` | list, `{record_id, source_index?, offset?, limit?}`, record content | Only with Research sharing enabled; accepted records only; a proposal can neither accept nor assess itself. |
 | `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?}` | Only with a Soul in `suggest` or `adaptive` mode; it only proposes. |
 | `goal.status` | `{}` | Autonomous goal, checkpoints and recent references. |
