@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 METHODS = {"input.list", "input.answer"}
 # How an adapter handed a retrieved answer to its provider; never proof of model use.
 DELIVERY_TRANSPORTS = frozenset({"json-rpc-response", "turn/steer", "responses-http",
-                                 "ollama-chat", "claude-code-mcp"})
+                                 "ollama-chat", "claude-code-mcp", "deepseek-web-messages"})
 EVENTS = {"input.requested", "input.answered", "input.received", "input.closed", "input.delivery_failed", "input.delivered"}
 
 

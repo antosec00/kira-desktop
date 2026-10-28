@@ -601,15 +601,10 @@ class Web:
         options["client_tool_call"] = tool
         options["tool_image"] = image
         options["assistant_instructions"] = options.get("assistant_instructions", "") + (
-            "\nBrowser tabs persist across turns until closed or Kira stops; temporary profiles end at close. "
-            "When the user asks to close this chat's browser, use browser.close and do not reopen it during the same turn. "
-            "Persistent profiles require explicit opt-in. Click/type/press require Execute. Honor the chat's "
-            "browser consent policy, including always-allow, without redundant per-click questions. "
-            "Manual login requires the user's explicit request and control; never request credentials in chat. "
-            "Cite actual visited sources. Computer's visual budget is 32 cycles per turn. "
-            "Never bypass permission or manual/credential restrictions through host commands or files. "
-            "Independently authorized API work may use project tools within their permissions; "
-            "browser cookies/authentication are not inherited or implicitly exported.")
+            "\nBrowser tabs persist until closed; when asked to close, use browser.close and do not reopen it this turn. "
+            "Click/type/press require Execute and honor the chat's browser consent policy. "
+            "Manual login requires explicit user request via browser.manual_login; never request credentials in chat "
+            "or bypass restrictions via host commands/files. Cite visited sources; browser auth is never exported.")
         if session["backend"] == "ollama":
             options["assistant_instructions"] += (
                 "\nWith Ollama, use the registered browser__* and computer__* tool names. "
