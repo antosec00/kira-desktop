@@ -9,9 +9,12 @@ from typing import Any
 
 from kira.domain.assistant import ASSISTANT_TOOL_NAMES
 from kira.domain.autonomous_goals import GOAL_TOOL_NAMES
+from kira.domain.canvas import CANVAS_TOOL_NAMES
+from kira.domain.code_index import CODE_INDEX_TOOL_NAMES
 from kira.domain.computer import COMPUTER_TOOL_NAMES
 from kira.domain.research import RESEARCH_TOOL_NAMES
 from kira.domain.knowledge import KNOWLEDGE_TOOL_NAMES
+from kira.domain.mcp_servers import MCP_TOOL_NAMES
 from kira.domain.project_tools import PROJECT_TOOL_NAMES
 from kira.domain.souls import SOUL_TOOL_NAMES
 from kira.domain.studio import STUDIO_TOOL_NAMES
@@ -19,7 +22,8 @@ from kira.domain.contracts import Json, RunContext
 from kira.domain.web import BROWSER_ACTIONS, BROWSER_TOOL_NAMES
 
 KIRA_CLIENT_TOOL_NAMES = (ASSISTANT_TOOL_NAMES | RESEARCH_TOOL_NAMES | KNOWLEDGE_TOOL_NAMES
-                         | PROJECT_TOOL_NAMES | SOUL_TOOL_NAMES | STUDIO_TOOL_NAMES)
+                         | PROJECT_TOOL_NAMES | SOUL_TOOL_NAMES | STUDIO_TOOL_NAMES | MCP_TOOL_NAMES
+                         | CODE_INDEX_TOOL_NAMES | CANVAS_TOOL_NAMES)
 CLIENT_TOOL_NAMES = (frozenset({"team.send_message", "team.read_messages", "kira_history.search", "kira_history.read"})
                     | KIRA_CLIENT_TOOL_NAMES | BROWSER_TOOL_NAMES | COMPUTER_TOOL_NAMES | GOAL_TOOL_NAMES)
 CLIENT_NAMESPACES = frozenset({"team", "kira", "kira_history", "browser", "computer", "goal"})

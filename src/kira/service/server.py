@@ -71,9 +71,14 @@ from kira.domain.knowledge import IDENTITY_INSTRUCTIONS
 from kira.service.knowledge import METHODS as KNOWLEDGE_METHODS, Knowledge
 from kira.service.souls import METHODS as SOUL_METHODS, Souls
 from kira.service.project_tools import METHODS as PROJECT_TOOL_METHODS, ProjectTools
+from kira.service.mcp_servers import METHODS as MCP_METHODS, McpServers
+from kira.service.checkpoints import METHODS as CHECKPOINT_METHODS, Checkpoints
+from kira.service.code_index import METHODS as CODE_INDEX_METHODS, CodeIndex
+from kira.service.canvas import METHODS as CANVAS_METHODS, CanvasService
 from kira.service.studio import METHODS as STUDIO_METHODS, Studio
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import CommandRunner
+from kira.tools.sandbox import probe_sandbox
 
 DEFAULT_SETTINGS: Json = {"ollama_url": "http://127.0.0.1:11434", "codex_binary": "codex",
                           "tool_timeout": 120, "max_output_bytes": 1_048_576, "max_tool_rounds": 0}
@@ -253,6 +258,7 @@ class Service:
             await self.processes.recover()
             self.project_tools = ProjectTools(self)
             await self.project_tools.recover()
+            self.mcp_servers = McpServers(self)
             self.studio = Studio(self)
             self.web = Web(self)
             await self.web.recover(rebooted=rebooted)
@@ -276,6 +282,9 @@ class Service:
             self.workspaces = Workspaces(self.store, self.paths, self.redactor)
             self.workbench = Workbench(self.store, self.paths, self.redactor, self._workbench_provider)
             self.workbench.recover()
+            self.checkpoints = Checkpoints(self)
+            self.code_index = CodeIndex(self)
+            self.canvas = CanvasService(self)
             self.prompt_queue = PromptQueue(self)
             self.prompt_queue.recover()
             self.turn_controls = TurnControls(self)
@@ -334,6 +343,7 @@ class Service:
         self._control_backends.clear()
         await self.studio.close()
         await self.web.close()
+        await self.mcp_servers.close()
         await self.project_tools.close()
         await self.processes.close()
         await self.control_processes.close()
@@ -465,7 +475,7 @@ class Service:
         if (self._closing or self.stopping.is_set()) and (method in {"run.start", "team.start", "team.resume",
                 "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume",
                 "desktop.launch", "workspace.launch"}
-                or method in SOUL_METHODS | GOAL_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | STUDIO_METHODS):
+                or method in SOUL_METHODS | GOAL_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CHECKPOINT_METHODS | CODE_INDEX_METHODS | CANVAS_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | MCP_METHODS | STUDIO_METHODS):
             raise KiraError("SHUTTING_DOWN", "Service is draining; new work is not accepted")
         if method in {"assistant.snapshot", "assistant.cancel", "assistant.message", "assistant.resume"}:
             return await self.assistant.dispatch(method, params)
@@ -481,6 +491,14 @@ class Service:
             return await self.knowledge.dispatch(method, params)
         if method in PROJECT_TOOL_METHODS:
             return await self.project_tools.dispatch(method, params)
+        if method in MCP_METHODS:
+            return await self.mcp_servers.dispatch(method, params)
+        if method in CHECKPOINT_METHODS:
+            return await self.checkpoints.dispatch(method, params)
+        if method in CODE_INDEX_METHODS:
+            return await self.code_index.dispatch(method, params)
+        if method in CANVAS_METHODS:
+            return await self.canvas.dispatch(method, params)
         if method in STUDIO_METHODS:
             return await self.studio.dispatch(method, params)
         if method in PROVIDER_METHODS:
@@ -519,6 +537,8 @@ class Service:
                      "prompt_queue": True, "run_modes": True, "chat_goals": True, "autonomous_goals": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
+                     "os_sandbox": True, "shadow_checkpoints": True, "semantic_code_index": True,
+                     "interactive_canvas": True,
                      **({"studio_m1": True, "studio_agent_gateway": True}
                         if studio_domain.STUDIO_AVAILABLE else {})}}
         if method == "project.list":
@@ -890,7 +910,7 @@ class Service:
             return dict(self.redactor.clean(result))
         if method == "settings.get":
             fields(params, set())
-            return {"settings": self.settings()}
+            return {"settings": self.settings(), "mcp_servers": self.mcp_servers.list_public()}
         if method == "settings.update":
             fields(params, set(DEFAULT_SETTINGS))
             self._validate_settings(params)
@@ -1435,7 +1455,8 @@ class Service:
             settings = self.settings()
             if name == "run_command":
                 runner = CommandRunner(max_output_bytes=settings["max_output_bytes"], timeout=settings["tool_timeout"])
-                result = await runner.run(Path(project["root"]), args, cancel)
+                sandbox_mode = "unrestricted" if permission == "full_access" else "workspace_write"
+                result = await runner.run(Path(project["root"]), args, cancel, sandbox_mode=sandbox_mode)
                 artifact = self._save_artifact(run_id, tool_id, encode(result))
                 artifact["tool_id"] = tool_id
                 await self.emit(run_id, "artifact.created", artifact)
@@ -1666,6 +1687,9 @@ class Service:
             if not managed_member:
                 context_options = self.research.attach(project, session, run_id, context_options)
                 context_options = self.project_tools.attach(session, project, run_id, cancel, tool_mode, context_options)
+                context_options = self.code_index.attach(session, project, run_id, cancel, tool_mode, context_options)
+                context_options = self.canvas.attach(session, project, run_id, cancel, tool_mode, context_options)
+                context_options = self.mcp_servers.attach(session, project, run_id, cancel, tool_mode, context_options)
                 context_options = self.knowledge.attach(session, project, run_id, cancel, tool_mode, context_options)
                 context_options = self.goals.attach(session, project, run_id, cancel, tool_mode, context_options)
                 context_options = self.studio.attach(session, project, run_id, cancel,
@@ -1692,6 +1716,8 @@ class Service:
                 await self.emit(run_id, "reasoning.summary.status", {
                     "source": "provider_summary", "provider": session["backend"],
                     "status": "unavailable", "reason": "provider_no_public_summary"})
+            if not managed_member and hasattr(self, "checkpoints"):
+                await self.checkpoints.before_run(run_id, project, session, run["prompt"], tool_mode)
             outcome = await backend.run(ctx)
             if managed_member and session["backend"] == "codex" and self.store.db.execute(
                     "SELECT 1 FROM provider_processes WHERE run_id=?", (run_id,)).fetchone() is None:
@@ -1750,6 +1776,8 @@ class Service:
             self.store.db.execute("UPDATE run_cleanup SET state='unknown',error=? WHERE run_id=?",
                                   ("Provider finalization failed; reservation retained", run_id))
         finally:
+            if hasattr(self, "checkpoints"):
+                await self.checkpoints.after_run(run_id)
             self.knowledge.forget(run_id)
             self.tasks.pop(run_id, None)
             self.cancellations.pop(run_id, None)
@@ -1843,7 +1871,7 @@ class Service:
                                      "utilization_percent": int(utilization), "source": "nvidia-smi"})
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 pass
-        return {"memory": memory, "gpus": gpus, "platform": {"system": platform.system(),
+        return {"memory": memory, "gpus": gpus, "sandbox": probe_sandbox(), "platform": {"system": platform.system(),
                 "release": platform.release(), "machine": platform.machine(),
                 "python": platform.python_version(), "cpu_count": os.cpu_count()}}
 

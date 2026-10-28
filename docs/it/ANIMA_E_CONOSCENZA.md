@@ -324,3 +324,53 @@ distingue l'esito del contratto e dei test dagli effetti esterni non
 verificati. Un'operazione interrotta o incerta non viene ripetuta da sola: se
 una pulizia non è confermata, Kira lo segnala e blocca il lavoro in conflitto
 sul progetto finché non è risolto.
+
+## Server MCP esterni
+
+Oltre agli strumenti creati nel singolo progetto, puoi collegare server **Model
+Context Protocol (MCP)** di terze parti o locali (per esempio GitHub, Postgres,
+Notion, Sentry, Linear) da **Impostazioni → Connessioni → Server MCP esterni**.
+Gli strumenti rilevati diventano disponibili per tutti i 6 provider (**Ollama**,
+**DeepSeek Web**, **DeepSeek Account**, **OpenAI diretto · ChatGPT**, **Codex**
+e **Claude Code**) senza gonfiare il prompt iniziale della conversazione.
+
+### Configurazione e importazione
+
+- **Aggiungi server MCP**: permette di configurare un server locale tramite
+  **`stdio`** (comando eseguibile, argomenti e variabili d'ambiente opzionali
+  `CHIAVE=VALORE`) oppure un endpoint remoto **`HTTP / SSE`** (URL e header HTTP
+  opzionali).
+- **Importa JSON `mcpServers`**: consente di incollare direttamente una
+  configurazione JSON standard `{"mcpServers": {...}}` compatibile con Claude
+  Desktop o Cursor.
+- **Verifica e rileva strumenti**: esegue l'handshake JSON-RPC 2.0 MCP
+  (`initialize` → `tools/list`), aggiorna lo stato del server e mostra il
+  numero e i nomi degli strumenti scoperti.
+- **Attivo / Disattivato** e **Server di sola lettura**: puoi attivare o
+  disattivare ciascun server con un clic e contrassegnarlo come di sola lettura
+  se i suoi strumenti eseguono solo interrogazioni prive di effetti collaterali.
+
+### Sicurezza e permessi
+
+Le configurazioni sono salvate privatamente (`0600`) in
+`$HOME/.config/kira/mcp/servers.json`. I valori delle variabili d'ambiente e
+degli header HTTP non vengono mai mostrati nell'interfaccia dopo il salvataggio
+(compaiono solo i nomi delle chiavi) e sono automaticamente registrati nel
+redattore dei segreti del servizio.
+
+| Operazione MCP | Modalità richiesta | Permesso del progetto |
+| --- | --- | --- |
+| Avviare/chiamare un server locale `stdio` | Qualsiasi (se `read_only`) o **Esegui** | **Host fidato** o **Accesso completo** |
+| Chiamare uno strumento MCP marcato `read_only` su `HTTP / SSE` | **Pianifica**, **Revisione** o **Esegui** | **Sola lettura** o superiore |
+| Chiamare uno strumento MCP non di sola lettura | **Esegui** | **Scrittura nel progetto** (`HTTP / SSE`) o **Host fidato** (`stdio`) |
+
+### Come lo usa il modello (`kira.mcp_tools`)
+
+Quando almeno un server MCP esterno è attivo, Kira espone lo strumento gateway
+`kira.mcp_tools` con quattro azioni:
+
+- `list_servers`: elenca i server MCP attivi e i nomi degli strumenti rilevati;
+- `list_tools`: cerca gli strumenti disponibili (filtrando per `server_id` o `query`);
+- `describe`: restituisce lo schema JSON (`inputSchema`) di uno specifico strumento solo quando serve al modello;
+- `call`: invoca lo strumento sul server MCP indicato (`server_id`, `tool_name`, `arguments`) e registra la ricevuta nella chat.
+

@@ -46,14 +46,15 @@ ApplicationWindow {
     onModelOptionsScopeChanged: if (workspace.modelControlsVisible && page === 0 && hasProject && !workspace.busy) Qt.callLater(function() { modelPopover.open() })
     readonly property bool browserFocused: workspace.web.paneVisible && (workspace.web.expanded || window.width < 1120)
     readonly property bool studioFocused: workspace.studio.paneVisible && (workspace.studio.expanded || window.width < 1120)
-    readonly property bool visualFocused: browserFocused || studioFocused
+    readonly property bool canvasFocused: workspace.canvas.paneVisible && (workspace.canvas.expanded || window.width < 1120)
+    readonly property bool visualFocused: browserFocused || studioFocused || canvasFocused
     readonly property bool motionEnabled: !appearance.reduceMotion && window.visible && window.visibility !== Window.Minimized
     readonly property bool chatMotionEnabled: motionEnabled && page === 0
     readonly property var chatIndicators: workspace.chatStatusIndicators
     readonly property bool browserPresented: window.visible && window.visibility !== Window.Minimized && page === 0
     onBrowserPresentedChanged: workspace.web.setWindowActive(browserPresented)
     readonly property bool detailsVisible: workspace.uiPreferences.details_visible
-    readonly property bool detailsDrawerRequested: detailsVisible && width < 1120 && hasProject && page === 0 && !workspace.web.paneVisible && !workspace.studio.paneVisible
+    readonly property bool detailsDrawerRequested: detailsVisible && width < 1120 && hasProject && page === 0 && !workspace.web.paneVisible && !workspace.studio.paneVisible && !workspace.canvas.paneVisible
     onDetailsDrawerRequestedChanged: syncDetailsDrawer()
     Component.onCompleted: syncDetailsDrawer()
     function syncDetailsDrawer() {
@@ -1452,7 +1453,8 @@ ApplicationWindow {
                                 ChatToolButton { objectName: "chatUsageButton"; label: qsTr("Uso"); iconName: "usage"; checked: panelHost.activePanel === metricsDialog; quietSelection: true; onClicked: metricsDialog.open() }
                                 ChatToolButton { objectName: "chatContextButton"; label: chatContext.compacting ? qsTr("Compattazione…") : qsTr("Contesto e memoria"); iconName: "context"; enabled: workspace.sessionId.length > 0; checked: panelHost.activePanel === chatContextDialog; quietSelection: true; onClicked: chatContextDialog.open() }
                                 ChatToolButton { objectName: "chatKnowledgeButton"; label: qsTr("Conoscenza"); iconName: "knowledge"; enabled: workspace.sessionId.length > 0; onClicked: assistantTeamPanel.showEnvironment(); toolTipText: qsTr("Conoscenza e strumenti") }
-                                ChatToolButton { objectName: "chatWebButton"; label: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; checked: workspace.web.paneVisible; quietSelection: true; onClicked: { workspace.studio.hideStudio(); workspace.web.showBrowser() } toolTipText: qsTr("Apri il browser integrato") }
+                                ChatToolButton { objectName: "chatWebButton"; label: qsTr("Browser"); iconName: "browser"; enabled: workspace.web.available; checked: workspace.web.paneVisible; quietSelection: true; onClicked: { workspace.studio.hideStudio(); workspace.canvas.hideCanvas(); workspace.web.showBrowser() } toolTipText: qsTr("Apri il browser integrato") }
+                                ChatToolButton { objectName: "chatCanvasButton"; label: qsTr("Canvas"); iconName: "studio"; visible: !workspace.web.paneVisible; enabled: workspace.connected; checked: workspace.canvas.paneVisible; quietSelection: true; onClicked: { workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.toggleCanvas() } toolTipText: qsTr("Apri il Canvas interattivo (Mermaid, HTML/UI, SVG, Diff)") }
                                 ChatToolButton { objectName: "chatStudioButton"; label: qsTr("Studio"); iconName: "studio"; visible: workspace.studio.available; enabled: workspace.connected; checked: workspace.studio.paneVisible; quietSelection: true; onClicked: workspace.studio.showStudio(); toolTipText: qsTr("Apri il mondo creativo locale di questo progetto") }
                                 ChatToolButton { objectName: "sharedMemoryButton"; label: qsTr("Memoria del progetto"); iconName: "memory"; checked: panelHost.activePanel === sharedMemoryDialog; quietSelection: true; onClicked: sharedMemoryDialog.open() }
                                 ChatToolButton { objectName: "chatSoulButton"; label: souls.activeName || qsTr("Anima"); iconName: "anima"; enabled: souls.available; checked: panelHost.activePanel === soulDialog; quietSelection: true; onClicked: soulDialog.open(); toolTipText: qsTr("Anima di Kira · identità e ricordi") + (souls.activeName ? " · " + souls.activeName : "") }
@@ -1594,6 +1596,11 @@ ApplicationWindow {
                             SplitView.preferredWidth: Math.max(400, browserSplit.width * 0.55)
                             SplitView.minimumWidth: 340; SplitView.fillWidth: window.studioFocused
                         }
+                        CanvasPane {
+                            visible: workspace.canvas.paneVisible
+                            SplitView.preferredWidth: Math.max(420, browserSplit.width * 0.52)
+                            SplitView.minimumWidth: 360; SplitView.fillWidth: window.canvasFocused
+                        }
                         Item {
                             objectName: "workspacePanelSpace"
                             visible: panelHost.reservedWidth > 0
@@ -1605,7 +1612,7 @@ ApplicationWindow {
                             id: detailsPanel; objectName: "detailsPanel"
                             SplitView.preferredWidth: 282; SplitView.minimumWidth: 282
                             color: appearance.colors.surface; radius: 16; border.color: appearance.colors.border
-                            visible: window.detailsVisible && window.width >= 1120 && !workspace.web.paneVisible && !workspace.studio.paneVisible && !panelHost.activePanel
+                            visible: window.detailsVisible && window.width >= 1120 && !workspace.web.paneVisible && !workspace.studio.paneVisible && !workspace.canvas.paneVisible && !panelHost.activePanel
                             Loader { anchors.fill: parent; anchors.margins: 0; sourceComponent: projectDetails }
                         }
                     }

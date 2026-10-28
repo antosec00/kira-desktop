@@ -1245,6 +1245,14 @@ MiB)**. These settings apply only with **Save settings** and, while work is in
 progress, remain read only until it ends. Output truncations are reported in
 the receipts.
 
+Below the provider settings you find **External MCP servers**, where you can
+add Model Context Protocol servers over **`stdio`** or **`HTTP / SSE`**, import
+an `mcpServers` JSON directly (compatible with Claude Desktop or Cursor),
+verify the connection with tool discovery and enable or disable each server
+across all chats (`kira.mcp_tools`; see [Soul and
+knowledge](SOUL_AND_KNOWLEDGE.md#external-mcp-servers)).
+
+
 ### Local data
 
 **Back up database**, **Refresh resources** (re-reads the observed RAM/GPU),

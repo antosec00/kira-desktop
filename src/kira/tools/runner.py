@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from kira.domain.contracts import KiraError
+from kira.tools.sandbox import SANDBOX_MODES, bwrap_usable, sandbox_preexec, sandbox_tmpdir, wrap_bwrap_argv
 
 # Commands create project files (git clone, package managers, build output) with
 # the conventional user default, independent of the umask of the service that
@@ -29,7 +30,10 @@ class CommandRunner:
         self.max_output_bytes = max_output_bytes
         self.timeout = timeout
 
-    async def run(self, root: Path, args: dict[str, Any], cancel: asyncio.Event) -> dict[str, Any]:
+    async def run(self, root: Path, args: dict[str, Any], cancel: asyncio.Event,
+                  *, sandbox_mode: str = "unrestricted") -> dict[str, Any]:
+        if sandbox_mode not in SANDBOX_MODES:
+            raise KiraError("INVALID_ARGUMENT", f"Unsupported sandbox mode: {sandbox_mode}")
         argv = args.get("argv")
         requested = args.get("timeout", self.timeout)
         if (not isinstance(argv, list) or not argv or len(argv) > 256
@@ -45,12 +49,17 @@ class CommandRunner:
             return {"ok": False, "cancelled": True, "exit_code": None, "stdout": "", "stderr": ""}
         started = time.monotonic()
         loop = asyncio.get_running_loop()
+        preexec = sandbox_preexec(root, sandbox_mode)
+        exec_argv = wrap_bwrap_argv(argv, root, sandbox_mode) if (preexec is None and bwrap_usable()) else argv
+        env = command_environment()
+        if sandbox_mode != "unrestricted" and preexec is not None:
+            env["TMPDIR"] = str(sandbox_tmpdir(root))
         # The transport is kept so the pipes can be closed even when a process
         # outside the owned group still holds their write ends.
         transport, protocol = await loop.subprocess_exec(
             lambda: asyncio.subprocess.SubprocessStreamProtocol(limit=STREAM_LIMIT, loop=loop),
-            *argv, cwd=root, env=command_environment(), start_new_session=True,
-            umask=COMMAND_UMASK, stdin=asyncio.subprocess.DEVNULL,
+            *exec_argv, cwd=root, env=env, start_new_session=True,
+            umask=COMMAND_UMASK, preexec_fn=preexec, stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         proc = asyncio.subprocess.Process(transport, protocol, loop)

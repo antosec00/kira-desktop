@@ -10,7 +10,10 @@ import pytest
 from kira.backends import codex, kira_mcp
 from kira.backends.client_tools import ClientToolError, validate_tools
 from kira.domain.assistant import ASSISTANT_TOOL_NAMES
+from kira.domain.canvas import CANVAS_TOOL_NAMES, canvas_tool_specs
+from kira.domain.code_index import CODE_INDEX_TOOL_NAMES, code_index_tool_specs
 from kira.domain.knowledge import KNOWLEDGE_TOOL_NAMES, knowledge_tool_specs
+from kira.domain.mcp_servers import MCP_TOOL_NAMES, mcp_tool_specs
 from kira.domain.project_tools import PROJECT_TOOL_NAMES, project_tool_specs
 from kira.domain.research import RESEARCH_TOOL_NAMES, research_tool_specs
 from kira.domain.souls import SOUL_TOOL_NAMES, soul_tool_specs
@@ -20,7 +23,8 @@ from test_backends_assistant import AssistantServer, context
 
 
 ALL_KIRA_TOOLS = (ASSISTANT_TOOL_NAMES | RESEARCH_TOOL_NAMES | KNOWLEDGE_TOOL_NAMES
-                  | PROJECT_TOOL_NAMES | SOUL_TOOL_NAMES | STUDIO_TOOL_NAMES)
+                  | PROJECT_TOOL_NAMES | SOUL_TOOL_NAMES | STUDIO_TOOL_NAMES | MCP_TOOL_NAMES
+                  | CODE_INDEX_TOOL_NAMES | CANVAS_TOOL_NAMES)
 PROPOSAL_ARGUMENTS = {
     "statement": "Prefer a concise result before the supporting details.",
     "applicability": "When reporting the result of a completed task.",
@@ -44,7 +48,8 @@ def soul_context(tmp_path, *, full=False):
     if full:
         ctx.client_tools[0]["tools"] += (research_tool_specs() + knowledge_tool_specs()
                                          + project_tool_specs() + soul_tool_specs()
-                                         + studio_tool_specs())
+                                         + studio_tool_specs() + mcp_tool_specs()
+                                         + code_index_tool_specs() + canvas_tool_specs())
     else:
         ctx.client_tools[0]["tools"] = soul_tool_specs()
 

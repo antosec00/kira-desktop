@@ -24,6 +24,7 @@ from kira.service.storage import now
 from kira.service.tool_policy import kira_tools_enabled
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import command_environment
+from kira.tools.sandbox import sandbox_preexec, sandbox_tmpdir
 
 if TYPE_CHECKING:
     from kira.service.server import Service
@@ -309,9 +310,16 @@ class ProjectTools:
         try:
             guard()
             source = self.data.source(operation["project_id"], tool["id"], tool["revision"])
+            project_record = self.store.one("projects", operation["project_id"])
+            project_root = Path(project_record["root"])
+            sandbox_mode = "unrestricted" if project_record["permission"] == "full_access" else "workspace_write"
+            preexec = sandbox_preexec(project_root, sandbox_mode)
+            env = command_environment()
+            if sandbox_mode != "unrestricted" and preexec is not None:
+                env["TMPDIR"] = str(sandbox_tmpdir(project_root))
             process = await asyncio.create_subprocess_exec(sys.executable, "-I", "-S", "-B",
                 str(Path(__file__).resolve().parents[1] / "tools/project_tool_worker.py"),
-                cwd=self.store.one("projects", operation["project_id"])["root"], env=command_environment(),
+                cwd=project_root, env=env, preexec_fn=preexec,
                 start_new_session=True, stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             self._workers[identifier] = process

@@ -1,3 +1,3 @@
 """Kira Desktop."""
 
-__version__ = "0.20.5"
+__version__ = "0.21.6"

@@ -263,7 +263,7 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
     try:
         combos = [item for item in window.findChildren(QQuickItem)
                   if item.inherits("QQuickComboBox") and item.property("count") > 0]
-        assert len(combos) == 39
+        assert len(combos) == 40
         for combo in combos:
             evaluate(window.findChild(QObject, "assistantEnvironmentDialog"), "close()")
             if combo.objectName() == "knowledgeScope":
@@ -370,7 +370,8 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
             ("Tutto", "Guida di Kira", "Capacità", "Chat", "Progetto", "Strumenti", "Anima di Kira"),
             ("Italiano", "English"), ("Manuale", "Suggerimenti", "Adattiva"),
             ("Esegui", "Pianifica", "Revisione", "Riepiloga"),
-            ("Coda del progetto", "Cronologia dei messaggi inviati", "Gestisci chat", "Chat archiviate", "Modifiche", "Obiettivo della chat"),
+            ("Coda del progetto", "Cronologia dei messaggi inviati", "Gestisci chat", "Chat archiviate", "Modifiche", "Indice semantico AST", "Obiettivo della chat"),
+            ("stdio · comando locale", "HTTP / SSE · endpoint remoto"),
             ("Fine della chat corrente",), ("Tutte le modifiche",),
             ("Segui il sistema", "Chiara", "Scura"), ("Kira", "Neutro", "Caldo"),
             ("Segui il sistema", "Sempre", "Mai"), ("Colore e segni", "Solo segni"),
@@ -468,7 +469,7 @@ def settled_row_center(combo):
 measurements = []
 try:
     combos = [item for item in window.findChildren(QQuickItem) if item.inherits("QQuickComboBox") and item.property("count") > 0]
-    assert len(combos) == 39
+    assert len(combos) == 40
     for number, combo in enumerate(combos):
         evaluate(window.findChild(QObject, "assistantEnvironmentDialog"), "close()")
         if combo.objectName() == "knowledgeScope":
@@ -620,5 +621,5 @@ finally:
              "QT_QUICK_CONTROLS_STYLE": "Basic"}, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads(result.stdout)
-    assert len(report["measurements"]) == report["combo_count"] * 4 == 156
+    assert len(report["measurements"]) == report["combo_count"] * 4 == 160
     (tmp_path / "combo-contrast.json").write_text(json.dumps(report, indent=2) + "\n")

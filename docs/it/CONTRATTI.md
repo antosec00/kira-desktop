@@ -58,8 +58,8 @@ di un Team non possono essere avviate con `run.start`.
 | --- | --- | --- |
 | `read_only` | **Sola lettura** | Solo lettura e ricerca di file dentro il progetto; nessun comando. |
 | `project_write` | **Scrittura nel progetto** | Scrittura di file con gli strumenti di Kira, limitata alla radice del progetto; per Codex corrisponde alla sandbox `workspace-write`. Nessun comando arbitrario. |
-| `trusted_host` | **Host fidato** | Comandi arbitrari eseguiti come l'utente corrente. **Non è una sandbox.** |
-| `full_access` | **Accesso completo** | Come Host fidato, e in più gli strumenti file accettano percorsi fuori dal progetto, nei limiti dei permessi dell'utente di sistema. Nessun privilegio amministrativo automatico. |
+| `trusted_host` | **Host fidato** | Comandi arbitrari confinati a livello OS (`workspace_write` Landlock / Bubblewrap: scrittura limitata alla radice del progetto e `/tmp`). |
+| `full_access` | **Accesso completo** | Come Host fidato senza restrizioni di sandbox, e in più gli strumenti file accettano percorsi fuori dal progetto, nei limiti dei permessi dell'utente di sistema. Nessun privilegio amministrativo automatico. |
 
 Gli insiemi usati dal codice sono: scrittura = `project_write, trusted_host,
 full_access`; host = `trusted_host, full_access`. Le modalità **Pianifica**,
@@ -147,7 +147,8 @@ rifiuta di continuare se `app_version` non coincide con la propria. Le
 `workspaces`, `desktop_actions`, `diagnostics`, `teams`, `input_questions`,
 `workbench`, `prompt_queue`, `run_modes`, `chat_goals`, `autonomous_goals`,
 `provider_continuity`, `image_attachments`, `embedded_browser`,
-`project_research`, `knowledge`, `project_tools`, `personalized_souls`).
+`project_research`, `knowledge`, `project_tools`, `personalized_souls`,
+`os_sandbox`, `shadow_checkpoints`, `semantic_code_index`).
 
 ### Regole di validazione
 
@@ -196,6 +197,15 @@ Convenzione: `metodo {parametri} → {risultato}`; `?` indica un campo opzionale
 | `project.context` | `{project_id, session_id?}` → `{content, sources, truncated, enabled, chars}` | Mostra il blocco di estratti da altre chat che Kira fornirà al prossimo turno. |
 | `project.files` | `{project_id, query?, limit?}` → `{files:[], truncated, scanned, gitignore, limits:{entries, depth, matches}}` | Ricerca contenuta nella radice per le menzioni `@`; `limit` 1–200 (40), `query` fino a 1.000 byte UTF-8; 10.000 voci e profondità 32 esplorate al massimo. |
 | `project.changes` | `{project_id, path?}` → `{diff, truncated, ...}` | Modifiche Git staged/unstaged/untracked come testo inerte; non esegue hook, filtri né driver esterni; risposta limitata a 650 KB. |
+| `checkpoint.list` | `{project_id, session_id?}` → `{checkpoints:[]}` | Elenco dei checkpoint Shadow Git del progetto (fino a 50 voci `auto_run`, `manual`, `pre_restore_backup`). |
+| `checkpoint.create` | `{project_id, session_id?, label?}` → `{checkpoint}` | Cattura uno snapshot manuale dell'albero di lavoro nel repository Git ombra senza toccare `.git` dell'utente. Richiede progetto inattivo. |
+| `checkpoint.diff` | `{project_id, checkpoint_id}` → `{checkpoint, files:[], diff, truncated}` | Diff in sola lettura del checkpoint rispetto a `parent_tree` (o all'albero corrente). |
+| `checkpoint.restore` | `{project_id, checkpoint_id, target?:"before"\|"after", session_id?}` → `{ok, checkpoint, target, restored_tree, restored_files, removed_files, backup_checkpoint}` | Ripristina atomicamente i file del progetto usando descrittori `O_NOFOLLOW`, creando prima un `pre_restore_backup` automatico. Richiede progetto inattivo e permesso di scrittura. |
+| `codeindex.status` | `{project_id}` → `{status}` | Sincronizza incrementalmente l'indice AST/semantico del progetto e restituisce conteggi di file, simboli, archi del grafo chiamate, import e linguaggi. |
+| `codeindex.rebuild` | `{project_id, force?:bool}` → `{status}` | Ricostruisce l'indice semantico e il grafo AST del progetto (`$KIRA_HOME/data/code_index/<project_id>/index.db`). |
+| `codeindex.search` | `{project_id, query, path?, kind?, language?, limit?}` → `{ok, query, results:[], total_indexed_symbols, total_indexed_files}` | Ricerca ibrida (simboli AST + SQLite FTS5 BM25 + similarità coseno su vettori semantici a 256 dimensioni); `limit` 1–25 (8). |
+| `codeindex.symbols` | `{project_id, query?, path?, kind?, limit?}` → `{ok, symbols:[]}` | Elenca o filtra simboli AST (`function`, `class`, `method`, `component`, `interface`, `struct`, ...); `limit` 1–60 (25). |
+| `codeindex.graph` | `{project_id, symbol?, path?, limit?}` → `{ok, definitions:[], callers:[], callees:[], imports:[], importers:[]}` | Restituisce definizioni, chiamanti (`callers`), chiamati (`callees`), importazioni e file importatori per un simbolo o percorso. |
 | `project.export` | `{project_id}` → `{text}` oppure `{path, format:"json", bytes}` | Fino a 700 KB il JSON è in linea; oltre, è scritto in `exports/` nella cartella dati e la risposta ne indica il percorso. Nessun troncamento della trascrizione. L'interfaccia non lo offre: si usa con `kira-desktop rpc project.export '{"project_id": "…"}'`. |
 
 ### Sessioni e chat
@@ -409,6 +419,13 @@ modello nascono non accettate e `untested` e non possono accettarsi da sole.
 | `project.tools.get` | `{project_id, session_id, tool_id, revision?}` → revisione con sorgente, schemi, test e limiti |
 | `project.tools.history` | `{project_id, session_id, tool_id, cursor?, limit?}` → revisioni |
 | `project.tools.configure` | `{project_id, session_id, tool_id, expected_revision, request_id, enabled}` → attivazione o revoca di una revisione |
+| `mcp.servers.list` | `{}` → `{servers:[...]}` (senza mai esporre i valori di `env` o `headers`, solo `env_keys` e `header_keys`) |
+| `mcp.servers.save` | `{id?, name, transport:"stdio"\|"http", command?, args?, env?, cwd?, url?, headers?, enabled?, read_only?, timeout_seconds?}` → `{server, servers}` |
+| `mcp.servers.import` | `{json}` → `{imported, servers}` (formato `{"mcpServers": {...}}` compatibile con Claude Desktop/Cursor) |
+| `mcp.servers.toggle` | `{server_id, enabled?, read_only?}` → `{server, servers}` |
+| `mcp.servers.delete` | `{server_id}` → `{deleted, servers}` |
+| `mcp.servers.test` | `{server_id}` → `{ok, server, tools, error, servers}` (esegue `initialize` e `tools/list` sul server MCP) |
+
 
 `knowledge.read` accetta solo riferimenti riconosciuti, mai percorsi o URL
 arbitrari. Le letture non avviano inferenza né programmi. Uno strumento di
@@ -728,6 +745,9 @@ nessun argomento può cambiare. Namespace riconosciuti: `team`, `kira`,
 | `kira.help_search` | `{query, scope?, limit?, cursor?}` | `scope` ∈ `all\|app\|capabilities\|chat\|project\|tools\|soul`. |
 | `kira.help_read` | `{ref, offset?, limit?}` | Solo riferimenti riconosciuti. |
 | `kira.project_tools` | `{action, payload}` | `action` ∈ `describe\|search\|read\|register\|test\|run`. |
+| `kira.code_index` | `{action, payload}` | `action` ∈ `status\|search\|symbols\|graph\|rebuild`. Ricerca semantica + BM25 + AST, esplorazione simboli e grafo delle chiamate/dipendenze del progetto corrente; consentito anche in sola lettura. |
+| `kira.canvas` | `{action, payload}` | `action` ∈ `list\|get\|create\|update\|patch_lines\|diff`. Crea e aggiorna artefatti interattivi nel Canvas affiancato (`mermaid`, `html`, `svg`, `markdown`, `code`), applica patch chirurgiche su intervalli di righe (`patch_lines`) e calcola diff a blocchi. |
+| `kira.mcp_tools` | `{action, payload}` | `action` ∈ `list_servers\|list_tools\|describe\|call`. Collegato quando almeno un server MCP esterno è attivo; `stdio` richiede `trusted_host`/`full_access`, gli strumenti non `read_only` richiedono **Esegui**. |
 | `kira.research_list` / `research_read` / `research_propose` | elenco, `{record_id, source_index?, offset?, limit?}`, contenuto della scheda | Solo con condivisione della Ricerca attiva; solo schede accettate; una proposta non può accettarsi né valutare. |
 | `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?}` | Solo con un'Anima in modo `suggest` o `adaptive`; propone soltanto. |
 | `goal.status` | `{}` | Obiettivo autonomo, checkpoint e riferimenti recenti. |

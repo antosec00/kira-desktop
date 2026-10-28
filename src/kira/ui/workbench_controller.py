@@ -68,6 +68,14 @@ class WorkbenchController(QObject):
         self._files_loading = False
         self._file_note = ""
         self._changes: Json = {}
+        self._selected_change_path = ""
+        self._workspace_hunks: list[Json] = []
+        self._checkpoints: list[Json] = []
+        self._checkpoint_diff: Json = {}
+        self._checkpoint_status = ""
+        self._code_index_status: Json = {}
+        self._code_index_results: list[Json] = []
+        self._code_index_graph_text = ""
         self._archives: list[Json] = []
         self._archives_more = False
         self._goal: Json = {}
@@ -111,6 +119,7 @@ class WorkbenchController(QObject):
     def retranslate(self) -> None:
         self._error = refresh_ui(self._error)
         self._file_note = refresh_ui(self._file_note)
+        self._checkpoint_status = refresh_ui(self._checkpoint_status)
         self.changed.emit()
         self.historyChanged.emit()
         self.goalChanged.emit()
@@ -130,6 +139,7 @@ class WorkbenchController(QObject):
             self._goal_history_key = None
             self.goalChanged.emit()
             self._error = ""
+            self._checkpoint_status = ""
             self._guidance_state = ""
             self._guidance_request_id = ""
             self._guidance_receipts.clear()
@@ -142,6 +152,13 @@ class WorkbenchController(QObject):
             self._files = []
             self._files_loading = False
             self._changes = {}
+            self._selected_change_path = ""
+            self._workspace_hunks = []
+            self._checkpoints = []
+            self._checkpoint_diff = {}
+            self._code_index_status = {}
+            self._code_index_results = []
+            self._code_index_graph_text = ""
             self._archives = []
         if (self.workspace.connected and all(context)
                 and self._goal_read_context != context):
@@ -223,6 +240,49 @@ class WorkbenchController(QObject):
     @qt_property("QVariantMap", notify=changed)
     def changes(self) -> Json:
         return self._changes
+
+    @qt_property(str, notify=changed)
+    def selectedChangePath(self) -> str:
+        return self._selected_change_path
+
+    @qt_property("QVariantList", notify=changed)
+    def workspaceHunks(self) -> list[Json]:
+        return self._workspace_hunks
+
+    @qt_property("QVariantList", notify=changed)
+    def checkpoints(self) -> list[Json]:
+        return self._checkpoints
+
+    @qt_property("QVariantMap", notify=changed)
+    def checkpointDiff(self) -> Json:
+        return self._checkpoint_diff
+
+    @qt_property(str, notify=changed)
+    def checkpointStatus(self) -> str:
+        return self._checkpoint_status
+
+    @qt_property("QVariantMap", notify=changed)
+    def codeIndexStatus(self) -> Json:
+        return self._code_index_status
+
+    @qt_property(str, notify=changed)
+    def codeIndexSummary(self) -> str:
+        if not self._code_index_status:
+            return tr("Indice non ancora caricato.")
+        return tr(
+            "{files} file indicizzati · {symbols} simboli AST · {calls} relazioni nel grafo chiamate",
+            files=self._code_index_status.get("files", 0),
+            symbols=self._code_index_status.get("symbols", 0),
+            calls=self._code_index_status.get("call_edges", 0),
+        )
+
+    @qt_property("QVariantList", notify=changed)
+    def codeIndexResults(self) -> list[Json]:
+        return self._code_index_results
+
+    @qt_property(str, notify=changed)
+    def codeIndexGraphText(self) -> str:
+        return self._code_index_graph_text
 
     @qt_property("QVariantList", notify=changed)
     def archives(self) -> list[Json]:
@@ -833,13 +893,227 @@ class WorkbenchController(QObject):
 
     @Slot(str)
     def refreshChanges(self, path: str = "") -> None:
+        self._selected_change_path = path
         params: Json = {"project_id": self.workspace.project.get("id")}
         if path:
             params["path"] = path
         self._request("project.changes", params, lambda result: self._set_changes(result), scope_session=False)
+        self.refreshWorkspaceHunks(path)
+        self.refreshCheckpoints()
 
     def _set_changes(self, result: Json) -> None:
         self._changes = result
+
+    @Slot(str)
+    def refreshWorkspaceHunks(self, path: str = "") -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id:
+            return
+        params: Json = {"project_id": project_id}
+        if path:
+            params["path"] = path
+        self._request(
+            "canvas.workspace_hunks",
+            params,
+            lambda result: self._set_workspace_hunks(result),
+            scope_session=False,
+        )
+
+    def _set_workspace_hunks(self, result: Json) -> None:
+        self._workspace_hunks = list(result.get("hunks") or [])
+
+    @Slot(str, int, str)
+    def applyWorkspaceHunk(self, path: str, hunk_index: int, decision: str) -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id or not path:
+            return
+
+        def received(_result: Json) -> None:
+            if decision == "reject":
+                self._checkpoint_status = tr("Blocco #{index} rifiutato e annullato in {path}.", index=int(hunk_index) + 1, path=path)
+            else:
+                self._checkpoint_status = tr("Blocco #{index} confermato in {path}.", index=int(hunk_index) + 1, path=path)
+            self.refreshChanges(self._selected_change_path)
+
+        self._request(
+            "canvas.workspace_apply_hunk",
+            {
+                "project_id": project_id,
+                "path": path,
+                "hunk_index": int(hunk_index),
+                "decision": decision,
+            },
+            received,
+            scope_session=False,
+        )
+
+    @Slot()
+    def refreshCheckpoints(self) -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id:
+            return
+        params: Json = {"project_id": project_id}
+        if self.workspace.sessionId:
+            params["session_id"] = self.workspace.sessionId
+        self._request("checkpoint.list", params, self._set_checkpoints, scope_session=False)
+
+    def _set_checkpoints(self, result: Json) -> None:
+        self._checkpoints = list(result.get("checkpoints") or [])
+
+    @Slot(str)
+    def createCheckpoint(self, label: str = "") -> None:
+        project_id = self.workspace.project.get("id")
+        if not project_id:
+            return
+        params: Json = {
+            "project_id": project_id,
+            "label": label.strip() or tr("Checkpoint manuale"),
+        }
+        if self.workspace.sessionId:
+            params["session_id"] = self.workspace.sessionId
+
+        def received(_result: Json) -> None:
+            self._checkpoint_status = tr("Checkpoint salvato.")
+            self.refreshCheckpoints()
+
+        self._request("checkpoint.create", params, received, scope_session=False)
+
+    @Slot(str)
+    def inspectCheckpoint(self, checkpoint_id: str) -> None:
+        project_id = self.workspace.project.get("id")
+        if not project_id or not checkpoint_id:
+            return
+
+        def received(result: Json) -> None:
+            self._checkpoint_diff = result
+            self._changes = {
+                "available": True,
+                "files": result.get("files", []),
+                "diff": result.get("diff") or tr("Nessuna differenza nel checkpoint selezionato."),
+                "truncated": bool(result.get("truncated")),
+            }
+
+        self._request(
+            "checkpoint.diff",
+            {"project_id": project_id, "checkpoint_id": checkpoint_id},
+            received,
+            scope_session=False,
+        )
+
+    @Slot(str, str)
+    def restoreCheckpoint(self, checkpoint_id: str, target: str = "before") -> None:
+        project_id = self.workspace.project.get("id")
+        if not project_id or not checkpoint_id:
+            return
+        params: Json = {
+            "project_id": project_id,
+            "checkpoint_id": checkpoint_id,
+            "target": target or "before",
+        }
+        if self.workspace.sessionId:
+            params["session_id"] = self.workspace.sessionId
+
+        def received(result: Json) -> None:
+            restored_count = len(result.get("restored_files") or [])
+            removed_count = len(result.get("removed_files") or [])
+            self._checkpoint_status = tr(
+                "Workspace ripristinato ({restored} file ripristinati, {removed} file rimossi).",
+                restored=restored_count,
+                removed=removed_count,
+            )
+            self.refreshChanges("")
+
+        self._request("checkpoint.restore", params, received, scope_session=False)
+
+    @Slot()
+    def refreshCodeIndex(self) -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id:
+            return
+
+        def received(result: Json) -> None:
+            self._code_index_status = dict(result.get("status") or {})
+
+        self._request("codeindex.status", {"project_id": project_id}, received, scope_session=False)
+
+    @Slot()
+    def rebuildCodeIndex(self) -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id:
+            return
+
+        def received(result: Json) -> None:
+            self._code_index_status = dict(result.get("status") or {})
+
+        self._request(
+            "codeindex.rebuild",
+            {"project_id": project_id, "force": True},
+            received,
+            scope_session=False,
+        )
+
+    @Slot(str)
+    def searchCodeIndex(self, query: str) -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id:
+            return
+        q = query.strip()
+        if not q:
+            self._code_index_results = []
+            self.changed.emit()
+            return
+
+        def received(result: Json) -> None:
+            self._code_index_results = list(result.get("results") or [])
+            if "total_indexed_files" in result:
+                self._code_index_status.update(
+                    files=result.get("total_indexed_files", 0),
+                    symbols=result.get("total_indexed_symbols", 0),
+                )
+
+        self._request(
+            "codeindex.search",
+            {"project_id": project_id, "query": q[:500], "limit": 12},
+            received,
+            scope_session=False,
+        )
+
+    @Slot(str, str)
+    def inspectCodeGraph(self, symbol: str, path: str = "") -> None:
+        project_id = self.workspace.project.get("id")
+        if not self.workspace.connected or not project_id or (not symbol.strip() and not path.strip()):
+            return
+
+        def received(result: Json) -> None:
+            defs = result.get("definitions") or []
+            callers = result.get("callers") or []
+            callees = result.get("callees") or []
+            importers = result.get("importers") or []
+            lines: list[str] = []
+            if defs:
+                lines.append(tr("Definizioni:"))
+                for d in defs[:8]:
+                    lines.append(f"  • {d['path']}:{d['start_line']}-{d['end_line']} [{d['kind']}] {d['signature']}")
+            if callers:
+                lines.append(tr("Chiamato da (callers):"))
+                for c in callers[:12]:
+                    lines.append(f"  ← {c['caller_path']}:{c['line']} ({c['caller_qualified']})")
+            if callees:
+                lines.append(tr("Chiama (callees):"))
+                for c in callees[:12]:
+                    lines.append(f"  → {c['callee_name']} (riga {c['line']})")
+            if importers:
+                lines.append(tr("Importato da:"))
+                for imp in importers[:10]:
+                    lines.append(f"  • {imp['importer_path']}:{imp['line']} ({imp['imported_module']})")
+            self._code_index_graph_text = "\n".join(lines) if lines else tr("Nessuna relazione trovata nel grafo per questo simbolo.")
+
+        self._request(
+            "codeindex.graph",
+            {"project_id": project_id, "symbol": symbol.strip()[:256], "path": path.strip()[:512], "limit": 20},
+            received,
+            scope_session=False,
+        )
 
     @Slot()
     def refreshArchives(self) -> None:

@@ -7,8 +7,12 @@ An Ollama tool probe or a Codex MCP inventory check is not implied by model nami
 
 Read-only, Plan, Review and Recap do not permit project modification. Project-write
 permits Kira file writes inside the chosen project; Kira's arbitrary host commands
-require trusted-host or full-access. Trusted-host executes as the user and is not
-a containment guarantee.
+require trusted-host or full-access. In trusted-host, Kira confines `run_command`
+and Python project tool workers with an OS Landlock or Bubblewrap `workspace_write`
+sandbox so writes outside the project root and temporary directories are blocked by
+the kernel; `full-access` runs unrestricted as the user. Before writable Execute
+runs, Kira captures a private Shadow Git checkpoint (without touching the user's
+`.git`), allowing instant diff inspection and rollback in the Workbench.
 
 Codex's native tools run in a checked Codex sandbox chosen by the permission:
 read-only uses `read-only` without network; project-write uses `workspace-write`,

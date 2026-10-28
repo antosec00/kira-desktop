@@ -272,16 +272,80 @@ anche quando arriva come piano nativo invece che come normale messaggio.
 provider e non sostituisce la compattazione (vedi
 [Contesto e memoria](CONTESTO_E_MEMORIA.md)).
 
-### Modifiche
+### Modifiche, Checkpoint e Ripristino istantaneo
 
 **Azioni → Modifiche** mostra i file del progetto cambiati secondo Git: modifiche
 nell'indice, modifiche locali e file nuovi, con il diff in sola lettura. Puoi
 scegliere un file per una vista mirata. Contenuti sensibili, file non leggibili
 e limiti di dimensione possono ridurre ciò che vedi. Questa schermata non
-esegue hook del repository, non usa strumenti di diff esterni e non applica né
-annulla modifiche. **Richiedi revisione** prepara nel campo una bozza in
-modalità **Revisione** con l'anteprima delle differenze: controllala e inviala.
-Funziona anche con provider locali che non possono eseguire Git da soli.
+esegue hook del repository e non usa strumenti di diff esterni. **Richiedi
+revisione** prepara nel campo una bozza in modalità **Revisione** con
+l'anteprima delle differenze: controllala e inviala. Funziona anche con provider
+locali che non possono eseguire Git da soli.
+
+Nella stessa schermata sono disponibili i **Checkpoint del workspace (Shadow Git)**:
+
+- Prima e dopo ogni esecuzione in modalità **Esegui** con permesso di scrittura,
+  Kira cattura automaticamente uno snapshot invisibile del progetto in un
+  repository Git ombra privato (`$KIRA_HOME/data/checkpoints/<project_id>/repo.git`),
+  senza mai toccare l'indice `.git` o la cronologia commit dell'utente (e
+  funzionando anche su cartelle non inizializzate con Git). I file sensibili
+  (`.env`, chiavi private) e le directory pesanti (`node_modules`, `.venv`)
+  sono esclusi automaticamente.
+- **Salva checkpoint** crea in qualsiasi momento un punto di ripristino manuale.
+- Selezionando una voce nel menu dei checkpoint puoi premere **Diff checkpoint**
+  per esaminare le modifiche introdotte da quel turno, **Annulla turno** per
+  riportare i file del workspace allo stato precedente a quel turno (`before`),
+  oppure **Ripristina stato** per riportarli allo stato registrato dal
+  checkpoint (`after`). Prima di ogni ripristino Kira crea automaticamente un
+  checkpoint di sicurezza (`Backup`), così nessun file viene mai perso.
+
+### Indice semantico del codice (AST, RAG ibrido e grafo delle chiamate)
+
+In **Azioni → Strumenti della chat → Indice semantico AST** (e automaticamente
+per gli agenti tramite lo strumento `kira.code_index`) Kira mantiene un indice
+locale e isolato per ogni progetto (`$KIRA_HOME/data/code_index/<project_id>/index.db`):
+
+- **Estrazione AST e strutturale multi-linguaggio**: analizza file Python (con
+  l'AST completo di classi, funzioni, metodi, firme, docstring, import e chiamate),
+  QML (componenti, `id`, proprietà, segnali, funzioni), TypeScript/JavaScript,
+  Rust, Go, C/C++, Java, Kotlin, C# e Markdown, aggiornando in modo incrementale
+  solo i file modificati (verificati tramite `mtime`, dimensione e `SHA-256`).
+  I file segreti (`.env`, chiavi private) e le cartelle escluse (`node_modules`,
+  `.venv`, `.git`) non vengono mai indicizzati.
+- **Ricerca ibrida a 3 livelli (AST + FTS5 BM25 + Vettori semantici 256-dim)**:
+  combina corrispondenza sui simboli AST, ricerca full-text lessicale con
+  scomposizione `camelCase`/`snake_case` su SQLite FTS5 e similarità coseno su
+  embedding vettoriali locali a 256 dimensioni, restituendo i frammenti più
+  rilevanti senza saturare la finestra di contesto del modello.
+- **Grafo delle dipendenze e delle chiamate (`Grafo chiamate`)**: per qualsiasi
+  simbolo o file mostra dove è definito (`definitions`), quali funzioni lo
+  chiamano (`callers`), quali funzioni invoca (`callees`) e quali moduli lo
+  importano (`importers`).
+
+### Canvas interattivo, anteprima live e revisione granulare dei blocchi (Hunk Diff)
+
+Dal pulsante **Canvas** nella barra sotto la chat (o da **Azioni → Modifiche → Apri Canvas**)
+puoi aprire un pannello affiancato alla conversazione dedicato agli artefatti
+interattivi del progetto (`$KIRA_HOME/data/canvas/<project_id>/canvas.db`),
+gestibili anche dagli agenti tramite lo strumento `kira.canvas`:
+
+- **Anteprima Live 100% offline**: compila istantaneamente diagrammi **Mermaid**
+  (`flowchart`/`graph` `TD`/`LR`/`RL`/`BT`, `sequenceDiagram`, `stateDiagram`,
+  `classDiagram`, `erDiagram`), grafici **SVG** (sanitizzati rimuovendo `<script>`,
+  `<foreignObject>`, attributi `on*` e URL esterni), mockup **HTML / UI** (con
+  anteprima vettoriale sicura e file HTML isolato da Content-Security-Policy) e
+  documenti **Markdown / Codice**.
+- **Editor e selezione righe collaborativa inline**: nella scheda **Editor &
+  Selezione Righe** puoi modificare il codice sorgente salvando nuove revisioni
+  versionate oppure selezionare un intervallo di righe (**Da riga / A riga**) e
+  premere **Chiedi a Kira sulla selezione** per far riscrivere all'agente solo
+  quella porzione tramite `kira.canvas` (`action="patch_lines"`).
+- **Accetta / Rifiuta singoli blocchi (Hunk Diff)**: sia nella scheda **Diff Blocchi**
+  del Canvas sia in **Azioni → Modifiche** per i file Git del workspace, Kira
+  scompone il diff unificato in blocchi indipendenti (`@@ ... @@`) e permette di
+  premere **Accetta blocco** o **Rifiuta blocco** per annullare chirurgicamente
+  una singola modifica senza perdere il resto del lavoro.
 
 ## 7. Archiviare, diramare, esportare
 

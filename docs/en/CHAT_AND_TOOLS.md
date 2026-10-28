@@ -269,16 +269,77 @@ native plan instead of a normal message. **Recap** produces a response you can
 read: it does not compact the provider's context and does not replace
 compaction (see [Context and memory](CONTEXT_AND_MEMORY.md)).
 
-### Changes
+### Changes, Checkpoints and Instant Rollback
 
 **Actions → Changes** shows the project files changed according to Git: staged
 changes, local changes and new files, with a read-only diff. You can pick a
 file for a focused view. Sensitive content, unreadable files and size limits
-can reduce what you see. This screen does not run repository hooks, does not
-use external diff tools and neither applies nor reverts changes. **Request
-review** prepares in the field a draft in **Review** mode with the diff
-preview: check it and send it. It also works with local providers that cannot
-run Git on their own.
+can reduce what you see. This screen does not run repository hooks and does not
+use external diff tools. **Request review** prepares in the field a draft in
+**Review** mode with the diff preview: check it and send it. It also works with
+local providers that cannot run Git on their own.
+
+In the same panel you find **Workspace Checkpoints (Shadow Git)**:
+
+- Before and after every **Execute** run with write permission, Kira
+  automatically captures an invisible snapshot of the project in a private
+  shadow Git repository (`$KIRA_HOME/data/checkpoints/<project_id>/repo.git`),
+  without ever touching the user's `.git` index or commit history (and working
+  even on folders not initialized with Git). Sensitive files (`.env`, private
+  keys) and heavy directories (`node_modules`, `.venv`) are automatically
+  excluded.
+- **Save checkpoint** creates a manual restore point at any time.
+- By selecting an entry in the checkpoint menu you can click **Checkpoint diff**
+  to inspect the changes introduced by that turn, **Undo turn** to roll the
+  workspace files back to the state prior to that turn (`before`), or
+  **Restore state** to restore them to the state recorded at that checkpoint
+  (`after`). Before every restore Kira automatically creates a safety backup
+  checkpoint (`Backup`), ensuring no work is ever lost.
+
+### Semantic codebase index (AST, hybrid RAG and call graph)
+
+In **Actions → Chat tools → AST semantic index** (and automatically for agents
+through the `kira.code_index` tool) Kira maintains a local, per-project isolated
+index (`$KIRA_HOME/data/code_index/<project_id>/index.db`):
+
+- **Multi-language AST and structural extraction**: parses Python files (full AST
+  for classes, functions, methods, signatures, docstrings, imports and call sites),
+  QML (components, `id`, properties, signals, functions), TypeScript/JavaScript,
+  Rust, Go, C/C++, Java, Kotlin, C# and Markdown, incrementally updating only
+  modified files (verified via `mtime`, size and `SHA-256`). Secret files (`.env`,
+  private keys) and excluded directories (`node_modules`, `.venv`, `.git`) are
+  never indexed.
+- **3-way hybrid retrieval (AST + FTS5 BM25 + 256-dim semantic vectors)**:
+  combines AST symbol matching, `camelCase`/`snake_case`-aware SQLite FTS5 lexical
+  ranking and cosine similarity over 256-dimensional local semantic embeddings to
+  retrieve the most relevant code chunks without saturating the model's context
+  window.
+- **Dependency and call graph (`Call graph`)**: for any symbol or file, shows
+  where it is defined (`definitions`), which functions call it (`callers`), what
+  it calls (`callees`) and which files import it (`importers`).
+
+### Interactive Canvas, live preview and granular hunk review (Hunk Diff)
+
+From the **Canvas** button in the bar below the chat (or from **Actions → Changes → Open Canvas**)
+you can open a side-by-side surface dedicated to interactive project artifacts
+(`$KIRA_HOME/data/canvas/<project_id>/canvas.db`), also accessible to agents
+through the `kira.canvas` tool:
+
+- **100% offline Live Preview**: instantly compiles **Mermaid** diagrams
+  (`flowchart`/`graph` `TD`/`LR`/`RL`/`BT`, `sequenceDiagram`, `stateDiagram`,
+  `classDiagram`, `erDiagram`), **SVG** graphics (sanitized by stripping `<script>`,
+  `<foreignObject>`, `on*` event attributes and external URLs), **HTML / UI**
+  mockups (with both a safe vector wireframe preview and a CSP-sandboxed `.html`
+  preview file) and **Markdown / Code** documents.
+- **Editor and collaborative inline line selection**: in the **Editor & Line
+  Selection** tab you can edit the source and save versioned revisions, or specify
+  a line range (**From line / To line**) and click **Ask Kira about selection**
+  so the agent rewrites only those lines via `kira.canvas` (`action="patch_lines"`).
+- **Accept / Reject individual hunks (Hunk Diff)**: both in the **Hunk Diff**
+  tab of the Canvas and in **Actions → Changes** for workspace Git files, Kira
+  parses the unified diff into independent hunks (`@@ ... @@`) and lets you click
+  **Accept hunk** or **Reject hunk** to surgically revert a single modification
+  without losing the rest of your work.
 
 ## 7. Archiving, branching, exporting
 

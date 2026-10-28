@@ -43,19 +43,24 @@ own choice. Kira never promotes a project to a wider permission on its own.
 | --- | --- | --- | --- |
 | **Read only** | Reading and searching inside the project; changes are refused | Denied | Codex read-only mode |
 | **Project write** | Reading and writing inside the project | Denied | Codex workspace sandbox |
-| **Trusted host** | Reading and writing inside the project | Run as your user on the system where Kira runs | Codex full access |
-| **Full access** | Reading and writing in every path your user can reach, including outside the project | Run as your user | Codex full access |
+| **Trusted host** | Reading and writing inside the project | Run with OS confinement (`workspace_write` Landlock / Bubblewrap: writes restricted to project root and `/tmp`) | Codex full access |
+| **Full access** | Reading and writing in every path your user can reach, including outside the project | Run as your user without sandbox restrictions | Codex full access |
 
 Some important clarifications:
 
 - "Host" means the system where Kira runs. If you start it in WSL, the host is
   that Linux environment, with the mounted Windows folders your user can reach.
-- **Trusted host** is not a sandbox. A command run as your user can touch
-  anything your user can touch: the project folder limits Kira's file tools,
-  not the commands. Choose this permission only for projects you truly trust.
+- With **Trusted host**, commands started by Kira (`run_command` and Python
+  project tool workers) are confined at kernel level via **Linux Landlock LSM**
+  (or **Bubblewrap** `bwrap` when available) in `workspace_write` mode: they can
+  read and execute system binaries, while the kernel blocks with `EACCES` any
+  file creation, modification, rename or deletion outside the project folder and
+  temporary directories (`/tmp`). Filesystem reads and network access remain
+  those of your user: choose this permission only for projects you trust.
 - Outside **Full access**, Kira's write tool refuses paths inside `.git` with
   `PATH_DENIED`: Git metadata holds hooks and filters that Git later runs as
-  your user. With **Trusted host** commands remain free to change it anyway.
+  your user. With **Trusted host** commands remain free to change the project
+  folder.
 - Codex policies restrict writes and network access according to its runtime,
   but they do not promise that only the project folder is readable. Codex
   treats **Trusted host** and **Full access** the same way; the difference
