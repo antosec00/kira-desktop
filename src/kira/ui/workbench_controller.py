@@ -42,6 +42,29 @@ def guidance_label(state: str) -> str:
             "unknown": tr("Consegna delle indicazioni da verificare")}.get(state, "")
 
 
+def trigger_kind_label(kind: str) -> str:
+    return {
+        "cron": tr("Pianificazione (Cron)"),
+        "file_watch": tr("File Watcher"),
+        "git_commit": tr("Git Commit"),
+        "webhook": tr("Webhook locale"),
+    }.get(kind, kind)
+
+
+def trigger_status_label(status: str, enabled: bool) -> str:
+    if not enabled and status not in {"budget_paused", "limit_reached", "completed"}:
+        return tr("In pausa")
+    return {
+        "armed": tr("Attivo · in ascolto"),
+        "idle": tr("Attivo · in ascolto"),
+        "paused": tr("In pausa"),
+        "cooldown": tr("Anti-loop · cooldown"),
+        "budget_paused": tr("Pausa automatica · budget superato"),
+        "completed": tr("Completato · limite raggiunto"),
+        "limit_reached": tr("Completato · limite raggiunto"),
+    }.get(status, status)
+
+
 class WorkbenchController(QObject):
     changed = Signal()
     historyChanged = Signal()
@@ -79,6 +102,7 @@ class WorkbenchController(QObject):
         self._archives: list[Json] = []
         self._archives_more = False
         self._goal: Json = {}
+        self._triggers: list[Json] = []
         self._goal_read_context: tuple[str, str] | None = None
         self._goal_anchor_token: object | None = None
         self._goal_history_token: object | None = None
@@ -133,6 +157,7 @@ class WorkbenchController(QObject):
             self._loading.clear()
             self._goal_poll_timer.stop()
             self._goal = {}
+            self._triggers = []
             self._goal_read_context = None
             self._goal_anchor_token = None
             self._goal_history_token = None
@@ -1271,6 +1296,8 @@ class WorkbenchController(QObject):
         self._goal = dict(result.get("goal") or {})
         if "autonomous" in result:
             self._goal["autonomous"] = result["autonomous"]
+        if "triggers" in result and isinstance(result["triggers"], list):
+            self._triggers = [dict(row) for row in result["triggers"] if isinstance(row, dict)]
         self._adopt_goal_run()
         self._goal_poll_timer.stop()
         run = self.autonomousGoal.get("run") or {}
@@ -1279,6 +1306,130 @@ class WorkbenchController(QObject):
             self._goal_poll_timer.start()
         self.goalChanged.emit()
         self.changed.emit()
+
+    def _set_triggers(self, result: Json) -> None:
+        rows = result.get("triggers")
+        if isinstance(rows, list):
+            self._triggers = [dict(row) for row in rows if isinstance(row, dict)]
+        self.goalChanged.emit()
+        self.changed.emit()
+
+    @qt_property("QVariantList", notify=goalChanged)
+    def triggers(self) -> list[Json]:
+        items: list[Json] = []
+        for row in self._triggers:
+            kind = str(row.get("kind", "cron"))
+            enabled = bool(row.get("enabled", True))
+            status = str(row.get("status", "idle"))
+            fire_count = int(row.get("fire_count", 0) or 0)
+            max_fires = int(row.get("max_fires", 0) or 0)
+            fire_label = (
+                tr("Esecuzioni: {count} · illimitate", count=fire_count)
+                if max_fires == 0
+                else tr("Esecuzioni: {count}/{limit}", count=fire_count, limit=max_fires)
+            )
+            items.append({
+                **row,
+                "kindLabel": trigger_kind_label(kind),
+                "statusLabel": trigger_status_label(status, enabled),
+                "fireCountLabel": fire_label,
+            })
+        return items
+
+    @qt_property(int, notify=goalChanged)
+    def activeTriggerCount(self) -> int:
+        return sum(
+            1
+            for row in self._triggers
+            if row.get("enabled")
+            and str(row.get("status", "idle")) not in {"paused", "budget_paused", "limit_reached"}
+        )
+
+    @qt_property(str, notify=goalChanged)
+    def triggerSummaryBadge(self) -> str:
+        if any(str(row.get("status", "")) == "budget_paused" for row in self._triggers):
+            return tr("Trigger in pausa · budget")
+        count = self.activeTriggerCount
+        if count == 1:
+            return tr("1 trigger attivo")
+        if count > 1:
+            return tr("{count} trigger attivi", count=count)
+        return ""
+
+    @Slot()
+    def refreshTriggers(self) -> None:
+        if not self.workspace.connected or not self.workspace.project:
+            return
+        params: Json = {"project_id": self.workspace.project.get("id")}
+        if self.workspace.sessionId:
+            params["session_id"] = self.workspace.sessionId
+        self._request("trigger.list", params, self._set_triggers, scope_session=False)
+
+    @Slot(str, str, str, int)
+    def createTrigger(self, kind: str, schedule: str, prompt: str, max_fires: int = 0) -> None:
+        if not self.workspace.connected or not self.workspace.project or not self.workspace.sessionId:
+            return
+        clean_prompt = prompt.strip()
+        if not clean_prompt:
+            return
+        params: Json = {
+            "project_id": self.workspace.project.get("id"),
+            "session_id": self.workspace.sessionId,
+            "kind": kind.strip() or "cron",
+            "schedule": schedule.strip(),
+            "prompt": clean_prompt,
+            "max_fires": max(0, int(max_fires)),
+            "enabled": True,
+        }
+        self._request("trigger.create", params, self._set_triggers, scope_session=False)
+
+    @Slot(str, bool)
+    def toggleTrigger(self, trigger_id: str, enabled: bool) -> None:
+        if not self.workspace.connected or not self.workspace.project or not trigger_id:
+            return
+        self._request(
+            "trigger.toggle",
+            {
+                "project_id": self.workspace.project.get("id"),
+                "trigger_id": trigger_id,
+                "enabled": bool(enabled),
+            },
+            self._set_triggers,
+            scope_session=False,
+        )
+
+    @Slot(str)
+    def deleteTrigger(self, trigger_id: str) -> None:
+        if not self.workspace.connected or not self.workspace.project or not trigger_id:
+            return
+        self._request(
+            "trigger.delete",
+            {
+                "project_id": self.workspace.project.get("id"),
+                "trigger_id": trigger_id,
+            },
+            self._set_triggers,
+            scope_session=False,
+        )
+
+    @Slot(str)
+    def fireTriggerNow(self, trigger_id: str) -> None:
+        if not self.workspace.connected or not self.workspace.project or not trigger_id:
+            return
+
+        def received(result: Json) -> None:
+            self._set_triggers(result)
+            self.refreshQueue()
+
+        self._request(
+            "trigger.fire",
+            {
+                "project_id": self.workspace.project.get("id"),
+                "trigger_id": trigger_id,
+            },
+            received,
+            scope_session=False,
+        )
 
     @qt_property("QVariantMap", notify=goalChanged)
     def autonomousGoal(self) -> Json:

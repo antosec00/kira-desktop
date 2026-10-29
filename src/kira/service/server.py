@@ -57,6 +57,7 @@ from kira.service.teams import Teams
 from kira.service.assistant import Assistant
 from kira.service.chat_lanes import ChatLanes
 from kira.service.autonomous_goals import AutonomousGoals, METHODS as GOAL_METHODS
+from kira.service.triggers import TriggerService, METHODS as TRIGGER_METHODS
 from kira.service.direct_accounts import BACKEND as DIRECT_BACKEND, DirectAccounts
 from kira.backends.deepseek_account import DeepSeekAccountBackend, DeepSeekAccounts
 from kira.backends.deepseek_web import DeepSeekWebBackend
@@ -296,6 +297,7 @@ class Service:
             await self.assistant.recover()
             self.goals = AutonomousGoals(self)
             self.goals.recover()
+            self.triggers = TriggerService(self)
             self.server = await asyncio.start_unix_server(self._client, path=self.paths.socket,
                                                           limit=MAX_FRAME_BYTES)
             os.chmod(self.paths.socket, 0o600)
@@ -306,6 +308,7 @@ class Service:
             self.stopping.clear()
             self.prompt_queue.start()
             self.goals.start()
+            self.triggers.start()
         except BaseException:
             await self.direct_accounts.close()
             await self.deepseek_accounts.close()
@@ -322,6 +325,8 @@ class Service:
         self._closing = True
         if self.server:
             self.server.close()
+        if hasattr(self, "triggers"):
+            await self.triggers.close()
         await self.goals.close()
         await self.chat_lanes.close()
         await self.contexts.close()
@@ -475,7 +480,7 @@ class Service:
         if (self._closing or self.stopping.is_set()) and (method in {"run.start", "team.start", "team.resume",
                 "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume",
                 "desktop.launch", "workspace.launch"}
-                or method in SOUL_METHODS | GOAL_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CHECKPOINT_METHODS | CODE_INDEX_METHODS | CANVAS_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | MCP_METHODS | STUDIO_METHODS):
+                or method in SOUL_METHODS | GOAL_METHODS | TRIGGER_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CHECKPOINT_METHODS | CODE_INDEX_METHODS | CANVAS_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | MCP_METHODS | STUDIO_METHODS):
             raise KiraError("SHUTTING_DOWN", "Service is draining; new work is not accepted")
         if method in {"assistant.snapshot", "assistant.cancel", "assistant.message", "assistant.resume"}:
             return await self.assistant.dispatch(method, params)
@@ -520,6 +525,8 @@ class Service:
             return await self.goals.legacy_update(params)
         if method in GOAL_METHODS:
             return await self.goals.dispatch(method, params)
+        if method in TRIGGER_METHODS:
+            return await self.triggers.handle(method, params)
         if method in WORKBENCH_METHODS:
             return await self.workbench.dispatch(method, params)
         if method in INPUT_METHODS:
@@ -535,6 +542,7 @@ class Service:
                      "workspaces": True, "desktop_actions": True, "diagnostics": True,
                      "teams": True, "input_questions": True, "workbench": True,
                      "prompt_queue": True, "run_modes": True, "chat_goals": True, "autonomous_goals": True,
+                     "event_triggers": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
                      "os_sandbox": True, "shadow_checkpoints": True, "semantic_code_index": True,
@@ -1798,6 +1806,8 @@ class Service:
                 if cleaned and hasattr(self, "chat_lanes"):
                     await self.chat_lanes.after_run(run_id)
             finally:
+                if hasattr(self, "triggers"):
+                    self.triggers.after_run(run_id)
                 if hasattr(self, "prompt_queue"):
                     self.prompt_queue.finished(run_id)
                 if hasattr(self, "goals"):
