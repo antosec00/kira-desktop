@@ -84,7 +84,7 @@ from kira.tools.sandbox import probe_sandbox
 DEFAULT_SETTINGS: Json = {"ollama_url": "http://127.0.0.1:11434", "codex_binary": "codex",
                           "tool_timeout": 120, "max_output_bytes": 1_048_576, "max_tool_rounds": 0}
 EVENT_TYPES = {"run.state", "message.user", "message.delta", "message.completed", "context.supplied",
-               "context.status", "context.compaction", "goal.state",
+               "context.status", "context.compaction", "goal.state", "ambient.toggle",
                "tool.started", "tool.progress", "tool.completed", "artifact.created", "usage", "session.updated",
                "approval.requested", "backend.notice", "steering.requested", "steering.submitted", "steering.accepted", "steering.failed", "team.delegation"} | INPUT_EVENTS | SUMMARY_EVENTS
 
@@ -535,6 +535,26 @@ class Service:
             return await self.teams.dispatch(method, params, subscriber)
         if method in WORKSPACE_METHODS:
             return await self.workspaces.dispatch(method, params)
+        if method == "ambient.toggle":
+            fields(params, {"app_name", "window_title", "selection"})
+            payload = {
+                "app_name": str(params.get("app_name") or "")[:120],
+                "window_title": str(params.get("window_title") or "")[:300],
+                "selection": str(params.get("selection") or "")[:12000],
+            }
+            delivered = 0
+            for client in list(self.clients):
+                if client is not subscriber and not client.closed:
+                    client.send({
+                        "version": IPC_VERSION,
+                        "event": {
+                            "type": "ambient.toggle",
+                            "timestamp": now(),
+                            "payload": payload,
+                        },
+                    })
+                    delivered += 1
+            return {"delivered": delivered, "payload": payload}
         if method == "hello":
             fields(params, set())
             return {"version": IPC_VERSION, "app_version": __version__, "capabilities":
@@ -542,7 +562,7 @@ class Service:
                      "workspaces": True, "desktop_actions": True, "diagnostics": True,
                      "teams": True, "input_questions": True, "workbench": True,
                      "prompt_queue": True, "run_modes": True, "chat_goals": True, "autonomous_goals": True,
-                     "event_triggers": True,
+                     "event_triggers": True, "ambient_spotlight": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
                      "os_sandbox": True, "shadow_checkpoints": True, "semantic_code_index": True,

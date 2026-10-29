@@ -59,7 +59,9 @@ class BrowserFrameStore:
 
     def image(self, key: str) -> QImage:
         with self._lock:
-            return self._image if key == self._key else QImage()
+            if key == self._key or (key.startswith("live-") and self._key.startswith("live-")):
+                return self._image
+            return QImage()
 
 
 class BrowserFrames(QQuickImageProvider):

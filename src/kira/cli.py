@@ -57,8 +57,14 @@ async def stop_service() -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="kira-desktop")
     parser.add_argument("--version", action="version", version=f"Kira Desktop {__version__}")
+    parser.add_argument(
+        "--spotlight",
+        action="store_true",
+        help="Toggle or open the Ambient Spotlight overlay over the active desktop window",
+    )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("service", help="Run the authoritative service in the foreground")
+    sub.add_parser("spotlight", help="Toggle or open the Ambient Spotlight overlay")
     rpc = sub.add_parser("rpc", help="Send a v1 IPC request (JSON output)")
     rpc.add_argument("method")
     rpc.add_argument("params", nargs="?", default="{}")
@@ -86,6 +92,39 @@ def main(argv: list[str] | None = None) -> int:
         from kira.service.server import main as service_main
         service_main()
         return 0
+    if args.spotlight or args.command == "spotlight":
+        from kira.client import Client
+        from kira.domain.ambient import inspect_active_window, read_os_primary_selection
+
+        win_info = inspect_active_window()
+        sel_text = read_os_primary_selection()
+
+        async def _try_toggle_running_ui() -> int:
+            client = Client()
+            try:
+                await client.connect()
+            except (FileNotFoundError, ConnectionRefusedError, KiraError, OSError):
+                return 0
+            try:
+                res = await client.request(
+                    "ambient.toggle",
+                    {
+                        "app_name": win_info.get("app_name", ""),
+                        "window_title": win_info.get("window_title", ""),
+                        "selection": sel_text,
+                    },
+                )
+                return int(res.get("delivered") or 0)
+            except Exception:
+                return 0
+            finally:
+                await client.close()
+
+        delivered = asyncio.run(_try_toggle_running_ui())
+        if delivered > 0:
+            return 0
+        from kira.ui.app import main as ui_main
+        return ui_main(spotlight=True) or 0
     # Reject malformed arguments before any service is started.
     params: dict[str, Any] = {}
     if args.command == "rpc":

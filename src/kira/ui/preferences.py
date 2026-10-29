@@ -115,7 +115,7 @@ def valid_preference(key: str, value: object) -> bool:
         "density": {"comfortable", "compact"},
         "sidebar_mode": {"full", "rail", "hidden"},
         "confirm_close": {"active", "always", "never"},
-        "file_opener": {"system", "vscode"},
+        "file_opener": {"system", "vscode", "kira"},
         "default_permission": {"read_only", "project_write", "trusted_host", "full_access"},
     }
     return isinstance(value, str) and value in enums.get(key, set())
