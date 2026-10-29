@@ -1162,13 +1162,16 @@ class DeepSeekWebBackend(Backend):
 
     @staticmethod
     def _unwrap_tool_call_tags(text: str) -> str:
-        """Accept one call wrapped in <tool_call>, <kira_tool_call> or <function_call> tags."""
+        """Accept one call wrapped in <tool_call>, <kira_tool_call> or <function_call> tags (even if unclosed at EOF)."""
         stripped = text.strip()
         for tag in ("tool_call", "kira_tool_call", "function_call"):
             open_tag = f"<{tag}>"
             close_tag = f"</{tag}>"
-            if stripped.startswith(open_tag) and stripped.endswith(close_tag):
-                inner = stripped[len(open_tag):-len(close_tag)].strip()
+            if stripped.startswith(open_tag):
+                if stripped.endswith(close_tag):
+                    inner = stripped[len(open_tag):-len(close_tag)].strip()
+                else:
+                    inner = stripped[len(open_tag):].strip()
                 if inner:
                     return DeepSeekWebBackend._unwrap_markdown_code_fence(inner, {"", "json", "xml"})
         return text
@@ -1176,10 +1179,16 @@ class DeepSeekWebBackend(Backend):
     @staticmethod
     def _has_xml_tool_tag(text: str) -> bool:
         stripped = DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json", "xml"}).strip()
-        return any(
-            stripped.startswith(f"<{tag}>") and stripped.endswith(f"</{tag}>")
-            for tag in ("tool_call", "kira_tool_call", "function_call")
-        )
+        for tag in ("tool_call", "kira_tool_call", "function_call"):
+            open_tag = f"<{tag}>"
+            close_tag = f"</{tag}>"
+            if stripped.startswith(open_tag):
+                if stripped.endswith(close_tag):
+                    return True
+                inner = stripped[len(open_tag):].strip()
+                if inner.startswith("{") and inner.endswith("}"):
+                    return True
+        return False
 
     @staticmethod
     def _repair_json_tool_envelope(text: str) -> str | None:

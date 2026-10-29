@@ -95,7 +95,7 @@ def validate_canvas_action(action: Any, payload: Any) -> tuple[str, Json]:
         return act, {"artifact_id": artifact_id, "revision": rev_num}
 
     if act == "create":
-        extra = set(payload) - {"title", "kind", "language", "content", "summary"}
+        extra = set(payload) - {"title", "kind", "language", "content", "content_path", "summary"}
         if extra:
             raise KiraError("INVALID_ARGUMENT", f"Unknown create field: {sorted(extra)[0]}")
         title = _text(payload.get("title"), "title", 160)
@@ -103,30 +103,46 @@ def validate_canvas_action(action: Any, payload: Any) -> tuple[str, Json]:
         if kind not in ARTIFACT_KINDS:
             raise KiraError("INVALID_ARGUMENT", f"Unsupported artifact kind: {kind}")
         language = _text(payload.get("language", kind), "language", 64, empty=True).lower()
-        content = _content_text(payload.get("content"), "content", empty=False)
+        content_path = _text(payload.get("content_path", ""), "content_path", 512, empty=True)
+        content = (
+            _content_text(payload.get("content", ""), "content", empty=True)
+            if content_path
+            else _content_text(payload.get("content"), "content", empty=False)
+        )
         summary = _text(payload.get("summary", "Initial version"), "summary", 240, empty=True)
-        return act, {
+        res_create: Json = {
             "title": title,
             "kind": kind,
             "language": language or kind,
             "content": content,
             "summary": summary or "Initial version",
         }
+        if content_path:
+            res_create["content_path"] = content_path
+        return act, res_create
 
     if act == "update":
-        extra = set(payload) - {"artifact_id", "title", "content", "summary"}
+        extra = set(payload) - {"artifact_id", "title", "content", "content_path", "summary"}
         if extra:
             raise KiraError("INVALID_ARGUMENT", f"Unknown update field: {sorted(extra)[0]}")
         artifact_id = _text(payload.get("artifact_id"), "artifact_id", 128)
         title = _text(payload.get("title", ""), "title", 160, empty=True)
-        content = _content_text(payload.get("content"), "content", empty=False)
+        content_path = _text(payload.get("content_path", ""), "content_path", 512, empty=True)
+        content = (
+            _content_text(payload.get("content", ""), "content", empty=True)
+            if content_path
+            else _content_text(payload.get("content"), "content", empty=False)
+        )
         summary = _text(payload.get("summary", "Updated content"), "summary", 240, empty=True)
-        return act, {
+        res_update: Json = {
             "artifact_id": artifact_id,
             "title": title,
             "content": content,
             "summary": summary or "Updated content",
         }
+        if content_path:
+            res_update["content_path"] = content_path
+        return act, res_update
 
     if act == "patch_lines":
         extra = set(payload) - {
