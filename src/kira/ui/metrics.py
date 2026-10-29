@@ -5,6 +5,11 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Slot
 
+from kira.domain.pricing import (
+    calculate_cost_telemetry,
+    estimate_context_gauge,
+    evaluate_budget,
+)
 from kira.ui.i18n import current_language, locale
 from kira.ui.presentation import tr
 
@@ -196,13 +201,6 @@ def present_metrics(usage: dict[str, Any], resources: dict[str, Any],
     return {"cards": cards,
             "note": tr("Le risorse dell’host non misurano il consumo del modello remoto. "
                     "Costi e token residui non sono stimati.")}
-
-
-from kira.domain.pricing import (
-    calculate_cost_telemetry,
-    estimate_context_gauge,
-    evaluate_budget,
-)
 
 
 def usd_text(value: Any, billing_mode: str = "api", *, with_mode: bool = True) -> str:

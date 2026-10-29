@@ -230,7 +230,8 @@ class TeamController(QObject):
         backend = str(raw.get("backend") or self._team.get("backend") or "codex")
         billing_mode = str(raw.get("billing_mode") or ("local" if backend == "ollama" else "subscription" if backend in {"openai_chatgpt", "claude_code", "deepseek_web"} else "api"))
         spans_out: list[Json] = []
-        raw_spans = raw.get("spans") if isinstance(raw.get("spans"), list) else []
+        spans_val = raw.get("spans")
+        raw_spans: list[Any] = list(spans_val) if isinstance(spans_val, list) else []
         if not raw_spans and self._team.get("steps"):
             members_map = {str(m.get("id")): str(m.get("name") or m.get("id")) for m in self._team.get("members", []) if isinstance(m, dict)}
             total_steps = max(1, len(self._team.get("steps", [])))
@@ -299,7 +300,8 @@ class TeamController(QObject):
             })
 
         members_out: list[Json] = []
-        raw_members = raw.get("members") if isinstance(raw.get("members"), list) else []
+        members_val = raw.get("members")
+        raw_members: list[Any] = list(members_val) if isinstance(members_val, list) else []
         for item in raw_members[:24]:
             m = mapping(item)
             in_tok = int(m.get("input_tokens") or 0)

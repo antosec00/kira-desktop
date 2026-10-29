@@ -231,8 +231,10 @@ def estimate_context_gauge(
     """Compute real-time context window occupancy and fill thresholds for the input bar."""
     u = usage if isinstance(usage, dict) else {}
     ctx = context if isinstance(context, dict) else {}
-    policy = ctx.get("policy") if isinstance(ctx.get("policy"), dict) else {}
-    metrics = ctx.get("metrics") if isinstance(ctx.get("metrics"), dict) else {}
+    raw_policy = ctx.get("policy")
+    policy: Json = raw_policy if isinstance(raw_policy, dict) else {}
+    raw_metrics = ctx.get("metrics")
+    metrics: Json = raw_metrics if isinstance(raw_metrics, dict) else {}
 
     resolved_backend = str(backend or u.get("source") or ctx.get("backend") or "codex").strip()
     resolved_model = str(model or u.get("model") or ctx.get("model") or "").strip()
@@ -247,7 +249,8 @@ def estimate_context_gauge(
         or pricing.default_context_window
     )
 
-    last_req = u.get("last_request") if isinstance(u.get("last_request"), dict) else {}
+    raw_last = u.get("last_request")
+    last_req: Json = raw_last if isinstance(raw_last, dict) else {}
     measured_history = (
         _valid_int(last_req.get("input_tokens"))
         or _valid_int(metrics.get("preflight_input_tokens"))
