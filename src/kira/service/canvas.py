@@ -13,6 +13,7 @@ import contextlib
 import difflib
 import hashlib
 import html
+import json
 import os
 import re
 import sqlite3
@@ -1448,12 +1449,100 @@ class CanvasService:
                 "error": {"code": "CANVAS_ERROR", "message": self.redactor.text(str(exc))[:300]},
             }
 
-        response = self.redactor.clean(response)
+        response = self._bound_client_tool_response(self.redactor.clean(response), action)
         await self.service.emit(
             run_id,
             "tool.completed",
             {"tool_id": call_id, "name": "kira.canvas", "result": response},
         )
+        return response
+
+    @staticmethod
+    def _bound_client_tool_response(response: Json, action: str) -> Json:
+        """Keep kira.canvas client-tool callback payloads well below the 64 KiB wire limit."""
+        max_bytes = 48_000
+
+        def _encoded_len(obj: Any) -> int:
+            return len(json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+        if not isinstance(response, dict):
+            return response
+
+        # For list actions, omit full artifact bodies so multiple HTML/WebGL artifacts never overflow 64 KiB.
+        if action == "list" and isinstance(response.get("artifacts"), list):
+            compact_items: list[dict[str, Any]] = []
+            for item in response["artifacts"]:
+                if not isinstance(item, dict):
+                    continue
+                entry = {k: v for k, v in item.items() if k not in {"content", "revisions"}}
+                raw_content = str(item.get("content") or "")
+                entry["content_preview"] = raw_content[:360] + ("…" if len(raw_content) > 360 else "")
+                compact_items.append(entry)
+            response = {**response, "artifacts": compact_items}
+
+        if _encoded_len(response) <= max_bytes:
+            return response
+
+        # Step 1: compact diff hunks on artifact or top-level diff response.
+        if isinstance(response.get("artifact"), dict):
+            art = dict(response["artifact"])
+            art.pop("revisions", None)
+            if isinstance(art.get("diff"), dict):
+                diff_obj = dict(art["diff"])
+                raw_hunks = diff_obj.get("hunks")
+                if isinstance(raw_hunks, list):
+                    diff_obj["hunks"] = [
+                        {
+                            "index": h.get("index"),
+                            "header": h.get("header"),
+                            "old_start": h.get("old_start"),
+                            "old_count": h.get("old_count"),
+                            "new_start": h.get("new_start"),
+                            "new_count": h.get("new_count"),
+                            "added": h.get("added"),
+                            "removed": h.get("removed"),
+                        }
+                        for h in raw_hunks
+                        if isinstance(h, dict)
+                    ]
+                art["diff"] = diff_obj
+            response = {**response, "artifact": art}
+
+        if isinstance(response.get("hunks"), list):
+            response = {
+                **response,
+                "hunks": [
+                    {
+                        "index": h.get("index"),
+                        "header": h.get("header"),
+                        "old_start": h.get("old_start"),
+                        "old_count": h.get("old_count"),
+                        "new_start": h.get("new_start"),
+                        "new_count": h.get("new_count"),
+                        "added": h.get("added"),
+                        "removed": h.get("removed"),
+                    }
+                    for h in response["hunks"][:60]
+                    if isinstance(h, dict)
+                ],
+            }
+
+        if _encoded_len(response) <= max_bytes:
+            return response
+
+        # Step 2: truncate echoed artifact content in the callback payload (full content remains stored on disk/SQLite).
+        if isinstance(response.get("artifact"), dict):
+            art = dict(response["artifact"])
+            content = str(art.get("content") or "")
+            if content:
+                art["content"] = (
+                    content[:12_000]
+                    + f"\n/* ... [contenuto salvato integralmente nel Canvas ({len(content)} caratteri); "
+                    "usa patch_lines o get per ispezionare] ... */"
+                )
+                art["content_truncated"] = True
+            response = {**response, "artifact": art}
+
         return response
 
     async def dispatch(self, method: str, params: Json) -> Json:

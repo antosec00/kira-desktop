@@ -351,3 +351,81 @@ async def test_kira_canvas_client_tool_in_run(tmp_path: Path) -> None:
         assert len(backend.results[1]["artifacts"]) == 1
     finally:
         await service.close()
+
+
+@pytest.mark.asyncio
+async def test_large_canvas_artifacts_stay_within_64kib_client_tool_limit(tmp_path: Path) -> None:
+    home = tmp_path / "kira_home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    large_html = "<!DOCTYPE html><html><body><canvas id='c'></canvas><script>\n" + ("// shader line\n" * 1800) + "</script></body></html>"
+    backend = ScriptedCanvasBackend(
+        [
+            (
+                "kira.canvas",
+                {
+                    "action": "create",
+                    "payload": {
+                        "title": f"Shader {i}",
+                        "kind": "html",
+                        "content": large_html,
+                    },
+                },
+            )
+            for i in range(4)
+        ]
+        + [
+            (
+                "kira.canvas",
+                {
+                    "action": "list",
+                    "payload": {},
+                },
+            )
+        ]
+    )
+    paths = Paths(*(home / key for key in ("config", "data", "state", "runtime")))
+    service = Service(paths, backend_factory=lambda *_: backend)
+    await service.start()
+    try:
+        proj = (
+            await service.dispatch(
+                "project.create",
+                {"name": "LargeCanvas", "root": str(workspace), "permission": "project_write"},
+            )
+        )["project"]
+        sess = (
+            await service.dispatch(
+                "session.create",
+                {"project_id": proj["id"], "backend": "ollama", "model": "m1", "settings": {"tools": True}},
+            )
+        )["session"]
+        run = (
+            await service.dispatch(
+                "run.start",
+                {
+                    "session_id": sess["id"],
+                    "prompt": "Crea 4 shader HTML grandi e poi elencali",
+                    "request_id": str(uuid4()),
+                    "mode": "execute",
+                },
+            )
+        )["run"]
+        for _ in range(50):
+            r = service.store.one("runs", run["id"])
+            if r["state"] in {"completed", "failed", "cancelled"}:
+                break
+            await asyncio.sleep(0.05)
+        r = service.store.one("runs", run["id"])
+        assert r["state"] == "completed", r
+        assert len(backend.results) == 5
+        assert all(res["ok"] is True for res in backend.results)
+        assert len(backend.results[4]["artifacts"]) == 4
+        # Full content is preserved in durable storage for the UI
+        listed = await service.dispatch("canvas.list", {"project_id": proj["id"]})
+        assert len(listed["artifacts"]) == 4
+        assert listed["artifacts"][0]["content"] == large_html
+    finally:
+        await service.close()
+
