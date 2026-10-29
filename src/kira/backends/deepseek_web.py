@@ -42,7 +42,12 @@ MAX_DEEPSEEK_IMAGES_PER_RUN = 20
 MAX_TOOL_FORMAT_RETRIES = 2
 # The site sometimes closes a request without any reply (busy, rate limited).
 # Nothing ran and the remote chat did not change, so the same request is resent.
-EMPTY_REPLY_RETRY_SECONDS = (5, 15, 30)
+EMPTY_REPLY_RETRY_SECONDS = (10, 20, 40)
+MIN_COMPLETION_INTERVAL_SECONDS = 3.0
+BURST_WINDOW_SECONDS = 40.0
+BURST_SOFT_LIMIT = 3
+DISCOVER_CACHE_TTL_SECONDS = 60.0
+_FORCE_PACING_IN_TESTS = False
 TRANSIENT_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
 MAX_POW_FIELD_CHARS = 1024
 # Raw SSE bytes per completion, including patches and reasoning text that the
@@ -322,15 +327,65 @@ class DeepSeekWebBackend(Backend):
         self._hif_leim = ""
         self._hif_leim_expires = 0.0
         self._hif_leim_lock = asyncio.Lock()
+        self._completion_timestamps: list[float] = []
+        self._rate_limit_until = 0.0
+        self._pace_lock = asyncio.Lock()
+        self._discover_cache: tuple[str, float, Json] | None = None
 
     async def close(self) -> None:
         await self.client.aclose()
 
+    def _pacing_enabled(self) -> bool:
+        if _FORCE_PACING_IN_TESTS:
+            return True
+        transport = getattr(self.client, "_transport", None)
+        return not isinstance(transport, httpx.MockTransport)
+
+    async def _pace_completion(self, ctx: RunContext, tool_rounds: int) -> None:
+        """Space out consecutive chat.deepseek.com completions to prevent 'Messaggi troppo frequenti'."""
+        if not self._pacing_enabled():
+            return
+        async with self._pace_lock:
+            now = time.monotonic()
+            self._completion_timestamps = [
+                ts for ts in self._completion_timestamps if now - ts < BURST_WINDOW_SECONDS
+            ]
+            wait_seconds = max(0.0, self._rate_limit_until - now)
+            if self._completion_timestamps:
+                since_last = now - self._completion_timestamps[-1]
+                wait_seconds = max(wait_seconds, MIN_COMPLETION_INTERVAL_SECONDS - since_last)
+            if len(self._completion_timestamps) >= BURST_SOFT_LIMIT:
+                over = len(self._completion_timestamps) - BURST_SOFT_LIMIT + 1
+                burst_delay = min(8.0, MIN_COMPLETION_INTERVAL_SECONDS + over * 1.4)
+                if self._completion_timestamps:
+                    since_last = now - self._completion_timestamps[-1]
+                    wait_seconds = max(wait_seconds, burst_delay - since_last)
+            if wait_seconds > 0.05:
+                if wait_seconds >= 1.5 and tool_rounds > 0:
+                    await ctx.emit(
+                        "backend.notice",
+                        {
+                            "message": f"Pacing DeepSeek Web requests ({wait_seconds:.1f} s) to avoid rate limiting",
+                            "round": tool_rounds,
+                        },
+                    )
+                await asyncio.sleep(wait_seconds)
+            self._completion_timestamps.append(time.monotonic())
+
     async def discover(self) -> Json:
         token = self.accounts.token
         if not token:
+            self._discover_cache = None
             return {"available": False, "models": [], "error_code": "AUTH_REQUIRED",
                     "error": "No DeepSeek web token configured"}
+        now = time.monotonic()
+        if (
+            self._pacing_enabled()
+            and self._discover_cache is not None
+            and self._discover_cache[0] == token
+            and now < self._discover_cache[1]
+        ):
+            return dict(self._discover_cache[2])
         try:
             response = await self.client.get(
                 "/api/v0/users/current",
@@ -338,6 +393,7 @@ class DeepSeekWebBackend(Backend):
                 timeout=httpx.Timeout(20, connect=10),
             )
             if response.status_code == 401:
+                self._discover_cache = None
                 return {"available": False, "models": [], "error_code": "AUTH_REJECTED",
                         "error": "Web token rejected"}
             response.raise_for_status()
@@ -348,9 +404,11 @@ class DeepSeekWebBackend(Backend):
                 for model, name in ((DEFAULT_MODEL, "DeepSeek V4 Flash (web)"),
                                     (REASONER_MODEL, "DeepSeek Reasoner (web)"))
             ]
-            return {"available": True, "models": models,
-                    "capabilities": dict(WEB_CAPABILITIES),
-                    "account": self.accounts.status()}
+            result: Json = {"available": True, "models": models,
+                            "capabilities": dict(WEB_CAPABILITIES),
+                            "account": self.accounts.status()}
+            self._discover_cache = (token, time.monotonic() + DISCOVER_CACHE_TTL_SECONDS, result)
+            return result
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             return {"available": False, "models": [], "error_code": f"HTTP_{status}",
@@ -372,6 +430,11 @@ class DeepSeekWebBackend(Backend):
         )
         if response.status_code == 401:
             raise DeepSeekWebAuthError("Web token rejected during PoW challenge")
+        if response.status_code in TRANSIENT_HTTP_STATUSES:
+            status = f"HTTP {response.status_code}" + await _error_code_suffix(response)
+            raise DeepSeekWebIncompleteStreamError(
+                f"DeepSeek web PoW challenge returned {status}", empty=True, signal=status
+            )
         response.raise_for_status()
         try:
             payload = response.json()
@@ -785,7 +848,7 @@ class DeepSeekWebBackend(Backend):
             while True:
                 if ctx.cancel.is_set():
                     return _cancelled()
-                pow_header = await self._challenge(token, target_path)
+                await self._pace_completion(ctx, tool_rounds)
                 if ctx.cancel.is_set():
                     return _cancelled()
                 body: Json = {
@@ -805,6 +868,9 @@ class DeepSeekWebBackend(Backend):
                          if thinking_enabled else None)
                 completions += 1
                 try:
+                    pow_header = await self._challenge(token, target_path)
+                    if ctx.cancel.is_set():
+                        return _cancelled()
                     text, message_id = await self._stream_completion(
                         ctx, token, target_path, pow_header, body, limit, tool_rounds,
                         hif_leim=hif_leim if pending_file_ids else "", relay=relay)
@@ -813,6 +879,7 @@ class DeepSeekWebBackend(Backend):
                     if exc.empty and empty_replies < len(EMPTY_REPLY_RETRY_SECONDS):
                         delay = EMPTY_REPLY_RETRY_SECONDS[empty_replies]
                         empty_replies += 1
+                        self._rate_limit_until = max(self._rate_limit_until, time.monotonic() + delay)
                         await ctx.emit("backend.notice", {
                             "message": f"DeepSeek Web sent no reply{signal}; resending the same "
                                        f"request in {delay} s", "retry": empty_replies})
@@ -1095,11 +1162,24 @@ class DeepSeekWebBackend(Backend):
 
     @staticmethod
     def _unwrap_tool_call_tags(text: str) -> str:
-        """Accept one call wrapped in <tool_call> tags, a habit of DeepSeek models."""
+        """Accept one call wrapped in <tool_call>, <kira_tool_call> or <function_call> tags."""
         stripped = text.strip()
-        if stripped.startswith("<tool_call>") and stripped.endswith("</tool_call>"):
-            return stripped[len("<tool_call>"):-len("</tool_call>")].strip() or text
+        for tag in ("tool_call", "kira_tool_call", "function_call"):
+            open_tag = f"<{tag}>"
+            close_tag = f"</{tag}>"
+            if stripped.startswith(open_tag) and stripped.endswith(close_tag):
+                inner = stripped[len(open_tag):-len(close_tag)].strip()
+                if inner:
+                    return DeepSeekWebBackend._unwrap_markdown_code_fence(inner, {"", "json", "xml"})
         return text
+
+    @staticmethod
+    def _has_xml_tool_tag(text: str) -> bool:
+        stripped = DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json", "xml"}).strip()
+        return any(
+            stripped.startswith(f"<{tag}>") and stripped.endswith(f"</{tag}>")
+            for tag in ("tool_call", "kira_tool_call", "function_call")
+        )
 
     @staticmethod
     def _repair_json_tool_envelope(text: str) -> str | None:
@@ -1238,28 +1318,38 @@ class DeepSeekWebBackend(Backend):
                 raise DeepSeekWebError("Malformed DeepSeek DSML calls; no tool was executed")
             return calls
 
+        had_xml_tag = DeepSeekWebBackend._has_xml_tool_tag(text)
         json_text = DeepSeekWebBackend._unwrap_tool_call_tags(
-            DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json"}))
+            DeepSeekWebBackend._unwrap_markdown_code_fence(text, {"", "json", "xml"}))
         try:
             value = json.loads(json_text, parse_constant=_reject_json_constant)
         except (ValueError, TypeError, RecursionError) as exc:
-            if '"kira_tool_call"' not in text:
+            if '"kira_tool_call"' not in text and '"kira_tool_calls"' not in text and not had_xml_tag:
                 return None
             try:
                 # Literal line breaks or tabs inside a long string are the model's
                 # most common slip, and they mean exactly what they show.
                 value = json.loads(json_text, parse_constant=_reject_json_constant, strict=False)
             except (ValueError, TypeError, RecursionError):
-                repaired = DeepSeekWebBackend._repair_json_tool_envelope(json_text)
-                if repaired is not None:
-                    try:
-                        value = json.loads(
-                            repaired, parse_constant=_reject_json_constant, strict=False
-                        )
-                    except (ValueError, TypeError, RecursionError):
-                        value = None
+                multi = DeepSeekWebBackend._parse_multiple_json_envelopes(json_text)
+                if multi is not None:
+                    value = {"kira_tool_calls": multi}
                 else:
-                    value = None
+                    repair_source = (
+                        f'{{"kira_tool_call":{json_text}}}'
+                        if had_xml_tag and '"kira_tool_call"' not in json_text and json_text.strip().startswith("{")
+                        else json_text
+                    )
+                    repaired = DeepSeekWebBackend._repair_json_tool_envelope(repair_source)
+                    if repaired is not None:
+                        try:
+                            value = json.loads(
+                                repaired, parse_constant=_reject_json_constant, strict=False
+                            )
+                        except (ValueError, TypeError, RecursionError):
+                            value = None
+                    else:
+                        value = None
                 if value is None:
                     # Say where the envelope broke, so that the correction can fix it.
                     if isinstance(exc, json.JSONDecodeError):
@@ -1271,10 +1361,38 @@ class DeepSeekWebBackend(Backend):
                     raise DeepSeekWebError(
                         f"Malformed Kira JSON tool envelope{detail}; no tool was executed"
                     ) from None
-        if not isinstance(value, dict) or "kira_tool_call" not in value:
+        if (
+            isinstance(value, dict)
+            and set(value) == {"name", "arguments"}
+            and isinstance(value.get("name"), str)
+            and isinstance(value.get("arguments"), dict)
+            and (
+                had_xml_tag
+                or value["name"] in name_aliases
+                or value["name"] in _FILE_TOOL_NAMES
+                or value["name"] == "run_command"
+            )
+        ):
+            value = {"kira_tool_call": value}
+        if not isinstance(value, dict) or not ({"kira_tool_call", "kira_tool_calls"} & set(value)):
             return None
         if len(text.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
             raise DeepSeekWebError("Web tool response exceeds the 64 KiB protocol limit")
+        if set(value) == {"kira_tool_calls"} and isinstance(value["kira_tool_calls"], list):
+            raw_calls = value["kira_tool_calls"]
+            if not raw_calls:
+                raise DeepSeekWebError("Malformed Kira JSON tool envelope; no tool was executed")
+            parsed_calls: list[Json] = []
+            for item in raw_calls:
+                if isinstance(item, dict) and set(item) == {"kira_tool_call"} and isinstance(item["kira_tool_call"], dict):
+                    item = item["kira_tool_call"]
+                if not isinstance(item, dict) or set(item) != {"name", "arguments"} \
+                        or not isinstance(item.get("name"), str) or not isinstance(item.get("arguments"), dict):
+                    raise DeepSeekWebError("Malformed Kira JSON tool call; no tool was executed")
+                parsed_calls.append({"name": name_aliases.get(item["name"], item["name"]), "arguments": item["arguments"]})
+            if not enabled:
+                raise DeepSeekWebError("Kira tools are disabled for this run")
+            return parsed_calls
         if set(value) != {"kira_tool_call"} or not isinstance(value["kira_tool_call"], dict):
             raise DeepSeekWebError("Malformed Kira JSON tool envelope; no tool was executed")
         call = value["kira_tool_call"]
@@ -1284,6 +1402,33 @@ class DeepSeekWebBackend(Backend):
         if not enabled:
             raise DeepSeekWebError("Kira tools are disabled for this run")
         return [{"name": name_aliases.get(call["name"], call["name"]), "arguments": call["arguments"]}]
+
+    @staticmethod
+    def _parse_multiple_json_envelopes(text: str) -> list[Json] | None:
+        """Parse 2..N back-to-back standalone kira_tool_call JSON objects with no prose."""
+        s = text.strip()
+        if not s.startswith("{") or not s.endswith("}"):
+            return None
+        decoder = json.JSONDecoder(parse_constant=_reject_json_constant, strict=False)
+        items: list[Json] = []
+        idx = 0
+        n = len(s)
+        while idx < n:
+            while idx < n and s[idx] in " \t\r\n":
+                idx += 1
+            if idx >= n:
+                break
+            if s[idx] != "{":
+                return None
+            try:
+                obj, next_idx = decoder.raw_decode(s, idx)
+            except (ValueError, TypeError, RecursionError):
+                return None
+            if not isinstance(obj, dict) or set(obj) != {"kira_tool_call"} or not isinstance(obj["kira_tool_call"], dict):
+                return None
+            items.append(obj["kira_tool_call"])
+            idx = next_idx
+        return items if len(items) >= 2 else None
 
     @staticmethod
     def _dsml_attributes(raw: str) -> dict[str, str]:

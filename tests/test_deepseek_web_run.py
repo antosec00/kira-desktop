@@ -427,3 +427,44 @@ async def test_reasoner_model_turns_on_the_web_thinking_mode(model, thinking):
         await instance.close()
     assert result["state"] == "completed"
     assert site.bodies[0]["thinking_enabled"] is thinking
+
+
+async def test_multiple_standalone_json_tool_calls_execute_in_one_round():
+    batch_text = (
+        '{"kira_tool_call":{"name":"list_files","arguments":{"path":"."}}}\n'
+        '{"kira_tool_call":{"name":"list_files","arguments":{"path":"src"}}}'
+    )
+    site = Site(answer(batch_text, message_id=2), answer("Both listed in one round.", message_id=3))
+    events = []
+    result = await run(site, events)
+    assert result["state"] == "completed"
+    assert result["outcome"]["tool_rounds"] == 1
+    assert len(site.prompts) == 2
+
+
+async def test_rate_limited_pow_challenge_is_retried_and_succeeds():
+    pow_calls = 0
+
+    def handler(request):
+        nonlocal pow_calls
+        path = request.url.path
+        if path == "/api/v0/chat_session/create":
+            return httpx.Response(200, json={"code": 0, "data": {"biz_code": 0, "biz_data": {"chat_session": {"id": "remote-chat"}}}})
+        if path == "/api/v0/chat/create_pow_challenge":
+            pow_calls += 1
+            if pow_calls == 1:
+                return httpx.Response(429, json={"code": 42901, "msg": "Too frequent", "data": None})
+            return httpx.Response(200, json={"code": 0, "data": {"biz_code": 0, "biz_data": {"challenge": CHALLENGE}}})
+        assert path == "/api/v0/chat/completion"
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=answer("Recovered after 429 on PoW."))
+
+    instance = backend(Site())
+    instance.client = httpx.AsyncClient(base_url=WEB, transport=httpx.MockTransport(handler))
+    events = []
+    try:
+        result = await asyncio.wait_for(instance.run(context(events)), 5)
+    finally:
+        await instance.close()
+    assert result["state"] == "completed"
+    assert pow_calls == 2
+

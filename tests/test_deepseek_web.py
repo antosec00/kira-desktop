@@ -561,3 +561,17 @@ def test_pow_solver_rejects_out_of_bounds_allocation_and_oversized_challenge():
                  "expire_at": 1, "difficulty": 1}
     with pytest.raises(DeepSeekWebError, match="Invalid PoW challenge"):
         asyncio.run(solver.solve(challenge))
+
+
+def test_kira_tool_call_xml_tag_with_flat_json_is_parsed():
+    raw = (
+        '<kira_tool_call> {"name":"run_command","arguments":{"argv":["bash","-lc",'
+        '"cd /workspace/esperimenti && python3 - <<\'EOF\'\\nimport re\\np=\'build_v2.py\'\\n'
+        's=open(p).read()\\ns=s.replace(\\"col = int(cidx(rgb[py, px]))\\",\\"col = int(cidx(rgb[py:py+1, px:px+1][0]))\\")\\n'
+        'open(p,\'w\').write(s)\\nprint(\'patched\')\\nEOF\\ntime python3 build_v2.py"]}} </kira_tool_call>'
+    )
+    calls = DeepSeekWebBackend._parse_tool_calls(raw, True, {"run_command": "run_command"})
+    assert calls is not None and len(calls) == 1
+    assert calls[0]["name"] == "run_command"
+    assert calls[0]["arguments"]["argv"][0] == "bash"
+
