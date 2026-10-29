@@ -1553,6 +1553,7 @@ ApplicationWindow {
                                     Accessible.name: stateText
                                 }
                                 ChatToolButton { objectName: "inputOpen"; label: qsTr("Domande"); iconName: "questions"; badge: inputs.pendingCount; primary: inputs.pendingCount > 0; destructive: inputs.error.length > 0; onClicked: inputDialog.open(); toolTipText: inputs.error || qsTr("Domande · Ctrl+Shift+Q") }
+                                ChatToolButton { objectName: "chatTriggersButton"; visible: workbench.triggerSummaryBadge.length > 0; label: workbench.triggerSummaryBadge; iconName: "goal"; badge: workbench.activeTriggerCount; primary: workbench.activeTriggerCount > 0; onClicked: workbenchDialog.openSection("goal"); toolTipText: workbench.triggerSummaryBadge }
                                 ChatToolButton { objectName: "chatWebSettingsButton"; label: qsTr("Impostazioni web"); iconName: "settings"; enabled: workspace.web.available; onClicked: webDialog.open() }
                                 Item { width: 9; height: 30; Rectangle { anchors.centerIn: parent; width: 1; height: 18; color: appearance.colors.border } }
                                 ChatToolButton { objectName: "toolLabelsToggle"; label: qsTr("Etichette"); iconName: "labels"; text: label; checked: workspace.toolLabels; quietSelection: true; onClicked: workspace.setToolLabels(!workspace.toolLabels); toolTipText: qsTr("Mostra o nascondi le etichette accanto alle icone degli strumenti") }

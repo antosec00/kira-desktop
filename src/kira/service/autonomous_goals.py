@@ -94,7 +94,16 @@ class AutonomousGoals:
     def snapshot(self, session_id: str) -> Json:
         manual = self.store.db.execute("SELECT * FROM session_goals WHERE session_id=?", (session_id,)).fetchone()
         row = self.current(session_id)
-        return {"goal": dict(manual) if manual else None, "autonomous": self._public(row) if row else None}
+        result: Json = {"goal": dict(manual) if manual else None, "autonomous": self._public(row) if row else None}
+        if hasattr(self.service, "triggers"):
+            session_row = self.store.db.execute(
+                "SELECT project_id FROM sessions WHERE id=?", (session_id,)
+            ).fetchone()
+            if session_row:
+                result["triggers"] = self.service.triggers.list_for_project(
+                    str(session_row["project_id"]), session_id
+                )
+        return result
 
     def _scope(self, project_id: str, session_id: str) -> tuple[Json, Json]:
         return self.service.assistant._scope(project_id, session_id)

@@ -258,11 +258,12 @@ Dialog {
                 }
             }
             ColumnLayout {
+                spacing: 8
                 Text { text: qsTr("Kira prosegue per cicli fino all’obiettivo, senza un limite predefinito. Mantiene un riepilogo e le evidenze; si ferma se serve il tuo intervento. Il completamento è una valutazione del modello."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
                 Text { objectName: "autonomousGoalStatus"; text: workbench.goalStatusLabel; font: appearance.uiFont; color: appearance.colors.accent; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
                 Text { visible: text.length > 0; text: workbench.goalCycleLabel; font: appearance.uiFont; color: appearance.colors.muted; Layout.fillWidth: true; textFormat: Text.PlainText }
-                ScrollView { Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 90; clip: true; TextArea { id: goalText; objectName: "goalObjective"; width: parent.width; font: appearance.uiFont; wrapMode: TextEdit.Wrap; selectByMouse: true; textFormat: TextEdit.PlainText; placeholderText: qsTr("Descrivi il risultato che vuoi ottenere…"); readOnly: workbench.autonomousGoal.status === "active" } }
-                ScrollView { visible: workbench.goalProgress.length > 0; Layout.fillWidth: true; Layout.preferredHeight: visible ? Math.min(150, goalProgress.implicitHeight) : 0; clip: true; ReadText { id: goalProgress; objectName: "autonomousGoalProgress"; width: parent.width; text: workbench.goalProgress; font: appearance.uiFont; wrapMode: TextEdit.Wrap } }
+                ScrollView { Layout.fillWidth: true; Layout.preferredHeight: 82; Layout.minimumHeight: 72; clip: true; TextArea { id: goalText; objectName: "goalObjective"; width: parent.width; font: appearance.uiFont; wrapMode: TextEdit.Wrap; selectByMouse: true; textFormat: TextEdit.PlainText; placeholderText: qsTr("Descrivi il risultato che vuoi ottenere…"); readOnly: workbench.autonomousGoal.status === "active" } }
+                ScrollView { visible: workbench.goalProgress.length > 0; Layout.fillWidth: true; Layout.preferredHeight: visible ? Math.min(110, goalProgress.implicitHeight) : 0; clip: true; ReadText { id: goalProgress; objectName: "autonomousGoalProgress"; width: parent.width; text: workbench.goalProgress; font: appearance.uiFont; wrapMode: TextEdit.Wrap } }
                 Text { objectName: "autonomousGoalStopReason"; visible: text.length > 0; text: workbench.goalStopReason; font: appearance.uiFont; color: appearance.colors.warning; wrapMode: Text.Wrap; Layout.fillWidth: true; maximumLineCount: 4; elide: Text.ElideRight; textFormat: Text.PlainText; KToolTip { visible: reasonHover.hovered; text: parent.text } HoverHandler { id: reasonHover } }
                 Flow {
                     Layout.fillWidth: true; spacing: 8
@@ -275,6 +276,102 @@ Dialog {
                     KButton { objectName: "continueGoalButton"; text: qsTr("Continua con un passo"); visible: !workbench.autonomousGoal.id; enabled: workbench.goal.status === "active" && !workspace.busy && !teams.busy && !workbench.loading; onClicked: { workbench.continueGoal(); dialog.close() } }
                 }
                 Text { text: qsTr("Comandi: /obiettivo risultato · /obiettivo pausa · /obiettivo riprendi · /obiettivo stato"); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
+                Rectangle { Layout.fillWidth: true; height: 1; color: appearance.colors.border }
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    Text { objectName: "triggerSectionHeader"; text: qsTr("Trigger Event-Driven e Automazione"); font: appearance.uiFont; color: appearance.colors.text; Layout.fillWidth: true; textFormat: Text.PlainText }
+                    Text { objectName: "triggerActiveBadge"; visible: workbench.triggerSummaryBadge.length > 0; text: workbench.triggerSummaryBadge; font: appearance.uiFont; color: appearance.colors.accent; textFormat: Text.PlainText }
+                    KButton { objectName: "refreshTriggersButton"; text: qsTr("Aggiorna"); subtle: true; enabled: workspace.connected && !workbench.loading; onClicked: workbench.refreshTriggers() }
+                }
+                Text { text: qsTr("Attiva esecuzioni automatiche su pianificazione Cron, salvataggio file, nuovi commit Git o Webhook locale. Include protezione anti-loop, coalescing (3s) e pausa automatica al superamento del budget."); font: appearance.uiFont; color: appearance.colors.muted; wrapMode: Text.Wrap; Layout.fillWidth: true; textFormat: Text.PlainText }
+                Rectangle {
+                    id: triggerCreator; objectName: "triggerCreatorCard"
+                    property string selectedKind: "cron"
+                    Layout.fillWidth: true; implicitHeight: triggerCreatorCol.implicitHeight + 16
+                    color: appearance.colors.surfaceAlt; border.color: appearance.colors.border; radius: 10
+                    ColumnLayout {
+                        id: triggerCreatorCol; anchors.fill: parent; anchors.margins: 8; spacing: 6
+                        Flow {
+                            Layout.fillWidth: true; spacing: 6
+                            KButton { objectName: "triggerKindCron"; text: qsTr("Pianificazione (Cron)"); checked: triggerCreator.selectedKind === "cron"; subtle: triggerCreator.selectedKind !== "cron"; onClicked: { triggerCreator.selectedKind = "cron"; triggerScheduleField.text = "@every_15m" } }
+                            KButton { objectName: "triggerKindFileWatch"; text: qsTr("File Watcher"); checked: triggerCreator.selectedKind === "file_watch"; subtle: triggerCreator.selectedKind !== "file_watch"; onClicked: { triggerCreator.selectedKind = "file_watch"; triggerScheduleField.text = "src/**/*.py" } }
+                            KButton { objectName: "triggerKindGitCommit"; text: qsTr("Git Commit"); checked: triggerCreator.selectedKind === "git_commit"; subtle: triggerCreator.selectedKind !== "git_commit"; onClicked: { triggerCreator.selectedKind = "git_commit"; triggerScheduleField.text = "HEAD" } }
+                            KButton { objectName: "triggerKindWebhook"; text: qsTr("Webhook locale"); checked: triggerCreator.selectedKind === "webhook"; subtle: triggerCreator.selectedKind !== "webhook"; onClicked: { triggerCreator.selectedKind = "webhook"; triggerScheduleField.text = "" } }
+                        }
+                        Flow {
+                            visible: triggerCreator.selectedKind === "cron" || triggerCreator.selectedKind === "file_watch"
+                            Layout.fillWidth: true; spacing: 6
+                            KButton { visible: triggerCreator.selectedKind === "cron"; text: qsTr("Ogni 15m"); subtle: true; onClicked: triggerScheduleField.text = "@every_15m" }
+                            KButton { visible: triggerCreator.selectedKind === "cron"; text: qsTr("Ogni ora"); subtle: true; onClicked: triggerScheduleField.text = "@hourly" }
+                            KButton { visible: triggerCreator.selectedKind === "cron"; text: qsTr("Ogni 6h"); subtle: true; onClicked: triggerScheduleField.text = "@every_6h" }
+                            KButton { visible: triggerCreator.selectedKind === "cron"; text: qsTr("Ogni giorno"); subtle: true; onClicked: triggerScheduleField.text = "@daily" }
+                            KButton { visible: triggerCreator.selectedKind === "file_watch"; text: "src/**/*.py"; subtle: true; onClicked: triggerScheduleField.text = "src/**/*.py" }
+                            KButton { visible: triggerCreator.selectedKind === "file_watch"; text: "tests/**/*.py"; subtle: true; onClicked: triggerScheduleField.text = "tests/**/*.py" }
+                            KButton { visible: triggerCreator.selectedKind === "file_watch"; text: qsTr("Tutti i file"); subtle: true; onClicked: triggerScheduleField.text = "*" }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 6
+                            TextField {
+                                id: triggerScheduleField; objectName: "triggerScheduleInput"
+                                visible: triggerCreator.selectedKind !== "webhook"
+                                Layout.preferredWidth: 210
+                                font: appearance.codeFont; selectByMouse: true; text: "@every_15m"
+                                placeholderText: triggerCreator.selectedKind === "cron" ? qsTr("Cron (es. */15 * * * *)") : (triggerCreator.selectedKind === "file_watch" ? qsTr("Glob (es. src/**/*.py)") : qsTr("Riferimento Git (HEAD)"))
+                            }
+                            TextField {
+                                id: triggerPromptField; objectName: "triggerPromptInput"
+                                Layout.fillWidth: true
+                                font: appearance.uiFont; selectByMouse: true
+                                placeholderText: qsTr("Istruzione da eseguire quando il trigger scatta (o usa l’obiettivo sopra)…")
+                            }
+                            KButton {
+                                objectName: "createTriggerButton"
+                                text: qsTr("Aggiungi trigger"); primary: true
+                                enabled: workspace.connected && workspace.sessionId.length > 0 && (triggerPromptField.text.trim().length > 0 || goalText.text.trim().length > 0) && !workbench.loading && !workbench.sessionArchived
+                                onClicked: {
+                                    var promptToUse = triggerPromptField.text.trim().length > 0 ? triggerPromptField.text.trim() : goalText.text.trim()
+                                    workbench.createTrigger(triggerCreator.selectedKind, triggerScheduleField.text, promptToUse, 0)
+                                    triggerPromptField.text = ""
+                                }
+                            }
+                        }
+                    }
+                }
+                ListView {
+                    id: triggersList; objectName: "triggersList"
+                    Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 90
+                    model: workbench.triggers; spacing: 6; clip: true
+                    ScrollBar.vertical: KScrollBar {}
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: triggersList.width; implicitHeight: triggerItemCol.implicitHeight + 16
+                        color: appearance.colors.surfaceAlt; border.color: appearance.colors.border; radius: 8
+                        ColumnLayout {
+                            id: triggerItemCol; anchors.fill: parent; anchors.margins: 8; spacing: 4
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 8
+                                Text { text: (modelData.kindLabel || "") + (modelData.schedule ? " · " + modelData.schedule : ""); font: appearance.uiFont; color: appearance.colors.accent; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                                Text { text: (modelData.statusLabel || "") + " · " + (modelData.fireCountLabel || ""); font: appearance.uiFont; color: modelData.status === "budget_paused" || modelData.status === "cooldown" ? appearance.colors.warning : (modelData.enabled ? appearance.colors.text : appearance.colors.muted); textFormat: Text.PlainText }
+                            }
+                            Text { text: modelData.prompt || ""; font: appearance.uiFont; color: appearance.colors.text; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; textFormat: Text.PlainText }
+                            RowLayout {
+                                visible: modelData.kind === "webhook" && Boolean(modelData.webhook_secret)
+                                Layout.fillWidth: true; spacing: 6
+                                Text { text: qsTr("Token Webhook:") + " " + (modelData.webhook_secret || ""); font: appearance.codeFont; color: appearance.colors.muted; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                                KButton { text: qsTr("Copia token"); subtle: true; onClicked: workspace.copy(modelData.webhook_secret || "") }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 6
+                                Text { visible: Boolean(modelData.last_detail); text: modelData.last_detail || ""; font: appearance.uiFont; color: appearance.colors.muted; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                                Item { visible: !modelData.last_detail; Layout.fillWidth: true }
+                                KButton { objectName: "fireTriggerButton_" + modelData.id; text: qsTr("Esegui ora"); subtle: true; enabled: workspace.connected && !workbench.loading; onClicked: workbench.fireTriggerNow(modelData.id) }
+                                KButton { objectName: "toggleTriggerButton_" + modelData.id; text: modelData.enabled ? qsTr("Pausa") : qsTr("Attiva"); subtle: true; enabled: workspace.connected && !workbench.loading; onClicked: workbench.toggleTrigger(modelData.id, !modelData.enabled) }
+                                KButton { objectName: "deleteTriggerButton_" + modelData.id; text: qsTr("Rimuovi"); subtle: true; enabled: workspace.connected && !workbench.loading; onClicked: workbench.deleteTrigger(modelData.id) }
+                            }
+                        }
+                    }
+                    Text { anchors.centerIn: parent; visible: triggersList.count === 0; text: qsTr("Nessun trigger attivo per questa chat."); font: appearance.uiFont; color: appearance.colors.muted; textFormat: Text.PlainText }
+                }
             }
         }
         KButton { text: qsTr("Chiudi"); Layout.alignment: Qt.AlignRight; onClicked: dialog.close() }
