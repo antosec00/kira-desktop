@@ -1144,7 +1144,8 @@ class Service:
 
     def _validate_session_settings(self, config: Json) -> None:
         fields(config, {"reasoning_effort", "service_tier", "tools", "num_ctx", "temperature",
-                        "seed", "think", "max_tool_rounds", "max_output_bytes", "openai_account_id"} | WEB_SETTINGS)
+                        "seed", "think", "max_tool_rounds", "max_output_bytes", "openai_account_id",
+                        "token_budget", "cost_budget_usd"} | WEB_SETTINGS)
         validate_web_settings(config)
         for key in ("reasoning_effort", "service_tier", "openai_account_id"):
             if key in config:
@@ -1159,6 +1160,12 @@ class Service:
             value = config["temperature"]
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
                 raise KiraError("INVALID_ARGUMENT", "temperature must be a finite nonnegative number")
+        if "token_budget" in config:
+            integer(config, "token_budget", 0, 0, 100_000_000)
+        if "cost_budget_usd" in config:
+            val = config["cost_budget_usd"]
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val) or val < 0 or val > 100_000:
+                raise KiraError("INVALID_ARGUMENT", "cost_budget_usd must be a finite nonnegative number")
         if "think" in config and not isinstance(config["think"], bool):
             if config["think"] not in ("low", "medium", "high"):
                 raise KiraError("INVALID_ARGUMENT", "think must be boolean or low, medium, high")

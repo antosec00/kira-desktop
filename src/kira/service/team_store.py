@@ -1,11 +1,26 @@
 """Transactional team state and bounded, replayable coordination evidence."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 import json
 from typing import Any
 
 from kira.domain.contracts import Json, KiraError
+from kira.domain.pricing import calculate_cost_telemetry, evaluate_budget
 from kira.service.storage import Store, encode, new_id, now
+
+
+def _parse_iso_ms(value: Any) -> int | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return int(dt.timestamp() * 1000)
+    except ValueError:
+        return None
+
 
 
 def decoded(row: Any) -> Json:
@@ -150,6 +165,288 @@ class TeamStore:
         params = (team_id, round_index) if round_index is not None else (team_id,)
         return [decoded(r) for r in self.db.execute(
             "SELECT * FROM team_steps WHERE team_id=?" + clause + " ORDER BY round_index,rowid", params)]
+
+    def telemetry(self, team_id: str) -> Json:
+        """Compute sub-agent waterfall timeline, tool spans, token usage, and USD cost telemetry."""
+        team = self.one(team_id)
+        backend = str(team.get("backend") or "codex")
+        model = str(team.get("model") or "")
+        settings = team.get("settings") if isinstance(team.get("settings"), dict) else {}
+        members_list = self.members(team_id)
+        members_by_id = {m["id"]: m for m in members_list}
+        steps_by_key = {(s["round_index"], s["id"]): s for s in self.steps(team_id)}
+
+        links = [
+            dict(r)
+            for r in self.db.execute(
+                "SELECT l.run_id, l.member_id, l.round_index, l.step_id, l.coordinator, "
+                "r.state, r.created_at, r.updated_at "
+                "FROM team_run_links l JOIN runs r ON r.id=l.run_id "
+                "WHERE l.team_id=? ORDER BY l.round_index, l.rowid",
+                (team_id,),
+            )
+        ]
+
+        raw_spans: list[Json] = []
+        member_stats: dict[str, Json] = {
+            m["id"]: {
+                "member_id": m["id"],
+                "name": m["name"],
+                "role": m["role"],
+                "runs_count": 0,
+                "duration_ms": 0,
+                "input_tokens": 0,
+                "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "cost_usd": 0.0,
+                "cache_savings_usd": 0.0,
+                "tool_calls_count": 0,
+            }
+            for m in members_list
+        }
+
+        earliest_ms = _parse_iso_ms(team.get("created_at"))
+        latest_ms = _parse_iso_ms(team.get("updated_at"))
+
+        for link in links:
+            run_id = link["run_id"]
+            member_id = link["member_id"]
+            round_idx = int(link["round_index"] or 0)
+            step_id = link.get("step_id")
+            is_coord = bool(link.get("coordinator"))
+            member_info = members_by_id.get(member_id, {"name": member_id, "role": ""})
+            step_info = steps_by_key.get((round_idx, step_id), {}) if step_id else {}
+
+            start_ms = _parse_iso_ms(link.get("created_at"))
+            end_ms = _parse_iso_ms(link.get("updated_at"))
+
+            open_tools: dict[str, tuple[str, int | None]] = {}
+            tool_spans: list[Json] = []
+            in_tok = 0
+            cached_tok = 0
+            write_tok = 0
+            out_tok = 0
+            tot_tok = 0
+            has_usage = False
+
+            for ev in self.db.execute(
+                "SELECT type, timestamp, payload FROM events WHERE run_id=? "
+                "AND type IN ('run.state','tool.started','tool.completed','usage') ORDER BY seq",
+                (run_id,),
+            ):
+                ev_type = ev["type"]
+                ev_ms = _parse_iso_ms(ev["timestamp"])
+                try:
+                    payload = json.loads(ev["payload"]) if ev["payload"] else {}
+                except ValueError:
+                    payload = {}
+                if not isinstance(payload, dict):
+                    payload = {}
+
+                if ev_type == "run.state":
+                    st = payload.get("state")
+                    if st == "running" and start_ms is None and ev_ms is not None:
+                        start_ms = ev_ms
+                    elif st in {"completed", "failed", "cancelled", "interrupted"} and ev_ms is not None:
+                        end_ms = ev_ms
+                elif ev_type == "tool.started":
+                    tid = str(payload.get("tool_id") or f"seq-{len(open_tools)}")
+                    tname = str(payload.get("name") or "tool")[:80]
+                    open_tools[tid] = (tname, ev_ms)
+                elif ev_type == "tool.completed":
+                    tid = str(payload.get("tool_id") or "")
+                    tname = str(payload.get("name") or "tool")[:80]
+                    started_entry = open_tools.pop(tid, None)
+                    t_start = started_entry[1] if started_entry else ev_ms
+                    if started_entry and not payload.get("name"):
+                        tname = started_entry[0]
+                    t_dur = max(0, (ev_ms - t_start)) if (ev_ms is not None and t_start is not None) else 0
+                    res = payload.get("result")
+                    failed = isinstance(res, dict) and (
+                        res.get("ok") is False or res.get("status") in {"failed", "declined"}
+                    )
+                    tool_spans.append({
+                        "name": tname,
+                        "duration_ms": t_dur,
+                        "status": "failed" if failed else "completed",
+                    })
+                elif ev_type == "usage":
+                    if payload.get("scope") == "context_compaction":
+                        continue
+                    has_usage = True
+                    for k_name, acc in (
+                        ("input_tokens", "in"),
+                        ("cached_input_tokens", "cache"),
+                        ("cache_creation_input_tokens", "write"),
+                        ("output_tokens", "out"),
+                        ("total_tokens", "tot"),
+                    ):
+                        val = payload.get(k_name)
+                        if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+                            if acc == "in":
+                                in_tok += val
+                            elif acc == "cache":
+                                cached_tok += val
+                            elif acc == "write":
+                                write_tok += val
+                            elif acc == "out":
+                                out_tok += val
+                            elif acc == "tot":
+                                tot_tok += val
+
+            for tid, (tname, t_start) in open_tools.items():
+                t_dur = max(0, (end_ms - t_start)) if (end_ms is not None and t_start is not None) else 0
+                tool_spans.append({"name": tname, "duration_ms": t_dur, "status": "running"})
+
+            if start_ms is not None and (earliest_ms is None or start_ms < earliest_ms):
+                earliest_ms = start_ms
+            if end_ms is not None and (latest_ms is None or end_ms > latest_ms):
+                latest_ms = end_ms
+
+            duration_ms = max(0, (end_ms - start_ms)) if (start_ms is not None and end_ms is not None) else 0
+            if tot_tok == 0 and (in_tok > 0 or out_tok > 0):
+                tot_tok = in_tok + out_tok
+
+            cost_info = calculate_cost_telemetry(
+                {
+                    "input_tokens": in_tok if has_usage else None,
+                    "cached_input_tokens": cached_tok if has_usage else None,
+                    "cache_creation_input_tokens": write_tok if has_usage else None,
+                    "output_tokens": out_tok if has_usage else None,
+                    "total_tokens": tot_tok if has_usage else None,
+                },
+                backend=backend,
+                model=model,
+            )
+
+            m_stat = member_stats.setdefault(
+                member_id,
+                {
+                    "member_id": member_id,
+                    "name": member_info.get("name", member_id),
+                    "role": member_info.get("role", ""),
+                    "runs_count": 0,
+                    "duration_ms": 0,
+                    "input_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cost_usd": 0.0,
+                    "cache_savings_usd": 0.0,
+                    "tool_calls_count": 0,
+                },
+            )
+            m_stat["runs_count"] += 1
+            m_stat["duration_ms"] += duration_ms
+            m_stat["input_tokens"] += in_tok
+            m_stat["cached_input_tokens"] += cached_tok
+            m_stat["cache_creation_input_tokens"] += write_tok
+            m_stat["output_tokens"] += out_tok
+            m_stat["total_tokens"] += tot_tok
+            m_stat["cost_usd"] = round(m_stat["cost_usd"] + cost_info["total_cost_usd"], 6)
+            m_stat["cache_savings_usd"] = round(m_stat["cache_savings_usd"] + cost_info["cache_savings_usd"], 6)
+            m_stat["tool_calls_count"] += len(tool_spans)
+
+            title = (
+                str(step_info.get("title") or "")
+                if step_id
+                else ("Pianificazione e coordinamento" if is_coord else member_info.get("role") or member_id)
+            )
+            raw_spans.append({
+                "run_id": run_id,
+                "round_index": round_idx,
+                "member_id": member_id,
+                "member_name": str(member_info.get("name") or member_id),
+                "role": str(member_info.get("role") or ""),
+                "coordinator": is_coord,
+                "step_id": step_id or "",
+                "title": title[:160],
+                "state": str(link.get("state") or "running"),
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "duration_ms": duration_ms,
+                "input_tokens": in_tok,
+                "cached_input_tokens": cached_tok,
+                "output_tokens": out_tok,
+                "total_tokens": tot_tok,
+                "cost_usd": cost_info["total_cost_usd"],
+                "cache_savings_usd": cost_info["cache_savings_usd"],
+                "cache_hit_percent": cost_info["cache_hit_percent"],
+                "tool_calls_count": len(tool_spans),
+                "tool_spans": tool_spans[:12],
+            })
+
+        wall_duration_ms = (
+            max(1, latest_ms - earliest_ms)
+            if (earliest_ms is not None and latest_ms is not None and latest_ms >= earliest_ms)
+            else max(1, sum(s["duration_ms"] for s in raw_spans))
+        )
+
+        spans: list[Json] = []
+        running_offset = 0
+        for s in raw_spans[-64:]:
+            s_start = s.pop("start_ms", None)
+            s.pop("end_ms", None)
+            if s_start is not None and earliest_ms is not None and s_start >= earliest_ms:
+                offset_ms = s_start - earliest_ms
+            else:
+                offset_ms = running_offset
+            running_offset += s["duration_ms"]
+            start_pct = round(min(96.0, max(0.0, offset_ms / wall_duration_ms * 100.0)), 1)
+            width_pct = round(max(4.0, min(100.0 - start_pct, s["duration_ms"] / wall_duration_ms * 100.0)), 1)
+            spans.append({
+                **s,
+                "offset_ms": offset_ms,
+                "start_pct": start_pct,
+                "width_pct": width_pct,
+            })
+
+        tot_in = sum(m["input_tokens"] for m in member_stats.values())
+        tot_cache = sum(m["cached_input_tokens"] for m in member_stats.values())
+        tot_write = sum(m["cache_creation_input_tokens"] for m in member_stats.values())
+        tot_out = sum(m["output_tokens"] for m in member_stats.values())
+        tot_all = sum(m["total_tokens"] for m in member_stats.values())
+
+        overall_cost = calculate_cost_telemetry(
+            {
+                "input_tokens": tot_in,
+                "cached_input_tokens": tot_cache,
+                "cache_creation_input_tokens": tot_write,
+                "output_tokens": tot_out,
+                "total_tokens": tot_all,
+            },
+            backend=backend,
+            model=model,
+        )
+        budget = evaluate_budget(
+            tot_all,
+            overall_cost["total_cost_usd"],
+            token_budget=int(settings.get("token_budget") or 0),
+            cost_budget_usd=float(settings.get("cost_budget_usd") or 0.0),
+        )
+
+        return {
+            "team_id": team_id,
+            "backend": backend,
+            "model": model,
+            "billing_mode": overall_cost["billing_mode"],
+            "wall_duration_ms": wall_duration_ms if raw_spans else 0,
+            "cumulative_duration_ms": sum(m["duration_ms"] for m in member_stats.values()),
+            "runs_count": len(raw_spans),
+            "input_tokens": tot_in,
+            "cached_input_tokens": tot_cache,
+            "output_tokens": tot_out,
+            "total_tokens": tot_all,
+            "total_cost_usd": overall_cost["total_cost_usd"],
+            "cache_savings_usd": overall_cost["cache_savings_usd"],
+            "cache_hit_percent": overall_cost["cache_hit_percent"],
+            "budget": budget,
+            "members": list(member_stats.values()),
+            "spans": spans,
+        }
 
     def snapshot(self, team_id: str, approvals: list[Json]) -> Json:
         team = self.one(team_id)

@@ -198,9 +198,360 @@ def present_metrics(usage: dict[str, Any], resources: dict[str, Any],
                     "Costi e token residui non sono stimati.")}
 
 
+from kira.domain.pricing import (
+    calculate_cost_telemetry,
+    estimate_context_gauge,
+    evaluate_budget,
+)
+
+
+def usd_text(value: Any, billing_mode: str = "api", *, with_mode: bool = True) -> str:
+    valid = number(value)
+    if valid is None:
+        return tr(UNKNOWN)
+    if billing_mode == "local":
+        base = "$" + decimal(0.0, 2)
+        return base + " · " + tr("Locale") if with_mode else base
+    digits = 4 if 0 < valid < 0.1 else 2
+    base = "$" + decimal(float(valid), digits)
+    if with_mode and billing_mode == "subscription":
+        return base + " " + tr("(stima eq. API)")
+    return base
+
+
+def compact_tokens(value: Any) -> str:
+    valid = number(value)
+    if valid is None:
+        return tr(UNKNOWN)
+    n = int(valid)
+    if n >= 1_000_000:
+        val = n / 1_000_000.0
+        return f"{decimal(val, 1 if val % 1 else 0)}M"
+    if n >= 1_000:
+        val = n / 1_000.0
+        return f"{decimal(val, 1 if n < 100_000 and (n % 1000 >= 100) else 0)}k"
+    return str(n)
+
+
+def duration_ms_text(value: Any) -> str:
+    valid = number(value)
+    if valid is None:
+        return tr(UNKNOWN)
+    ms = int(valid)
+    if ms < 1000:
+        return f"{count(ms)} ms"
+    secs = ms / 1000.0
+    return f"{count(ms)} ms ({decimal(secs, 1)} s)"
+
+
+def present_context_gauge(
+    usage: dict[str, Any],
+    context: dict[str, Any] | None = None,
+    backend: str = "",
+    model: str = "",
+    draft_text: str = "",
+    transcript_tokens: int = 0,
+    catalog_window: int = 0,
+) -> dict[str, Any]:
+    """Return real-time Context Window fill percentage, cost badge, and caching summary for the composer bar."""
+    u = mapping(usage)
+    ctx = mapping(context)
+    gauge = estimate_context_gauge(
+        u,
+        ctx,
+        backend=backend,
+        model=model,
+        draft_text=draft_text,
+        transcript_tokens=transcript_tokens,
+        catalog_window=catalog_window if catalog_window > 0 else None,
+    )
+    cost = calculate_cost_telemetry(u, backend=gauge["backend"], model=gauge["model"])
+    pct_str = f"{decimal(gauge['fill_percent'], 0 if gauge['fill_percent'] >= 10 else 1)}%"
+    used_compact = compact_tokens(gauge["used_tokens"])
+    cap_compact = compact_tokens(gauge["capacity_tokens"])
+    full_label = f"{used_compact} / {cap_compact} · {pct_str}"
+
+    cost_badge = usd_text(cost["total_cost_usd"], cost["billing_mode"], with_mode=False) if cost["measured"] else ""
+    cache_pct = cost["cache_hit_percent"]
+    cache_badge = f"Cache {decimal(cache_pct, 0)}%" if cost["measured"] and cache_pct > 0 else ""
+
+    lines = [
+        tr(
+            "Finestra di contesto: {used} / {capacity} token ({percent}%)",
+            used=count(gauge["used_tokens"]),
+            capacity=count(gauge["capacity_tokens"]),
+            percent=decimal(gauge["fill_percent"], 1),
+        )
+    ]
+    if gauge["draft_tokens"] > 0:
+        lines.append(tr("Bozza in scrittura: +{tokens} token stimati", tokens=count(gauge["draft_tokens"])))
+    if cost["measured"]:
+        lines.append(
+            tr(
+                "Costo ultimo turno: {cost}",
+                cost=usd_text(cost["total_cost_usd"], cost["billing_mode"], with_mode=True),
+            )
+        )
+        if (cost.get("cached_input_tokens") or 0) > 0:
+            lines.append(
+                tr(
+                    "Prompt Caching: {hit}% in cache · risparmio {saved}",
+                    hit=decimal(cache_pct, 1),
+                    saved=usd_text(cost["cache_savings_usd"], cost["billing_mode"], with_mode=False),
+                )
+            )
+    return {
+        **gauge,
+        "label": full_label,
+        "short_label": pct_str,
+        "cost_badge": cost_badge,
+        "cache_badge": cache_badge,
+        "tooltip": "\n".join(lines),
+    }
+
+
+def present_telemetry(
+    usage: dict[str, Any],
+    context: dict[str, Any] | None = None,
+    backend: str = "",
+    model: str = "",
+    token_budget: int = 0,
+    cost_budget_usd: float = 0.0,
+    team_telemetry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build detailed Cost Telemetry, Prompt Caching savings, Token Budget, and Team Waterfall summary."""
+    u = mapping(usage)
+    ctx = mapping(context)
+    resolved_backend = str(u.get("source") or backend or ctx.get("backend") or "codex")
+    resolved_model = str(u.get("model") or model or ctx.get("model") or "")
+    cost = calculate_cost_telemetry(u, backend=resolved_backend, model=resolved_model)
+    billing_mode = cost["billing_mode"]
+
+    thread = mapping(u.get("thread_total"))
+    session_cost = None
+    if thread and number(thread.get("inputTokens")) is not None:
+        session_cost = calculate_cost_telemetry(
+            {
+                "input_tokens": thread.get("inputTokens"),
+                "cached_input_tokens": thread.get("cachedInputTokens", 0),
+                "output_tokens": thread.get("outputTokens", 0),
+                "total_tokens": thread.get("totalTokens"),
+            },
+            backend=resolved_backend,
+            model=resolved_model,
+        )
+
+    mode_label = (
+        tr("Locale · costo zero")
+        if billing_mode == "local"
+        else tr("Piano / Web · stima equivalente API")
+        if billing_mode == "subscription"
+        else tr("Tariffa API per token")
+    )
+    cost_rows = [
+        row(tr("Modalità di calcolo"), mode_label),
+        row(
+            tr("Costo ultimo turno / richiesta"),
+            usd_text(cost["total_cost_usd"], billing_mode) if cost["measured"] else tr(UNKNOWN),
+        ),
+        row(
+            tr("Ingresso non in cache"),
+            usd_text(cost["input_cost_usd"], billing_mode, with_mode=False) if cost["measured"] else tr(UNKNOWN),
+        ),
+        row(
+            tr("Ingresso letto da cache"),
+            usd_text(cost["cached_input_cost_usd"], billing_mode, with_mode=False) if cost["measured"] else tr(UNKNOWN),
+        ),
+        row(
+            tr("Generazione in uscita"),
+            usd_text(cost["output_cost_usd"], billing_mode, with_mode=False) if cost["measured"] else tr(UNKNOWN),
+        ),
+    ]
+    if session_cost and session_cost["measured"]:
+        cost_rows.append(
+            row(
+                tr("Totale cumulativo sessione"),
+                usd_text(session_cost["total_cost_usd"], billing_mode),
+            )
+        )
+
+    cache_hit_str = f"{decimal(cost['cache_hit_percent'], 1)} %" if cost["measured"] else tr(UNKNOWN)
+    savings_str = (
+        f"-{usd_text(cost['cache_savings_usd'], billing_mode, with_mode=False)} ({decimal(cost['cache_savings_percent'], 1)} %)"
+        if cost["measured"]
+        else tr(UNKNOWN)
+    )
+    caching_rows = [
+        row(tr("Efficienza Prompt Caching (Hit Rate)"), cache_hit_str),
+        row(tr("Token serviti dalla cache"), count(cost["cached_input_tokens"])),
+        row(tr("Token non in cache"), count(cost["uncached_input_tokens"])),
+        row(
+            tr("Costo teorico senza cache"),
+            usd_text(cost["baseline_cost_usd"], billing_mode, with_mode=False) if cost["measured"] else tr(UNKNOWN),
+        ),
+        row(tr("Risparmio netto Prompt Caching"), savings_str),
+    ]
+    if session_cost and session_cost["measured"]:
+        caching_rows.append(
+            row(
+                tr("Risparmio cumulativo nella sessione"),
+                f"-{usd_text(session_cost['cache_savings_usd'], billing_mode, with_mode=False)}",
+            )
+        )
+
+    active_tokens = (
+        int(session_cost["total_tokens"] or 0)
+        if session_cost and session_cost["measured"]
+        else int(cost["total_tokens"] or 0)
+    )
+    active_usd = (
+        float(session_cost["total_cost_usd"] or 0.0)
+        if session_cost and session_cost["measured"]
+        else float(cost["total_cost_usd"] or 0.0)
+    )
+    budget = evaluate_budget(
+        active_tokens,
+        active_usd,
+        token_budget=token_budget,
+        cost_budget_usd=cost_budget_usd,
+    )
+    budget_status = (
+        tr("Budget superato")
+        if budget["exceeded"]
+        else tr("Vicino alla soglia di budget")
+        if budget["warning"]
+        else tr("Entro il budget fissato")
+        if budget["active"]
+        else tr("Nessun limite attivo (illimitato)")
+    )
+    budget_rows = [
+        row(tr("Stato del budget"), budget_status),
+        row(
+            tr("Budget token"),
+            f"{count(budget['tokens_used'])} / {count(budget['token_budget'])} ({decimal(budget['token_percent'], 1)} %)"
+            if budget["token_budget"] > 0
+            else tr("Illimitato"),
+        ),
+        row(
+            tr("Budget costo"),
+            f"{usd_text(budget['cost_used_usd'], billing_mode, with_mode=False)} / {usd_text(budget['cost_budget_usd'], billing_mode, with_mode=False)} ({decimal(budget['cost_percent'], 1)} %)"
+            if budget["cost_budget_usd"] > 0
+            else tr("Illimitato"),
+        ),
+    ]
+
+    team_data = mapping(team_telemetry)
+    team_spans = []
+    for span in (team_data.get("spans") or [])[:32] if isinstance(team_data.get("spans"), list) else []:
+        s = mapping(span)
+        s_billing = str(team_data.get("billing_mode") or billing_mode)
+        team_spans.append({
+            "run_id": str(s.get("run_id") or ""),
+            "round_index": int(s.get("round_index") or 0),
+            "member_name": label(s.get("member_name") or s.get("member_id"), "Agente"),
+            "title": label(s.get("title"), "Incarico"),
+            "state": str(s.get("state") or "completed"),
+            "duration_label": duration_ms_text(s.get("duration_ms", 0)),
+            "tokens_label": f"{count(s.get('total_tokens', 0))} tok",
+            "cost_label": usd_text(s.get("cost_usd", 0.0), s_billing, with_mode=False),
+            "cache_label": f"{decimal(float(s.get('cache_hit_percent') or 0.0), 0)}% cache",
+            "start_pct": float(s.get("start_pct") or 0.0),
+            "width_pct": float(s.get("width_pct") or 6.0),
+            "tool_calls_count": int(s.get("tool_calls_count") or 0),
+        })
+
+    team_summary_rows = [
+        row(tr("Totale cumulativo sessione"), usd_text(team_data.get("total_cost_usd", 0.0), str(team_data.get("billing_mode") or billing_mode))),
+        row(tr("Efficienza Prompt Caching (Hit Rate)"), f"{decimal(float(team_data.get('cache_hit_percent') or 0.0), 1)} %"),
+    ]
+    team_trace_obj = {
+        "available": bool(team_spans),
+        "title": tr("Telemetria e Timeline"),
+        "note": tr("Calcolo basato sui listini ufficiali per 1M token (ingresso, cache e uscita)."),
+        "wall_duration_label": duration_ms_text(team_data.get("wall_duration_ms", 0)),
+        "total_tokens_label": count(team_data.get("total_tokens", 0)),
+        "total_cost_label": usd_text(
+            team_data.get("total_cost_usd", 0.0),
+            str(team_data.get("billing_mode") or billing_mode),
+        ),
+        "summary_rows": team_summary_rows,
+        "spans": team_spans,
+    }
+    return {
+        "cost_card": {
+            "title": tr("Telemetria dei costi al centesimo"),
+            "note": tr("Calcolo basato sui listini ufficiali per 1M token (ingresso, cache e uscita)."),
+            "rows": cost_rows,
+        },
+        "caching_card": {
+            "title": tr("Statistiche Prompt Caching"),
+            "note": tr("Il Prompt Caching riduce fino al 90% il costo dei token di contesto riutilizzati con Anthropic, DeepSeek e OpenAI."),
+            "hit_percent": cost["cache_hit_percent"] if cost["measured"] else 0.0,
+            "hit_rate_pct": cost["cache_hit_percent"] if cost["measured"] else 0.0,
+            "measured": cost["measured"],
+            "rows": caching_rows,
+        },
+        "budget_card": {
+            "title": tr("Token e Cost Budgeting"),
+            "note": tr("Imposta una soglia per ricevere avvisi visivi e mettere in pausa i cicli autonomi dei Team al raggiungimento del budget."),
+            "active": budget["active"],
+            "exceeded": budget["exceeded"],
+            "warning": budget["warning"],
+            "max_percent": budget["max_percent"],
+            "level": budget["level"],
+            "rows": budget_rows,
+        },
+        "team_trace": team_trace_obj,
+        "team_timeline": team_trace_obj,
+    }
+
+
 class MetricsPresenter(QObject):
     @Slot("QVariantMap", "QVariantMap", result="QVariantMap")
     @Slot("QVariantMap", "QVariantMap", "QVariantMap", result="QVariantMap")
     def present(self, usage: dict[str, Any], resources: dict[str, Any],
                 context: dict[str, Any] | None = None) -> dict[str, Any]:
         return present_metrics(usage, resources, context)
+
+    @Slot("QVariantMap", "QVariantMap", str, str, int, float, "QVariantMap", result="QVariantMap")
+    def presentTelemetry(
+        self,
+        usage: dict[str, Any],
+        context: dict[str, Any],
+        backend: str,
+        model: str,
+        token_budget: int,
+        cost_budget_usd: float,
+        team_telemetry: dict[str, Any],
+    ) -> dict[str, Any]:
+        return present_telemetry(
+            usage,
+            context,
+            backend=backend,
+            model=model,
+            token_budget=token_budget,
+            cost_budget_usd=cost_budget_usd,
+            team_telemetry=team_telemetry,
+        )
+
+    @Slot("QVariantMap", "QVariantMap", str, str, str, int, int, result="QVariantMap")
+    def contextGauge(
+        self,
+        usage: dict[str, Any],
+        context: dict[str, Any],
+        backend: str,
+        model: str,
+        draft_text: str,
+        transcript_tokens: int,
+        catalog_window: int,
+    ) -> dict[str, Any]:
+        return present_context_gauge(
+            usage,
+            context,
+            backend=backend,
+            model=model,
+            draft_text=draft_text,
+            transcript_tokens=transcript_tokens,
+            catalog_window=catalog_window,
+        )
+

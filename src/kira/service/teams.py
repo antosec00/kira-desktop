@@ -25,7 +25,7 @@ from kira.service.team_store import TeamStore, decoded
 if TYPE_CHECKING:
     from kira.service.server import Client, Service
 
-METHODS = {"team.start", "team.list", "team.snapshot", "team.events", "team.subscribe",
+METHODS = {"team.start", "team.list", "team.snapshot", "team.telemetry", "team.events", "team.subscribe",
            "team.send_message", "team.cancel", "team.resume", "team.approve"}
 RESERVED_IDS = {"all", "user", "human", "system"}
 
@@ -100,6 +100,9 @@ class Teams:
         snapshot = self.data.snapshot(team_id, approvals)
         snapshot["scheduling"] = self._scheduling(team_id, "coordinator")
         snapshot["completion_evidence"] = self.completion_evidence(team_id)
+        telemetry = self.data.telemetry(team_id)
+        if len(encode(snapshot).encode()) + len(encode(telemetry).encode()) <= 620_000:
+            snapshot["telemetry"] = telemetry
         while len(encode(snapshot).encode()) > 650_000:
             field = "messages" if snapshot["messages"] else "steps"
             if not snapshot[field]:
@@ -253,6 +256,9 @@ class Teams:
         if method == "team.snapshot":
             fields(params, {"team_id"})
             return {"team": self.snapshot(team_id)}
+        if method == "team.telemetry":
+            fields(params, {"team_id"})
+            return {"telemetry": self.data.telemetry(team_id)}
         if method in ("team.events", "team.subscribe"):
             fields(params, {"team_id", "after_seq", "limit"} if method == "team.events"
                    else {"team_id", "after_seq"})
@@ -926,6 +932,12 @@ class Teams:
                 if team["round_limit"] and team["round_index"] >= team["round_limit"]:
                     self.data.state(team_id, "paused", phase="awaiting_user", pause_reason="round_limit")
                     break
+                settings = team.get("settings") if isinstance(team.get("settings"), dict) else {}
+                if (settings.get("token_budget") or settings.get("cost_budget_usd")) and team["round_index"] > 0:
+                    budget = self.data.telemetry(team_id).get("budget", {})
+                    if budget.get("exceeded"):
+                        self.data.state(team_id, "paused", phase="awaiting_user", pause_reason="budget_exceeded")
+                        break
                 self.data.transaction(team_id, "team.state", {"state": "planning", "phase": "planning",
                     "round_index": team["round_index"] + 1}, lambda: self.store.db.execute(
                     "UPDATE team_runs SET state='planning',phase='planning',round_index=round_index+1 WHERE id=?", (team_id,)))

@@ -177,6 +177,7 @@ Item {
             TeamTab { text: qsTr("Chat condivisa") }
             TeamTab { text: qsTr("Risultati") }
             TeamTab { text: qsTr("Autorizzazioni (%1)").arg(teams.approvals.length); Accessible.name: qsTr("Coda autorizzazioni del team") }
+            TeamTab { objectName: "teamTelemetryTab"; text: qsTr("Telemetria e Timeline") }
         }
         StackLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; currentIndex: tabs.currentIndex
@@ -309,6 +310,136 @@ Item {
                                     KButton { objectName: "teamApprove_" + record.run_id; text: qsTr("Consenti"); primary: true; enabled: workspace.connected && !teams.approvalPending && !((record.request || {}).truncated); onClicked: teams.approveRequest(record.run_id, record.approval_id, "accept") }
                                 }
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; text: qsTr("Richiesta troppo estesa per questa vista. Puoi rifiutarla o annullarla."); textFormat: Text.PlainText; color: muted; visible: Boolean((record.request || {}).truncated); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            }
+                        }
+                    }
+                }
+            }
+            ScrollView {
+                id: telemetryScroll; objectName: "teamTelemetryScroll"; clip: true; contentWidth: availableWidth
+                ColumnLayout {
+                    width: Math.max(0, telemetryScroll.availableWidth - 12); spacing: 12
+                    ReadText {
+                        text: qsTr("TELEMETRIA COSTI, CACHE E TIMELINE SUB-AGENTI")
+                        color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3)
+                    }
+                    ReadText {
+                        text: teams.telemetry && teams.telemetry.note ? teams.telemetry.note : ""
+                        color: muted; Layout.fillWidth: true
+                        font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2)
+                    }
+                    Rectangle {
+                        objectName: "teamTelemetrySummaryCard"
+                        Layout.fillWidth: true
+                        implicitHeight: summaryCol.implicitHeight + 24
+                        radius: 10; color: appearance.colors.surfaceAlt; border.color: appearance.colors.border
+                        ColumnLayout {
+                            id: summaryCol
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
+                            spacing: 6
+                            Repeater {
+                                model: teams.telemetry && teams.telemetry.summary_rows ? teams.telemetry.summary_rows : []
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    ReadText { text: modelData.label; Layout.fillWidth: true; color: appearance.colors.text }
+                                    ReadText { text: modelData.value; Layout.preferredWidth: Math.min(220, telemetryScroll.availableWidth * 0.45); horizontalAlignment: Text.AlignRight; font.bold: true }
+                                }
+                            }
+                        }
+                    }
+                    ReadText {
+                        visible: Boolean(teams.telemetry && teams.telemetry.members && teams.telemetry.members.length > 0)
+                        text: qsTr("CONSUMO PER SUB-AGENTE")
+                        color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3)
+                    }
+                    Repeater {
+                        model: teams.telemetry && teams.telemetry.members ? teams.telemetry.members : []
+                        delegate: Rectangle {
+                            required property var modelData
+                            objectName: "teamMemberTelemetry_" + modelData.member_id
+                            Layout.fillWidth: true; implicitHeight: memberTelRow.implicitHeight + 16
+                            radius: 8; color: appearance.colors.surfaceAlt; border.color: appearance.colors.border
+                            RowLayout {
+                                id: memberTelRow
+                                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8
+                                spacing: 8
+                                ReadText { text: modelData.member_name + (modelData.role ? " · " + modelData.role : ""); color: appearance.colors.text; Layout.fillWidth: true }
+                                ReadText { text: modelData.runs + " run · " + modelData.duration_label + " · " + modelData.tokens_label + " tok (" + modelData.cache_hit_label + " cache) · " + modelData.cost_label; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
+                            }
+                        }
+                    }
+                    ReadText {
+                        text: qsTr("WATERFALL TIMELINE TRACE")
+                        color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3)
+                    }
+                    ReadText {
+                        visible: !(teams.telemetry && teams.telemetry.spans && teams.telemetry.spans.length > 0)
+                        text: qsTr("Nessuna traccia sub-agente registrata per questo team.")
+                        color: muted; Layout.fillWidth: true
+                    }
+                    Repeater {
+                        model: teams.telemetry && teams.telemetry.spans ? teams.telemetry.spans : []
+                        delegate: Rectangle {
+                            id: spanCard
+                            required property var modelData
+                            required property int index
+                            objectName: "teamWaterfallSpan_" + index
+                            Layout.fillWidth: true
+                            implicitHeight: spanCol.implicitHeight + 20
+                            radius: 8; color: appearance.colors.surfaceAlt; border.color: appearance.colors.border
+                            ColumnLayout {
+                                id: spanCol
+                                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
+                                spacing: 6
+                                RowLayout {
+                                    Layout.fillWidth: true; spacing: 8
+                                    ReadText {
+                                        text: "Round " + spanCard.modelData.round_index + " · " + spanCard.modelData.member_name + " — " + spanCard.modelData.title
+                                        color: appearance.colors.text; font.bold: true
+                                        Layout.fillWidth: true
+                                    }
+                                    ReadText {
+                                        text: spanCard.modelData.duration_label + " · " + spanCard.modelData.tokens_label + " tok (" + spanCard.modelData.cache_hit_label + " cache) · " + spanCard.modelData.cost_label
+                                        color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2)
+                                    }
+                                    KButton {
+                                        text: qsTr("Dettagli esecuzione"); subtle: true
+                                        visible: Boolean(spanCard.modelData.run_id)
+                                        onClicked: teams.openRunEvidence(spanCard.modelData.run_id)
+                                    }
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true; implicitHeight: 10; radius: 5
+                                    color: appearance.colors.surface; border.color: appearance.colors.border
+                                    Rectangle {
+                                        x: Math.round(parent.width * Number(spanCard.modelData.start_pct || 0) / 100.0)
+                                        width: Math.max(8, Math.round(parent.width * Number(spanCard.modelData.width_pct || 4) / 100.0))
+                                        height: parent.height; radius: 5
+                                        color: spanCard.modelData.state === "failed" ? appearance.colors.danger : spanCard.modelData.state === "running" ? appearance.colors.warning : appearance.colors.accent
+                                    }
+                                }
+                                Flow {
+                                    Layout.fillWidth: true; spacing: 6
+                                    visible: Boolean(spanCard.modelData.tool_spans && spanCard.modelData.tool_spans.length > 0)
+                                    Repeater {
+                                        model: spanCard.modelData.tool_spans || []
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            radius: 6; color: appearance.colors.surface; border.color: appearance.colors.border
+                                            implicitWidth: toolSpanText.implicitWidth + 12; implicitHeight: toolSpanText.implicitHeight + 6
+                                            Text {
+                                                id: toolSpanText
+                                                anchors.centerIn: parent
+                                                font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic
+                                                font.pixelSize: Math.max(8, appearance.codeFont.pixelSize - 2)
+                                                textFormat: Text.PlainText
+                                                text: "⚙ " + modelData.name + " · " + modelData.duration_label
+                                                color: modelData.status === "failed" ? appearance.colors.danger : muted
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

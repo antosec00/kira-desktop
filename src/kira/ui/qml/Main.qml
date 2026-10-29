@@ -1267,9 +1267,9 @@ ApplicationWindow {
                                     GridLayout {
                                         id: composerChips; objectName: "composerChips"
                                         Layout.fillWidth: true; columnSpacing: 4; rowSpacing: 4
-                                        readonly property bool narrow: chatColumn.width < 700
+                                        readonly property bool narrow: chatColumn.width < 760
                                         // Labels give way before the rows stack, so the model chip keeps its text.
-                                        readonly property bool tight: chatColumn.width < 820
+                                        readonly property bool tight: chatColumn.width < 880
                                         columns: narrow ? 1 : 2
                                         RowLayout {
                                         Layout.fillWidth: true; spacing: 4
@@ -1300,7 +1300,7 @@ ApplicationWindow {
                                             implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             // The chip takes the slack of the row and shrinks to its icon first.
                                             Layout.fillWidth: true; Layout.minimumWidth: 46
-                                            Layout.preferredWidth: Math.min(composerChips.tight ? 260 : 340, modelChipMetrics.advanceWidth + 72)
+                                            Layout.preferredWidth: Math.min(composerChips.tight ? 240 : 320, modelChipMetrics.advanceWidth + 72)
                                             Layout.maximumWidth: Layout.preferredWidth
                                             TextMetrics { id: modelChipMetrics; text: modelChipLabel.selectionSummary; font: modelChip.font }
                                             onClicked: modelPopover.visible ? modelPopover.close() : modelPopover.open()
@@ -1324,6 +1324,53 @@ ApplicationWindow {
                                         }
                                         RowLayout {
                                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 4
+                                        KButton {
+                                            id: contextWindowGauge; objectName: "contextWindowGauge"
+                                            readonly property var gaugeData: {
+                                                localization.revision
+                                                return metricsPresenter.contextGauge(
+                                                    workspace.usageData,
+                                                    typeof chatContext !== "undefined" ? chatContext.metricsContext : ({}),
+                                                    workspace.backend,
+                                                    workspace.selectedModel,
+                                                    prompt.text,
+                                                    workspace.transcriptTokenEstimate,
+                                                    workspace.selectedModelContextWindow
+                                                )
+                                            }
+                                            readonly property color levelColor: gaugeData.level === "critical" ? appearance.colors.danger : gaugeData.level === "warning" ? appearance.colors.warning : appearance.colors.accent
+                                            readonly property string displayLabel: composerChips.tight ? (gaugeData.short_label || "0%") : ((gaugeData.label || "0%") + (gaugeData.cost_badge ? " · " + gaugeData.cost_badge : ""))
+                                            subtle: true; cornerRadius: 15
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            implicitWidth: Math.max(42, gaugeMetrics.advanceWidth + 22)
+                                            font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                            TextMetrics { id: gaugeMetrics; text: contextWindowGauge.displayLabel; font: contextWindowGauge.font }
+                                            toolTipText: gaugeData.tooltip || qsTr("Finestra di contesto")
+                                            Accessible.name: qsTr("Finestra di contesto: %1").arg(gaugeData.label || "0%")
+                                            onClicked: if (workspace.sessionId.length > 0) chatContextDialog.open(); else metricsDialog.open()
+                                            contentItem: Item {
+                                                Text {
+                                                    objectName: "contextWindowGaugeLabel"
+                                                    anchors.fill: parent; leftPadding: 9; rightPadding: 9; bottomPadding: 3
+                                                    text: contextWindowGauge.displayLabel
+                                                    textFormat: Text.PlainText; elide: Text.ElideRight
+                                                    font: contextWindowGauge.font
+                                                    color: contextWindowGauge.gaugeData.level === "normal" ? appearance.colors.text : contextWindowGauge.levelColor
+                                                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                                }
+                                                Rectangle {
+                                                    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                                                    anchors.leftMargin: 8; anchors.rightMargin: 8; anchors.bottomMargin: 4
+                                                    height: 3; radius: 1.5
+                                                    color: appearance.colors.border
+                                                    Rectangle {
+                                                        width: Math.max(3, parent.width * Math.min(1, Math.max(0, (contextWindowGauge.gaugeData.fill_percent || 0) / 100)))
+                                                        height: parent.height; radius: 1.5
+                                                        color: contextWindowGauge.levelColor
+                                                    }
+                                                }
+                                            }
+                                        }
                                         KButton { objectName: "projectQueueButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; iconName: "queue"; text: composerChips.tight ? (workbench.pendingCount > 0 ? String(workbench.pendingCount) : "") : qsTr("Coda %1").arg(workbench.pendingCount); subtle: true; Accessible.name: (workbench.pendingCount === 1 ? qsTr("Coda del progetto: %1 richiesta") : qsTr("Coda del progetto: %1 richieste")).arg(workbench.pendingCount); toolTipText: qsTr("Coda del progetto · controlla, modifica e riordina le richieste"); onClicked: workbenchDialog.openSection("queue") }
                                         KButton { objectName: "chatToolsButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); iconName: "more"; subtle: true; implicitWidth: 34; Accessible.name: qsTr("Strumenti della chat"); toolTipText: qsTr("Cronologia, obiettivo, modifiche e gestione chat"); onClicked: { window.commandStart = -1; window.openActions("") } }
                                         KButton {
