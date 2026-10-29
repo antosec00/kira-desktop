@@ -932,7 +932,8 @@ class Teams:
                 if team["round_limit"] and team["round_index"] >= team["round_limit"]:
                     self.data.state(team_id, "paused", phase="awaiting_user", pause_reason="round_limit")
                     break
-                settings = team.get("settings") if isinstance(team.get("settings"), dict) else {}
+                raw_settings = team.get("settings")
+                settings: Json = raw_settings if isinstance(raw_settings, dict) else {}
                 if (settings.get("token_budget") or settings.get("cost_budget_usd")) and team["round_index"] > 0:
                     budget = self.data.telemetry(team_id).get("budget", {})
                     if budget.get("exceeded"):

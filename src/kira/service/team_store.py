@@ -171,7 +171,8 @@ class TeamStore:
         team = self.one(team_id)
         backend = str(team.get("backend") or "codex")
         model = str(team.get("model") or "")
-        settings = team.get("settings") if isinstance(team.get("settings"), dict) else {}
+        raw_settings = team.get("settings")
+        settings: Json = raw_settings if isinstance(raw_settings, dict) else {}
         members_list = self.members(team_id)
         members_by_id = {m["id"]: m for m in members_list}
         steps_by_key = {(s["round_index"], s["id"]): s for s in self.steps(team_id)}

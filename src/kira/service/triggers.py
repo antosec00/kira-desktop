@@ -22,7 +22,7 @@ from kira.domain.triggers import (
     scan_workspace_mtimes,
     validate_cron_expression,
 )
-from kira.service.storage import encode, new_id, now
+from kira.service.storage import new_id, now
 from kira.service.teams import fields, integer, text
 
 if TYPE_CHECKING:
@@ -185,8 +185,10 @@ class TriggerService:
                 self._pending_events.pop(trig["id"], None)
 
     def _session_budget_status(self, session: Json) -> Json:
-        settings = session.get("settings") if isinstance(session.get("settings"), dict) else {}
-        nested_budget = settings.get("budget") if isinstance(settings.get("budget"), dict) else {}
+        raw_settings = session.get("settings")
+        settings: Json = raw_settings if isinstance(raw_settings, dict) else {}
+        raw_nested = settings.get("budget")
+        nested_budget: Json = raw_nested if isinstance(raw_nested, dict) else {}
         token_budget = int(settings.get("token_budget") or nested_budget.get("max_tokens") or 0)
         cost_budget_usd = float(settings.get("cost_budget_usd") or nested_budget.get("max_cost_usd") or 0.0)
         if token_budget <= 0 and cost_budget_usd <= 0.0:

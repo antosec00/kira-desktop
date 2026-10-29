@@ -974,13 +974,13 @@ class CanvasController(QObject):
                 raise ValueError(tr("Il file supera il limite di 2 MiB per l'editor integrato."))
             content = resolved.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            msg = tr("Il file è binario e non può essere aperto come testo nell'editor di Kira.")
+            msg: str = tr("Il file è binario e non può essere aperto come testo nell'editor di Kira.")
             self._error = msg
             self.workspace._problem(msg)
             self.changed.emit()
             return False
         except (OSError, ValueError, RuntimeError) as exc:
-            msg = str(exc) or tr("File non disponibile o fuori dalla cartella del progetto.")
+            msg = str(exc) or str(tr("File non disponibile o fuori dalla cartella del progetto."))
             self._error = msg
             self.workspace._problem(msg)
             self.changed.emit()

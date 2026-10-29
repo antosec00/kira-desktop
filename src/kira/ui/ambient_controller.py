@@ -16,7 +16,6 @@ from kira.domain.ambient import (
     detect_audio_recorder,
     format_prompt_with_ambient_context,
     inspect_active_window,
-    probe_voice_capabilities,
     read_os_primary_selection,
     transcribe_audio_file,
 )
@@ -65,7 +64,8 @@ class AmbientController(QObject):
     def _on_ipc_event(self, event: Json) -> None:
         if event.get("type") != "ambient.toggle":
             return
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        raw_payload = event.get("payload")
+        payload: Json = raw_payload if isinstance(raw_payload, dict) else {}
         app_name = str(payload.get("app_name") or "")
         win_title = str(payload.get("window_title") or "")
         sel = str(payload.get("selection") or "")
