@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 import os
 import shlex
 import shutil
@@ -366,6 +367,8 @@ class Workspace(QObject):
         self._settings: Json = {}
         self._resources: Json = {}
         self._usage: Json = {}
+        self._token_budget: int = 0
+        self._cost_budget_usd: float = 0.0
         self._context: str = tr("Nessun contesto ancora inviato.")
         self._approval: Json = {}
         self._pending_approvals: set[tuple[str, str]] = set()
@@ -991,6 +994,39 @@ class Workspace(QObject):
     @qt_property("QVariantMap", notify=changed)
     def resourcesData(self) -> Json:
         return dict(self._resources)
+
+    @qt_property(int, notify=changed)
+    def tokenBudget(self) -> int:
+        return self._token_budget
+
+    @qt_property(float, notify=changed)
+    def costBudgetUsd(self) -> float:
+        return self._cost_budget_usd
+
+    @Slot(int)
+    def setTokenBudget(self, limit: int) -> None:
+        self._token_budget = max(0, min(100_000_000, int(limit or 0)))
+        self.changed.emit()
+
+    @Slot(float)
+    def setCostBudgetUsd(self, limit: float) -> None:
+        val = float(limit or 0.0)
+        self._cost_budget_usd = round(max(0.0, min(100_000.0, val if math.isfinite(val) else 0.0)), 4)
+        self.changed.emit()
+
+    @qt_property(int, notify=transcriptChanged)
+    def transcriptTokenEstimate(self) -> int:
+        total_bytes = sum(len(str(row.get("body", "")).encode("utf-8")) for row in self.transcript.rows[-120:])
+        return (total_bytes + 3) // 4 if total_bytes > 0 else 0
+
+    @qt_property(int, notify=changed)
+    def selectedModelContextWindow(self) -> int:
+        for row in self.models:
+            if isinstance(row, dict) and row.get("id") == self._model:
+                val = row.get("context_window") or row.get("max_context_window")
+                if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+                    return val
+        return 0
 
     @qt_property(str, notify=changed)
     def sessionId(self) -> str:

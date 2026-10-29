@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any
 from PySide6.QtCore import QDateTime, QObject, Signal, Slot
 
 from kira.domain.account_usage import normalize_claude_plan
+from kira.domain.pricing import calculate_cost_telemetry
 from kira.ui.external_links import BrowserOpenResult
 from kira.ui.i18n import locale
-from kira.ui.metrics import count, decimal, label, mapping, number
+from kira.ui.metrics import count, decimal, label, mapping, number, usd_text
 from kira.ui.presentation import refresh_ui, tr
 from kira.ui.qt_properties import qt_property
 
@@ -196,6 +197,22 @@ def present_account_usage(data: Json, backend: str) -> Json:
     if "context_compaction_requests" in local:
         local_rows.insert(2, {"label": tr("Richieste per la gestione del contesto"),
                               "value": count(local["context_compaction_requests"])})
+    if local:
+        local_cost = calculate_cost_telemetry(local, backend=backend)
+        has_both = number(local.get("input_tokens")) is not None and number(local.get("output_tokens")) is not None
+        local_rows.append({
+            "label": tr("Costo 7 giorni"),
+            "value": usd_text(local_cost["total_cost_usd"], local_cost["billing_mode"]) if has_both else tr("Non disponibile"),
+        })
+        local_rows.append({
+            "label": tr("Risparmio Prompt Caching (7 giorni)"),
+            "value": (
+                f"-{usd_text(local_cost['cache_savings_usd'], local_cost['billing_mode'], with_mode=False)} "
+                f"({decimal(local_cost['cache_hit_percent'], 1)} % cache)"
+            )
+            if has_both
+            else tr("Non disponibile"),
+        })
     direct = backend == "openai_chatgpt"
     claude = backend == "claude_code"
     available = data.get("available") is True

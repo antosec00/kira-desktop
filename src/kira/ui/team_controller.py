@@ -26,6 +26,7 @@ from kira.ui.language_catalog import CatalogError, load_catalog
 from kira.ui.models import TranscriptModel
 from kira.ui.evidence_model import EvidenceModel
 from kira.ui.evidence_format import readable_payload
+from kira.ui.metrics import count, decimal, duration_ms_text, mapping, usd_text
 from kira.ui.qt_properties import qt_property
 from kira.ui.service_errors import service_error_text
 from kira.ui.team_models import TeamListModel
@@ -56,7 +57,8 @@ def phase_label(phase: str) -> str:
 
 def pause_label(reason: str) -> str:
     labels = {"round_limit": "Limite dei cicli raggiunto", "unresolved_work": "Lavoro ancora da risolvere",
-              "user_input": "Serve una risposta", "no_progress": "Nessun avanzamento"}
+              "user_input": "Serve una risposta", "no_progress": "Nessun avanzamento",
+              "budget_exceeded": "Budget di token/costi raggiunto"}
     return tr(labels[reason]) if reason in labels else reason
 
 
@@ -217,6 +219,147 @@ class TeamController(QObject):
         return [{**row, "description": json.dumps(row.get("request", {}), ensure_ascii=False,
                                                    indent=2, default=str)}
                 for row in self._team.get("approvals", [])]
+
+    @qt_property("QVariantMap", notify=changed)
+    def rawTelemetry(self) -> Json:
+        return mapping(self._team.get("telemetry"))
+
+    @qt_property("QVariantMap", notify=changed)
+    def telemetry(self) -> Json:
+        raw = mapping(self._team.get("telemetry"))
+        backend = str(raw.get("backend") or self._team.get("backend") or "codex")
+        billing_mode = str(raw.get("billing_mode") or ("local" if backend == "ollama" else "subscription" if backend in {"openai_chatgpt", "claude_code", "deepseek_web"} else "api"))
+        spans_out: list[Json] = []
+        raw_spans = raw.get("spans") if isinstance(raw.get("spans"), list) else []
+        if not raw_spans and self._team.get("steps"):
+            members_map = {str(m.get("id")): str(m.get("name") or m.get("id")) for m in self._team.get("members", []) if isinstance(m, dict)}
+            total_steps = max(1, len(self._team.get("steps", [])))
+            for idx, step in enumerate(self._team.get("steps", [])[:32]):
+                if not isinstance(step, dict):
+                    continue
+                mid = str(step.get("member_id") or "")
+                raw_spans.append({
+                    "run_id": str(step.get("run_id") or ""),
+                    "round_index": int(step.get("round_index") or 1),
+                    "member_id": mid,
+                    "member_name": members_map.get(mid, mid),
+                    "role": "",
+                    "coordinator": mid == "coordinator",
+                    "step_id": str(step.get("id") or ""),
+                    "title": str(step.get("title") or ""),
+                    "state": str(step.get("state") or "queued"),
+                    "offset_ms": 0,
+                    "duration_ms": 0,
+                    "start_pct": round(idx / total_steps * 85.0, 1),
+                    "width_pct": round(max(12.0, 85.0 / total_steps), 1),
+                    "input_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cost_usd": 0.0,
+                    "cache_savings_usd": 0.0,
+                    "cache_hit_percent": 0.0,
+                    "tool_calls_count": 0,
+                    "tool_spans": [],
+                })
+        for item in raw_spans[:64]:
+            s = mapping(item)
+            tools = []
+            for t_item in (s.get("tool_spans") or [])[:12] if isinstance(s.get("tool_spans"), list) else []:
+                t = mapping(t_item)
+                tools.append({
+                    "name": str(t.get("name") or "tool"),
+                    "duration_ms": int(t.get("duration_ms") or 0),
+                    "duration_label": duration_ms_text(t.get("duration_ms", 0)),
+                    "status": str(t.get("status") or "completed"),
+                })
+            spans_out.append({
+                "run_id": str(s.get("run_id") or ""),
+                "round_index": int(s.get("round_index") or 0),
+                "member_id": str(s.get("member_id") or ""),
+                "member_name": str(s.get("member_name") or s.get("member_id") or ""),
+                "role": str(s.get("role") or ""),
+                "coordinator": bool(s.get("coordinator")),
+                "step_id": str(s.get("step_id") or ""),
+                "title": str(s.get("title") or ""),
+                "state": str(s.get("state") or "running"),
+                "state_label": state_label(str(s.get("state") or "running")),
+                "offset_ms": int(s.get("offset_ms") or 0),
+                "duration_ms": int(s.get("duration_ms") or 0),
+                "duration_label": duration_ms_text(s.get("duration_ms", 0)),
+                "start_pct": float(s.get("start_pct") or 0.0),
+                "width_pct": float(s.get("width_pct") or 8.0),
+                "tokens_label": f"{count(s.get('total_tokens', 0))} tok ({count(s.get('input_tokens', 0))} in · {count(s.get('cached_input_tokens', 0))} cache · {count(s.get('output_tokens', 0))} out)",
+                "short_tokens_label": f"{count(s.get('total_tokens', 0))} tok",
+                "cost_label": usd_text(s.get("cost_usd", 0.0), billing_mode, with_mode=False),
+                "cache_label": f"{decimal(float(s.get('cache_hit_percent') or 0.0), 0)}% cache",
+                "cache_hit_label": f"{decimal(float(s.get('cache_hit_percent') or 0.0), 0)}%",
+                "tool_calls_count": int(s.get("tool_calls_count") or 0),
+                "tool_spans": tools,
+            })
+
+        members_out: list[Json] = []
+        raw_members = raw.get("members") if isinstance(raw.get("members"), list) else []
+        for item in raw_members[:24]:
+            m = mapping(item)
+            in_tok = int(m.get("input_tokens") or 0)
+            cache_tok = int(m.get("cached_input_tokens") or 0)
+            m_hit = (cache_tok / in_tok * 100.0) if in_tok > 0 else 0.0
+            members_out.append({
+                "member_id": str(m.get("member_id") or ""),
+                "name": str(m.get("name") or m.get("member_id") or ""),
+                "member_name": str(m.get("name") or m.get("member_id") or ""),
+                "role": str(m.get("role") or ""),
+                "runs_count": int(m.get("runs_count") or 0),
+                "runs": int(m.get("runs_count") or 0),
+                "duration_label": duration_ms_text(m.get("duration_ms", 0)),
+                "tokens_label": count(m.get("total_tokens", 0)),
+                "cache_hit_label": f"{decimal(m_hit, 0)}%",
+                "cost_label": usd_text(m.get("cost_usd", 0.0), billing_mode),
+                "cache_savings_label": f"-{usd_text(m.get('cache_savings_usd', 0.0), billing_mode, with_mode=False)}",
+                "tool_calls_count": int(m.get("tool_calls_count") or 0),
+            })
+
+        budget = mapping(raw.get("budget"))
+        budget_status = (
+            tr("Budget superato")
+            if budget.get("exceeded")
+            else tr("Vicino alla soglia di budget")
+            if budget.get("warning")
+            else tr("Entro il budget fissato")
+            if budget.get("active")
+            else tr("Nessun limite attivo (illimitato)")
+        )
+        summary_rows = [
+            {"label": tr("Totale cumulativo sessione"), "value": usd_text(raw.get("total_cost_usd", 0.0), billing_mode)},
+            {"label": tr("Efficienza Prompt Caching (Hit Rate)"), "value": f"{decimal(float(raw.get('cache_hit_percent') or 0.0), 1)} % ({count(raw.get('cached_input_tokens', 0))} / {count(raw.get('input_tokens', 0))} tok)"},
+            {"label": tr("Risparmio netto Prompt Caching"), "value": f"-{usd_text(raw.get('cache_savings_usd', 0.0), billing_mode, with_mode=False)}"},
+            {"label": tr("Stato del budget"), "value": budget_status},
+        ]
+        return {
+            "available": bool(self._team.get("id")),
+            "note": tr("Calcolo basato sui listini ufficiali per 1M token (ingresso, cache e uscita)."),
+            "summary_rows": summary_rows,
+            "wall_duration_label": duration_ms_text(raw.get("wall_duration_ms", 0)),
+            "cumulative_duration_label": duration_ms_text(raw.get("cumulative_duration_ms", 0)),
+            "runs_count": int(raw.get("runs_count") or len(spans_out)),
+            "total_tokens_label": count(raw.get("total_tokens", 0)),
+            "input_tokens_label": count(raw.get("input_tokens", 0)),
+            "cached_tokens_label": count(raw.get("cached_input_tokens", 0)),
+            "output_tokens_label": count(raw.get("output_tokens", 0)),
+            "total_cost_label": usd_text(raw.get("total_cost_usd", 0.0), billing_mode),
+            "cache_savings_label": f"-{usd_text(raw.get('cache_savings_usd', 0.0), billing_mode, with_mode=False)}",
+            "cache_hit_label": f"{decimal(float(raw.get('cache_hit_percent') or 0.0), 1)} %",
+            "budget": {
+                "active": bool(budget.get("active")),
+                "exceeded": bool(budget.get("exceeded")),
+                "warning": bool(budget.get("warning")),
+                "level": str(budget.get("level") or "normal"),
+                "max_percent": float(budget.get("max_percent") or 0.0),
+            },
+            "members": members_out,
+            "spans": spans_out,
+        }
 
     @qt_property("QVariantList", notify=catalogChanged)
     def models(self) -> list[Json]:
@@ -829,7 +972,11 @@ class TeamController(QObject):
                     self._problem(tr("Il progetto è in sola lettura: assegna accesso Lettura ai membri."))
                     return
         fields = ("reasoning_effort", "service_tier") if config["backend"] == "codex" else ("reasoning_effort",)
-        settings = {key: config[key] for key in fields if config[key]}
+        settings: Json = {key: config[key] for key in fields if config[key]}
+        if getattr(self.workspace, "tokenBudget", 0) > 0:
+            settings["token_budget"] = int(self.workspace.tokenBudget)
+        if getattr(self.workspace, "costBudgetUsd", 0.0) > 0:
+            settings["cost_budget_usd"] = float(self.workspace.costBudgetUsd)
         params = {"project_id": self._project_id, "request_id": str(uuid.uuid4()),
                   "goal": config["goal"], "mode": config["mode"], "backend": config["backend"],
                   "model": config["model"], "settings": settings, "max_agents": config["max_agents"],
