@@ -212,6 +212,24 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: hasProject; onActivated: window.performAction("new_chat") }
     Shortcut { sequence: "Ctrl+L"; onActivated: { window.page = 0; prompt.forceActiveFocus() } }
     Shortcut { sequence: "Ctrl+Shift+C"; onActivated: workspace.copyTranscript() }
+    Shortcut { sequence: "Alt+Space"; onActivated: ambient.toggleSpotlight() }
+    Connections {
+        target: ambient
+        function onRaiseMainWindowRequested() {
+            window.page = 0
+            window.show()
+            window.raise()
+            window.requestActivate()
+            prompt.forceActiveFocus()
+        }
+        function onDictationTextReady(target, text) {
+            if (target === "composer" && !ambient.autoSendVoice) {
+                prompt.text = workspace.draftText
+                prompt.cursorPosition = prompt.text.length
+                prompt.forceActiveFocus()
+            }
+        }
+    }
     Connections {
         target: workspace
         function onPromptAccepted() { prompt.text = ""; window.followOutput = true }
@@ -1216,6 +1234,65 @@ ApplicationWindow {
                                         text: qsTr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare.")
                                         color: appearance.colors.muted; font: appearance.uiFont; textFormat: Text.PlainText; wrapMode: Text.Wrap
                                     }
+                                    Rectangle {
+                                        objectName: "composerAmbientChip"
+                                        visible: ambient.hasCapturedContext
+                                        Layout.fillWidth: true
+                                        color: appearance.colors.surface
+                                        radius: 8
+                                        border.color: appearance.colors.border
+                                        border.width: 1
+                                        implicitHeight: composerChipRow.implicitHeight + 10
+                                        RowLayout {
+                                            id: composerChipRow
+                                            anchors.fill: parent
+                                            anchors.margins: 5
+                                            spacing: 6
+                                            KIcon { name: "context"; ink: appearance.colors.accent; width: 14; height: 14 }
+                                            Text {
+                                                objectName: "composerAmbientChipLabel"
+                                                text: ambient.contextChipLabel
+                                                font.family: appearance.uiFont.family
+                                                font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                                font.bold: true
+                                                color: appearance.colors.text
+                                                textFormat: Text.PlainText
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                objectName: "composerAmbientChipPreview"
+                                                visible: ambient.contextPreview.length > 0
+                                                text: "· " + ambient.contextPreview
+                                                font.family: appearance.codeFont.family
+                                                font.pixelSize: Math.max(10, appearance.codeFont.pixelSize - 2)
+                                                color: appearance.colors.muted
+                                                textFormat: Text.PlainText
+                                                elide: Text.ElideRight
+                                                maximumLineCount: 1
+                                                Layout.fillWidth: true
+                                            }
+                                            Item { visible: ambient.contextPreview.length === 0; Layout.fillWidth: true }
+                                            KButton {
+                                                objectName: "composerClearAmbientButton"
+                                                subtle: true; iconName: "close"
+                                                implicitWidth: 22; implicitHeight: 22
+                                                Accessible.name: qsTr("Rimuovi contesto finestra attiva")
+                                                toolTipText: qsTr("Rimuovi contesto finestra attiva")
+                                                onClicked: ambient.clearContext()
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        objectName: "composerVoiceStatus"
+                                        visible: ambient.voiceStatusLabel.length > 0
+                                        text: ambient.voiceStatusLabel
+                                        Layout.fillWidth: true
+                                        font.family: appearance.uiFont.family
+                                        font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                        color: ambient.recording ? appearance.colors.danger : appearance.colors.accent
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                    }
                                     ScrollView {
                                         id: composerScroll; objectName: "composerScroll"
                                         readonly property real minimumInputHeight: Math.ceil(promptMetrics.lineSpacing * (window.compact ? 1 : 2) + prompt.topPadding + prompt.bottomPadding)
@@ -1267,9 +1344,9 @@ ApplicationWindow {
                                     GridLayout {
                                         id: composerChips; objectName: "composerChips"
                                         Layout.fillWidth: true; columnSpacing: 4; rowSpacing: 4
-                                        readonly property bool narrow: chatColumn.width < 760
+                                        readonly property bool narrow: chatColumn.width < 860 || appearance.uiFont.pixelSize > 15
                                         // Labels give way before the rows stack, so the model chip keeps its text.
-                                        readonly property bool tight: chatColumn.width < 880
+                                        readonly property bool tight: chatColumn.width < 960 || appearance.uiFont.pixelSize > 15
                                         columns: narrow ? 1 : 2
                                         RowLayout {
                                         Layout.fillWidth: true; spacing: 4
@@ -1283,6 +1360,32 @@ ApplicationWindow {
                                             toolTipText: qsTr("Allega") + " · " + (workspace.imageInputsEnabled ? qsTr("Le immagini saranno inviate solo con il messaggio. La disponibilità della visione dipende dal modello.") : qsTr("Scegli file, oppure incolla o trascina file e immagini nel messaggio"))
                                         }
                                         KButton { objectName: "projectFilesButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; text: composerChips.tight ? "" : qsTr("File"); iconName: "file"; subtle: true; Accessible.name: qsTr("File del progetto"); onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file del progetto · @ nel messaggio") }
+                                        KButton {
+                                            objectName: "captureContextButton"
+                                            iconName: "context"; subtle: !ambient.hasCapturedContext; quietSelection: ambient.hasCapturedContext; checked: ambient.hasCapturedContext
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: 32
+                                            Accessible.name: qsTr("Cattura finestra o selezione attiva")
+                                            toolTipText: qsTr("Cattura testo selezionato e finestra attiva del sistema")
+                                            onClicked: ambient.captureContextNow()
+                                        }
+                                        KButton {
+                                            objectName: "voiceDictationButton"
+                                            iconName: ambient.recording ? "stop" : "mic"
+                                            destructive: ambient.recording; subtle: !ambient.recording
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: 32
+                                            enabled: !ambient.transcribing
+                                            Accessible.name: ambient.recording ? qsTr("Ferma dettatura vocale") : qsTr("Avvia dettatura vocale")
+                                            toolTipText: ambient.recording ? qsTr("Ferma e trascrivi con Whisper") : qsTr("Dettatura vocale (Whisper locale / API)")
+                                            onClicked: ambient.toggleDictation("composer")
+                                        }
+                                        KButton {
+                                            objectName: "openSpotlightButton"
+                                            iconName: "spotlight"; subtle: true
+                                            implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: 32
+                                            Accessible.name: qsTr("Apri Kira Spotlight")
+                                            toolTipText: qsTr("Apri Kira Spotlight (Alt+Spazio · globale: kira --spotlight)")
+                                            onClicked: ambient.openSpotlight()
+                                        }
                                         KComboBox {
                                             objectName: "composerModeChoice"; chip: true; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             // Shares the row's slack with the model chip and elides before overflowing.
@@ -1646,8 +1749,8 @@ ApplicationWindow {
                         }
                         CanvasPane {
                             visible: workspace.canvas.paneVisible
-                            SplitView.preferredWidth: Math.max(420, browserSplit.width * 0.52)
-                            SplitView.minimumWidth: 360; SplitView.fillWidth: window.canvasFocused
+                            SplitView.preferredWidth: Math.max(520, browserSplit.width * 0.58)
+                            SplitView.minimumWidth: 380; SplitView.fillWidth: window.canvasFocused
                         }
                         Item {
                             objectName: "workspacePanelSpace"
@@ -2016,11 +2119,45 @@ ApplicationWindow {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
         id: artifactsDialog; objectName: "artifactsDialog"; title: qsTr("Artefatti del progetto"); inspectorKey: "file"
         standardButtons: Dialog.Close
-        ListView {
-            id: artifactList; anchors.fill: parent; clip: true; spacing: 10; model: workspace.artifacts
-            ScrollBar.vertical: ScrollBar {}
-            delegate: KButton { required property var modelData; width: artifactList.width; text: "↗  " + String(modelData.path).split("/").pop(); onClicked: workspace.openArtifact(modelData.path); toolTipText: modelData.path }
-            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("Nessun artefatto registrato."); width: artifactList.width; wrapMode: Text.Wrap; visible: artifactList.count === 0; color: muted }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+            KButton {
+                objectName: "artifactsOpenKiraExplorerButton"
+                Layout.fillWidth: true
+                text: qsTr("Esplora tutti i file nell'editor di Kira")
+                primary: true
+                onClicked: {
+                    artifactsDialog.close()
+                    workspace.canvas.openProjectExplorer()
+                }
+            }
+            ListView {
+                id: artifactList; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 8; model: workspace.artifacts
+                ScrollBar.vertical: ScrollBar {}
+                delegate: RowLayout {
+                    required property var modelData
+                    width: artifactList.width
+                    spacing: 6
+                    KButton {
+                        Layout.fillWidth: true
+                        text: "↗  " + String(modelData.path).split("/").pop()
+                        onClicked: workspace.openArtifact(modelData.path)
+                        toolTipText: modelData.path
+                    }
+                    KButton {
+                        objectName: "openArtifactInKira_" + String(modelData.path).split("/").pop()
+                        text: qsTr("Editor Kira")
+                        subtle: true
+                        onClicked: {
+                            artifactsDialog.close()
+                            workspace.openInKiraEditor(modelData.path)
+                        }
+                        toolTipText: qsTr("Apri nell'editor integrato di Kira")
+                    }
+                }
+                Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("Nessun artefatto registrato."); width: artifactList.width; wrapMode: Text.Wrap; visible: artifactList.count === 0; color: muted }
+            }
         }
     }
     UsageDialog { id: metricsDialog; inspectorKey: "uso"; onContextRequested: chatContextDialog.open() }
@@ -2108,4 +2245,5 @@ ApplicationWindow {
             RowLayout { Item { Layout.fillWidth: true } KButton { text: qsTr("Resta"); onClicked: closeDialog.close() } KButton { text: qsTr("Chiudi finestra"); primary: true; onClicked: { window.closeConfirmed = true; window.close() } } }
         }
     }
+    AmbientOverlay {}
 }

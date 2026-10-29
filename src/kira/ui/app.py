@@ -66,6 +66,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         engine.rootContext().setContextProperty("inputs", workspace.inputs)
         engine.rootContext().setContextProperty("workbench", workspace.workbench)
         engine.rootContext().setContextProperty("assistant", workspace.assistant)
+        engine.rootContext().setContextProperty("ambient", workspace.ambient)
         engine.rootContext().setContextProperty("directAccount", workspace.directAccount)
         engine.rootContext().setContextProperty("deepseekAccount", workspace.deepseekAccount)
         engine.rootContext().setContextProperty("mcpServers", workspace.mcpServers)
@@ -131,7 +132,7 @@ def close_launch_splash(splash: QQmlApplicationEngine | None, main_engine: QQmlA
         close()
 
 
-def main() -> int:
+def main(*, spotlight: bool = False) -> int:
     configure_graphics()
     QQuickStyle.setStyle("Basic")
     app = QGuiApplication(sys.argv)
@@ -140,9 +141,11 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     app.setDesktopFileName("kira-desktop")
     workspace = Workspace()
+    if spotlight:
+        workspace.ambient.openSpotlight()
     # Before the interface loads, so the loading screen is opaque from its first frame.
     workspace.beginStartupScreen()
-    splash = show_launch_splash(workspace)
+    splash = None if spotlight else show_launch_splash(workspace)
     engine = create_engine(workspace)
     close_launch_splash(splash, engine)
     if not engine.rootObjects():

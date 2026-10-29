@@ -389,7 +389,7 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
             ("Aperto", "Chiuso"), ("Collegato a", "Supporta", "Contraddice", "Sostituisce"),
             ("Comoda", "Compatta"),
             ("Quando c’è lavoro in corso", "Sempre", "Mai"),
-            ("Applicazione predefinita del sistema", "Visual Studio Code"),
+            ("Applicazione predefinita del sistema", "Visual Studio Code", "Editor integrato di Kira"),
             ("Sola lettura", "Scrittura nel progetto", "Host fidato · comandi come il tuo utente", "Accesso completo"),
             ("Sola lettura", "Scrittura nel progetto", "Host fidato · nessuna sandbox per i comandi Kira", "Accesso completo"),
         }

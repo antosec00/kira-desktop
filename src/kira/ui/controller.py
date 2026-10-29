@@ -47,6 +47,7 @@ from kira.ui.web_controller import WebController, browser_approval_description
 from kira.ui.studio_controller import StudioController
 from kira.ui.canvas_controller import CanvasController
 from kira.ui.mcp_controller import McpController
+from kira.ui.ambient_controller import AmbientController
 
 Json = dict[str, Any]
 STATE_LABELS = {
@@ -383,6 +384,7 @@ class Workspace(QObject):
         self._tool_issues: dict[str, dict[str, str]] = {}
         self._streaming_items: dict[str, set[str]] = {}
         self._pending_start: Json | None = None
+        self._pending_raw_prompt: str = ""
         self._creating_session = False
         self._configuring_session = False
         self._configuration_generation = 0
@@ -412,6 +414,7 @@ class Workspace(QObject):
         self.mcpServers = McpController(self)
         self._soul_controller: Any = None
         self._reasoning = ReasoningController(self)
+        self._ambient = AmbientController(self)
         self.chatChanged.connect(self.draftImagesChanged.emit)
 
     @qt_property(QObject, constant=True)
@@ -434,6 +437,10 @@ class Workspace(QObject):
     def reasoning(self) -> ReasoningController:
         return self._reasoning
 
+    @qt_property(QObject, constant=True)
+    def ambient(self) -> AmbientController:
+        return self._ambient
+
     @Slot()
     def retranslate(self) -> None:
         """Refresh GUI-owned labels without reloading data or contacting the service."""
@@ -447,6 +454,7 @@ class Workspace(QObject):
         self.workbench.retranslate()
         self._canvas.retranslate()
         self.assistant.retranslate()
+        self._ambient.retranslate()
         self.directAccount.changed.emit()
         self.deepseekAccount.changed.emit()
         # A language notification must not trigger project discovery through a
@@ -2240,7 +2248,8 @@ class Workspace(QObject):
             self._problem(tr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare."))
             return
         if self._session:
-            params: Json = {"session_id": self._session["id"], "prompt": prompt, "mode": mode}
+            effective_prompt = self._ambient.consume_for_prompt(prompt) if self._ambient.hasCapturedContext else prompt
+            params: Json = {"session_id": self._session["id"], "prompt": effective_prompt, "mode": mode}
             if self.draft_image_ids():
                 params["attachments"] = self.draft_image_ids()
             # The identity is saved before sending: a resend after a restart or
@@ -2248,6 +2257,7 @@ class Workspace(QObject):
             submitted = self.workbench._intent("run.start", params)
             if submitted is None:
                 return
+            self._pending_raw_prompt = prompt
             self._pending_start = submitted
             self._send_start()
             return
@@ -2307,19 +2317,21 @@ class Workspace(QObject):
             return
         self.changed.emit()
         submitted = self._pending_start.copy()
+        raw_prompt = self._pending_raw_prompt or str(submitted.get("prompt", ""))
         submitted_project = str(self._project.get("id", ""))
 
         def started(result: Json) -> None:
             run = result["run"]
             self._runs[run["id"]] = run
             self._pending_start = None
+            self._pending_raw_prompt = ""
             self.workbench._settle_intent(str(submitted["request_id"]))
             # Acknowledgement must not erase text typed while the request was in flight.
-            if self.draftText == submitted["prompt"]:
+            if self.draftText in {submitted["prompt"], raw_prompt}:
                 self.setDraftText("")
                 self.promptAccepted.emit()
             self.acknowledge_images(submitted_project, submitted["session_id"], submitted.get("attachments", []))
-            self.rememberPrompt(submitted["prompt"], submitted_project, submitted["session_id"])
+            self.rememberPrompt(raw_prompt, submitted_project, submitted["session_id"])
             self.refreshSessions()
             self._subscribe(run["id"])
             self.changed.emit()
@@ -2328,6 +2340,7 @@ class Workspace(QObject):
             code = error.get("code")
             if code != "DISCONNECTED":
                 self._pending_start = None
+                self._pending_raw_prompt = ""
                 # A definitive rejection started nothing; an uncertain reply keeps
                 # the saved identity so an identical resend cannot duplicate the run.
                 self.workbench._settle_intent(str(submitted["request_id"]), unknown=code in UNCERTAIN_ERRORS)
@@ -2723,10 +2736,17 @@ class Workspace(QObject):
         self._save(url, self.memoryText)
 
     @Slot(str)
+    def openInKiraEditor(self, path: str) -> None:
+        self._canvas.openProjectFile(path)
+
+    @Slot(str)
     def openArtifact(self, path: str) -> None:
         registered = self._artifacts + self._workspace.get("captures", [])
         if not any(a.get("path") == path for a in registered):
             self._problem(tr("Il file non è un artefatto registrato del progetto."))
+            return
+        if self._preferences.get("file_opener") == "kira":
+            self._canvas.openProjectFile(path)
             return
         root = Path(self._project["root"])
 
@@ -2751,6 +2771,9 @@ class Workspace(QObject):
         if self._preferences["file_opener"] == "system":
             self.launchAction("project.folder", "")
             return
+        if self._preferences["file_opener"] == "kira":
+            self._canvas.openProjectExplorer()
+            return
         root = self._project.get("root")
         if not root:
             self._problem(tr("Apri un progetto per consultare la sua cartella."))
@@ -2771,6 +2794,12 @@ class Workspace(QObject):
 
     def _open_local_path(self, path: str) -> None:
         """Called only after the existing explicit-user file/folder validation."""
+        if self._preferences["file_opener"] == "kira":
+            if Path(path).is_dir():
+                self._canvas.openProjectExplorer()
+            else:
+                self._canvas.openProjectFile(path)
+            return
         if self._preferences["file_opener"] == "vscode":
             binary = shutil.which("code")
             if binary is None:
@@ -2802,6 +2831,7 @@ class Workspace(QObject):
         if not project_root:
             self._problem(tr("Apri un progetto per consultare i suoi file."))
             return
+        use_kira_editor = self._preferences.get("file_opener") == "kira"
 
         def validated() -> tuple[str, str]:
             try:
@@ -2813,8 +2843,10 @@ class Workspace(QObject):
                 path.relative_to(root)
                 if not path.is_file():
                     raise ValueError(tr("Il collegamento non indica un file regolare del progetto."))
-                if launch_denied(path):
+                if not use_kira_editor and launch_denied(path):
                     raise ValueError(tr("Apri script ed eseguibili dal tuo editor, non dalla chat."))
+                if use_kira_editor and path.suffix.lower() in {".desktop", ".url", ".webloc"}:
+                    raise ValueError(tr("Collegamento non consentito."))
                 return str(path), ""
             except (OSError, ValueError, RuntimeError):
                 return "", tr("File non disponibile o non consentito: usa un documento nel progetto.")
@@ -2872,6 +2904,7 @@ class Workspace(QObject):
         self._studio.hideStudio()
         self._web.hideBrowser()
         self._web.hide()
+        self._ambient.close()
         self.accountUsage.close()
         self.directAccount.close()
         self.deepseekAccount.close()

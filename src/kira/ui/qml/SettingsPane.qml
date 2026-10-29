@@ -223,12 +223,12 @@ Item {
                             palette.dark: pane.muted
                         objectName: "fileOpenerChoice"
                         Layout.fillWidth: true
-                        model: [qsTr("Applicazione predefinita del sistema"), "Visual Studio Code"]
-                        currentIndex: workspace.uiPreferences.file_opener === "vscode" ? 1 : 0
-                        onActivated: workspace.setUiPreference("file_opener", currentIndex === 1 ? "vscode" : "system")
+                        model: [qsTr("Applicazione predefinita del sistema"), "Visual Studio Code", qsTr("Editor integrato di Kira")]
+                        currentIndex: Math.max(0, ["system", "vscode", "kira"].indexOf(workspace.uiPreferences.file_opener))
+                        onActivated: workspace.setUiPreference("file_opener", ["system", "vscode", "kira"][currentIndex])
                         Accessible.name: qsTr("Applicazione per aprire i file")
                     }
-                    Note { text: qsTr("Si applica ai file locali aperti dai collegamenti e dagli artefatti. Visual Studio Code richiede il comando code disponibile sul computer.") }
+                    Note { text: qsTr("Si applica ai file locali aperti dai collegamenti e dagli artefatti. L'editor integrato di Kira apre codice e documenti direttamente accanto alla chat.") }
                     Rule {}
                     Heading { text: qsTr("Permessi dei nuovi progetti") }
                     KComboBox {
