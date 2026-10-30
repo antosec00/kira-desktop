@@ -1895,6 +1895,15 @@ class GoogleCloudBackend(OllamaBackend):
         limit = int(ctx.settings.get("max_output_bytes", 4 * 1024 * 1024)) if ctx else 65_536
         total_bytes = 0
         summary_item_id = f"{item_id}:summary" if item_id else None
+        if ctx and summary_item_id and _thinking_config_for_gemini(model_id, effort_str, max_output) is not None:
+            await ctx.emit(
+                "reasoning.summary.status",
+                {
+                    "source": "provider_summary",
+                    "provider": BACKEND,
+                    "status": "requested",
+                },
+            )
 
         api_enable_attempted = False
         rate_limit_retries = 0
@@ -2147,9 +2156,11 @@ class GoogleCloudBackend(OllamaBackend):
                     "provider": BACKEND,
                     "item_id": summary_item_id,
                     "content": thought_text,
+                    "complete": True,
+                    "truncated": False,
                 },
             )
-        elif ctx and not thought_text:
+        elif ctx and not thought_text and (not summary_item_id or summary_item_id.endswith(":0:summary")):
             await ctx.emit(
                 "reasoning.summary.status",
                 {
@@ -2247,6 +2258,15 @@ class GoogleCloudBackend(OllamaBackend):
         total = 0
         limit = int(ctx.settings.get("max_output_bytes", 4 * 1024 * 1024)) if ctx else 65_536
         summary_item_id = f"{item_id}:summary" if item_id else None
+        if ctx and "thinking" in request:
+            await ctx.emit(
+                "reasoning.summary.status",
+                {
+                    "source": "provider_summary",
+                    "provider": BACKEND,
+                    "status": "requested",
+                },
+            )
 
         locations_to_try = [location] if location == "global" else [location, "global"]
         api_enable_attempted = False
@@ -2404,6 +2424,8 @@ class GoogleCloudBackend(OllamaBackend):
                     "provider": BACKEND,
                     "item_id": summary_item_id,
                     "content": thought_text,
+                    "complete": True,
+                    "truncated": False,
                 },
             )
         elif ctx and not thought_text:

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 EVENTS = frozenset({"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"})
 # Providers that only report that no public summary exists.
 STATUS_ONLY_PROVIDERS = frozenset({"ollama", "deepseek_account", "claude_code"})
-PROVIDERS = frozenset({"codex", "openai_chatgpt", "deepseek_web"}) | STATUS_ONLY_PROVIDERS
+PROVIDERS = frozenset({"codex", "openai_chatgpt", "deepseek_web", "google_cloud"}) | STATUS_ONLY_PROVIDERS
 MAX_BYTES = 65_536
 MAX_PARTS = 64
 

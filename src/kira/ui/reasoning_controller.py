@@ -1,5 +1,6 @@
 """Bounded presentation of the reasoning text a provider shows its users, never hidden state."""
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
@@ -17,6 +18,26 @@ MAX_SUMMARY_ITEMS = 64
 MAX_SUMMARY_RUNS = 60
 PROVIDERS = frozenset({"openai_chatgpt", "codex", "ollama", "deepseek_account", "deepseek_web", "google_cloud"})
 SUMMARY_EVENTS = {"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"}
+_STEP_HEADING_RE = re.compile(r"(?:^|\n)\s*(?:\*\*([^\*\n]{3,80})\*\*|#{1,3}\s+([^\n]{3,80}))")
+
+
+def _extract_thought_metadata(items: list[Json], text: str) -> tuple[str, int, str]:
+    """Extract the latest thought step title, step count, and a clean live preview."""
+    if not text:
+        return "", 0, ""
+    matches = _STEP_HEADING_RE.findall(text)
+    step_title = ""
+    if matches:
+        last_bold, last_hash = matches[-1]
+        raw_title = (last_bold or last_hash).strip().rstrip(":")
+        step_title = raw_title[:72] + ("…" if len(raw_title) > 72 else "")
+    non_empty_items = sum(1 for item in items if item.get("content"))
+    step_count = max(non_empty_items, len(matches))
+    tail = text[-600:]
+    cleaned = re.sub(r"\*\*([^\*\n]+)\*\*", r"\1", tail)
+    cleaned = re.sub(r"(?:^|\n)\s*#{1,3}\s+", " ", cleaned)
+    cleaned = " ".join(cleaned.split())
+    return step_title, step_count, cleaned[-400:]
 
 
 def provider_label(provider: str) -> str:
@@ -148,9 +169,11 @@ class ReasoningController(QObject):
                   else tr("Ricevuto dal provider") if text else tr("Il provider non ha fornito un riepilogo")
                   if terminal or entry["status"] == "unavailable" else tr("Riepilogo non supportato dal provider")
                   if entry["status"] == "unsupported" else tr("In attesa del riepilogo del provider"))
+        step_title, step_count, preview = _extract_thought_metadata(items, text)
         return {"available": True, "runId": run_id, "text": text, "status": status,
                 "provider": provider_label(entry["provider"]), "partial": partial,
-                "truncated": entry["truncated"] or display_clipped, "historical": run_id != latest.get("id")}
+                "truncated": entry["truncated"] or display_clipped, "historical": run_id != latest.get("id"),
+                "stepTitle": step_title, "stepCount": step_count, "preview": preview}
 
     @Slot(str)
     def selectRun(self, run_id: str) -> None:
