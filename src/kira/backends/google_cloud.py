@@ -78,7 +78,7 @@ BUILTIN_MODEL_CATALOG: tuple[Json, ...] = (
         "name": "Google Gemini 4 Argon",
         "family": "gemini",
         "context_window": 1_048_576,
-        "max_output_tokens": 65_536,
+        "max_output_tokens": 16_384,
         "input_modalities": ["text", "image"],
         "effort": {
             "supported_levels": ["off", "low", "medium", "high", "max"],
@@ -150,7 +150,7 @@ BUILTIN_MODEL_CATALOG: tuple[Json, ...] = (
         "name": "Google Argon",
         "family": "gemini",
         "context_window": 1_048_576,
-        "max_output_tokens": 65_536,
+        "max_output_tokens": 16_384,
         "input_modalities": ["text", "image"],
         "effort": {
             "supported_levels": ["off", "low", "medium", "high", "max"],
@@ -1476,6 +1476,45 @@ def _thinking_config_for_gemini(model_id: str, effort: str | None, max_output: i
 
 RATE_LIMIT_BACKOFF_DELAYS: tuple[float, ...] = (2.5, 5.0, 10.0, 18.0, 28.0, 40.0)
 
+VERTEX_RATE_LIMIT_FALLBACKS: dict[str, tuple[str, ...]] = {
+    "gemini-4-argon": ("gemini-3.1-pro-preview", "gemini-3-flash-preview"),
+    "argon": ("gemini-3.1-pro-preview", "gemini-3-flash-preview"),
+    "gemini-3.1-pro-preview": ("gemini-3-flash-preview",),
+    "gemini-2.5-pro": ("gemini-3.1-pro-preview", "gemini-3-flash-preview"),
+}
+
+
+def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[Json]:
+    """Bound historical tool outputs so Vertex AI DSQ per-minute TPM quotas are not exhausted."""
+    if not isinstance(source, list):
+        return []
+    total = sum(len(str(m.get("content", ""))) for m in source if isinstance(m, dict))
+    if total <= max_chars:
+        return source
+    compacted: list[Json] = [dict(m) if isinstance(m, dict) else m for m in source]
+    keep_recent = max(1, len(compacted) - 6)
+    head_len = max(400, min(900, max_chars // 40))
+    tail_len = max(350, min(700, max_chars // 50))
+    for idx in range(keep_recent):
+        msg = compacted[idx]
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        content = msg.get("content")
+        if not isinstance(content, str) or len(content) <= head_len + tail_len + 120:
+            continue
+        if (
+            role == "tool"
+            or "Recorded tool outcome" in content
+            or "Kira-supplied project context:" in content
+        ):
+            msg["content"] = (
+                content[:head_len]
+                + "\n...[historical tool output compacted for Vertex AI quota]...\n"
+                + content[-tail_len:]
+            )
+    return compacted
+
 
 async def _cancelable_sleep(seconds: float, ctx: RunContext | None) -> bool:
     """Sleep up to `seconds`, returning False early if the run is cancelled."""
@@ -1524,10 +1563,10 @@ class GoogleCloudBackend(OllamaBackend):
     async def _pace_before_request(self, ctx: RunContext | None) -> None:
         if ctx is None or self._last_request_completed_at <= 0:
             return
-        if self._last_prompt_tokens >= 40_000:
-            min_gap = 2.5
-        elif self._last_prompt_tokens >= 20_000:
-            min_gap = 1.5
+        if self._last_prompt_tokens >= 35_000:
+            min_gap = 3.0
+        elif self._last_prompt_tokens >= 18_000:
+            min_gap = 1.8
         else:
             return
         elapsed = time.monotonic() - self._last_request_completed_at
@@ -1711,7 +1750,8 @@ class GoogleCloudBackend(OllamaBackend):
         source = body.get("messages", [])
         if ctx is not None and ctx.image_inputs.get(ctx.run_id):
             source = _bind_active_prompt(source, ctx)
-        contents, system_text = _gemini_contents(source, ctx.image_inputs if ctx else {})
+        effective_source = _compact_messages_for_vertex(source, max_chars=75_000)
+        contents, system_text = _gemini_contents(effective_source, ctx.image_inputs if ctx else {})
         if body.get("format"):
             system_text += (
                 "\nReturn one JSON object matching this schema, with no surrounding text: "
@@ -1789,6 +1829,7 @@ class GoogleCloudBackend(OllamaBackend):
         if fallback_model and fallback_model != model_id:
             if (fallback_model, "global") not in attempts:
                 attempts.append((fallback_model, "global"))
+        rate_limit_fallbacks = list(VERTEX_RATE_LIMIT_FALLBACKS.get(model_id, ()))
 
         text = ""
         thought_text = ""
@@ -1842,13 +1883,39 @@ class GoogleCloudBackend(OllamaBackend):
                     if (
                         response.status_code in (429, 500, 502, 503, 504)
                         and "global_online_prediction_requests_per_base_model" not in safe_detail
-                        and rate_limit_retries < len(self._backoff_delays)
                     ):
-                        delay = _retry_delay_for_response(response, rate_limit_retries, self._backoff_delays)
-                        rate_limit_retries += 1
-                        if await _cancelable_sleep(delay, ctx):
+                        # Compact historical tool outputs further on 429 to reduce TPM pressure
+                        contents, _ = _gemini_contents(
+                            _compact_messages_for_vertex(source, max_chars=40_000),
+                            ctx.image_inputs if ctx else {},
+                        )
+                        if response.status_code == 429 and rate_limit_retries >= 2 and rate_limit_fallbacks:
+                            next_fb = rate_limit_fallbacks.pop(0)
+                            target_loc = "global" if project else cur_loc
+                            if (next_fb, target_loc) not in attempts[idx + 1 :]:
+                                attempts.insert(idx + 1, (next_fb, target_loc))
+                            idx += 1
+                            if ctx is not None:
+                                await ctx.emit(
+                                    "backend.notice",
+                                    {
+                                        "message": (
+                                            f"Quota temporanea esaurita su {cur_model} (HTTP 429); "
+                                            f"proseguo automaticamente il turno tramite {next_fb}."
+                                        ),
+                                        "model": next_fb,
+                                    },
+                                )
                             headers, query_params, secret = await self._auth_headers_and_params()
+                            query_params["alt"] = "sse"
                             continue
+                        if rate_limit_retries < len(self._backoff_delays):
+                            delay = _retry_delay_for_response(response, rate_limit_retries, self._backoff_delays)
+                            rate_limit_retries += 1
+                            if await _cancelable_sleep(delay, ctx):
+                                headers, query_params, secret = await self._auth_headers_and_params()
+                                query_params["alt"] = "sse"
+                                continue
                     raise GoogleCloudHTTPError(response, safe_detail)
                 response.raise_for_status()
                 data_lines: list[str] = []
