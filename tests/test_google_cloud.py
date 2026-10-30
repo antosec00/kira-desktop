@@ -441,6 +441,10 @@ async def test_google_cloud_auto_enable_vertex_api_and_argon_global_fallback(
             "includeThoughts": True,
             "thinkingLevel": "MEDIUM",
         }
+        assert {
+            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "threshold": "OFF",
+        } in body["safetySettings"]
         sse = (
             'data: {"candidates": [{"content": {"role": "model", "parts": ['
             '{"text": "Risposta da Gemini 4 Argon su global."}]}}], '

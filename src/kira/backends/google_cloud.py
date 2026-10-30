@@ -1715,9 +1715,17 @@ class GoogleCloudBackend(OllamaBackend):
             think_cfg = _thinking_config_for_gemini(target_model, effort_str, max_output)
             if think_cfg is not None:
                 gen_cfg["thinkingConfig"] = think_cfg
+            safety_threshold = "BLOCK_NONE" if (self.account.auth_mode == "api_key" and not project) else "OFF"
             req: Json = {
                 "contents": contents,
                 "generationConfig": gen_cfg,
+                "safetySettings": [
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": safety_threshold},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": safety_threshold},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": safety_threshold},
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": safety_threshold},
+                    {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": safety_threshold},
+                ],
             }
             if system_text:
                 req["systemInstruction"] = {"parts": [{"text": system_text}]}
