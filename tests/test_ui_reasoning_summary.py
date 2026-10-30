@@ -178,6 +178,40 @@ def test_deepseek_web_reasoning_is_shown_with_its_provider_name(view):
     assert not workspace.transcript.rows
 
 
+def test_google_cloud_live_thought_step_title_and_preview(ui, qtbot):
+    workspace, _, _, window = ui
+    active(workspace)
+    summary(
+        workspace,
+        "**Analisi del consenso BFT**\n\nControllo la validazione del quorum certificate in state.rs.",
+        kind="delta",
+        provider="google_cloud",
+        item_id="assistant:1:summary",
+    )
+    summary(
+        workspace,
+        "**Costruzione del test deterministico**\n\nPreparo un harness isolato con 4 validatori.",
+        seq=2,
+        kind="delta",
+        provider="google_cloud",
+        item_id="assistant:2:summary",
+    )
+    qtbot.wait(180)
+    current = workspace.reasoning.current
+    assert current["provider"] == "Google Cloud · Vertex AI"
+    assert current["partial"] is True
+    assert current["stepTitle"] == "Costruzione del test deterministico"
+    assert current["stepCount"] == 2
+    assert "Preparo un harness isolato con 4 validatori." in current["preview"]
+    assert "**" not in current["preview"]
+    toggle = item(window.contentItem(), "reasoningSummaryToggle")
+    assert "Costruzione del test deterministico" in toggle.property("text")
+    assert "(2)" in toggle.property("text")
+    preview = item(window.contentItem(), "reasoningSummaryPreview")
+    assert preview.property("visible")
+    assert "Preparo un harness isolato con 4 validatori." in preview.property("text")
+
+
 def test_only_public_projection_and_bounded_text_items(view):
     workspace, _ = view
     active(workspace)
