@@ -52,7 +52,7 @@ jobs:
       QT_QPA_PLATFORM: offscreen
       QT_QUICK_BACKEND: software
       KIRA_HOME: ${{ github.workspace }}/build/ci-profile
-      CLOUDSDK_CONFIG: ${{ runner.temp }}/ci-gcloud
+      CLOUDSDK_CONFIG: ${{ github.workspace }}/build/ci-gcloud
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
