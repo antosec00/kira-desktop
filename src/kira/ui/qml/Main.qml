@@ -175,6 +175,10 @@ ApplicationWindow {
             prompt.forceActiveFocus()
         }
         else if (action === "model") { window.page = 0; modelPopover.open() }
+        else if (action === "research") { window.page = 0; researchDialog.open() }
+        else if (action === "editor") { window.page = 0; workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.openProjectExplorer() }
+        else if (action === "checkpoint") { workbench.createCheckpoint(""); workbenchDialog.openSection("changes") }
+        else if (action === "spotlight") { ambient.openSpotlight() }
         else if (action === "permissions") memoryDialog.open()
         else if (action === "memory") sharedMemoryDialog.open()
         else if (action === "team") window.page = 4
@@ -1282,6 +1286,175 @@ ApplicationWindow {
                                             }
                                         }
                                     }
+                                    RowLayout {
+                                        id: composerMentionsBar
+                                        objectName: "composerMentionsBar"
+                                        visible: mentions.hasActiveChips
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        Flow {
+                                            objectName: "composerMentionsFlow"
+                                            Layout.fillWidth: true
+                                            spacing: 6
+                                            Repeater {
+                                                model: mentions.activeChips
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    required property int index
+                                                    objectName: "composerMentionChip_" + index
+                                                    radius: 8
+                                                    color: appearance.colors.surface
+                                                    border.color: appearance.colors.accent
+                                                    border.width: 1
+                                                    implicitWidth: chipInnerRow.implicitWidth + 12
+                                                    implicitHeight: 24
+                                                    RowLayout {
+                                                        id: chipInnerRow
+                                                        anchors.centerIn: parent
+                                                        spacing: 5
+                                                        Rectangle {
+                                                            radius: 4
+                                                            color: Qt.rgba(appearance.colors.accent.r, appearance.colors.accent.g, appearance.colors.accent.b, 0.16)
+                                                            implicitWidth: chipBadgeText.implicitWidth + 8
+                                                            implicitHeight: 16
+                                                            Text {
+                                                                id: chipBadgeText
+                                                                anchors.centerIn: parent
+                                                                text: modelData.badge || "CTX"
+                                                                font.family: appearance.codeFont.family
+                                                                font.pixelSize: 9
+                                                                font.bold: true
+                                                                color: appearance.colors.accent
+                                                                textFormat: Text.PlainText
+                                                            }
+                                                        }
+                                                        Text {
+                                                            text: modelData.label || ""
+                                                            font.family: appearance.codeFont.family
+                                                            font.pixelSize: Math.max(10, appearance.codeFont.pixelSize - 2)
+                                                            color: appearance.colors.text
+                                                            textFormat: Text.PlainText
+                                                        }
+                                                        KButton {
+                                                            objectName: "removeMentionChip_" + index
+                                                            subtle: true
+                                                            iconName: "close"
+                                                            implicitWidth: 18
+                                                            implicitHeight: 18
+                                                            Accessible.name: qsTr("Rimuovi menzione")
+                                                            toolTipText: qsTr("Rimuovi %1").arg(modelData.label || "")
+                                                            onClicked: mentions.removeChip(index)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        KButton {
+                                            objectName: "clearAllMentionsButton"
+                                            visible: mentions.activeChipCount > 1
+                                            subtle: true
+                                            text: qsTr("Svuota")
+                                            implicitHeight: 24
+                                            onClicked: mentions.clearChips()
+                                        }
+                                    }
+                                    Rectangle {
+                                        id: composerInlinePopup
+                                        objectName: "composerInlinePopup"
+                                        visible: mentions.inlinePopupVisible
+                                        Layout.fillWidth: true
+                                        radius: 10
+                                        color: appearance.colors.surface
+                                        border.color: appearance.colors.accent
+                                        border.width: 1
+                                        implicitHeight: inlinePopupCol.implicitHeight + 12
+                                        ColumnLayout {
+                                            id: inlinePopupCol
+                                            anchors.fill: parent
+                                            anchors.margins: 6
+                                            spacing: 3
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 6
+                                                Text {
+                                                    text: mentions.inlineTriggerKind === "@" ? qsTr("Suggerimenti @Mentions (Invio/Tab per completare)") : qsTr("Comandi rapidi /Slash (Invio/Tab per completare)")
+                                                    font.family: appearance.uiFont.family
+                                                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 3)
+                                                    font.bold: true
+                                                    color: appearance.colors.muted
+                                                    textFormat: Text.PlainText
+                                                    Layout.fillWidth: true
+                                                }
+                                                KButton {
+                                                    subtle: true; iconName: "close"
+                                                    implicitWidth: 18; implicitHeight: 18
+                                                    Accessible.name: qsTr("Chiudi suggerimenti")
+                                                    onClicked: mentions.dismissInlinePopup()
+                                                }
+                                            }
+                                            Repeater {
+                                                model: mentions.inlineSuggestions
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    required property int index
+                                                    objectName: "inlineSuggestionRow_" + index
+                                                    readonly property bool current: index === mentions.inlineSelectedIndex
+                                                    Layout.fillWidth: true
+                                                    implicitHeight: 28
+                                                    radius: 6
+                                                    color: current ? Qt.rgba(appearance.colors.accent.r, appearance.colors.accent.g, appearance.colors.accent.b, 0.14) : "transparent"
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: 8; anchors.rightMargin: 8
+                                                        spacing: 8
+                                                        Rectangle {
+                                                            radius: 4
+                                                            color: Qt.rgba(appearance.colors.accent.r, appearance.colors.accent.g, appearance.colors.accent.b, 0.18)
+                                                            implicitWidth: sugBadge.implicitWidth + 8
+                                                            implicitHeight: 18
+                                                            Text {
+                                                                id: sugBadge
+                                                                anchors.centerIn: parent
+                                                                text: modelData.badge || "CTX"
+                                                                font.family: appearance.codeFont.family
+                                                                font.pixelSize: 9
+                                                                font.bold: true
+                                                                color: appearance.colors.accent
+                                                                textFormat: Text.PlainText
+                                                            }
+                                                        }
+                                                        Text {
+                                                            text: modelData.label || ""
+                                                            font.family: appearance.uiFont.family
+                                                            font.pixelSize: Math.max(11, appearance.uiFont.pixelSize - 1)
+                                                            font.bold: current
+                                                            color: appearance.colors.text
+                                                            textFormat: Text.PlainText
+                                                        }
+                                                        Text {
+                                                            text: modelData.description || ""
+                                                            font.family: appearance.uiFont.family
+                                                            font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                                            color: appearance.colors.muted
+                                                            textFormat: Text.PlainText
+                                                            elide: Text.ElideRight
+                                                            Layout.fillWidth: true
+                                                        }
+                                                    }
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: appearance.pointerCursors ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                        onClicked: {
+                                                            var nextText = mentions.applyInlineSuggestion(index, prompt.text, prompt.cursorPosition)
+                                                            prompt.text = nextText
+                                                            prompt.cursorPosition = nextText.length
+                                                            prompt.forceActiveFocus()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     Text {
                                         objectName: "composerVoiceStatus"
                                         visible: ambient.voiceStatusLabel.length > 0
@@ -1311,10 +1484,11 @@ ApplicationWindow {
                                             imageAttachments: workspace.imageInputsEnabled
                                             width: composerScroll.availableWidth
                                             height: composerScroll.inputHeight
-                                            placeholderText: workbench.guidanceMode ? qsTr("Aggiungi indicazioni al turno in corso…") : qsTr("Descrivi il prossimo passo…")
+                                            placeholderText: workbench.guidanceMode ? qsTr("Aggiungi indicazioni al turno in corso…") : qsTr("Descrivi il prossimo passo… (@ per contesto, / per comandi)")
                                             onTextChanged: {
                                                 workspace.setDraftText(text)
                                                 if (!activeFocus || window.restoringDraft) return
+                                                mentions.updateInputCursor(text, cursorPosition)
                                                 var before = text.slice(0, cursorPosition)
                                                 if (/(^|\s)\/$/.test(before) && !actionPalette.visible) {
                                                     window.commandStart = before.length - 1
@@ -1324,10 +1498,44 @@ ApplicationWindow {
                                                     window.openProjectFiles()
                                                 }
                                             }
+                                            onCursorPositionChanged: {
+                                                if (activeFocus && !window.restoringDraft) {
+                                                    mentions.updateInputCursor(text, cursorPosition)
+                                                }
+                                            }
                                             wrapMode: TextEdit.Wrap; selectByMouse: true; color: appearance.colors.text
                                             textFormat: TextEdit.PlainText; background: null
                                             font.pixelSize: window.chatFontSize; leftPadding: 2; rightPadding: 2; topPadding: 4; bottomPadding: 4
-                                            Keys.onPressed: function(event) { if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { window.submitComposer(); event.accepted = true } }
+                                            Keys.onPressed: function(event) {
+                                                if (mentions.inlinePopupVisible) {
+                                                    if (event.key === Qt.Key_Down) {
+                                                        mentions.moveInlineSelection(1)
+                                                        event.accepted = true
+                                                        return
+                                                    }
+                                                    if (event.key === Qt.Key_Up) {
+                                                        mentions.moveInlineSelection(-1)
+                                                        event.accepted = true
+                                                        return
+                                                    }
+                                                    if (event.key === Qt.Key_Escape) {
+                                                        mentions.dismissInlinePopup()
+                                                        event.accepted = true
+                                                        return
+                                                    }
+                                                    if (event.key === Qt.Key_Tab || ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))) {
+                                                        var nextText = mentions.applyInlineSuggestion(-1, prompt.text, prompt.cursorPosition)
+                                                        prompt.text = nextText
+                                                        prompt.cursorPosition = nextText.length
+                                                        event.accepted = true
+                                                        return
+                                                    }
+                                                }
+                                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
+                                                    window.submitComposer()
+                                                    event.accepted = true
+                                                }
+                                            }
                                         }
                                     }
                                     Text {
@@ -1359,7 +1567,7 @@ ApplicationWindow {
                                             onClicked: prompt.chooseAttachments()
                                             toolTipText: qsTr("Allega") + " · " + (workspace.imageInputsEnabled ? qsTr("Le immagini saranno inviate solo con il messaggio. La disponibilità della visione dipende dal modello.") : qsTr("Scegli file, oppure incolla o trascina file e immagini nel messaggio"))
                                         }
-                                        KButton { objectName: "projectFilesButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; text: composerChips.tight ? "" : qsTr("File"); iconName: "file"; subtle: true; Accessible.name: qsTr("File del progetto"); onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file del progetto · @ nel messaggio") }
+                                        KButton { objectName: "projectFilesButton"; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13); cornerRadius: 15; text: composerChips.tight ? "" : qsTr("File"); iconName: "file"; subtle: true; Accessible.name: qsTr("File del progetto"); onClicked: { window.mentionStart = -1; window.openProjectFiles() } toolTipText: qsTr("Cerca file e @Mentions del progetto · @ nel messaggio") }
                                         KButton {
                                             objectName: "captureContextButton"
                                             iconName: "context"; subtle: !ambient.hasCapturedContext; quietSelection: ambient.hasCapturedContext; checked: ambient.hasCapturedContext
@@ -1481,7 +1689,7 @@ ApplicationWindow {
                                             subtle: true; implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             visible: workspace.busy || teams.busy || assistant.active || workbench.guidanceRetryAvailable
                                             toolTipText: qsTr("Accoda una richiesta separata; non cambia il turno attivo")
-                                            enabled: workbench.composerReady && workbench.modeAvailable && !workbench.sessionArchived && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0) && (workspace.draftImages.length === 0 || workspace.imageInputsEnabled) && workspace.selectedModel.length > 0
+                                            enabled: workbench.composerReady && workbench.modeAvailable && !workbench.sessionArchived && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0 || mentions.hasActiveChips) && (workspace.draftImages.length === 0 || workspace.imageInputsEnabled) && workspace.selectedModel.length > 0
                                             onClicked: workbench.enqueue(prompt.text)
                                         }
                                         KButton {
@@ -1493,7 +1701,7 @@ ApplicationWindow {
                                             implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                             toolTipText: workbench.guidanceRetryAvailable ? qsTr("Verifica la stessa richiesta con la sua identità originale") : workbench.guidanceMode ? qsTr("Invia indicazioni senza interrompere lo strumento in corso · Ctrl+Invio") : qsTr("Invia · Ctrl+Invio")
                                             Accessible.name: workbench.guidanceRetryAvailable ? qsTr("Verifica invio") : workbench.guidanceMode ? qsTr("Invia indicazioni") : qsTr("Invia")
-                                            enabled: (workbench.canSubmit || workbench.goalCommandReady(prompt.text)) && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0) && (workspace.draftImages.length === 0 || workspace.imageInputsEnabled) && workspace.selectedModel.length > 0
+                                            enabled: (workbench.canSubmit || workbench.goalCommandReady(prompt.text)) && !prompt.attachmentBusy && (prompt.text.trim().length > 0 || workspace.draftImages.length > 0 || mentions.hasActiveChips) && (workspace.draftImages.length === 0 || workspace.imageInputsEnabled) && workspace.selectedModel.length > 0
                                             onClicked: window.submitComposer()
                                         }
                                         }
@@ -2013,7 +2221,18 @@ ApplicationWindow {
         onLoaded: if (inputs.pendingCount > 0) item.open()
     }
     ActionPalette { id: actionPalette; parent: Overlay.overlay; onSelected: function(action) { window.chooseAction(action) }; onClosed: window.commandStart = -1 }
-    ProjectFileDialog { id: projectFileDialog; parent: Overlay.overlay; onClosed: window.mentionStart = -1 }
+    ProjectFileDialog {
+        id: projectFileDialog; parent: Overlay.overlay
+        onMentionSelected: function(kind, value, token) {
+            if (window.mentionStart >= 0 && prompt.text.slice(window.mentionStart, window.mentionStart + 1) === "@") {
+                prompt.remove(window.mentionStart, window.mentionStart + 1)
+            }
+            window.mentionStart = -1
+            mentions.chooseUniversalItem(kind, value, token)
+            prompt.forceActiveFocus()
+        }
+        onClosed: window.mentionStart = -1
+    }
     // Covers the window, popups included, until the startup stages are done.
     KiraLoadingScreen { parent: Overlay.overlay }
     UpdateDialog { id: updateDialog }

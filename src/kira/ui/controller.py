@@ -48,6 +48,7 @@ from kira.ui.studio_controller import StudioController
 from kira.ui.canvas_controller import CanvasController
 from kira.ui.mcp_controller import McpController
 from kira.ui.ambient_controller import AmbientController
+from kira.ui.mentions_controller import MentionsController
 
 Json = dict[str, Any]
 STATE_LABELS = {
@@ -415,6 +416,7 @@ class Workspace(QObject):
         self._soul_controller: Any = None
         self._reasoning = ReasoningController(self)
         self._ambient = AmbientController(self)
+        self._mentions = MentionsController(self)
         self.chatChanged.connect(self.draftImagesChanged.emit)
 
     @qt_property(QObject, constant=True)
@@ -441,6 +443,10 @@ class Workspace(QObject):
     def ambient(self) -> AmbientController:
         return self._ambient
 
+    @qt_property(QObject, constant=True)
+    def mentions(self) -> MentionsController:
+        return self._mentions
+
     @Slot()
     def retranslate(self) -> None:
         """Refresh GUI-owned labels without reloading data or contacting the service."""
@@ -455,6 +461,7 @@ class Workspace(QObject):
         self._canvas.retranslate()
         self.assistant.retranslate()
         self._ambient.retranslate()
+        self._mentions.retranslate()
         self.directAccount.changed.emit()
         self.deepseekAccount.changed.emit()
         # A language notification must not trigger project discovery through a
@@ -2227,7 +2234,7 @@ class Workspace(QObject):
     def sendMode(self, prompt: str, mode: str) -> None:
         if mode not in {"execute", "plan", "review", "recap"}:
             return
-        if (not prompt.strip() and not self.draft_image_ids()) or self.busy:
+        if (not prompt.strip() and not self.draft_image_ids() and not self._mentions.hasActiveChips) or self.busy:
             return
         if self._chat_failed:
             self._problem(tr("Riapri la chat per ricaricare la cronologia prima di inviare."))
@@ -2249,6 +2256,8 @@ class Workspace(QObject):
             return
         if self._session:
             effective_prompt = self._ambient.consume_for_prompt(prompt) if self._ambient.hasCapturedContext else prompt
+            if self._mentions.has_mentions(effective_prompt):
+                effective_prompt, _mention_fx = self._mentions.consume_for_prompt(effective_prompt)
             params: Json = {"session_id": self._session["id"], "prompt": effective_prompt, "mode": mode}
             if self.draft_image_ids():
                 params["attachments"] = self.draft_image_ids()

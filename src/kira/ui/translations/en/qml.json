@@ -278,7 +278,7 @@
   "Decisione richiesta": "Decision required",
   "Densità dell'interfaccia": "Interface density",
   "Densità dell’interfaccia": "Interface density",
-  "Descrivi il prossimo passo…": "Describe the next step…",
+  "Descrivi il prossimo passo… (@ per contesto, / per comandi)": "Describe the next step… (@ for context, / for commands)",
   "Descrivi il risultato da raggiungere e come verificarlo…": "Describe the desired result and how to verify it…",
   "Destinatario del messaggio": "Message recipient",
   "Dettagli": "Details",
@@ -857,5 +857,17 @@
   "Revisione %1 · %2": "Revision %1 · %2",
   "Agente": "Agent",
   "Utente": "User",
-  "Ripristina revisione": "Restore revision"
+  "Ripristina revisione": "Restore revision",
+  "@MENTIONS CONTESTUALI": "CONTEXTUAL @MENTIONS",
+  "Aggiunge un percorso modificabile o un contesto @Mention (@git, @terminal, @web, @soul, @folder, @file) al messaggio.": "Adds an editable path or @Mention context (@git, @terminal, @web, @soul, @folder, @file) to your message.",
+  "Allega come chip @file con contenuto iniettato": "Attach as @file chip with injected content",
+  "Cerca file e @Mentions del progetto · @ nel messaggio": "Search project files and @Mentions · @ in your message",
+  "Cerca file o digita @git, @terminal, @web, @soul, @folder…": "Search files or type @git, @terminal, @web, @soul, @folder…",
+  "Chiudi suggerimenti": "Close suggestions",
+  "Comandi rapidi /Slash (Invio/Tab per completare)": "Quick /Slash commands (Enter/Tab to complete)",
+  "FILE DEL PROGETTO": "PROJECT FILES",
+  "Rimuovi %1": "Remove %1",
+  "Rimuovi menzione": "Remove mention",
+  "Suggerimenti @Mentions (Invio/Tab per completare)": "@Mentions suggestions (Enter/Tab to complete)",
+  "Svuota": "Clear"
 }
