@@ -1,8 +1,8 @@
 name: CI
 on:
   push:
-    branches: [main, 'dev/**', 'release/**']
-  pull_request:
+    branches: [main, 'release/**']
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -11,7 +11,8 @@ concurrency:
 jobs:
   static:
     name: Static and publication checks
-    runs-on: ubuntu-24.04
+    if: github.repository_owner == 'antosec00' && (!github.event.repository.private || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, Linux, X64, kira-wsl2]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -19,9 +20,13 @@ jobs:
           persist-credentials: false
       - name: Prepare isolated build tools
         run: |
-          python3 -m venv "$RUNNER_TEMP/build-env"
-          "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
-          echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+          if [ -x "$HOME/.local/bin/uv" ]; then
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          else
+            python3 -m venv "$RUNNER_TEMP/build-env"
+            "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
+            echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+          fi
       - name: Install locked dependencies
         run: uv sync --frozen --extra claude-code
       - name: Lock files are current
@@ -40,24 +45,36 @@ jobs:
         run: python3 scripts/check_public_tree.py
   tests:
     name: Synthetic test suite (offscreen Qt)
-    runs-on: ubuntu-24.04
+    if: github.repository_owner == 'antosec00' && (!github.event.repository.private || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, Linux, X64, kira-wsl2]
     timeout-minutes: 60
     env:
       QT_QPA_PLATFORM: offscreen
       QT_QUICK_BACKEND: software
       KIRA_HOME: ${{ github.workspace }}/build/ci-profile
+      CLOUDSDK_CONFIG: ${{ runner.temp }}/ci-gcloud
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - name: Prepare isolated build tools
         run: |
-          python3 -m venv "$RUNNER_TEMP/build-env"
-          "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
-          echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+          if [ -x "$HOME/.local/bin/uv" ]; then
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          else
+            python3 -m venv "$RUNNER_TEMP/build-env"
+            "$RUNNER_TEMP/build-env/bin/pip" install uv==0.12.23
+            echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
+          fi
       - name: Install headless Qt system libraries
-        run: sudo apt-get update -qq && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 fonts-noto-core
+        run: |
+          if dpkg -s libegl1 libgl1 libxkbcommon0 libdbus-1-3 >/dev/null 2>&1; then
+            echo "Headless Qt system libraries already installed on host."
+          else
+            sudo apt-get update -qq && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 fonts-noto-core
+          fi
       - name: Install locked dependencies
         run: uv sync --frozen --extra claude-code
       - name: Run the suite
         run: uv run pytest tests -q -p no:cacheprovider --durations=15
+
