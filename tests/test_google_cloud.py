@@ -640,3 +640,73 @@ async def test_google_cloud_isolated_multi_account_login_switch_and_system_prote
     finally:
         await account.close()
 
+
+async def test_google_cloud_retries_transient_429_resource_exhausted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
+    paths = _paths(tmp_path)
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        url = str(request.url)
+        if url == "https://oauth2.googleapis.com/token":
+            return httpx.Response(200, json={"access_token": "ya29.retry-token", "expires_in": 3600})
+        call_count += 1
+        if call_count <= 2:
+            return httpx.Response(
+                429,
+                headers={"retry-after": "0.01"},
+                json={
+                    "error": {
+                        "code": 429,
+                        "message": "Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.",
+                        "status": "RESOURCE_EXHAUSTED",
+                    }
+                },
+            )
+        sse = (
+            'data: {"candidates": [{"content": {"role": "model", "parts": ['
+            '{"text": "Analisi completata dopo retry 429."}]}}], '
+            '"usageMetadata": {"promptTokenCount": 47900, "candidatesTokenCount": 42}}\n\n'
+        )
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(
+        paths.config / "google-cloud",
+        client=httpx.AsyncClient(transport=transport),
+    )
+    account.accounts = {
+        "kira-test": {
+            "id": "kira-test",
+            "email": "desecurity00@gmail.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok",
+            "project_id": "test-proj",
+        }
+    }
+    account.active_account_id = "kira-test"
+    account.location = "global"
+
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    backend._backoff_delays = (0.01, 0.02, 0.05)
+    try:
+        msg, term = await backend._stream(
+            {
+                "model": "gemini-4-argon",
+                "messages": [{"role": "user", "content": "Analizza arc-node"}],
+            },
+            ctx=None,
+            item_id="item-429-retry",
+        )
+        assert call_count == 3
+        assert msg["content"] == "Analisi completata dopo retry 429."
+        assert term["done"] is True
+        assert backend._last_prompt_tokens == 47900
+    finally:
+        await backend.close()
+        await account.close()
+

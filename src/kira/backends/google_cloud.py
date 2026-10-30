@@ -1474,6 +1474,38 @@ def _thinking_config_for_gemini(model_id: str, effort: str | None, max_output: i
     return None
 
 
+RATE_LIMIT_BACKOFF_DELAYS: tuple[float, ...] = (2.5, 5.0, 10.0, 18.0, 28.0, 40.0)
+
+
+async def _cancelable_sleep(seconds: float, ctx: RunContext | None) -> bool:
+    """Sleep up to `seconds`, returning False early if the run is cancelled."""
+    if seconds <= 0:
+        return True
+    deadline = time.monotonic() + seconds
+    while True:
+        if ctx is not None and ctx.cancel.is_set():
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return True
+        await asyncio.sleep(min(0.25, remaining))
+
+
+def _retry_delay_for_response(
+    response: httpx.Response,
+    retry_idx: int,
+    delays: tuple[float, ...] = RATE_LIMIT_BACKOFF_DELAYS,
+) -> float:
+    base = delays[min(retry_idx, len(delays) - 1)]
+    retry_after = response.headers.get("retry-after") or response.headers.get("Retry-After")
+    if retry_after:
+        with contextlib.suppress(ValueError):
+            parsed = float(retry_after.strip())
+            if parsed > 0:
+                base = min(60.0, max(base, parsed))
+    return base
+
+
 class GoogleCloudBackend(OllamaBackend):
     """Google Cloud / Vertex AI & Gemini backend supporting Gemini, Argon, and Vertex Partner Claude models."""
 
@@ -1484,7 +1516,23 @@ class GoogleCloudBackend(OllamaBackend):
         self.account = account
         self._details: dict[str, Json] = {}
         self._probed: dict[str, bool] = {}
+        self._last_request_completed_at: float = 0.0
+        self._last_prompt_tokens: int = 0
+        self._backoff_delays: tuple[float, ...] = RATE_LIMIT_BACKOFF_DELAYS
         self._populate_builtin_details()
+
+    async def _pace_before_request(self, ctx: RunContext | None) -> None:
+        if ctx is None or self._last_request_completed_at <= 0:
+            return
+        if self._last_prompt_tokens >= 40_000:
+            min_gap = 2.5
+        elif self._last_prompt_tokens >= 20_000:
+            min_gap = 1.5
+        else:
+            return
+        elapsed = time.monotonic() - self._last_request_completed_at
+        if elapsed < min_gap:
+            await _cancelable_sleep(min_gap - elapsed, ctx)
 
     def _populate_builtin_details(self) -> None:
         self._details = {}
@@ -1753,6 +1801,8 @@ class GoogleCloudBackend(OllamaBackend):
         summary_item_id = f"{item_id}:summary" if item_id else None
 
         api_enable_attempted = False
+        rate_limit_retries = 0
+        await self._pace_before_request(ctx)
         idx = 0
         while idx < len(attempts):
             cur_model, cur_loc = attempts[idx]
@@ -1789,6 +1839,16 @@ class GoogleCloudBackend(OllamaBackend):
                     if response.status_code == 404 and idx + 1 < len(attempts):
                         idx += 1
                         continue
+                    if (
+                        response.status_code in (429, 500, 502, 503, 504)
+                        and "global_online_prediction_requests_per_base_model" not in safe_detail
+                        and rate_limit_retries < len(self._backoff_delays)
+                    ):
+                        delay = _retry_delay_for_response(response, rate_limit_retries, self._backoff_delays)
+                        rate_limit_retries += 1
+                        if await _cancelable_sleep(delay, ctx):
+                            headers, query_params, secret = await self._auth_headers_and_params()
+                            continue
                     raise GoogleCloudHTTPError(response, safe_detail)
                 response.raise_for_status()
                 data_lines: list[str] = []
@@ -1866,6 +1926,10 @@ class GoogleCloudBackend(OllamaBackend):
                                                     call_entry["thought_signature"] = sig
                                                 tool_calls.append(call_entry)
                 break
+
+        self._last_request_completed_at = time.monotonic()
+        if isinstance(input_tokens, int) and input_tokens > 0:
+            self._last_prompt_tokens = input_tokens
 
         if ctx and summary_item_id and thought_text:
             await ctx.emit(
@@ -1978,6 +2042,8 @@ class GoogleCloudBackend(OllamaBackend):
 
         locations_to_try = [location] if location == "global" else [location, "global"]
         api_enable_attempted = False
+        rate_limit_retries = 0
+        await self._pace_before_request(ctx)
         loc_idx = 0
         while loc_idx < len(locations_to_try):
             cur_loc = locations_to_try[loc_idx]
@@ -2026,6 +2092,16 @@ class GoogleCloudBackend(OllamaBackend):
                             "'global_online_prediction_requests_per_base_model' in IAM e amministrazione → Quote. "
                             "I modelli nativi Google (Gemini 4 Argon, Gemini 3.1 Pro, Gemini 3.8 Flash) sono invece subito inclusi e attivi."
                         )
+                        raise GoogleCloudHTTPError(response, safe_detail)
+                    if (
+                        response.status_code in (429, 500, 502, 503, 504)
+                        and rate_limit_retries < len(self._backoff_delays)
+                    ):
+                        delay = _retry_delay_for_response(response, rate_limit_retries, self._backoff_delays)
+                        rate_limit_retries += 1
+                        if await _cancelable_sleep(delay, ctx):
+                            headers, query_params, secret = await self._auth_headers_and_params()
+                            continue
                     raise GoogleCloudHTTPError(response, safe_detail)
                 response.raise_for_status()
                 event = ""
@@ -2105,6 +2181,10 @@ class GoogleCloudBackend(OllamaBackend):
                         event = ""
                 break
 
+        self._last_request_completed_at = time.monotonic()
+        if isinstance(input_tokens, int) and input_tokens > 0:
+            self._last_prompt_tokens = input_tokens
+
         if not message_stopped:
             raise StreamError("Vertex AI Claude stream ended without message_stop")
 
@@ -2174,3 +2254,4 @@ class GoogleCloudBackend(OllamaBackend):
             "tool_input_incomplete": incomplete_tool_input,
         }
         return message, terminal
+
