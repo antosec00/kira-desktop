@@ -9,7 +9,7 @@ Rectangle {
     property real maximumBodyHeight: 180
     readonly property var summary: workspace.reasoning.current
     readonly property var history: workspace.reasoning.history
-    readonly property bool isStreaming: summary.available === true && summary.partial === true && workspace.busy
+    readonly property bool isStreaming: summary.available === true && !summary.historical && (summary.partial === true || workspace.busy)
     visible: workspace.uiPreferences.show_reasoning_summaries && (summary.available === true || history.length > 0)
     implicitHeight: summaryColumn.implicitHeight + 14
     radius: 10
