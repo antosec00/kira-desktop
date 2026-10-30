@@ -1525,6 +1525,49 @@ def _is_canned_security_refusal(text: str) -> bool:
     return any(marker in head for marker in _CANNED_REFUSAL_MARKERS)
 
 
+def _synthesize_tool_thought_summary(tool_calls: list[Json], text_preamble: str = "") -> str:
+    """Build a structured thought step summary when Vertex AI only returns encrypted thoughtSignature on tool calls."""
+    if not tool_calls:
+        return ""
+    steps: list[str] = []
+    if text_preamble.strip():
+        steps.append(text_preamble.strip())
+    for call in tool_calls:
+        fn = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(fn, dict):
+            continue
+        name = str(fn.get("name") or "")
+        args = fn.get("arguments") if isinstance(fn.get("arguments"), dict) else {}
+        if name == "read_file":
+            path = str(args.get("path") or "")
+            base = Path(path).name if path else "file"
+            steps.append(f"**Analisi del codice · {base}**\nIspezione di `{path}`.")
+        elif name in {"write_file", "edit_file"}:
+            path = str(args.get("path") or "")
+            base = Path(path).name if path else "file"
+            steps.append(f"**Aggiornamento codice · {base}**\nModifica del file `{path}`.")
+        elif name == "list_files":
+            path = str(args.get("path") or ".")
+            base = Path(path).name or path
+            steps.append(f"**Esplorazione directory · {base}**\nVerifica dei file in `{path}`.")
+        elif name == "run_command":
+            argv = args.get("argv")
+            cmd_str = " ".join(str(x) for x in argv) if isinstance(argv, list) else str(args.get("command") or "")
+            short_cmd = cmd_str[:140] + ("…" if len(cmd_str) > 140 else "")
+            if "cargo" in cmd_str:
+                title = "Verifica e compilazione · cargo"
+            elif "docker" in cmd_str:
+                title = "Verifica container · docker"
+            elif any(k in cmd_str for k in ("grep", "rg", "sed", "find")):
+                title = "Ricerca nel codice sorgente"
+            else:
+                title = f"Esecuzione comando · {(argv[0] if isinstance(argv, list) and argv else 'shell')}"
+            steps.append(f"**{title}**\nEsecuzione: `{short_cmd}`.")
+        else:
+            steps.append(f"**Esecuzione strumento · {name}**\nAvvio operazione `{name}`.")
+    return "\n\n".join(steps)
+
+
 def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[Json]:
     """Strip prior canned refusals and bound historical tool outputs for Vertex AI DSQ TPM quotas."""
     if not isinstance(source, list):
@@ -2178,6 +2221,25 @@ class GoogleCloudBackend(OllamaBackend):
         self._last_request_completed_at = time.monotonic()
         if isinstance(input_tokens, int) and input_tokens > 0:
             self._last_prompt_tokens = input_tokens
+
+        if (
+            ctx
+            and summary_item_id
+            and not thought_text
+            and tool_calls
+            and _thinking_config_for_gemini(model_id, effort_str, max_output) is not None
+        ):
+            thought_text = _synthesize_tool_thought_summary(tool_calls, text)
+            if thought_text:
+                await ctx.emit(
+                    "reasoning.summary.delta",
+                    {
+                        "source": "provider_summary",
+                        "provider": BACKEND,
+                        "item_id": summary_item_id,
+                        "content": thought_text,
+                    },
+                )
 
         if ctx and summary_item_id and thought_text:
             await ctx.emit(
