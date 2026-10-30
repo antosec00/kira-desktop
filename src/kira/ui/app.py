@@ -67,6 +67,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         engine.rootContext().setContextProperty("workbench", workspace.workbench)
         engine.rootContext().setContextProperty("assistant", workspace.assistant)
         engine.rootContext().setContextProperty("ambient", workspace.ambient)
+        engine.rootContext().setContextProperty("mentions", workspace.mentions)
         engine.rootContext().setContextProperty("directAccount", workspace.directAccount)
         engine.rootContext().setContextProperty("deepseekAccount", workspace.deepseekAccount)
         engine.rootContext().setContextProperty("mcpServers", workspace.mcpServers)

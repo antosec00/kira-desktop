@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
 
+from kira.domain.mentions import parse_inline_slash_command
 from kira.ui.presentation import refresh_ui, tr
 from kira.ui.actions import quick_actions
 from kira.ui.drafts import MAX_PENDING
@@ -414,6 +415,8 @@ class WorkbenchController(QObject):
             return False
         if self._goal_command_text(self.workspace.draftText) is not None:
             return not self.workspace.draft_image_ids()
+        if parse_inline_slash_command(self.workspace.draftText) is not None:
+            return True
         if self.guidanceRetryAvailable:
             return not self.workspace.draft_image_ids()
         if self.workspace.selectedActiveRunId:
@@ -487,12 +490,89 @@ class WorkbenchController(QObject):
     def guidanceWarning(self) -> bool:
         return self._guidance_state in {"not_delivered", "unknown"}
 
+    def _clear_slash_draft(self, raw_prompt: str) -> None:
+        if raw_prompt:
+            project = str(self.workspace.project.get("id", ""))
+            session = self.workspace.sessionId
+            self._acknowledge_prompt(raw_prompt, project, session)
+            if self.workspace.draftText == raw_prompt:
+                self.workspace.setDraftText("")
+                self.workspace.promptAccepted.emit()
+
+    @Slot(str, str, result=bool)
+    def executeSlashCommand(self, command: str, arg: str = "", raw_prompt: str = "") -> bool:
+        cmd = (command or "").strip().casefold()
+        clean_arg = (arg or "").strip()
+        if cmd == "/goal":
+            self._submit_goal_command(clean_arg, raw_prompt or f"/goal {clean_arg}".strip())
+            return True
+        if cmd == "/clear":
+            self._clear_slash_draft(raw_prompt)
+            self.workspace.newChat()
+            return True
+        if cmd == "/compact":
+            self._clear_slash_draft(raw_prompt)
+            if self.canCompact:
+                self.compact()
+            else:
+                self.showPanel.emit("chat_tools")
+            return True
+        if cmd == "/diff":
+            self._clear_slash_draft(raw_prompt)
+            self.refreshChanges(clean_arg)
+            self.showPanel.emit("changes")
+            return True
+        if cmd == "/checkpoint":
+            self._clear_slash_draft(raw_prompt)
+            self.createCheckpoint(clean_arg)
+            self.showPanel.emit("changes")
+            return True
+        if cmd == "/editor":
+            self._clear_slash_draft(raw_prompt)
+            if clean_arg:
+                self.workspace.canvas.openProjectFile(clean_arg)
+            else:
+                self.workspace.canvas.openProjectExplorer()
+            return True
+        if cmd == "/spotlight":
+            self._clear_slash_draft(raw_prompt)
+            self.workspace.ambient.openSpotlight()
+            return True
+        if cmd == "/research":
+            if clean_arg:
+                research_prompt = tr(
+                    "[Direttiva /research · Indagine strutturata e verifica delle fonti]\n"
+                    "Analizza in profondità il seguente tema, verifica i fatti e cita le fonti rilevanti:\n\n{topic}",
+                    topic=clean_arg,
+                )
+                self._clear_slash_draft(raw_prompt)
+                self.send(research_prompt)
+            else:
+                self.replaceComposer.emit(tr("Fai una ricerca approfondita con verifica delle fonti su: "))
+            return True
+        if cmd in {"/plan", "/review", "/execute", "/recap"}:
+            target_mode = cmd[1:]
+            self.setMode(target_mode)
+            if clean_arg:
+                self._clear_slash_draft(raw_prompt)
+                if self.modeAvailable:
+                    self.workspace.sendMode(clean_arg, target_mode)
+            else:
+                self._clear_slash_draft(raw_prompt)
+            return True
+        return False
+
     @Slot(str)
     def submit(self, prompt: str) -> None:
         command = self._goal_command_text(prompt)
         if command is not None:
             self._submit_goal_command(command, prompt)
             return
+        parsed = parse_inline_slash_command(prompt)
+        if parsed is not None:
+            cmd, arg = parsed
+            if self.executeSlashCommand(cmd, arg, prompt):
+                return
         if not self.canSubmit:
             return
         if self.guidanceMode:
@@ -886,6 +966,8 @@ class WorkbenchController(QObject):
 
     @Slot(str)
     def searchFiles(self, query: str) -> None:
+        if hasattr(self.workspace, "_mentions"):
+            self.workspace.mentions.searchUniversal(query)
         if not self.workspace.connected or not self.workspace.project:
             return
         self._query_generation += 1
