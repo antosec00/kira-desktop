@@ -710,3 +710,112 @@ async def test_google_cloud_retries_transient_429_resource_exhausted(
         await backend.close()
         await account.close()
 
+
+async def test_google_cloud_context_compaction_and_quota_pool_fallback_on_persistent_429(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from kira.backends.google_cloud import _compact_messages_for_vertex
+
+    # Verify Antigravity-aligned max_output_tokens (16384) for Gemini 4 Argon
+    argon_entries = [m for m in BUILTIN_MODEL_CATALOG if m["id"] in {"gemini-4-argon", "argon"}]
+    assert len(argon_entries) == 2
+    for entry in argon_entries:
+        assert entry["max_output_tokens"] == 16_384
+
+    # Verify historical tool output compaction keeps payload within threshold while preserving latest tool outputs
+    huge_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": "System prompt"},
+        {"role": "user", "content": "Analizza il repository"},
+    ]
+    for idx in range(10):
+        huge_messages.append(
+            {
+                "role": "assistant",
+                "content": f"Leggo il file {idx}",
+                "tool_calls": [{"id": f"call-{idx}", "name": "read_file", "arguments": f'{{"path": "f{idx}.md"}}'}],
+            }
+        )
+        huge_messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": f"call-{idx}",
+                "name": "read_file",
+                "content": f"FILE_{idx}_" + ("X" * 18_000),
+            }
+        )
+
+    compacted = _compact_messages_for_vertex(huge_messages, max_chars=75_000)
+    total_chars = sum(len(str(m.get("content") or "")) for m in compacted)
+    assert total_chars <= 80_000
+    # Older tool output is compacted with marker, while the latest tool output remains intact
+    assert "[historical tool output compacted for Vertex AI quota]" in compacted[3]["content"]
+    assert len(compacted[-1]["content"]) > 18_000
+
+    # Verify automatic fallback from gemini-4-argon to gemini-3.1-pro-preview when 429 persists
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
+    paths = _paths(tmp_path)
+    urls_called: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://oauth2.googleapis.com/token":
+            return httpx.Response(200, json={"access_token": "ya29.fallback-token", "expires_in": 3600})
+        urls_called.append(url)
+        if "/models/gemini-4-argon:" in url:
+            return httpx.Response(
+                429,
+                headers={"retry-after": "0.01"},
+                json={
+                    "error": {
+                        "code": 429,
+                        "message": "Resource exhausted. Please try again later.",
+                        "status": "RESOURCE_EXHAUSTED",
+                    }
+                },
+            )
+        assert "/models/gemini-3.1-pro-preview:" in url
+        sse = (
+            'data: {"candidates": [{"content": {"role": "model", "parts": ['
+            '{"text": "Completato tramite pool separato gemini-3.1-pro-preview."}]}}], '
+            '"usageMetadata": {"promptTokenCount": 12400, "candidatesTokenCount": 28}}\n\n'
+        )
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(
+        paths.config / "google-cloud",
+        client=httpx.AsyncClient(transport=transport),
+    )
+    account.accounts = {
+        "kira-test": {
+            "id": "kira-test",
+            "email": "desecurity00@gmail.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok",
+            "project_id": "test-proj",
+        }
+    }
+    account.active_account_id = "kira-test"
+    account.location = "global"
+
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    backend._backoff_delays = (0.01, 0.01, 0.01)
+    try:
+        msg, term = await backend._stream(
+            {
+                "model": "gemini-4-argon",
+                "messages": huge_messages,
+            },
+            ctx=None,
+            item_id="item-429-fallback",
+        )
+        assert any("/models/gemini-4-argon:" in u for u in urls_called)
+        assert any("/models/gemini-3.1-pro-preview:" in u for u in urls_called)
+        assert msg["content"] == "Completato tramite pool separato gemini-3.1-pro-preview."
+        assert term["done"] is True
+    finally:
+        await backend.close()
+        await account.close()
+
+
