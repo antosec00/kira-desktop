@@ -34,7 +34,7 @@ Rectangle {
             Layout.fillWidth: true
         }
         ReadText {
-            text: qsTr("Usa i modelli Google Cloud (Gemini 2.5/3, Argon e Claude Opus/Sonnet su Vertex AI) con crediti Google Cloud o saldo a consumo tramite Application Default Credentials (gcloud ADC su WSL2/Linux) oppure con una chiave API.")
+            text: qsTr("Usa i modelli Google Cloud con crediti Google Cloud o saldo a consumo tramite Application Default Credentials (gcloud ADC su WSL2/Linux) oppure con una chiave API. Con i crediti gratuiti della prova Google Cloud sono inclusi tutti i modelli nativi Google (Gemini 4 Argon, Gemini 3.1 Pro, Gemini 3.8/3.5 Flash); i modelli Partner (Claude Opus/Sonnet su Vertex AI) richiedono invece l'attivazione di un ciclo di fatturazione reale.")
             Layout.fillWidth: true
             color: appearance.colors.muted
         }
