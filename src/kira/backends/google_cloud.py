@@ -1566,6 +1566,23 @@ def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[J
                 + "\n...[historical tool output compacted for Vertex AI quota]...\n"
                 + content[-tail_len:]
             )
+    total_after_pass1 = sum(len(str(m.get("content", ""))) for m in compacted)
+    if total_after_pass1 > max_chars and len(compacted) > 20:
+        deep_cutoff = max(1, len(compacted) - 16)
+        for idx in range(deep_cutoff):
+            msg = compacted[idx]
+            if not isinstance(msg, dict):
+                continue
+            role = msg.get("role")
+            content = msg.get("content")
+            if not isinstance(content, str) or len(content) <= 360:
+                continue
+            if role == "tool" or "Recorded tool outcome" in content:
+                msg["content"] = (
+                    content[:180]
+                    + "\n...[earlier tool output summarized]...\n"
+                    + content[-140:]
+                )
     return compacted
 
 
@@ -1907,6 +1924,7 @@ class GoogleCloudBackend(OllamaBackend):
 
         api_enable_attempted = False
         rate_limit_retries = 0
+        empty_turn_retries = 0
         await self._pace_before_request(ctx)
         idx = 0
         while idx < len(attempts):
@@ -2106,20 +2124,32 @@ class GoogleCloudBackend(OllamaBackend):
                     continue
                 raise
 
-            if (
-                rate_limit_fallbacks
-                and not deltas_flushed
+            is_refusal_or_cutoff = (
+                not deltas_flushed
                 and not tool_calls
                 and (
                     _is_canned_security_refusal(text)
-                    or finish_reason in {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"}
+                    or finish_reason
+                    in {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MALFORMED_FUNCTION_CALL", "RECITATION", "OTHER"}
+                    or not text.strip()
                 )
-            ):
-                next_fb = rate_limit_fallbacks.pop(0)
-                target_loc = "global" if project else cur_loc
-                if (next_fb, target_loc) not in attempts[idx + 1 :]:
-                    attempts.insert(idx + 1, (next_fb, target_loc))
-                idx += 1
+            )
+            if is_refusal_or_cutoff and (rate_limit_fallbacks or empty_turn_retries < 2):
+                empty_turn_retries += 1
+                if rate_limit_fallbacks:
+                    next_fb = rate_limit_fallbacks.pop(0)
+                    target_loc = "global" if project else cur_loc
+                    if (next_fb, target_loc) not in attempts[idx + 1 :]:
+                        attempts.insert(idx + 1, (next_fb, target_loc))
+                    idx += 1
+                    target_model_label = next_fb
+                else:
+                    target_model_label = cur_model
+                reason_label = (
+                    f"Risposta vuota/troncata dopo il pensiero ({finish_reason or 'nessun output'}) su {cur_model}"
+                    if not text.strip()
+                    else f"Rifiuto falso-positivo del classificatore interno su {cur_model}"
+                )
                 text = ""
                 finish_reason = ""
                 pending_deltas.clear()
@@ -2127,16 +2157,17 @@ class GoogleCloudBackend(OllamaBackend):
                     await ctx.emit(
                         "backend.notice",
                         {
-                            "message": (
-                                f"Rifiuto falso-positivo del classificatore interno su {cur_model}; "
-                                f"proseguo automaticamente il turno tramite {next_fb}."
-                            ),
-                            "model": next_fb,
+                            "message": f"{reason_label}; proseguo automaticamente il turno tramite {target_model_label}.",
+                            "model": target_model_label,
                         },
                     )
                 headers, query_params, secret = await self._auth_headers_and_params()
                 query_params["alt"] = "sse"
                 continue
+
+            if not text.strip() and not tool_calls and thought_text.strip():
+                text = thought_text.strip()
+                pending_deltas.append(text)
 
             if pending_deltas and ctx:
                 for chunk_val in pending_deltas:
