@@ -165,7 +165,7 @@ class TeamController(QObject):
         self.evidenceChanged.emit()
 
     def _new_draft(self) -> Json:
-        supported = self.workspace.backend in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}
+        supported = self.workspace.backend in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud"}
         return {"mode": "automatic", "goal": "", "max_agents": DEFAULT_MAX_AGENTS,
                 "backend": self.workspace.backend if supported else "codex",
                 "concurrency": DEFAULT_CONCURRENCY, "round_limit": DEFAULT_ROUND_LIMIT,
@@ -391,6 +391,11 @@ class TeamController(QObject):
                 return str(refresh_ui((catalog or {}).get("error",
                                        tr("Accedi a DeepSeek dal pannello Modelli per caricare il catalogo."))))
             return tr("Scegli un modello DeepSeek dal catalogo per il team.")
+        if backend == "google_cloud":
+            if catalog is None or not catalog.get("available"):
+                return str(refresh_ui((catalog or {}).get("error",
+                                       tr("Configura Google Cloud dal pannello Modelli per caricare il catalogo."))))
+            return tr("Scegli un modello Google Cloud · Vertex AI dal catalogo per il team.")
         if catalog is None:
             return tr("Aggiorna il catalogo Codex oppure inserisci il modello già configurato.")
         if not catalog.get("available"):
@@ -616,7 +621,7 @@ class TeamController(QObject):
     @Slot()
     def prepareDraft(self) -> None:
         """Inherit the current conversation choice until the user edits that team field."""
-        if self.workspace.backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}:
+        if self.workspace.backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud"}:
             return
         defaults = self._new_draft()
         edited = self._config_edits.get(self._project_id, set())
@@ -635,7 +640,7 @@ class TeamController(QObject):
 
     @Slot(str)
     def setBackend(self, backend: str) -> None:
-        if backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"} or self.busy or self.workspace.busy:
+        if backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud"} or self.busy or self.workspace.busy:
             return
         self._config_edits.setdefault(self._project_id, set()).add("backend")
         if self._draft["backend"] == backend:

@@ -70,6 +70,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         engine.rootContext().setContextProperty("mentions", workspace.mentions)
         engine.rootContext().setContextProperty("directAccount", workspace.directAccount)
         engine.rootContext().setContextProperty("deepseekAccount", workspace.deepseekAccount)
+        engine.rootContext().setContextProperty("googleAccount", workspace.googleAccount)
         engine.rootContext().setContextProperty("mcpServers", workspace.mcpServers)
         engine.rootContext().setContextProperty("canvas", workspace.canvas)
         engine.rootContext().setContextProperty("accountUsage", workspace.accountUsage)

@@ -33,7 +33,7 @@ def attach_studio(studio: Studio, session: Json, project: Json, run_id: str,
     """Enable only for an allowed ordinary chat, on a new executable model turn."""
     if not studio_domain.STUDIO_AVAILABLE:
         return options
-    if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account"}
+    if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud"}
             or not kira_tools_enabled(session) or mode != "execute"
             or project["permission"] not in WRITE_PERMISSIONS
             or studio.service._closing or studio.service.stopping.is_set()):

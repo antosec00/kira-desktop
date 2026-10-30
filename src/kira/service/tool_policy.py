@@ -11,5 +11,5 @@ def kira_tools_enabled(session: Json) -> bool:
     Callback admission must use the same effective policy even when it reloads
     the original persisted session row.
     """
-    return (session.get("backend") in {"deepseek_account", "deepseek_web"}
+    return (session.get("backend") in {"deepseek_account", "deepseek_web", "google_cloud"}
             or session.get("settings", {}).get("tools", True) is not False)

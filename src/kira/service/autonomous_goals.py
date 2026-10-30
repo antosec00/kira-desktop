@@ -112,7 +112,7 @@ class AutonomousGoals:
         if not kira_tools_enabled(session):
             raise KiraError("UNSUPPORTED", "Autonomous goals require the selected model's Kira tools")
         if session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account",
-                                      "claude_code"}:
+                                      "claude_code", "google_cloud"}:
             raise KiraError("UNSUPPORTED", "This provider does not expose Kira goal tools")
         if self.store.db.execute("SELECT 1 FROM session_workbench WHERE session_id=? AND archived=1",
                                  (session["id"],)).fetchone():

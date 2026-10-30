@@ -14,12 +14,13 @@ a ogni risposta.
 | **Ollama** | Server Ollama già installato; endpoint in **Impostazioni → Connessioni → Endpoint Ollama** | Kira | Sì (strumenti verificati al primo uso; screenshot solo con modello che accetta immagini); no Computer senza visione | No (solo percorsi come testo) | Sì | Sì | Sì | No |
 | **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) | No (usa i propri strumenti nativi) | No (percorsi come testo) | Sì | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli** o **Impostazioni → Connessioni** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
+| **Google Cloud · Vertex AI** | **Modelli → Google Cloud → Aggiungi / Cambia account Google** (OAuth2 PKCE isolato), `gcloud` ADC di sistema in sola lettura o API Key | Kira | Sì | Sì (PNG/JPEG/WebP/GIF) | Sì | Sì | Sì | Sì |
 | **DeepSeek Account** (sperimentale) | **Modelli → DeepSeek Account → Accedi con DeepSeek**, oppure **Usa DeeperSeeker** | Kira | Sì | Sì, solo modelli con visione | Sì | Sì | Sì | No |
 | **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | Sì, con DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Extra `claude-code` dal sorgente; accesso già fatto in Claude Code | Il provider (strumenti integrati di Claude Code) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | No | Sì | Sì | No |
 
 La colonna «Chi esegue gli strumenti» è la differenza più importante tra i
-provider. Con Ollama, OpenAI diretto e DeepSeek il modello *chiede* a Kira di
+provider. Con Ollama, OpenAI diretto, Google Cloud · Vertex AI e DeepSeek il modello *chiede* a Kira di
 leggere un file, lanciare un comando o aprire una pagina, e Kira esegue
 l'operazione applicando permessi, modalità e approvazioni del progetto. Con
 Codex e Claude Code le operazioni sui file e i comandi sono eseguiti dal runtime
@@ -763,6 +764,80 @@ del tuo account nel browser.
 
 Claude Code non fornisce a Kira un riepilogo pubblico del ragionamento.
 
+## Google Cloud · Vertex AI
+
+Il provider **Google Cloud · Vertex AI** (`google_cloud`) permette di utilizzare
+i modelli nativi di Google e i modelli Partner di Vertex AI usando i crediti o
+il saldo di fatturazione del tuo progetto Google Cloud, con esecuzione completa
+degli strumenti da parte di Kira, supporto visione e riepiloghi pubblici del
+ragionamento.
+
+### Collegamento e Multi-Account isolato
+
+In **Modelli → Google Cloud** puoi scegliere tra due modalità di autenticazione:
+
+1. **Google Cloud CLI (ADC / OAuth2) + Multi-Account isolato**:
+   - **Account di sistema WSL2 / Linux in sola lettura (`id: "system"`)**: se sul
+     sistema host è già presente una configurazione `gcloud`
+     (`~/.config/gcloud/application_default_credentials.json`), Kira la rileva
+     in **sola lettura** (mostrando email e `project_id` con il badge **Sistema
+     WSL2**), senza mai modificarla o scollegare altri strumenti collegati a
+     `gcloud`.
+   - **Aggiungi / Cambia account Google (isolato in Kira)**: premendo **Aggiungi
+     / Cambia account Google**, Kira avvia un flusso locale **OAuth2 PKCE
+     loopback** (`prompt=select_account consent`) che apre il selettore account
+     di Google nel browser. Il token viene salvato esclusivamente in
+     `~/.config/kira/google-cloud/account.json` (permessi `0600`).
+   - **Rilevamento progetto e abilitazione automatica API**: al completamento
+     del login OAuth, Kira interroga `cloudresourcemanager.googleapis.com` per
+     individuare il `project_id` attivo dell'account e abilita automaticamente
+     l'API **Vertex AI (`aiplatform.googleapis.com`)** tramite
+     `serviceusage.googleapis.com`.
+   - **Cambio account con un clic**: i chip degli account salvati nel pannello
+     permettono di passare istantaneamente da un account Google all'altro (o di
+     tornare all'account di sistema WSL2), aggiornando automaticamente il
+     `project_id` associato.
+
+2. **API Key (Google Cloud / Gemini API)**:
+   - Puoi inserire una chiave API (`AIza...`) salvata in modo protetto (`0600`)
+     e sottoposta a redazione automatica nei log e nelle esportazioni.
+
+### Modelli supportati e region (`global`)
+
+Il catalogo integrato espone:
+
+- **Modelli nativi Google su Vertex AI** (attivi da subito con crediti Google
+  Cloud, Free Trial o fatturazione a consumo sull'endpoint `locations/global`):
+  - `gemini-4-argon` (**Argon · Google Cloud**, con alias automatico anche per
+    `argon`)
+  - `gemini-3.1-pro-preview` (**Gemini 3.1 Pro · Preview**)
+  - `gemini-3.8-flash` (**Gemini 3.8 Flash**)
+  - `gemini-3.5-flash` (**Gemini 3.5 Flash**)
+  - `gemini-3.5-flash-lite` (**Gemini 3.5 Flash-Lite**)
+  - `gemini-3-flash-preview` (**Gemini 3 Flash · Preview**)
+  - Per i modelli Gemini 3.x e 4 Argon, Kira configura automaticamente
+    `thinkingConfig.thinkingLevel` (`LOW`, `MEDIUM`, `HIGH`) e riceve i
+    riepiloghi pubblici del ragionamento (`includeThoughts: true`). Se una
+    region regionale (`us-central1`, `europe-west1`) restituisce `404`, Kira
+    effettua automaticamente il fallback sull'endpoint `global`.
+- **Modelli Partner Anthropic Claude su Vertex AI** (`claude-opus-5-5`,
+  `claude-sonnet-5-5` tramite `:streamRawPredict`):
+  - A differenza dei modelli nativi Google, su Google Cloud i modelli di terze
+    parti del **Vertex AI Model Garden** hanno per impostazione predefinita una
+    quota pari a `0` (`global_online_prediction_requests_per_base_model`).
+  - Per utilizzarli sul tuo progetto Google Cloud devi:
+    1. Aprire **Google Cloud Console → Vertex AI → Model Garden**, cercare la
+       scheda del modello Claude e premere **Enable / Request Access**
+       accettando i termini del Partner Marketplace Anthropic;
+    2. Disporre di un account di fatturazione Google Cloud completo (i crediti
+       promozionali *Free Trial* iniziali non coprono modelli Marketplace di
+       terze parti) e verificare che la quota
+       `aiplatform.googleapis.com/global_online_prediction_requests_per_base_model`
+       sia maggiore di zero in **IAM e amministrazione → Quote**.
+- **Modelli personalizzati**: nel campo **Modelli personalizzati** puoi
+  aggiungere qualsiasi ulteriore ID modello del Model Garden separato da
+  virgola.
+
 ## Cambiare provider o modello nella stessa chat
 
 Puoi cambiare modello e livello di ragionamento dal chip del modello senza
@@ -782,7 +857,7 @@ visione.
 **Che cosa non si trasferisce:** lo stato interno del provider, il ragionamento
 privato, lo stato nativo cifrato e le capacità specifiche. Kira passa al nuovo
 provider un contesto portabile entro limiti dichiarati: con Codex, Ollama,
-DeepSeek e Claude Code un estratto della conversazione e degli esiti degli
+Google Cloud, DeepSeek e Claude Code un estratto della conversazione e degli esiti degli
 strumenti; con OpenAI diretto l'intero archivio paginato nel suo contesto
 persistente. Istruzioni del progetto, note importanti e obiettivo vengono
 forniti a parte. Le chiamate di strumenti precedenti sono dati storici: non
@@ -837,6 +912,7 @@ stai consultando: non cambia il provider della chat.
 | --- | --- | --- |
 | Codex | Finestre di quota, percentuali, ripristino, crediti letti dall'account Codex (**Aggiorna**) | Token dell'ultimo rapporto del provider |
 | OpenAI diretto | Account della chat e link **Utilizzo del piano ↗**; nessuna quota esposta | Token registrati negli ultimi sette giorni per questo profilo |
+| Google Cloud · Vertex AI | Account attivo (isolato o sistema WSL2), `project_id` e region (`global`) | Token di input/cache/output e telemetria di costo API stimata sulle tariffe Vertex AI |
 | Ollama | Nessun account | Token, durate e contesto caricato dall'ultima risposta; RAM/VRAM del modello se Ollama le riporta |
 | DeepSeek Account | Nessuna quota esposta | Token riportati dalle risposte |
 | DeepSeek Web | Nessuna quota esposta | Nessuna: il sito non riporta conteggi di token |
@@ -890,6 +966,7 @@ quello corrente.
 | --- | --- |
 | Codex | Sì |
 | OpenAI diretto · ChatGPT | Sì |
+| Google Cloud · Vertex AI | Sì (`includeThoughts` su Gemini 3.x / 4 Argon e blocchi `thinking` su Claude Vertex) |
 | Ollama | No (il ragionamento interno grezzo resta escluso) |
 | DeepSeek Account | No |
 | DeepSeek Web | Sì, con DeepSeek Reasoner (web): il ragionamento che il sito mostra |

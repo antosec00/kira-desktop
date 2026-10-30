@@ -622,7 +622,8 @@ class McpServers:
         enabled = self.enabled_servers()
         if (not enabled
                 or session["backend"] not in {"codex", "openai_chatgpt", "ollama",
-                                              "deepseek_account", "deepseek_web", "claude_code"}
+                                              "deepseek_account", "deepseek_web", "claude_code",
+                                              "google_cloud"}
                 or not kira_tools_enabled(session)
                 or self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?",
                                          (session["id"],)).fetchone()):

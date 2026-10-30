@@ -81,7 +81,7 @@ class ProjectTools:
     def attach(self, session: Json, project: Json, run_id: str, cancel: asyncio.Event,
                mode: str, options: Json) -> Json:
         if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account",
-                                       "deepseek_web", "claude_code"}
+                                       "deepseek_web", "claude_code", "google_cloud"}
                 or not kira_tools_enabled(session)
                 or self.store.db.execute("SELECT 1 FROM team_members WHERE session_id=?", (session["id"],)).fetchone()):
             return options

@@ -108,7 +108,8 @@ def present_metrics(usage: dict[str, Any], resources: dict[str, Any],
     provider = {"codex": "Codex", "ollama": "Ollama",
                 "openai_chatgpt": tr("OpenAI diretto · ChatGPT"),
                 "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
-                "claude_code": tr("Claude Code")}.get(source, source)
+                "claude_code": tr("Claude Code"),
+                "google_cloud": tr("Google Cloud · Vertex AI")}.get(source, source)
     scope = usage.get("scope")
     claude = source == "claude_code"
     heading = tr("Ultima richiesta") if scope == "last_request" else tr("Ultima misura del provider")

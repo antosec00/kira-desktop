@@ -40,7 +40,7 @@ class AttachmentInputs:
             f"SELECT attachment_id FROM {kind}_image_attachments WHERE {kind}_id=? ORDER BY position", (identity,))]
 
     def validate(self, session: Json, identifiers: list[str]) -> list[Json]:
-        image_capable = (session["backend"] in {"openai_chatgpt", "deepseek_account", "claude_code"}
+        image_capable = (session["backend"] in {"openai_chatgpt", "deepseek_account", "claude_code", "google_cloud"}
                          or session["backend"] == "deepseek_web"
                          and session.get("model") in {"deepseek-v4-flash", "deepseek-reasoner"})
         if identifiers and not image_capable:

@@ -294,7 +294,7 @@ class TurnControls:
         session = self.store.one("sessions", run["session_id"])
         project = self.store.one("projects", session["project_id"])
         settings = {key: value for key, value in session["settings"].items() if key != "chat_title"}
-        if (session["backend"] in {"openai_chatgpt", "ollama", "deepseek_account"}
+        if (session["backend"] in {"openai_chatgpt", "ollama", "deepseek_account", "google_cloud"}
                 and settings.get("browser_action_approval", "ask") in ("ask", "always")):
             # This explicit desktop consent can change during a turn. Web
             # checks the current policy again before each browser effect;
@@ -314,7 +314,7 @@ class TurnControls:
 
     def bind_run(self, run_id: str, session: Json) -> RunControl | None:
         """Open service-owned admission before a boundary provider starts work."""
-        if (session.get("backend") not in {"openai_chatgpt", "ollama", "deepseek_account"} or session.get("team_id")
+        if (session.get("backend") not in {"openai_chatgpt", "ollama", "deepseek_account", "google_cloud"} or session.get("team_id")
                 or self.service.teams.data.link(run_id) is not None):
             return None
         scope = self._scope(run_id)

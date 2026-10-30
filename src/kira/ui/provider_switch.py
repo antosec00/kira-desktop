@@ -29,11 +29,21 @@ class ProviderSwitchController(QObject):
         self._deepseek_connected = workspace.deepseekAccount.connected
         self._deepseek_proxy_enabled = workspace.deepseekAccount.proxyEnabled
         self._deepseek_web_connected = workspace.deepseekAccount.webConnected
+        self._google_connected = workspace.googleAccount.connected
         workspace.chatChanged.connect(self._chat_changed)
         workspace.changed.connect(self.changed.emit)
         workspace.directAccount.changed.connect(self.changed.emit)
         workspace.deepseekAccount.changed.connect(self._deepseek_account_changed)
+        workspace.googleAccount.changed.connect(self._google_account_changed)
         workspace.client.disconnected.connect(self._disconnected)
+
+    def _google_account_changed(self) -> None:
+        connected = self.workspace.googleAccount.connected
+        if connected == self._google_connected:
+            return
+        self._google_connected = connected
+        if self._context is not None and self._backend == "google_cloud":
+            self.refreshCatalog()
 
     def _deepseek_account_changed(self) -> None:
         connected = self.workspace.deepseekAccount.connected
@@ -128,7 +138,7 @@ class ProviderSwitchController(QObject):
 
     def _begin(self, backend: str, preset: str) -> None:
         if (backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
-                            "claude_code"} or not self.workspace.sessionId
+                            "claude_code", "google_cloud"} or not self.workspace.sessionId
                 or not self.workspace.connected or self.workspace.busy or self.workspace.teams.busy
                 or self.workspace.assistant.active or self.workspace._session.get("team_id")):
             return
