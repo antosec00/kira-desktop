@@ -347,7 +347,23 @@ async def test_google_cloud_vertex_anthropic_claude_streaming(
         await account.close()
 
 
-async def test_service_google_cloud_account_and_discover_ipc(tmp_path: Path) -> None:
+async def test_service_google_cloud_account_and_discover_ipc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gcloud_dir = tmp_path / "ipc_gcloud"
+    gcloud_dir.mkdir(parents=True)
+    (gcloud_dir / "application_default_credentials.json").write_text(
+        json.dumps(
+            {
+                "type": "authorized_user",
+                "client_id": "cid",
+                "client_secret": "csec",
+                "refresh_token": "rtok",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(gcloud_dir))
     paths = _paths(tmp_path)
     service = Service(paths)
     await service.start()
@@ -384,7 +400,10 @@ async def test_service_google_cloud_account_and_discover_ipc(tmp_path: Path) -> 
         await service.close()
 
 
-async def test_google_cloud_auto_enable_vertex_api_and_argon_global_fallback(tmp_path: Path) -> None:
+async def test_google_cloud_auto_enable_vertex_api_and_argon_global_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
     paths = _paths(tmp_path)
     api_enabled = False
     requests_seen: list[tuple[str, dict[str, Any]]] = []
@@ -434,8 +453,8 @@ async def test_google_cloud_auto_enable_vertex_api_and_argon_global_fallback(tmp
         paths.config / "google-cloud",
         client=httpx.AsyncClient(transport=transport),
     )
-    account._accounts = [
-        {
+    account.accounts = {
+        "kira-test": {
             "id": "kira-test",
             "email": "desecurity00@gmail.com",
             "client_id": "cid",
@@ -443,7 +462,7 @@ async def test_google_cloud_auto_enable_vertex_api_and_argon_global_fallback(tmp
             "refresh_token": "rtok",
             "project_id": "test-proj",
         }
-    ]
+    }
     account.active_account_id = "kira-test"
     account.location = "us-central1"
 
