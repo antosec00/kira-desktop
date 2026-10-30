@@ -1494,6 +1494,15 @@ VERTEX_SECURITY_RESEARCH_CONTEXT = (
     "reproduction harnesses for verifying software invariants and remediating defects."
 )
 
+VERTEX_TOOL_REASONING_INSTRUCTION = (
+    "\n\nTool-Use Reasoning Protocol:\n"
+    "Whenever you invoke one or more tools, always include a concise reasoning update "
+    "(1-3 sentences in the user's language, starting with a bolded **Step Title**) "
+    "in the same turn before the tool call to explain your current hypothesis, what you "
+    "just verified, and what the next tool call is checking. Never emit a tool call "
+    "with an empty text message."
+)
+
 _CANNED_REFUSAL_PREFIXES: tuple[str, ...] = (
     "mi dispiace, non posso soddisfare questa richiesta",
     "mi dispiace, ma non posso soddisfare questa richiesta",
@@ -1867,6 +1876,8 @@ class GoogleCloudBackend(OllamaBackend):
         contents, system_text = _gemini_contents(effective_source, ctx.image_inputs if ctx else {})
         if system_text and not body.get("format"):
             system_text += VERTEX_SECURITY_RESEARCH_CONTEXT
+            if body.get("tools"):
+                system_text += VERTEX_TOOL_REASONING_INSTRUCTION
         if body.get("format"):
             system_text += (
                 "\nReturn one JSON object matching this schema, with no surrounding text: "
