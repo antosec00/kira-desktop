@@ -28,6 +28,7 @@ from kira.ui.assistant_controller import AssistantController, delegation_card, d
 from kira.ui.drafts import DraftStore, MAX_HISTORY
 from kira.ui.direct_account import DirectAccountController
 from kira.ui.deepseek_account import DeepSeekAccountController
+from kira.ui.google_account import GoogleAccountController
 from kira.ui.external_links import BrowserLauncher, BrowserOpenResult
 from kira.ui.account_usage import AccountUsageController
 from kira.ui.workbench_controller import WorkbenchController, guidance_label
@@ -407,6 +408,8 @@ class Workspace(QObject):
         self.directAccount.changed.connect(self.accountChanged.emit)
         self.deepseekAccount = DeepSeekAccountController(self)
         self.deepseekAccount.changed.connect(self.accountChanged.emit)
+        self.googleAccount = GoogleAccountController(self)
+        self.googleAccount.changed.connect(self.accountChanged.emit)
         self.providerSwitch = ProviderSwitchController(self)
         self.accountUsage = AccountUsageController(self)
         self._web = WebController(self)
@@ -464,6 +467,7 @@ class Workspace(QObject):
         self._mentions.retranslate()
         self.directAccount.changed.emit()
         self.deepseekAccount.changed.emit()
+        self.googleAccount.changed.emit()
         # A language notification must not trigger project discovery through a
         # child controller's ordinary workspace-change connection.
         self.teams._retranslating = True
@@ -1057,14 +1061,15 @@ class Workspace(QObject):
                 "openai_chatgpt": tr("OpenAI diretto · ChatGPT"),
                 "deepseek_account": tr("DeepSeek Account"),
                 "deepseek_web": tr("DeepSeek Web · sperimentale"),
-                "claude_code": tr("Claude Code · uso personale")}.get(self._backend, self._backend)
+                "claude_code": tr("Claude Code · uso personale"),
+                "google_cloud": tr("Google Cloud · Vertex AI")}.get(self._backend, self._backend)
 
     @qt_property(str, notify=changed)
     def backendShortLabel(self) -> str:
         """The composer chip has little room: the provider name without its qualifier."""
         return {"codex": "Codex", "ollama": "Ollama", "openai_chatgpt": tr("OpenAI diretto"),
                 "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
-                "claude_code": tr("Claude Code")}.get(self._backend, self._backend)
+                "claude_code": tr("Claude Code"), "google_cloud": tr("Google Cloud")}.get(self._backend, self._backend)
 
     @qt_property(str, notify=accountChanged)
     def accountLabel(self) -> str:
@@ -1102,7 +1107,7 @@ class Workspace(QObject):
 
     @qt_property(bool, notify=changed)
     def imageInputsEnabled(self) -> bool:
-        if self._backend in {"openai_chatgpt", "claude_code"}:
+        if self._backend in {"openai_chatgpt", "claude_code", "google_cloud"}:
             return True
         model = next((item for item in self.models if item.get("id") == self._model), {})
         capabilities = model.get("capabilities", {})
@@ -1133,7 +1138,7 @@ class Workspace(QObject):
 
     def ensure_direct_catalog(self) -> None:
         # Providers not probed at connection time are discovered once a chat selects them.
-        if (self.connected and self._backend in {"openai_chatgpt", "claude_code"}
+        if (self.connected and self._backend in {"openai_chatgpt", "claude_code", "google_cloud"}
                 and self.provider_catalog() is None):
             self.discover(self._backend)
 
@@ -1167,6 +1172,8 @@ class Workspace(QObject):
             return tr("Collega DeepSeek Web dal pannello Modelli per usare questo provider.")
         if self._backend == "claude_code" and (not account or not account.get("connected")):
             return tr("Claude Code non risulta collegato. Accedi da un terminale con claude e /login, poi aggiorna.")
+        if self._backend == "google_cloud" and not self.googleAccount.connected:
+            return tr("Google Cloud non collegato. Configura gcloud ADC o una chiave API in Modelli.")
         if not self.models:
             if self._backend == "claude_code":
                 return tr("Nessun modello Claude Code disponibile. Aggiorna dopo l'accesso a Claude Code.")
@@ -1174,6 +1181,8 @@ class Workspace(QObject):
                 return tr("Nessun modello disponibile per questo account ChatGPT. Aggiorna dopo l'accesso.")
             if self._backend == "deepseek_web":
                 return tr("Nessun modello DeepSeek Web disponibile; aggiorna il catalogo dopo il collegamento.")
+            if self._backend == "google_cloud":
+                return tr("Nessun modello Google Cloud disponibile; verifica Project ID o chiave API.")
             return tr("Nessun modello disponibile. Installa un modello tramite Ollama, poi aggiorna.")
         if self._backend == "openai_chatgpt":
             return tr("{count} modelli disponibili · account: {account}", count=len(self.models), account=self.accountLabel)
@@ -1183,6 +1192,8 @@ class Workspace(QObject):
             return tr("{count} modelli DeepSeek Web configurati", count=len(self.models))
         if self._backend == "claude_code":
             return tr("{count} modelli · login di Claude Code · solo per uso personale", count=len(self.models))
+        if self._backend == "google_cloud":
+            return tr("{count} modelli Google Cloud / Vertex AI disponibili", count=len(self.models))
         return tr("{count} modelli disponibili · nessun download automatico", count=len(self.models))
 
     @qt_property(bool, notify=changed)
@@ -1205,6 +1216,8 @@ class Workspace(QObject):
             disconnected = not self.deepseekAccount.connected and not self.deepseekAccount.proxyEnabled
         elif self._backend == "deepseek_web":
             disconnected = not self.deepseekAccount.webConnected
+        elif self._backend == "google_cloud":
+            disconnected = not self.googleAccount.connected
         else:
             disconnected = False
         return "warning" if disconnected or not self.models else "ok"
@@ -1238,7 +1251,7 @@ class Workspace(QObject):
 
     @qt_property(bool, notify=changed)
     def canUseTools(self) -> bool:
-        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code"}:
+        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code", "google_cloud"}:
             return True
         model: Json = next((m for m in self.models if m.get("id") == self._model), {})
         caps = model.get("capabilities", {})
@@ -2033,7 +2046,7 @@ class Workspace(QObject):
         if self.busy:
             return
         if backend not in {"ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                           "claude_code"}:
+                           "claude_code", "google_cloud"}:
             return
         if backend == self._backend and (backend != "openai_chatgpt" or not self._session):
             return
@@ -2043,12 +2056,14 @@ class Workspace(QObject):
             return
         self._backend, self._model, self._effort = backend, "", ""
         self._tools = backend in {"codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                                  "claude_code"}
+                                  "claude_code", "google_cloud"}
         self._num_ctx = 0
         self._think = None
         self._session = {}
         self._reset_chat()
         self.ensure_direct_catalog()
+        if backend == "google_cloud":
+            self.googleAccount.refresh()
         self.discover(backend)
         self.changed.emit()
 

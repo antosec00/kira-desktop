@@ -154,7 +154,7 @@ async def test_provider_metadata_is_read_only_and_tracks_last_used_model_effort_
     before = service.store.db.total_changes
     initial = await api.dispatch("session.providers", {"project_id": project["id"], "session_id": session["id"]})
     assert before == service.store.db.total_changes and accounts.calls == 0
-    assert len(initial["providers"]) == 6
+    assert len(initial["providers"]) == 7
     codex = next(row for row in initial["providers"] if row["backend"] == "codex")
     assert codex == {"backend": "codex", "model": "codex-fixture", "reasoning_effort": "high",
                      "account_id": "", "used": True, "current": True}

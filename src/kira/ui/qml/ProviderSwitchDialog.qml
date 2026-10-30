@@ -55,6 +55,10 @@ Dialog {
                 visible: providerSwitch.backend === "deepseek_account"
                 Layout.fillWidth: true
             }
+            GoogleCloudPane {
+                visible: providerSwitch.backend === "google_cloud"
+                Layout.fillWidth: true
+            }
             Text { text: qsTr("Modello"); font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
             KComboBox {
                 objectName: "switchProviderModel"

@@ -668,7 +668,7 @@ class Knowledge:
         self._scope(project["id"], session["id"])
         if not kira_tools_enabled(session) or session["backend"] not in {
                 "codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
-                "claude_code"}:
+                "claude_code", "google_cloud"}:
             return options
         result = dict(options)
         namespaces = [{**namespace, "tools": list(namespace["tools"])}

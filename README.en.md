@@ -35,14 +35,16 @@ always see what really happened.
   the tokens of the sign-ins it manages (ChatGPT, DeepSeek) stay in private
   files of your profile, outside the database, exports and diagnostics.
 - **Bring your own model.** Ollama on your computer, OpenAI Codex, your ChatGPT
-  plan, DeepSeek or your Claude Code: pick the provider per chat and change it
-  without losing the conversation.
+  plan, Google Cloud · Vertex AI (with your GCP credits or balance and isolated
+  multi-account switching), DeepSeek or your Claude Code: pick the provider per
+  chat and change it without losing the conversation.
 
 ## Highlights
 
 - **Named projects and chats**, with instructions, shared memory, provider and
   reasoning effort per chat, drafts that survive restarts, attached images with
-  previews.
+  previews, universal `@Mentions` (`@file`, `@folder`, `@git`, `@terminal`,
+  `@web`, `@soul`, `@team`) and contextual `/Slash Commands` in the composer.
 - **Tools with receipts.** Read, search, write, commands, web search,
   navigation: every call shows the literal reference and the recorded outcome,
   expandable down to the original data.
@@ -72,6 +74,7 @@ always see what really happened.
 | **Ollama** | Local HTTP API (`http://127.0.0.1:11434` by default) | Kira; tools verified on first use, no automatic model downloads |
 | **Codex** | OpenAI Codex App Server, with the official sign-in | Codex, with its sandboxes; Kira observes and records every operation |
 | **Direct OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
+| **Google Cloud · Vertex AI** | Isolated multi-account OAuth2 PKCE in Kira, read-only system `gcloud` ADC, or API Key | Kira; native Google models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) and Vertex AI Partner Claude models, vision, and public reasoning summaries |
 | **DeepSeek Account** (experimental) | Account sign-in | Kira |
 | **DeepSeek Web** (experimental) | Session token from the website | Kira, with a text protocol for the tools |
 | **Claude Code · personal use** (experimental) | Your already signed-in Claude Code (optional extra, not in the packages) | Claude Code, observed by Kira; browser, Computer, questions and Research through an internal MCP server |

@@ -15,7 +15,7 @@ Json = dict[str, Any]
 MAX_SUMMARY_BYTES = 65_536
 MAX_SUMMARY_ITEMS = 64
 MAX_SUMMARY_RUNS = 60
-PROVIDERS = frozenset({"openai_chatgpt", "codex", "ollama", "deepseek_account", "deepseek_web"})
+PROVIDERS = frozenset({"openai_chatgpt", "codex", "ollama", "deepseek_account", "deepseek_web", "google_cloud"})
 SUMMARY_EVENTS = {"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"}
 
 
@@ -23,7 +23,8 @@ def provider_label(provider: str) -> str:
     """The provider name used by the rest of the interface, in the current language."""
     return {"openai_chatgpt": tr("OpenAI diretto · ChatGPT"), "codex": "Codex", "ollama": "Ollama",
             "deepseek_account": tr("DeepSeek Account"),
-            "deepseek_web": tr("DeepSeek Web · sperimentale")}.get(provider, provider)
+            "deepseek_web": tr("DeepSeek Web · sperimentale"),
+            "google_cloud": tr("Google Cloud · Vertex AI")}.get(provider, provider)
 
 
 def bounded_text(value: str, limit: int) -> tuple[str, bool]:

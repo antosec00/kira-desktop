@@ -12,6 +12,7 @@ QtObject {
         case "deepseek_account": return qsTr("DeepSeek Account")
         case "deepseek_web": return qsTr("DeepSeek Web · sperimentale")
         case "claude_code": return qsTr("Claude Code · uso personale")
+        case "google_cloud": return qsTr("Google Cloud · Vertex AI")
         }
         return String(backend || "")
     }

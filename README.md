@@ -35,14 +35,17 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
   applicazioni; i token degli accessi che gestisce (ChatGPT, DeepSeek) restano in
   file privati del profilo, fuori da database, esportazioni e diagnostica.
 - **Porta il tuo modello.** Ollama sul tuo computer, OpenAI Codex, il tuo piano
-  ChatGPT, DeepSeek o il tuo Claude Code: scegli il provider per ogni chat e
+  ChatGPT, Google Cloud · Vertex AI (con i tuoi crediti o saldo GCP e multi-account
+  isolato), DeepSeek o il tuo Claude Code: scegli il provider per ogni chat e
   puoi cambiarlo senza perdere la conversazione.
 
 ## In evidenza
 
 - **Progetti e chat con nome**, con istruzioni, memoria condivisa, provider e
   livello di ragionamento per chat, bozze che sopravvivono ai riavvii, immagini
-  allegate con anteprima.
+  allegate con anteprima, `@Mentions` universali (`@file`, `@folder`, `@git`,
+  `@terminal`, `@web`, `@soul`, `@team`) e `/Slash Commands` contestuali nel
+  campo di scrittura.
 - **Strumenti con ricevuta.** Lettura, ricerca, scrittura, comandi, ricerca web,
   navigazione: ogni chiamata mostra il riferimento letterale e l'esito
   registrato, espandibile fino ai dati originali.
@@ -75,6 +78,7 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
 | **Ollama** | API HTTP locale (`http://127.0.0.1:11434` come predefinito) | Kira; strumenti verificati al primo uso, nessun download automatico di modelli |
 | **Codex** | OpenAI Codex App Server, con l'accesso ufficiale | Codex, con le sue sandbox; Kira osserva e registra ogni operazione |
 | **OpenAI diretto · ChatGPT** | Il tuo piano ChatGPT, con l'accesso ufficiale | Kira; immagini in ingresso, ricerca web ospitata, contesto gestito automaticamente |
+| **Google Cloud · Vertex AI** | Multi-account OAuth2 PKCE isolato in Kira, `gcloud` ADC di sistema (in sola lettura) o API Key | Kira; modelli nativi Google (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) e modelli Partner Claude su Vertex AI, visione e riepiloghi del ragionamento |
 | **DeepSeek Account** (sperimentale) | Accesso account | Kira |
 | **DeepSeek Web** (sperimentale) | Token di sessione del sito | Kira, con un protocollo testuale per gli strumenti |
 | **Claude Code · uso personale** (sperimentale) | Il tuo Claude Code già autenticato (extra opzionale, non incluso nei pacchetti) | Claude Code, osservato da Kira; browser, Computer, domande e Ricerca tramite un server MCP interno |

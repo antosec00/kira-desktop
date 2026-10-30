@@ -376,7 +376,7 @@ def test_all_combo_popups_show_string_and_object_model_labels(workspace, qtbot):
             ("Segui il sistema", "Chiara", "Scura"), ("Kira", "Neutro", "Caldo"),
             ("Segui il sistema", "Sempre", "Mai"), ("Colore e segni", "Solo segni"),
             ("Normale", "Medio", "Semigrassetto", "Grassetto", "Corsivo"),
-            ("Ollama", "Codex", "OpenAI diretto · ChatGPT", "DeepSeek Account", "DeepSeek Web · sperimentale", "Claude Code · uso personale"),
+            ("Ollama", "Codex", "OpenAI diretto · ChatGPT", "DeepSeek Account", "DeepSeek Web · sperimentale", "Claude Code · uso personale", "Google Cloud · Vertex AI"),
             ("Codex", "OpenAI diretto · ChatGPT", "Ollama", "Claude Code"),
             ("Intera", "Solo icone", "Nascosta"),
             ("Predefinito Ollama", "32K", "128K", "256K"),

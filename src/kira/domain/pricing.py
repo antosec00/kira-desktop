@@ -107,6 +107,38 @@ def resolve_model_pricing(backend: str, model: str = "") -> ModelPricing:
             default_context_window=128_000,
         )
 
+    # Google Cloud / Vertex AI / Gemini & Argon models
+    if b == "google_cloud" or "gemini" in m or "argon" in m:
+        if "flash-lite" in m:
+            return ModelPricing(
+                family="gemini-flash-lite",
+                billing_mode=billing,
+                input_per_m=0.10,
+                cached_input_per_m=0.025,
+                cache_write_per_m=0.10,
+                output_per_m=0.40,
+                default_context_window=1_048_576,
+            )
+        if "flash" in m:
+            return ModelPricing(
+                family="gemini-flash",
+                billing_mode=billing,
+                input_per_m=0.30,
+                cached_input_per_m=0.075,
+                cache_write_per_m=0.30,
+                output_per_m=2.50,
+                default_context_window=1_048_576,
+            )
+        return ModelPricing(
+            family="gemini-pro",
+            billing_mode=billing,
+            input_per_m=1.25,
+            cached_input_per_m=0.31,
+            cache_write_per_m=1.25,
+            output_per_m=10.00,
+            default_context_window=1_048_576,
+        )
+
     # OpenAI / Codex models
     if "mini" in m or "nano" in m:
         return ModelPricing(

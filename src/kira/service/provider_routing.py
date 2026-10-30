@@ -25,8 +25,9 @@ if TYPE_CHECKING:
 METHODS = frozenset({"session.providers", "session.switch"})
 DEEPSEEK_BACKEND = "deepseek_account"
 DEEPSEEK_WEB_BACKEND = "deepseek_web"
+GOOGLE_CLOUD_BACKEND = "google_cloud"
 BACKENDS = ("ollama", "codex", DIRECT_BACKEND, DEEPSEEK_BACKEND, DEEPSEEK_WEB_BACKEND,
-            CLAUDE_CODE_BACKEND)
+            CLAUDE_CODE_BACKEND, GOOGLE_CLOUD_BACKEND)
 SHARED_SETTINGS = frozenset({"tools", "max_tool_rounds", "max_output_bytes"})
 _OWN_SETTINGS = {
     # The desktop offers every effort a model's catalog declares; Ollama keeps
@@ -37,6 +38,7 @@ _OWN_SETTINGS = {
     DEEPSEEK_BACKEND: SHARED_SETTINGS | {"reasoning_effort"},
     DEEPSEEK_WEB_BACKEND: SHARED_SETTINGS,
     CLAUDE_CODE_BACKEND: SHARED_SETTINGS | {"reasoning_effort"},
+    GOOGLE_CLOUD_BACKEND: SHARED_SETTINGS | {"reasoning_effort", "temperature"},
 }
 # The settings a chat can save for each provider. Browser preferences belong to
 # every provider that receives Kira's browser tools (session.web.update).
@@ -285,6 +287,8 @@ class ProviderRouting:
             await self.service.deepseek_web_accounts.prepare()
         elif backend == CLAUDE_CODE_BACKEND:
             require_claude_code()
+        elif backend == GOOGLE_CLOUD_BACKEND:
+            await self.service.google_accounts.prepare()
         if (backend != source["backend"] or model != source["model"] or
                 config.get("openai_account_id") != source["settings"].get("openai_account_id")):
             await self.service.web.before_configuration(project_id, session_id)

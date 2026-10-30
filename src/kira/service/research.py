@@ -195,7 +195,7 @@ class Research:
     def attach(self, project: Json, session: Json, run_id: str, options: Json) -> Json:
         """The existing Kira namespace can expose bounded research callbacks."""
         if (session["backend"] not in {"codex", "openai_chatgpt", "ollama", "deepseek_account",
-                                       "deepseek_web", "claude_code"}
+                                       "deepseek_web", "claude_code", "google_cloud"}
                 or not kira_tools_enabled(session)
                 or not self.data.settings(project["id"])["enabled"]):
             return options

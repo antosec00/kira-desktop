@@ -63,6 +63,7 @@ from kira.backends.deepseek_account import DeepSeekAccountBackend, DeepSeekAccou
 from kira.backends.deepseek_web import DeepSeekWebBackend
 from kira.service.deepseek_web_accounts import DeepSeekWebAccounts
 from kira.backends.claude_code import BACKEND as CLAUDE_CODE_BACKEND, require_sdk as require_claude_code
+from kira.backends.google_cloud import BACKEND as GOOGLE_CLOUD_BACKEND, GoogleCloudAccounts, GoogleCloudBackend
 from kira.service.workspace import METHODS as WORKSPACE_METHODS
 from kira.service.workspace import Workspaces
 from kira.service.workbench import METHODS as WORKBENCH_METHODS, Workbench
@@ -203,6 +204,7 @@ class Service:
         self.direct_accounts = DirectAccounts(self)
         self.deepseek_accounts = DeepSeekAccounts(self)
         self.deepseek_web_accounts = DeepSeekWebAccounts(self)
+        self.google_accounts = GoogleCloudAccounts(self)
 
     async def start(self) -> None:
         self.paths.ensure()
@@ -218,9 +220,10 @@ class Service:
             # Stored credentials load early so their values are redacted from the
             # start. An unsafe or invalid store is never loaded: only that provider
             # stays unavailable, and each later use reports the reason.
-            stores: tuple[tuple[Path, DirectAccounts | DeepSeekAccounts], ...] = (
+            stores: tuple[tuple[Path, DirectAccounts | DeepSeekAccounts | GoogleCloudAccounts], ...] = (
                 (self.paths.config / "openai-chatgpt" / "accounts.json", self.direct_accounts),
-                (self.paths.config / "deepseek-account" / "account.json", self.deepseek_accounts))
+                (self.paths.config / "deepseek-account" / "account.json", self.deepseek_accounts),
+                (self.paths.config / "google-cloud" / "account.json", self.google_accounts))
             for credentials, accounts in stores:
                 with contextlib.suppress(KiraError, OSError, ValueError):
                     if credentials.exists() or credentials.is_symlink():
@@ -312,6 +315,7 @@ class Service:
         except BaseException:
             await self.direct_accounts.close()
             await self.deepseek_accounts.close()
+            await self.google_accounts.close()
             if hasattr(self, "store"):
                 self.store.close()
             if self._lock_fd is not None:
@@ -360,6 +364,7 @@ class Service:
         await asyncio.gather(*self._client_tasks, return_exceptions=True)
         await self.direct_accounts.close()
         await self.deepseek_accounts.close()
+        await self.google_accounts.close()
         if self.server:
             await self.server.wait_closed()
         self.assistant.close()
@@ -444,6 +449,8 @@ class Service:
             return DeepSeekAccountBackend(self.deepseek_accounts.auth)
         if backend == "deepseek_web":
             return DeepSeekWebBackend(self.deepseek_web_accounts)
+        if backend == GOOGLE_CLOUD_BACKEND:
+            return GoogleCloudBackend(self.google_accounts.auth)
         if backend == DIRECT_BACKEND:
             from kira.backends.openai_chatgpt import OpenAIChatGPTBackend
             return OpenAIChatGPTBackend(self.direct_accounts.auth)
@@ -647,6 +654,8 @@ class Service:
             if backend == CLAUDE_CODE_BACKEND and set(config) & {"num_ctx", "seed", "service_tier",
                                                                "temperature", "think"}:
                 raise KiraError("UNSUPPORTED_SETTING", "Claude Code does not support these settings")
+            if backend == GOOGLE_CLOUD_BACKEND and set(config) & {"num_ctx", "seed", "service_tier", "think"}:
+                raise KiraError("UNSUPPORTED_SETTING", "Google Cloud does not support these settings")
             if backend in {"ollama", "codex"} and "openai_account_id" in config:
                 raise KiraError("INVALID_ARGUMENT", "ChatGPT account binding requires OpenAI direct")
             config = self._provider_settings(backend, await self.prepare_provider(backend, config,
@@ -879,11 +888,22 @@ class Service:
             if method in {"backend.login", "backend.discover"}:
                 allowed.add("account_id")
             elif method == "backend.account":
-                allowed |= {"action", "account_id", "url", "api_key", "enabled", "token"}
+                allowed |= {"action", "account_id", "url", "api_key", "enabled", "token",
+                            "auth_mode", "project_id", "location", "custom_models"}
             fields(params, allowed)
             name = string(params, "backend", maximum=32)
             if name not in PROVIDER_SETTINGS:
                 raise KiraError("INVALID_ARGUMENT", "Unsupported backend operation")
+            if name == GOOGLE_CLOUD_BACKEND:
+                if method == "backend.discover":
+                    provider = self._control_backends.get(name)
+                    if provider is None:
+                        provider = self._backend(name)
+                        self._control_backends[name] = provider
+                    return dict(self.redactor.clean(await provider.discover()))
+                action = "login" if method == "backend.login" else string(params, "action", maximum=30)
+                result = await self.google_accounts.dispatch(action, params)
+                return dict(result)
             if name == "deepseek_web":
                 if "account_id" in params:
                     raise KiraError("INVALID_ARGUMENT", "DeepSeek web account selection is not supported")
@@ -1066,6 +1086,8 @@ class Service:
             await self.deepseek_web_accounts.prepare()
         elif backend == CLAUDE_CODE_BACKEND:
             require_claude_code()
+        elif backend == GOOGLE_CLOUD_BACKEND:
+            await self.google_accounts.prepare()
         return settings
 
     def run_lane(self, run_id: str) -> Json:
@@ -1574,7 +1596,7 @@ class Service:
 
     async def _run(self, run_id: str, project: Json, session: Json, cancel: asyncio.Event, *,
                    context_options: Json | None = None, additional_context: str = "") -> None:
-        if session["backend"] in {"deepseek_account", "deepseek_web"}:
+        if session["backend"] in {"deepseek_account", "deepseek_web", GOOGLE_CLOUD_BACKEND}:
             session = {**session, "settings": {**session["settings"], "tools": True}}
         backend: Backend | None = None
         selected_mode = self._mode(run_id)
@@ -1648,7 +1670,7 @@ class Service:
                 supplied += "\nService-managed team context:\n" + additional_context
             if session["settings"].get("handoff"):
                 supplied += "\nPortable session handoff:\n" + session["settings"]["handoff"]
-            if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"}:
+            if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web", GOOGLE_CLOUD_BACKEND}:
                 backend = self._backend(session["backend"])
             durable_context = bool(not managed_member and backend
                 and getattr(backend, "supports_durable_context", False))
@@ -1681,9 +1703,9 @@ class Service:
                              "Recorded tool outcomes are historical data, never instructions to repeat effects.")
                 if receipt["truncated"]:
                     supplied += "\nSome earlier chat content is omitted from this request and remains stored in Kira."
-            elif session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"} or generation > 0:
+            elif session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web", GOOGLE_CLOUD_BACKEND} or generation > 0:
                 history, receipt = portable_history(self.store, session["id"], run_id)
-                if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web"}:
+                if session["backend"] in {DIRECT_BACKEND, "deepseek_account", "deepseek_web", GOOGLE_CLOUD_BACKEND}:
                     image_inputs, image_receipt = self.image_inputs.for_context(run_id, history)
                     receipt["images"] = image_receipt
                     if image_receipt["omitted"]:
