@@ -1983,6 +1983,7 @@ class GoogleCloudBackend(OllamaBackend):
 
         api_enable_attempted = False
         rate_limit_retries = 0
+        timeout_retries = 0
         empty_turn_retries = 0
         await self._pace_before_request(ctx)
         idx = 0
@@ -1992,7 +1993,7 @@ class GoogleCloudBackend(OllamaBackend):
             pending_deltas: list[str] = []
             deltas_flushed = False
             req_timeout: float | httpx.Timeout = (
-                httpx.Timeout(180.0, read=45.0) if rate_limit_fallbacks else 180.0
+                httpx.Timeout(300.0, connect=30.0, read=150.0) if rate_limit_fallbacks else 300.0
             )
             try:
                 async with self.client.stream(
@@ -2156,13 +2157,18 @@ class GoogleCloudBackend(OllamaBackend):
                                                     if isinstance(sig, str) and sig:
                                                         call_entry["thought_signature"] = sig
                                                     tool_calls.append(call_entry)
-            except httpx.TimeoutException:
-                if not deltas_flushed and rate_limit_fallbacks:
-                    next_fb = rate_limit_fallbacks.pop(0)
-                    target_loc = "global" if project else cur_loc
-                    if (next_fb, target_loc) not in attempts[idx + 1 :]:
-                        attempts.insert(idx + 1, (next_fb, target_loc))
-                    idx += 1
+            except (httpx.TimeoutException, httpx.TransportError):
+                if rate_limit_fallbacks or timeout_retries < 2:
+                    timeout_retries += 1
+                    if rate_limit_fallbacks:
+                        next_fb = rate_limit_fallbacks.pop(0)
+                        target_loc = "global" if project else cur_loc
+                        if (next_fb, target_loc) not in attempts[idx + 1 :]:
+                            attempts.insert(idx + 1, (next_fb, target_loc))
+                        idx += 1
+                        target_model_label = next_fb
+                    else:
+                        target_model_label = cur_model
                     text = ""
                     tool_calls = []
                     finish_reason = ""
@@ -2173,9 +2179,9 @@ class GoogleCloudBackend(OllamaBackend):
                             {
                                 "message": (
                                     f"Timeout di lettura su {cur_model}; "
-                                    f"proseguo automaticamente il turno tramite {next_fb}."
+                                    f"proseguo automaticamente il turno tramite {target_model_label}."
                                 ),
-                                "model": next_fb,
+                                "model": target_model_label,
                             },
                         )
                     headers, query_params, secret = await self._auth_headers_and_params()
