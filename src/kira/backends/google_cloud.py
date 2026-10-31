@@ -1551,7 +1551,8 @@ def _synthesize_tool_thought_summary(tool_calls: list[Json], text_preamble: str 
         if not isinstance(fn, dict):
             continue
         name = str(fn.get("name") or "")
-        args = fn.get("arguments") if isinstance(fn.get("arguments"), dict) else {}
+        raw_args = fn.get("arguments")
+        args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
         if name == "read_file":
             path = str(args.get("path") or "")
             base = Path(path).name if path else "file"
