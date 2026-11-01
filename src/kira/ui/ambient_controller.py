@@ -61,6 +61,7 @@ class AmbientController(QObject):
     def retranslate(self) -> None:
         self.changed.emit()
 
+    @Slot(dict)
     def _on_ipc_event(self, event: Json) -> None:
         if event.get("type") != "ambient.toggle":
             return
@@ -235,6 +236,7 @@ class AmbientController(QObject):
             self._auto_send_voice = bool(enabled)
             self.changed.emit()
 
+    @Slot()
     def _tick_recording(self) -> None:
         if not self._recording:
             self._record_timer.stop()

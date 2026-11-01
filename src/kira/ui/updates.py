@@ -408,6 +408,7 @@ class Updates(QObject):
         QTimer.singleShot(FIRST_CHECK_DELAY_MS, self._automatic_check)
         self._timer.start()
 
+    @Slot()
     def _automatic_check(self) -> None:
         if self.enabled and self._state in {"idle", "current", "error"}:
             self._check(automatic=True)

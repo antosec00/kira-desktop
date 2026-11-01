@@ -181,6 +181,7 @@ class ResearchController(QObject):
             self.changed.emit()
             return False
 
+    @Slot()
     def _selection_changed(self) -> None:
         if self._stamp() == self._identity:
             return
@@ -420,6 +421,7 @@ class ResearchController(QObject):
 
         self.workspace.client.request(method, params, received, failed)
 
+    @Slot()
     def _schedule_count(self) -> None:
         self._count_timer.start()
 

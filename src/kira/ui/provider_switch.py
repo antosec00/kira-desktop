@@ -37,6 +37,7 @@ class ProviderSwitchController(QObject):
         workspace.googleAccount.changed.connect(self._google_account_changed)
         workspace.client.disconnected.connect(self._disconnected)
 
+    @Slot()
     def _google_account_changed(self) -> None:
         connected = self.workspace.googleAccount.connected
         if connected == self._google_connected:
@@ -45,6 +46,7 @@ class ProviderSwitchController(QObject):
         if self._context is not None and self._backend == "google_cloud":
             self.refreshCatalog()
 
+    @Slot()
     def _deepseek_account_changed(self) -> None:
         connected = self.workspace.deepseekAccount.connected
         proxy_enabled = self.workspace.deepseekAccount.proxyEnabled
@@ -64,6 +66,7 @@ class ProviderSwitchController(QObject):
     def _stamp(self) -> tuple[str, str, int]:
         return str(self.workspace.project.get("id", "")), self.workspace.sessionId, self.workspace._chat_generation
 
+    @Slot()
     def _chat_changed(self) -> None:
         if self._context is not None and self._stamp() != self._context:
             self._generation += 1
@@ -72,6 +75,7 @@ class ProviderSwitchController(QObject):
             self.changed.emit()
             self.dismissed.emit()
 
+    @Slot()
     def _disconnected(self) -> None:
         self._generation += 1
         self._loading = self._applying = False

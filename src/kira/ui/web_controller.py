@@ -120,6 +120,7 @@ class WebController(QObject):
                 self.workspace.connected, self.workspace._chat_generation,
                 bool(self.workspace._session.get("team_id")), self.workspace.workbench.sessionArchived)
 
+    @Slot()
     def _context_changed(self) -> None:
         current = self._stamp()
         if current != self._identity:
@@ -550,6 +551,7 @@ class WebController(QObject):
             self._viewport = size
             self._resize_timer.start()
 
+    @Slot()
     def _resize_viewer(self) -> None:
         if self._watched and self._viewport != (0, 0):
             self._enqueue("viewer", {"enabled": True, "width": self._viewport[0], "height": self._viewport[1]})
@@ -663,6 +665,7 @@ class WebController(QObject):
             if not self._frame_timer.isActive():
                 self._frame_timer.start(0)
 
+    @Slot()
     def _publish_frame(self) -> None:
         payload, self._pending_frame = self._pending_frame, None
         if not payload or not self._watched:
@@ -766,6 +769,7 @@ class WebController(QObject):
         self._flush_mouse()
         self._append_command(action, arguments)
 
+    @Slot()
     def _flush_mouse(self) -> None:
         self._mouse_timer.stop()
         move, self._mouse_move = self._mouse_move, None

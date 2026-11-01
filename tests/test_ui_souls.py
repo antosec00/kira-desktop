@@ -522,3 +522,20 @@ def test_removed_preference_renders_empty_and_saved_identity_needs_edit_before_s
     assert not controller.canSave
     controller.save()
     assert "soul.update" not in replies.methods()
+
+
+def test_qml_context_controllers_use_static_metaobject(editor):
+    workspace, controller, _ = editor
+    engine = QQmlApplicationEngine()
+    try:
+        localization = Localization(workspace, engine, engine)
+        appearance = Appearance(workspace, engine)
+        localization.changed.connect(appearance.retranslate)
+        objects = [workspace, controller, localization, appearance, appearance._motion]
+        objects.extend(value for value in vars(workspace).values() if isinstance(value, QObject))
+        for obj in objects:
+            assert "__METAOBJECT__" not in getattr(obj, "__dict__", {}), type(obj).__name__
+    finally:
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+

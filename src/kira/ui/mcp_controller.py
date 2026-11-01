@@ -62,6 +62,7 @@ class McpController(QObject):
         workspace.teams.changed.connect(self.changed.emit)
         workspace.client.disconnected.connect(self._reset)
 
+    @Slot()
     def _reset(self) -> None:
         self._busy = False
         self._testing_id = ""

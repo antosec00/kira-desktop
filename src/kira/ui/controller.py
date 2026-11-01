@@ -1599,6 +1599,7 @@ class Workspace(QObject):
             self._startup_stage = stage
             self.startupChanged.emit()
 
+    @Slot()
     def _finish_startup(self) -> None:
         self._startup_timer.stop()
         self._startup_backend = ""
@@ -1625,6 +1626,7 @@ class Workspace(QObject):
         self._background(lambda: asyncio.run(bootstrap()),
                          lambda _: self.client.connect_service())
 
+    @Slot()
     def _connected(self) -> None:
         self._service_recovery_pending = False
         self._service_recovery_timer.stop()
@@ -1651,6 +1653,7 @@ class Workspace(QObject):
         if self._project:
             self.openProject(self._project["id"])
 
+    @Slot()
     def _disconnected(self) -> None:
         self._connected_value = False
         self._status = tr("Riconnessione · il servizio conserva il lavoro")
@@ -1675,6 +1678,7 @@ class Workspace(QObject):
         else:
             self._recover_local_service()
 
+    @Slot()
     def _recover_local_service(self) -> None:
         if (self._connected_value or self._service_recovery_pending or self.client.incompatible
                 or self._service_hold):
@@ -1688,12 +1692,14 @@ class Workspace(QObject):
         job.finished.connect(job.deleteLater)
         job.start()
 
+    @Slot(object)
     def _service_recovered(self, _result: Any) -> None:
         self._service_recovery_pending = False
         self.client.connect_service()
         if not self._connected_value:
             self._service_recovery_timer.start()
 
+    @Slot(str)
     def _service_recovery_failed(self, message: str) -> None:
         self._service_recovery_pending = False
         self._problem(message)
@@ -2639,6 +2645,7 @@ class Workspace(QObject):
             self.transcriptChanged.emit()
             self.changed.emit()
 
+    @Slot()
     def _flush(self) -> None:
         if not self._deltas:
             return

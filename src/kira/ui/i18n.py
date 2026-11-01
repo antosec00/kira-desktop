@@ -174,6 +174,7 @@ class Localization(QObject):
         _install_active()
         _refresh_registered()
 
+    @Slot()
     def _preferences_changed(self) -> None:
         if self._token not in _registrations:
             return

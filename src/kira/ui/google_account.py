@@ -412,6 +412,7 @@ class GoogleAccountController(QObject):
             failed,
         )
 
+    @Slot()
     def close(self) -> None:
         self._generation += 1
         self._timer.stop()

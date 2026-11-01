@@ -626,6 +626,7 @@ class CanvasController(QObject):
             self._live_frame_url = url
             self.liveFrameChanged.emit()
 
+    @Slot()
     def _syncLiveStream(self) -> None:
         if self._highlighter is not None:
             with contextlib.suppress(Exception):
@@ -833,6 +834,7 @@ class CanvasController(QObject):
         except OSError:
             return None
 
+    @Slot()
     def _disconnected(self) -> None:
         self._generation += 1
         self._busy = False
@@ -1607,6 +1609,7 @@ class CanvasController(QObject):
             failed,
         )
 
+    @Slot(dict)
     def _onRunEvent(self, event: Json) -> None:
         if event.get("type") != "tool.completed":
             return

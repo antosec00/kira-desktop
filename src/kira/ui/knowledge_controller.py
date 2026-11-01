@@ -205,6 +205,7 @@ class KnowledgeController(QObject):
             self._storage_error = tr("Impossibile salvare la ricevuta. Nessuna nuova modifica è stata inviata.")
             return False
 
+    @Slot()
     def _context_changed(self) -> None:
         changed = self._stamp() != self._identity
         locks = self._lock_state()

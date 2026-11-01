@@ -142,6 +142,7 @@ class AssistantController(QObject):
         self._delivery_notice = refresh_ui(self._delivery_notice)
         self.changed.emit()
 
+    @Slot()
     def _sync_context(self) -> None:
         context = (str(self.workspace.project.get("id", "")), self.workspace.sessionId)
         connected = self.workspace.connected
@@ -190,6 +191,7 @@ class AssistantController(QObject):
                 self.workspace._subscribe(run_id)
                 self.workspace.changed.emit()
 
+    @Slot()
     def _disconnected(self) -> None:
         self._generation += 1
         self._connected = False
@@ -199,6 +201,7 @@ class AssistantController(QObject):
         self._coalesce.stop()
         self.changed.emit()
 
+    @Slot(dict)
     def _event(self, event: Json) -> None:
         # Workspace keeps only the selected project's ordinary runs. Another chat
         # may reserve the same project, but its result must not enter this chat.
@@ -210,6 +213,7 @@ class AssistantController(QObject):
                 event.get("payload", {}).get("state") in {"completed", "failed", "cancelled", "interrupted"}):
             self._schedule()
 
+    @Slot(dict)
     def _team_event(self, event: Json) -> None:
         if event.get("type") == "member.activity":
             return
@@ -218,6 +222,7 @@ class AssistantController(QObject):
                 row.get("id") == team_id for row in self._environment.get("active_teams", [])):
             self._schedule()
 
+    @Slot()
     def _schedule(self) -> None:
         if self._connected and not self._coalesce.isActive():
             self._coalesce.start()

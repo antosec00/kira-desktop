@@ -59,10 +59,12 @@ class MentionsController(QObject):
         self.chipsChanged.emit()
         self.suggestionsChanged.emit()
 
+    @Slot()
     def _on_project_changed(self) -> None:
         self._universal_query = ""
         self.changed.emit()
 
+    @Slot()
     def _on_chat_changed(self) -> None:
         self.changed.emit()
 

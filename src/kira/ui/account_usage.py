@@ -312,6 +312,7 @@ class AccountUsageController(QObject):
         self._error = ""
         self._identity = self._context()
 
+    @Slot()
     def _context_changed(self) -> None:
         if self._context() == self._identity:
             return
