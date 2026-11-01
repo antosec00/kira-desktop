@@ -124,3 +124,30 @@ def test_embedded_parsing_budget_leaves_remaining_text_literal():
     shown = readable_payload(source({"content": '\n'.join(lines)}))
     assert shown.count('"value": 1') == 64
     assert shown.count('{"value":1}') == 6
+
+
+def test_summarize_event_and_delta_filtering():
+    from kira.ui.evidence_model import EvidenceModel, summarize_event
+
+    title, summary = summarize_event("tool.completed", {
+        "kind": "commandExecution",
+        "command": "rg -n precompile crates/",
+        "status": "completed",
+        "exit_code": 0,
+        "output": "crates/evm/src/lib.rs:10: fn call()",
+    })
+    assert "Esito strumento" in title
+    assert "`rg -n precompile crates/`" in summary
+    assert "exit code 0" in summary
+
+    model = EvidenceModel()
+    model.append_event({"seq": 1, "type": "run.state", "timestamp": "2026-10-15T12:00:00Z", "payload": {"state": "running"}})
+    model.append_event({"seq": 2, "type": "message.delta", "timestamp": "2026-10-15T12:00:01Z", "payload": {"delta": "abc"}})
+    model.append_event({"seq": 3, "type": "message.completed", "timestamp": "2026-10-15T12:00:02Z", "payload": {"content": "Final answer\n}"}})
+    assert model.rowCount() == 2
+    assert [row["sequence"] for row in model.rows] == [1, 3]
+    assert model.rows[1]["humanSummary"] == "Final answer"
+    model.set_hide_deltas(False)
+    assert model.rowCount() == 3
+    assert [row["sequence"] for row in model.rows] == [1, 2, 3]
+

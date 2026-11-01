@@ -194,3 +194,68 @@ def test_readable_typography_metrics_for_headings_lists_and_inline_code(renderer
     assert inline_code.foreground().color().name() != prose_fmt.foreground().color().name()
     assert strong_fmt.foreground().color().name() != prose_fmt.foreground().color().name()
 
+
+def test_streaming_markdown_table_preserves_rendered_text_above_table(qapp, tmp_path):
+    from pathlib import Path
+    from PySide6.QtCore import QUrl
+    from PySide6.QtQuick import QQuickView
+    from kira.domain.paths import Paths
+    from kira.ui.appearance import Appearance
+    from kira.ui.controller import Workspace
+
+    workspace = Workspace(Paths(*(tmp_path / key for key in ("config", "data", "state", "runtime"))))
+    appearance = Appearance(workspace)
+    renderer = MarkdownRenderer(appearance=appearance)
+    qml_dir = Path(__file__).resolve().parents[1] / "src" / "kira" / "ui" / "qml"
+    harness = tmp_path / "Harness.qml"
+    harness.write_text(
+        f'import QtQuick\nimport "{qml_dir.as_uri()}"\n'
+        'Rectangle {\n'
+        '    width: 700; height: 500; color: "#121519"\n'
+        '    property string md: ""\n'
+        '    ReadText {\n'
+        '        width: 680\n'
+        '        textFormat: TextEdit.RichText\n'
+        '        text: markdownRenderer.renderForAppearance(parent.md, appearance.revision)\n'
+        '    }\n'
+        '}\n',
+        encoding="utf-8",
+    )
+
+    view = QQuickView()
+    try:
+        view.rootContext().setContextProperty("appearance", appearance)
+        view.rootContext().setContextProperty("markdownRenderer", renderer)
+        view.setSource(QUrl.fromLocalFile(str(harness)))
+        view.show()
+        qapp.processEvents()
+
+        prose_above = "\n\n".join(
+            f"### Sezione {i}\nParagrafo introduttivo sopra la tabella con dettagli tecnici {i}."
+            for i in range(1, 4)
+        )
+        table = "\n\n| Componente | Stato |\n| :--- | :--- |\n| modulo_a.py | Verificato |\n\n"
+        steps = [
+            prose_above,
+            prose_above + table + "Testo dopo la tabella:\n```python\nx = 1\n",
+            prose_above + table + "Testo dopo la tabella:\n```python\nx = 1\n```",
+        ]
+        img = None
+        for step in steps:
+            view.rootObject().setProperty("md", step)
+            qapp.processEvents()
+            img = view.grabWindow()
+
+        assert img is not None
+        bg = img.pixelColor(695, 5)
+        top_non_bg = sum(
+            1
+            for y in range(10, 140)
+            for x in range(10, 600, 2)
+            if img.pixelColor(x, y) != bg
+        )
+        assert top_non_bg > 200
+    finally:
+        view.close()
+        workspace.close()
+

@@ -93,6 +93,7 @@ Item {
                 Layout.fillWidth: true; spacing: 8
                 KButton { objectName: "evidenceReadableButton"; text: qsTr("Vista leggibile"); checked: evidenceDialog.readable; onClicked: evidenceDialog.setReadable(true); toolTipText: qsTr("Testo a capo e strutture annidate indentate, senza cambiare i dati registrati.") }
                 KButton { objectName: "evidenceJsonButton"; text: qsTr("JSON originale"); checked: !evidenceDialog.readable; onClicked: evidenceDialog.setReadable(false) }
+                KButton { objectName: "evidenceFilterNoiseButton"; text: qsTr("Nascondi delta"); checked: teams.evidenceHideDeltas; onClicked: teams.setEvidenceHideDeltas(!teams.evidenceHideDeltas); toolTipText: qsTr("Nasconde i frammenti intermedi di streaming mostrando solo gli eventi principali.") }
                 Item { Layout.fillWidth: true }
                 KButton { objectName: "evidenceFontSmaller"; text: "A−"; enabled: evidenceDialog.payloadFontSize > 10; onClicked: evidenceDialog.fontZoom--; Accessible.name: qsTr("Riduci il testo degli eventi") }
                 KButton { objectName: "evidenceFontLarger"; text: "A+"; enabled: evidenceDialog.payloadFontSize < 28; onClicked: evidenceDialog.fontZoom++; Accessible.name: qsTr("Ingrandisci il testo degli eventi") }
@@ -105,6 +106,8 @@ Item {
                 delegate: Rectangle {
                     id: eventCard
                     required property string title
+                    required property string titleLabel
+                    required property string humanSummary
                     required property string status
                     required property string timestampLabel
                     required property string body
@@ -123,10 +126,11 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true; spacing: 10
                             KButton { objectName: "evidenceToggle_" + eventCard.sequence; text: eventCard.expanded ? "−" : "+"; subtle: true; implicitWidth: 28; onClicked: evidenceDialog.toggleEvent(String(eventCard.sequence)); Accessible.name: eventCard.expanded ? qsTr("Comprimi evento %1").arg(eventCard.sequence) : qsTr("Espandi evento %1").arg(eventCard.sequence) }
-                            Text { objectName: "evidenceTitle_" + eventCard.sequence; text: "#" + eventCard.sequence + "  " + eventCard.title; textFormat: Text.PlainText; color: accent; font.family: appearance.uiFont.family; font.pixelSize: appearance.uiFont.pixelSize; font.weight: Font.DemiBold; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            Text { objectName: "evidenceTitle_" + eventCard.sequence; text: "#" + eventCard.sequence + "  " + (evidenceDialog.readable && eventCard.titleLabel ? eventCard.titleLabel : eventCard.title); textFormat: Text.PlainText; color: accent; font.family: appearance.uiFont.family; font.pixelSize: appearance.uiFont.pixelSize; font.weight: Font.DemiBold; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             KButton { objectName: "evidenceCopy_" + eventCard.sequence; text: qsTr("Copia JSON"); subtle: true; enabled: !eventCard.bodyTruncated; onClicked: workspace.copy(eventCard.body); toolTipText: qsTr("Copia il payload originale di questo evento.") }
                         }
                         ReadText { objectName: "evidenceTime_" + eventCard.sequence; text: eventCard.timestampLabel; color: muted; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; Accessible.description: eventCard.status; HoverHandler { id: timestampHover } ToolTip.visible: timestampHover.hovered; ToolTip.text: eventCard.status }
+                        ReadText { objectName: "evidenceSummary_" + eventCard.sequence; visible: eventCard.expanded && evidenceDialog.readable && eventCard.humanSummary.length > 0; textFormat: TextEdit.RichText; text: markdownRenderer.renderForAppearance(eventCard.humanSummary, appearance.revision); Layout.fillWidth: true; font.pixelSize: evidenceDialog.payloadFontSize }
                         ReadText { objectName: "evidenceBody_" + eventCard.sequence; visible: eventCard.expanded; color: appearance.colors.codeText; text: eventCard.renderedBody; Layout.fillWidth: true; font.pixelSize: evidenceDialog.payloadFontSize; font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic }
                         Text { visible: eventCard.readableTruncated; text: qsTr("Vista leggibile abbreviata. Il JSON originale è disponibile."); color: muted; font: appearance.uiFont; textFormat: Text.PlainText; wrapMode: Text.Wrap; Layout.fillWidth: true }
                         Text { visible: eventCard.bodyTruncated; text: qsTr("Anteprima abbreviata: il payload completo resta negli eventi registrati. La copia JSON è disabilitata per questa anteprima."); color: appearance.colors.warning; font: appearance.uiFont; textFormat: Text.PlainText; wrapMode: Text.Wrap; Layout.fillWidth: true }
@@ -205,7 +209,7 @@ Item {
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: record.name + " · " + (record.state_label || qsTr("In attesa")); textFormat: Text.PlainText; color: appearance.colors.text; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: appearance.uiFont.pixelSize + 2 }
                                 ReadText { text: record.role || ""; color: muted; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: record.access === "write" ? qsTr("Accesso massimo: scrittura secondo il progetto") : qsTr("Accesso massimo: lettura"); textFormat: Text.PlainText; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                                ReadText { text: record.output_preview || ""; visible: text.length > 0; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
+                                ReadText { textFormat: TextEdit.RichText; text: markdownRenderer.renderForAppearance(record.output_preview || "", appearance.revision); visible: Boolean(record.output_preview && record.output_preview.length > 0); Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
                                 KButton { text: qsTr("Dettagli esecuzione"); subtle: true; visible: Boolean(record.run_id); onClicked: teams.openRunEvidence(record.run_id); Accessible.name: qsTr("Evidenza di %1").arg(record.name) }
                             }
                         }
@@ -225,6 +229,7 @@ Item {
                                 id: taskColumn; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10; anchors.leftMargin: 42; spacing: 5
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; text: record.title + " · " + record.state_label; textFormat: Text.PlainText; color: appearance.colors.text; Layout.fillWidth: true; wrapMode: Text.Wrap }
                                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "teamTaskAssignment_" + record.id; text: localization.format(qsTr("%1 · round %2"), [page.memberLabel(record.member_id), record.round_index]) + ((record.depends_on || []).length ? qsTr(" · dipende da: %1").arg(record.depends_on.join(", ")) : ""); textFormat: Text.PlainText; color: muted; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3) }
+                                ReadText { textFormat: TextEdit.RichText; text: markdownRenderer.renderForAppearance(record.outcome_preview || "", appearance.revision); visible: Boolean(record.outcome_preview && record.outcome_preview.length > 0); Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
                                 ReadText { text: record.error || ""; color: appearance.colors.danger; visible: text.length > 0; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
                                 KButton { text: qsTr("Dettagli esecuzione"); subtle: true; visible: Boolean(record.run_id); onClicked: teams.openRunEvidence(record.run_id); Accessible.name: qsTr("Evidenza incarico %1").arg(record.title) }
                             }
@@ -249,7 +254,7 @@ Item {
                         width: messages.width; spacing: 5
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; text: title; textFormat: Text.PlainText; color: accent; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: status; textFormat: Text.PlainText; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3) }
-                        ReadText { objectName: "teamMessage_" + index; text: body; Layout.fillWidth: true }
+                        ReadText { objectName: "teamMessage_" + index; textFormat: TextEdit.RichText; text: markdownRenderer.renderForAppearance(body, appearance.revision); Layout.fillWidth: true }
                     }
                 }
                 KButton { text: qsTr("↓ Ultimi messaggi"); visible: !page.followMessages; onClicked: { page.followMessages = true; messages.positionViewAtEnd() } }
@@ -272,7 +277,7 @@ Item {
                 id: resultScroll; clip: true; contentWidth: availableWidth
                 ColumnLayout {
                     width: resultScroll.availableWidth; spacing: 14
-                    ReadText { objectName: "teamOutcome"; text: teams.outcomeText || qsTr("I risultati appariranno dopo gli esiti registrati dal servizio."); Layout.fillWidth: true }
+                    ReadText { objectName: "teamOutcome"; textFormat: TextEdit.RichText; text: markdownRenderer.renderForAppearance(teams.outcomeText || qsTr("I risultati appariranno dopo gli esiti registrati dal servizio."), appearance.revision); Layout.fillWidth: true }
                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: qsTr("ATTIVITÀ DEL TEAM"); textFormat: Text.PlainText; color: accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3) }
                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: qsTr("Piani, stati e messaggi. I dettagli degli strumenti e dello streaming si aprono da ciascuna esecuzione."); textFormat: Text.PlainText; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Repeater {

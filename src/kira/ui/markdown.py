@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlsplit
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import QMetaObject, QObject, Slot
 
 from kira.ui.i18n import current_language, tr
 
@@ -219,6 +219,17 @@ class MarkdownRenderer(QObject):
         self._smart_parser.enable(["table", "strikethrough", "replacements", "smartquotes"])
         self._cache: OrderedDict[tuple[RenderStyle, str], str] = OrderedDict()
         self._cache_bytes = 0
+
+    @Slot(QObject)
+    def invalidate(self, item: QObject | None) -> None:
+        """Force QQuickTextEdit to rebuild its scene-graph textNodeMap on RichText updates.
+
+        Qt 6 appends child frames (HTML tables) after rootFrame blocks in textNodeMap,
+        leaving it unsorted by document position; incremental UpdateSomeNodes during
+        streaming can stop early and drop every glyph node above the first table.
+        """
+        if item is not None:
+            QMetaObject.invokeMethod(item, "q_invalidate")
 
     @Slot(str, result=str)
     def render(self, text: str) -> str:

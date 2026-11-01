@@ -15,4 +15,5 @@ TextArea {
     background: null
     persistentSelection: true
     Accessible.role: Accessible.StaticText
+    onTextChanged: if (textFormat === TextEdit.RichText && typeof markdownRenderer !== "undefined" && markdownRenderer !== null) markdownRenderer.invalidate(this)
 }

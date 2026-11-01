@@ -170,3 +170,21 @@ def test_live_and_replayed_state_keep_exact_event_payload_and_sequence(workspace
     view._event(copy.deepcopy(event))
     assert event == original and observed == [original] and view._cursors == {"run": 1}
     assert view.activityDetails == details and view.transcript.rows == [] and not requests
+
+
+def test_terminal_run_duration_and_fenced_structured_output(workspace):
+    from kira.backends.ollama import _parse_structured_output
+
+    view, _ = workspace
+    view._runs = {"run": run(created_at="2026-10-16T10:00:00Z", updated_at="2026-10-16T10:01:03Z")}
+    assert view.activityDurationText == ""
+    assert view.runDurationText("run") == ""
+    view._runs["run"]["state"] = "completed"
+    assert view.activityDurationText == "01:03"
+    assert view.runDurationText("run") == "01:03"
+
+    fenced = 'Preamble text\n\n```json\n{"decision": "completed", "summary": "Done", "members": [], "tasks": []}\n```'
+    raw_json, obj = _parse_structured_output(fenced)
+    assert obj["decision"] == "completed"
+    assert json.loads(raw_json) == obj
+

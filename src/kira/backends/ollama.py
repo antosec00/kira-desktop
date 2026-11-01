@@ -310,6 +310,32 @@ def _finite_float(value: str) -> float:
     return number
 
 
+def _parse_structured_output(text: str) -> tuple[str, Any]:
+    """Parse structured JSON output, tolerating Markdown code fences or leading prose."""
+    try:
+        return text, json.loads(text, parse_constant=_invalid_constant)
+    except (ValueError, TypeError, RecursionError):
+        pass
+    stripped = text.strip()
+    if "```" in stripped:
+        parts = stripped.split("```")
+        for i in range(len(parts) - 2, 0, -2):
+            block = parts[i].strip()
+            if block.lower().startswith("json"):
+                block = block[4:].strip()
+            try:
+                return block, json.loads(block, parse_constant=_invalid_constant)
+            except (ValueError, TypeError, RecursionError):
+                continue
+    if stripped.endswith("}"):
+        idx = stripped.rfind("\n{")
+        start = idx + 1 if idx >= 0 else stripped.find("{")
+        if start >= 0:
+            candidate = stripped[start:].strip()
+            return candidate, json.loads(candidate, parse_constant=_invalid_constant)
+    raise ValueError("Invalid structured JSON")
+
+
 async def ndjson(chunks: AsyncIterable[bytes]) -> AsyncIterator[Json]:
     """Decode only complete UTF-8 records, accepting a final record without LF."""
     buffer = bytearray()
@@ -924,12 +950,12 @@ class OllamaBackend:
                                         "output_tokens": output_tokens, "requested_num_ctx": requested}}
                 if not await guidance.seal():
                     continue
+                structured_text = message.get("content", "")
                 if ctx.output_schema is not None:
-                    if len(message.get("content", "").encode("utf-8")) > MAX_CLIENT_TOOL_BYTES:
+                    if len(structured_text.encode("utf-8")) > MAX_CLIENT_TOOL_BYTES:
                         return {"state": "failed", "error": f"Structured {provider} output exceeds 64 KiB"}
                     try:
-                        structured = json.loads(message.get("content", ""),
-                                                parse_constant=_invalid_constant)
+                        structured_text, structured = _parse_structured_output(structured_text)
                     except (ValueError, TypeError, RecursionError):
                         return {"state": "failed", "error": f"{provider} did not return valid structured JSON"}
                     if not isinstance(structured, dict):
@@ -940,7 +966,7 @@ class OllamaBackend:
                         "tool_rounds": rounds, "tools_verified": enabled,
                         **({"history_mode": "durable_compacted_context"}
                            if durable_context is not None else {}),
-                        **({"final_text": message.get("content", "")}
+                        **({"final_text": structured_text}
                            if ctx.output_schema is not None else {})}}
             if not schemas:
                 return {"state": "failed", "error": "Unverified model requested tools in chat-only mode"}
