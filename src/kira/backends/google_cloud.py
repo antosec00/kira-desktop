@@ -414,6 +414,7 @@ class GoogleCloudAccount:
         self.custom_models: list[str] = []
         self.active_account_id = ""
         self.accounts: dict[str, Json] = {}
+        self.disabled_accounts: set[str] = set()
         self._cached_token = ""
         self._cached_token_expiry = 0.0
         self.pending: asyncio.subprocess.Process | None = None
@@ -481,6 +482,13 @@ class GoogleCloudAccount:
                         "detected_project_id": str(row.get("detected_project_id") or "").strip()[:128],
                     }
         self.accounts = loaded_accounts
+        raw_disabled = raw.get("disabled_accounts", [])
+        if isinstance(raw_disabled, list):
+            self.disabled_accounts = {
+                str(item).strip()[:128]
+                for item in raw_disabled
+                if isinstance(item, str) and str(item).strip()
+            }
         models = raw.get("custom_models", [])
         if isinstance(models, list):
             self.custom_models = [
@@ -504,6 +512,7 @@ class GoogleCloudAccount:
                 "api_key": self.api_key,
                 "active_account_id": self.active_account_id,
                 "accounts": self.accounts,
+                "disabled_accounts": sorted(self.disabled_accounts),
                 "custom_models": self.custom_models,
             },
             ensure_ascii=False,
@@ -532,13 +541,15 @@ class GoogleCloudAccount:
 
     @property
     def effective_account_id(self) -> str:
-        if self.active_account_id and self.active_account_id in self.accounts:
-            return self.active_account_id
-        if self.active_account_id == SYSTEM_ACCOUNT_ID and self.system_adc_available:
-            return SYSTEM_ACCOUNT_ID
-        if self.accounts:
-            return next(iter(self.accounts))
-        if self.system_adc_available:
+        if self.active_account_id and self.active_account_id not in self.disabled_accounts:
+            if self.active_account_id in self.accounts:
+                return self.active_account_id
+            if self.active_account_id == SYSTEM_ACCOUNT_ID and self.system_adc_available:
+                return SYSTEM_ACCOUNT_ID
+        for acc_id in self.accounts:
+            if acc_id not in self.disabled_accounts:
+                return acc_id
+        if self.system_adc_available and SYSTEM_ACCOUNT_ID not in self.disabled_accounts:
             return SYSTEM_ACCOUNT_ID
         return ""
 
@@ -551,7 +562,11 @@ class GoogleCloudAccount:
 
     @property
     def adc_available(self) -> bool:
-        return bool(self.accounts) or self.system_adc_available or bool(self._cached_token)
+        has_enabled_iso = any(acc_id not in self.disabled_accounts for acc_id in self.accounts)
+        has_enabled_sys = (self.system_adc_available or bool(self._cached_token)) and (
+            SYSTEM_ACCOUNT_ID not in self.disabled_accounts
+        )
+        return has_enabled_iso or has_enabled_sys
 
     @property
     def configured_project_id_for_active(self) -> str:
@@ -574,7 +589,9 @@ class GoogleCloudAccount:
         iso = self.active_isolated_account
         if iso is not None:
             return str(iso.get("email") or "").strip()
-        return _detect_gcloud_account()
+        if self.effective_account_id == SYSTEM_ACCOUNT_ID:
+            return _detect_gcloud_account()
+        return ""
 
     def effective_project_id(self) -> str:
         iso = self.active_isolated_account
@@ -585,7 +602,9 @@ class GoogleCloudAccount:
                 or self.project_id
                 or _detect_gcloud_project()
             )
-        return self.project_id or _detect_gcloud_project()
+        if self.effective_account_id == SYSTEM_ACCOUNT_ID or self.auth_mode == "api_key":
+            return self.project_id or _detect_gcloud_project()
+        return self.project_id
 
     @property
     def connected(self) -> bool:
@@ -598,7 +617,9 @@ class GoogleCloudAccount:
         if self.system_adc_available:
             sys_email = _detect_gcloud_account()
             sys_proj = self.project_id or _detect_gcloud_project()
-            label = f"{sys_email} · WSL2 / gcloud" if sys_email else "gcloud ADC · Sistema WSL2"
+            sys_excluded = SYSTEM_ACCOUNT_ID in self.disabled_accounts
+            base_label = f"{sys_email} · WSL2 / gcloud" if sys_email else "gcloud ADC · Sistema WSL2"
+            label = f"{base_label} (Escluso da Kira)" if sys_excluded else base_label
             items.append(
                 {
                     "id": SYSTEM_ACCOUNT_ID,
@@ -607,7 +628,8 @@ class GoogleCloudAccount:
                     "project_id": sys_proj,
                     "source": "system",
                     "read_only": True,
-                    "connected": True,
+                    "excluded": sys_excluded,
+                    "connected": not sys_excluded,
                 }
             )
         for acc_id, row in self.accounts.items():
@@ -615,7 +637,10 @@ class GoogleCloudAccount:
                 continue
             email = str(row.get("email") or "").strip()
             proj = str(row.get("project_id") or row.get("detected_project_id") or self.project_id or "").strip()
-            label = f"{email} · Isolato in Kira" if email else f"Account Kira ({acc_id[:8]})"
+            iso_excluded = acc_id in self.disabled_accounts
+            base_label = f"{email} · Isolato in Kira" if email else f"Account Kira ({acc_id[:8]})"
+            label = f"{base_label} (Escluso da Kira)" if iso_excluded else base_label
+            has_token = bool(row.get("refresh_token") or row.get("access_token"))
             items.append(
                 {
                     "id": acc_id,
@@ -624,7 +649,8 @@ class GoogleCloudAccount:
                     "project_id": proj,
                     "source": "kira",
                     "read_only": False,
-                    "connected": bool(row.get("refresh_token") or row.get("access_token")),
+                    "excluded": iso_excluded,
+                    "connected": has_token and not iso_excluded,
                 }
             )
         return items
@@ -664,6 +690,7 @@ class GoogleCloudAccount:
             "active_account_id": eff_id,
             "active_account_is_system": eff_id == SYSTEM_ACCOUNT_ID,
             "accounts": self.accounts_summary(),
+            "disabled_accounts": sorted(self.disabled_accounts),
             "custom_models": list(self.custom_models),
             "supported_locations": list(SUPPORTED_LOCATIONS),
             "login": dict(self.state),
@@ -678,8 +705,34 @@ class GoogleCloudAccount:
                 raise KiraError("NOT_FOUND", "L'account gcloud di sistema non è disponibile")
         elif target not in self.accounts:
             raise KiraError("NOT_FOUND", "Account Google Cloud isolato non trovato in Kira")
+        self.disabled_accounts.discard(target)
         self.active_account_id = target
         self.auth_mode = "adc"
+        self._cached_token = ""
+        self._cached_token_expiry = 0.0
+        self.state = {"phase": "signed_in" if self.connected else "idle", "connected": self.connected}
+        self._save()
+        return self.status()
+
+    def set_account_enabled(self, account_id: Any, enabled: Any = True) -> Json:
+        """Exclude or re-enable a Google Cloud account in Kira's pool without touching WSL2/gcloud."""
+        if not isinstance(account_id, str) or not account_id.strip():
+            raise KiraError("INVALID_ARGUMENT", "Invalid Google Cloud account_id")
+        target = account_id.strip()
+        if target == SYSTEM_ACCOUNT_ID:
+            if not self.system_adc_available:
+                raise KiraError("NOT_FOUND", "L'account gcloud di sistema non è disponibile")
+        elif target not in self.accounts:
+            raise KiraError("NOT_FOUND", "Account Google Cloud isolato non trovato in Kira")
+        if bool(enabled):
+            self.disabled_accounts.discard(target)
+            if not self.active_account_id or self.active_account_id in self.disabled_accounts:
+                self.active_account_id = target
+        else:
+            self.disabled_accounts.add(target)
+            if self.active_account_id == target:
+                self.active_account_id = ""
+                self.active_account_id = self.effective_account_id
         self._cached_token = ""
         self._cached_token_expiry = 0.0
         self.state = {"phase": "signed_in" if self.connected else "idle", "connected": self.connected}
@@ -736,15 +789,75 @@ class GoogleCloudAccount:
         self._save()
         return self.status()
 
-    async def resolve_token(self, *, force_refresh: bool = False) -> str:
-        """Resolve an OAuth2 Bearer token from the active isolated Kira account or system ADC/gcloud."""
-        iso = self.active_isolated_account
+    def candidate_account_ids(self) -> list[str]:
+        """Return ordered connected account IDs starting with the active account for quota-pool rotation."""
+        if self.auth_mode == "api_key":
+            return ["api_key"] if self.api_key else []
+        order: list[str] = []
+        eff = self.effective_account_id
+        if eff and eff not in self.disabled_accounts:
+            order.append(eff)
+        for acc_id, row in self.accounts.items():
+            if (
+                acc_id not in order
+                and acc_id not in self.disabled_accounts
+                and isinstance(row, dict)
+                and (row.get("refresh_token") or row.get("access_token"))
+            ):
+                order.append(acc_id)
+        if (
+            self.system_adc_available
+            and SYSTEM_ACCOUNT_ID not in order
+            and SYSTEM_ACCOUNT_ID not in self.disabled_accounts
+        ):
+            order.append(SYSTEM_ACCOUNT_ID)
+        return order
+
+    def project_id_for_account(self, account_id: str = "") -> str:
+        """Return the effective Google Cloud project ID for a given account ID."""
+        target = account_id or self.effective_account_id
+        if target and target != SYSTEM_ACCOUNT_ID and self.auth_mode == "adc":
+            iso = self.accounts.get(target)
+            if isinstance(iso, dict):
+                return (
+                    str(iso.get("project_id") or "").strip()
+                    or str(iso.get("detected_project_id") or "").strip()
+                    or self.project_id
+                    or _detect_gcloud_project()
+                )
+        return self.project_id or _detect_gcloud_project()
+
+    def label_for_account(self, account_id: str = "") -> str:
+        """Return a human-readable email or label for a given account ID."""
+        target = account_id or self.effective_account_id
+        if target and target != SYSTEM_ACCOUNT_ID:
+            iso = self.accounts.get(target)
+            if isinstance(iso, dict):
+                return str(iso.get("email") or iso.get("id") or target).strip()
+        return _detect_gcloud_account() or "system-gcloud"
+
+    async def resolve_account_credentials(
+        self,
+        account_id: str = "",
+        *,
+        force_refresh: bool = False,
+    ) -> tuple[str, str, str]:
+        """Resolve (access_token, project_id, account_label) for a specific account ID."""
+        target = account_id or self.effective_account_id
+        if target in self.disabled_accounts or (not target and SYSTEM_ACCOUNT_ID in self.disabled_accounts):
+            raise GoogleCloudAuthError(
+                "Tutti gli account Google Cloud risultano esclusi da Kira. "
+                "Riattiva un account o aggiungine uno nuovo in Modelli → Google Cloud."
+            )
+        iso = self.accounts.get(target) if (target and target != SYSTEM_ACCOUNT_ID) else None
         if iso is not None:
+            proj = self.project_id_for_account(target)
+            email_label = self.label_for_account(target)
             cached = str(iso.get("access_token") or "").strip()
             expires_at = float(iso.get("expires_at") or 0.0)
             if not force_refresh and cached and time.time() < expires_at - 60:
                 self._sync_redaction()
-                return cached
+                return cached, proj, email_label
             client_id = str(iso.get("client_id") or GCLOUD_ADC_CLIENT_ID).strip()
             client_secret = str(iso.get("client_secret") or GCLOUD_ADC_CLIENT_SECRET).strip()
             refresh_token = str(iso.get("refresh_token") or "").strip()
@@ -769,17 +882,18 @@ class GoogleCloudAccount:
                             iso["access_token"] = token
                             iso["expires_at"] = time.time() + max(120, expires_in)
                             self._save()
-                            return token
+                            return token, proj, email_label
             if cached and time.time() < expires_at:
-                return cached
-            email_label = str(iso.get("email") or iso.get("id") or "isolato")
+                return cached, proj, email_label
             raise GoogleCloudAuthError(
                 f"Impossibile rinnovare il token per l'account Google isolato ({email_label}). "
                 "Ripeti l'accesso Google in Kira oppure cambia account."
             )
 
+        sys_proj = self.project_id_for_account(SYSTEM_ACCOUNT_ID)
+        sys_label = self.label_for_account(SYSTEM_ACCOUNT_ID)
         if not force_refresh and self._cached_token and time.time() < self._cached_token_expiry - 60:
-            return self._cached_token
+            return self._cached_token, sys_proj, sys_label
         adc_path = _adc_file_path()
         if adc_path.is_file():
             with contextlib.suppress(OSError, ValueError, KeyError, httpx.HTTPError):
@@ -810,7 +924,7 @@ class GoogleCloudAccount:
                             self._cached_token = token
                             self._cached_token_expiry = time.time() + max(120, expires_in)
                             self._sync_redaction()
-                            return token
+                            return token, sys_proj, sys_label
         gcloud_bin = shutil.which("gcloud")
         if gcloud_bin:
             for subcmd in (
@@ -831,11 +945,16 @@ class GoogleCloudAccount:
                             self._cached_token = token
                             self._cached_token_expiry = time.time() + 2700.0
                             self._sync_redaction()
-                            return token
+                            return token, sys_proj, sys_label
         raise GoogleCloudAuthError(
             "Google Cloud credentials not found. Use 'Aggiungi / Cambia account Google' in Kira "
             "or configure a Google Cloud API key in Modelli."
         )
+
+    async def resolve_token(self, *, force_refresh: bool = False) -> str:
+        """Resolve an OAuth2 Bearer token from the active isolated Kira account or system ADC/gcloud."""
+        token, _, _ = await self.resolve_account_credentials(self.effective_account_id, force_refresh=force_refresh)
+        return token
 
     async def login(self) -> Json:
         """Start an isolated loopback OAuth2 PKCE flow in Kira without modifying host ~/.config/gcloud."""
@@ -1041,11 +1160,24 @@ class GoogleCloudAccount:
                 payload = response.json()
                 projects = payload.get("projects") if isinstance(payload, dict) else None
                 if isinstance(projects, list):
+                    pids: list[str] = []
                     for proj in projects:
                         if isinstance(proj, dict):
                             pid = str(proj.get("projectId") or "").strip()
                             if pid:
-                                return pid
+                                pids.append(pid)
+                    if len(pids) > 1:
+                        for pid in pids[:5]:
+                            with contextlib.suppress(httpx.HTTPError, ValueError, KeyError, TimeoutError):
+                                b_resp = await self.client.get(
+                                    f"https://cloudbilling.googleapis.com/v1/projects/{pid}/billingInfo",
+                                    headers={"Authorization": f"Bearer {access_token}"},
+                                    timeout=5.0,
+                                )
+                                if b_resp.status_code == 200 and b_resp.json().get("billingEnabled") is True:
+                                    return pid
+                    if pids:
+                        return pids[0]
         return ""
 
     async def ensure_vertex_api_enabled(self, project_id: str = "", access_token: str = "") -> bool:
@@ -1122,6 +1254,7 @@ class GoogleCloudAccount:
                 "project_id": str(prev.get("project_id") or ""),
                 "detected_project_id": detected_proj or str(prev.get("detected_project_id") or ""),
             }
+            self.disabled_accounts.discard(acc_id)
             self.active_account_id = acc_id
             self.auth_mode = "adc"
             self._cached_token = ""
@@ -1160,7 +1293,13 @@ class GoogleCloudAccount:
             eff = target or self.effective_account_id
             if eff and eff != SYSTEM_ACCOUNT_ID and eff in self.accounts:
                 self.accounts.pop(eff, None)
+                self.disabled_accounts.discard(eff)
                 if self.active_account_id == eff:
+                    self.active_account_id = ""
+                    self.active_account_id = self.effective_account_id
+            elif eff == SYSTEM_ACCOUNT_ID:
+                self.disabled_accounts.add(SYSTEM_ACCOUNT_ID)
+                if self.active_account_id == SYSTEM_ACCOUNT_ID:
                     self.active_account_id = ""
                     self.active_account_id = self.effective_account_id
             else:
@@ -1228,6 +1367,7 @@ class GoogleCloudAccounts:
                     "active_account_id": "",
                     "active_account_is_system": False,
                     "accounts": [],
+                    "disabled_accounts": [],
                     "custom_models": [],
                     "supported_locations": list(SUPPORTED_LOCATIONS),
                     "login": {"phase": "idle", "connected": False},
@@ -1243,6 +1383,8 @@ class GoogleCloudAccounts:
                 result = await self.auth.login()
             elif action == "select":
                 result = self.auth.select(params.get("account_id"))
+            elif action == "set_enabled":
+                result = self.auth.set_account_enabled(params.get("account_id"), params.get("enabled", True))
             elif action == "cancel":
                 result = await self.auth.cancel()
             elif action == "logout":
@@ -1658,12 +1800,22 @@ async def _cancelable_sleep(seconds: float, ctx: RunContext | None) -> bool:
         await asyncio.sleep(min(0.25, remaining))
 
 
+def _is_global_only_vertex_model(model: str) -> bool:
+    """Return True for Vertex AI models published exclusively on the global endpoint."""
+    clean = model.strip().lower()
+    return clean == "gemini-4-argon" or clean.startswith(("gemini-4-", "gemini-3"))
+
+
 def _retry_delay_for_response(
     response: httpx.Response,
     retry_idx: int,
     delays: tuple[float, ...] = RATE_LIMIT_BACKOFF_DELAYS,
 ) -> float:
     base = delays[min(retry_idx, len(delays) - 1)]
+    # Add small deterministic-safe jitter (0..15% of base) when using standard backoff delays
+    if base >= 1.0:
+        jitter = (secrets.randbelow(150) / 1000.0) * base
+        base = round(base + jitter, 3)
     retry_after = response.headers.get("retry-after") or response.headers.get("Retry-After")
     if retry_after:
         with contextlib.suppress(ValueError):
@@ -1686,7 +1838,39 @@ class GoogleCloudBackend(OllamaBackend):
         self._last_request_completed_at: float = 0.0
         self._last_prompt_tokens: int = 0
         self._backoff_delays: tuple[float, ...] = RATE_LIMIT_BACKOFF_DELAYS
+        self._quota_cooldowns: dict[tuple[str, str], float] = {}
+        self._cooldown_seconds: float = 180.0
         self._populate_builtin_details()
+
+    def _is_on_cooldown(self, account_id: str, model_id: str) -> bool:
+        if not account_id:
+            return False
+        exp = self._quota_cooldowns.get((account_id, model_id), 0.0)
+        if exp <= 0.0:
+            return False
+        if time.monotonic() >= exp:
+            self._quota_cooldowns.pop((account_id, model_id), None)
+            return False
+        return True
+
+    def _mark_cooldown(self, account_id: str, model_id: str, seconds: float | None = None) -> None:
+        if not account_id:
+            return
+        dur = self._cooldown_seconds if seconds is None else seconds
+        if dur > 0:
+            self._quota_cooldowns[(account_id, model_id)] = time.monotonic() + dur
+
+    def _select_best_account_for_model(
+        self,
+        model_id: str,
+        *,
+        exclude: set[str] | None = None,
+    ) -> str | None:
+        excluded = exclude or set()
+        for acc_id in self.account.candidate_account_ids():
+            if acc_id not in excluded and not self._is_on_cooldown(acc_id, model_id):
+                return acc_id
+        return None
 
     async def _pace_before_request(self, ctx: RunContext | None) -> None:
         if ctx is None or self._last_request_completed_at <= 0:
@@ -1836,21 +2020,29 @@ class GoogleCloudBackend(OllamaBackend):
 
     async def _auth_headers_and_params(self) -> tuple[dict[str, str], dict[str, str], str]:
         """Return (headers, query_params, secret_for_redaction)."""
+        headers, params, secret, _, _ = await self._auth_context_for_account()
+        return headers, params, secret
+
+    async def _auth_context_for_account(
+        self,
+        account_id: str = "",
+    ) -> tuple[dict[str, str], dict[str, str], str, str, str]:
+        """Return (headers, query_params, secret_for_redaction, project_id, account_label)."""
         headers = {"user-agent": f"Kira-Desktop/{__version__}"}
         params: dict[str, str] = {}
-        project = self.account.effective_project_id()
         if self.account.auth_mode == "api_key":
             if not self.account.api_key:
                 raise GoogleCloudAuthError("Configure the Google Cloud / Gemini API key before using this provider")
+            project = self.account.effective_project_id()
             headers["x-goog-api-key"] = self.account.api_key
             if project:
                 headers["x-goog-user-project"] = project
-            return headers, params, self.account.api_key
-        token = await self.account.resolve_token()
+            return headers, params, self.account.api_key, project, "api_key"
+        token, project, label = await self.account.resolve_account_credentials(account_id)
         headers["Authorization"] = f"Bearer {token}"
         if project:
             headers["x-goog-user-project"] = project
-        return headers, params, token
+        return headers, params, token, project, label
 
     async def _stream(
         self,
@@ -1870,10 +2062,23 @@ class GoogleCloudBackend(OllamaBackend):
         ctx: RunContext | None,
         item_id: str | None,
     ) -> tuple[Json, Json]:
-        headers, query_params, secret = await self._auth_headers_and_params()
+        rate_limit_fallbacks = list(VERTEX_RATE_LIMIT_FALLBACKS.get(model_id, ()))
+        effective_model_id = model_id
+        active_acc_id = self._select_best_account_for_model(model_id)
+        if active_acc_id is None and rate_limit_fallbacks:
+            for fb_idx, fb_candidate in enumerate(rate_limit_fallbacks):
+                fb_acc = self._select_best_account_for_model(fb_candidate)
+                if fb_acc is not None:
+                    effective_model_id = fb_candidate
+                    active_acc_id = fb_acc
+                    rate_limit_fallbacks = rate_limit_fallbacks[fb_idx + 1 :]
+                    break
+        if not active_acc_id:
+            active_acc_id = self.account.effective_account_id
+        headers, query_params, secret, project, acc_label = await self._auth_context_for_account(active_acc_id)
         query_params["alt"] = "sse"
-        project = self.account.effective_project_id()
-        location = (self.account.location or "global").strip()
+        configured_location = (self.account.location or "global").strip()
+        location = "global" if _is_global_only_vertex_model(effective_model_id) else configured_location
 
         source = body.get("messages", [])
         if ctx is not None and ctx.image_inputs.get(ctx.run_id):
@@ -1914,6 +2119,7 @@ class GoogleCloudBackend(OllamaBackend):
             ]
 
         def build_url_and_request(target_model: str, target_loc: str) -> tuple[str, Json]:
+            eff_loc = "global" if _is_global_only_vertex_model(target_model) else target_loc
             if self.account.auth_mode == "api_key" and not project:
                 target_url = f"{GEMINI_API_BASE}/v1beta/models/{target_model}:streamGenerateContent"
             else:
@@ -1922,9 +2128,9 @@ class GoogleCloudBackend(OllamaBackend):
                         "Project ID Google Cloud mancante. Imposta il Project ID nel pannello Modelli "
                         "o con 'gcloud config set project <PROJECT_ID>'."
                     )
-                base = _vertex_base_url(target_loc)
+                base = _vertex_base_url(eff_loc)
                 target_url = (
-                    f"{base}/v1/projects/{project}/locations/{target_loc}"
+                    f"{base}/v1/projects/{project}/locations/{eff_loc}"
                     f"/publishers/google/models/{target_model}:streamGenerateContent"
                 )
             gen_cfg: Json = {"maxOutputTokens": max_output}
@@ -1954,14 +2160,13 @@ class GoogleCloudBackend(OllamaBackend):
             return target_url, req
 
         # Build candidate (model, location) attempts so regional 404 or legacy alias 404 falls back cleanly
-        attempts: list[tuple[str, str]] = [(model_id, location)]
+        attempts: list[tuple[str, str]] = [(effective_model_id, location)]
         if location != "global":
-            attempts.append((model_id, "global"))
-        fallback_model = VERTEX_MODEL_FALLBACKS.get(model_id)
-        if fallback_model and fallback_model != model_id:
+            attempts.append((effective_model_id, "global"))
+        fallback_model = VERTEX_MODEL_FALLBACKS.get(effective_model_id)
+        if fallback_model and fallback_model != effective_model_id:
             if (fallback_model, "global") not in attempts:
                 attempts.append((fallback_model, "global"))
-        rate_limit_fallbacks = list(VERTEX_RATE_LIMIT_FALLBACKS.get(model_id, ()))
 
         text = ""
         thought_text = ""
@@ -1986,6 +2191,7 @@ class GoogleCloudBackend(OllamaBackend):
         rate_limit_retries = 0
         timeout_retries = 0
         empty_turn_retries = 0
+        tried_accounts_for_model: set[str] = {active_acc_id} if active_acc_id else set()
         await self._pace_before_request(ctx)
         idx = 0
         while idx < len(attempts):
@@ -2023,9 +2229,26 @@ class GoogleCloudBackend(OllamaBackend):
                             )
                         ):
                             api_enable_attempted = True
-                            if await self.account.ensure_vertex_api_enabled(project):
+                            if await self.account.ensure_vertex_api_enabled(project, secret):
                                 await asyncio.sleep(2.5)
                                 continue
+                        # If a rotated secondary account lacks billing or permissions (401/403), skip to next account
+                        if response.status_code in (401, 403) and len(tried_accounts_for_model) > 1:
+                            self._mark_cooldown(active_acc_id, cur_model)
+                            next_acc_id = self._select_best_account_for_model(
+                                cur_model,
+                                exclude=tried_accounts_for_model,
+                            )
+                            if next_acc_id is not None:
+                                with contextlib.suppress(GoogleCloudAuthError):
+                                    nh, nq, ns, np, nl = await self._auth_context_for_account(next_acc_id)
+                                    if np or self.account.auth_mode == "api_key":
+                                        active_acc_id = next_acc_id
+                                        tried_accounts_for_model.add(next_acc_id)
+                                        headers, query_params, secret, project, acc_label = nh, nq, ns, np, nl
+                                        query_params["alt"] = "sse"
+                                        api_enable_attempted = False
+                                        continue
                         if response.status_code == 404 and idx + 1 < len(attempts):
                             idx += 1
                             continue
@@ -2038,8 +2261,58 @@ class GoogleCloudBackend(OllamaBackend):
                                 _compact_messages_for_vertex(source, max_chars=40_000),
                                 ctx.image_inputs if ctx else {},
                             )
+                            # Rotate to another connected Google Cloud account/project before dropping model tier
+                            if response.status_code == 429:
+                                next_acc_id = self._select_best_account_for_model(
+                                    cur_model,
+                                    exclude=tried_accounts_for_model,
+                                )
+                                while next_acc_id is not None:
+                                    tried_accounts_for_model.add(next_acc_id)
+                                    rotated = False
+                                    with contextlib.suppress(GoogleCloudAuthError):
+                                        nh, nq, ns, np, nl = await self._auth_context_for_account(next_acc_id)
+                                        if np or self.account.auth_mode == "api_key":
+                                            self._mark_cooldown(active_acc_id, cur_model)
+                                            prev_label = acc_label
+                                            active_acc_id = next_acc_id
+                                            headers, query_params, secret, project, acc_label = nh, nq, ns, np, nl
+                                            query_params["alt"] = "sse"
+                                            api_enable_attempted = False
+                                            rotated = True
+                                            if ctx is not None:
+                                                await ctx.emit(
+                                                    "backend.notice",
+                                                    {
+                                                        "message": (
+                                                            f"Quota temporanea esaurita su {cur_model} ({prev_label}, HTTP 429); "
+                                                            f"proseguo su {cur_model} tramite l'account Google Cloud {acc_label}."
+                                                        ),
+                                                        "model": cur_model,
+                                                    },
+                                                )
+                                            break
+                                    if rotated:
+                                        break
+                                    next_acc_id = self._select_best_account_for_model(
+                                        cur_model,
+                                        exclude=tried_accounts_for_model,
+                                    )
+                                else:
+                                    rotated = False
+                                if rotated:
+                                    continue
+
                             if response.status_code == 429 and rate_limit_retries >= 2 and rate_limit_fallbacks:
+                                self._mark_cooldown(active_acc_id, cur_model)
                                 next_fb = rate_limit_fallbacks.pop(0)
+                                fb_acc = self._select_best_account_for_model(next_fb) or self.account.effective_account_id
+                                active_acc_id = fb_acc
+                                tried_accounts_for_model = {active_acc_id} if active_acc_id else set()
+                                headers, query_params, secret, project, acc_label = await self._auth_context_for_account(
+                                    active_acc_id
+                                )
+                                query_params["alt"] = "sse"
                                 target_loc = "global" if project else cur_loc
                                 if (next_fb, target_loc) not in attempts[idx + 1 :]:
                                     attempts.insert(idx + 1, (next_fb, target_loc))
@@ -2055,14 +2328,14 @@ class GoogleCloudBackend(OllamaBackend):
                                             "model": next_fb,
                                         },
                                     )
-                                headers, query_params, secret = await self._auth_headers_and_params()
-                                query_params["alt"] = "sse"
                                 continue
                             if rate_limit_retries < len(self._backoff_delays):
                                 delay = _retry_delay_for_response(response, rate_limit_retries, self._backoff_delays)
                                 rate_limit_retries += 1
                                 if await _cancelable_sleep(delay, ctx):
-                                    headers, query_params, secret = await self._auth_headers_and_params()
+                                    headers, query_params, secret, project, acc_label = await self._auth_context_for_account(
+                                        active_acc_id
+                                    )
                                     query_params["alt"] = "sse"
                                     continue
                         raise GoogleCloudHTTPError(response, safe_detail)
@@ -2185,7 +2458,9 @@ class GoogleCloudBackend(OllamaBackend):
                                 "model": target_model_label,
                             },
                         )
-                    headers, query_params, secret = await self._auth_headers_and_params()
+                    headers, query_params, secret, project, acc_label = await self._auth_context_for_account(
+                        active_acc_id
+                    )
                     query_params["alt"] = "sse"
                     continue
                 raise
@@ -2227,7 +2502,9 @@ class GoogleCloudBackend(OllamaBackend):
                             "model": target_model_label,
                         },
                     )
-                headers, query_params, secret = await self._auth_headers_and_params()
+                headers, query_params, secret, project, acc_label = await self._auth_context_for_account(
+                    active_acc_id
+                )
                 query_params["alt"] = "sse"
                 continue
 

@@ -1,5 +1,6 @@
 """Bounded presentation data; streaming changes update only the affected row."""
 
+from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import (
@@ -14,6 +15,35 @@ from PySide6.QtCore import (
 
 from kira.ui.presentation import limit_ui, refresh_ui, tr
 from kira.ui.service_errors import tool_error_summary
+
+
+class DeferredRaw:
+    """Defer pretty-printing raw JSON payloads during batch replay until surviving rows are published."""
+
+    __slots__ = ("_formatter", "_parts")
+
+    def __init__(self, formatter: Callable[[Any, int], str], *parts: Any) -> None:
+        self._formatter = formatter
+        self._parts = list(parts)
+
+    def append(self, part: Any) -> "DeferredRaw":
+        return DeferredRaw(self._formatter, *self._parts, part)
+
+    def render(self, limit: int) -> str:
+        out = ""
+        for index, part in enumerate(self._parts):
+            remaining = limit - len(out) - (2 if index else 0)
+            if remaining <= 0:
+                out = out + "\n\n…" if index else "…"
+                break
+            text = part if isinstance(part, str) else self._formatter(part, remaining)
+            out = text if index == 0 else out + "\n\n" + text
+            if len(out) > limit:
+                break
+        return out
+
+    def __str__(self) -> str:
+        return self.render(TranscriptModel.MAX_BODY)
 
 
 class TranscriptModel(QAbstractListModel):
@@ -86,6 +116,13 @@ class TranscriptModel(QAbstractListModel):
             self.rows = [dict(row) for row in self.rows]
         self._batch_depth += 1
 
+    def _finalize_batch_rows(self) -> None:
+        for row in self.rows:
+            if isinstance(row["raw"], DeferredRaw):
+                row["raw"] = self.bounded(str(row["raw"]))
+            row.update(self._preview_fields(row))
+            row.update(self._receipt_fields(row))
+
     def end_batch(self) -> None:
         """Publish the outermost batch with one reset, including empty history."""
         if not self._batch_depth:
@@ -93,6 +130,8 @@ class TranscriptModel(QAbstractListModel):
         self._batch_depth -= 1
         if self._batch_depth:
             return
+        self._finalize_batch_rows()
+        self._refresh_tool_groups()
         self.beginResetModel()
         self._published_rows = None
         self._published_tool_group_states = None
@@ -129,6 +168,8 @@ class TranscriptModel(QAbstractListModel):
 
     def retranslate(self) -> None:
         for index, row in enumerate(self.rows):
+            if isinstance(row["raw"], DeferredRaw):
+                row["raw"] = self.bounded(str(row["raw"]))
             fields = {key: refresh_ui(row[key]) for key in ("title", "body", "raw", "status")}
             self.update(index, **{key: value for key, value in fields.items() if value != row[key]})
 
@@ -209,6 +250,46 @@ class TranscriptModel(QAbstractListModel):
                     break
         return evidence
 
+    TOOL_LABELS = {
+        "list_files": lambda: tr("Elenco dei file"),
+        "search_files": lambda: tr("Ricerca nei file"),
+        "read_file": lambda: tr("Lettura del file"),
+        "write_file": lambda: tr("Scrittura del file"),
+        "run_command": lambda: tr("Esecuzione del comando"),
+        "web_search": lambda: tr("Ricerca web"),
+        "browser.navigate": lambda: tr("Apertura della pagina"),
+        "browser.snapshot": lambda: tr("Lettura della pagina"),
+        "browser.screenshot": lambda: tr("Acquisizione della pagina"),
+        "browser.tabs": lambda: tr("Schede del browser"),
+        "browser.manual_login": lambda: tr("Accesso manuale al sito"),
+        "computer.observe": lambda: tr("Osservazione del browser"),
+        "computer.act": lambda: tr("Interazione con il browser"),
+    }
+    NATIVE_TOOL_LABELS = {
+        "Read": lambda: tr("Lettura del file"),
+        "Write": lambda: tr("Scrittura del file"),
+        "Edit": lambda: tr("Modifica del file"),
+        "MultiEdit": lambda: tr("Modifiche al file"),
+        "NotebookEdit": lambda: tr("Modifica del notebook"),
+        "NotebookRead": lambda: tr("Lettura del notebook"),
+        "Bash": lambda: tr("Esecuzione del comando"),
+        "BashOutput": lambda: tr("Output del comando"),
+        "KillShell": lambda: tr("Arresto del comando"),
+        "Glob": lambda: tr("Ricerca dei file"),
+        "Grep": lambda: tr("Ricerca nel testo"),
+        "LS": lambda: tr("Elenco dei file"),
+        "WebSearch": lambda: tr("Ricerca web"),
+        "WebFetch": lambda: tr("Lettura della pagina"),
+        "Task": lambda: tr("Sottoagente"),
+        "Agent": lambda: tr("Sottoagente"),
+        "TodoWrite": lambda: tr("Elenco delle attività"),
+        "AskUserQuestion": lambda: tr("Domanda all’utente"),
+        "Skill": lambda: tr("Competenza"),
+        "ToolSearch": lambda: tr("Ricerca degli strumenti"),
+        "EnterPlanMode": lambda: tr("Inizio della pianificazione"),
+        "ExitPlanMode": lambda: tr("Fine della pianificazione"),
+    }
+
     @classmethod
     def _receipt_fields(cls, row: dict[str, Any]) -> dict[str, Any]:
         if row["kind"] != "tool":
@@ -216,49 +297,12 @@ class TranscriptModel(QAbstractListModel):
         name = str(row["title"])
         # Known tool identities are labels, not inferred descriptions of shell
         # commands or natural-language output. Unknown identities stay literal.
-        labels = {
-            "list_files": lambda: tr("Elenco dei file"),
-            "search_files": lambda: tr("Ricerca nei file"),
-            "read_file": lambda: tr("Lettura del file"),
-            "write_file": lambda: tr("Scrittura del file"),
-            "run_command": lambda: tr("Esecuzione del comando"),
-            "web_search": lambda: tr("Ricerca web"),
-            "browser.navigate": lambda: tr("Apertura della pagina"),
-            "browser.snapshot": lambda: tr("Lettura della pagina"),
-            "browser.screenshot": lambda: tr("Acquisizione della pagina"),
-            "browser.tabs": lambda: tr("Schede del browser"),
-            "browser.manual_login": lambda: tr("Accesso manuale al sito"),
-            "computer.observe": lambda: tr("Osservazione del browser"),
-            "computer.act": lambda: tr("Interazione con il browser"),
-        }
+        labels = cls.TOOL_LABELS
         # Claude Code's native tools keep their recorded identity in the row
         # title and original data; the receipt shows the same operation labels
         # as Kira's own tools. Kira tools mediated by Claude Code keep their
         # Kira names; any other native tool stays literal with its source.
-        native = {
-            "Read": lambda: tr("Lettura del file"),
-            "Write": lambda: tr("Scrittura del file"),
-            "Edit": lambda: tr("Modifica del file"),
-            "MultiEdit": lambda: tr("Modifiche al file"),
-            "NotebookEdit": lambda: tr("Modifica del notebook"),
-            "NotebookRead": lambda: tr("Lettura del notebook"),
-            "Bash": lambda: tr("Esecuzione del comando"),
-            "BashOutput": lambda: tr("Output del comando"),
-            "KillShell": lambda: tr("Arresto del comando"),
-            "Glob": lambda: tr("Ricerca dei file"),
-            "Grep": lambda: tr("Ricerca nel testo"),
-            "LS": lambda: tr("Elenco dei file"),
-            "WebSearch": lambda: tr("Ricerca web"),
-            "WebFetch": lambda: tr("Lettura della pagina"),
-            "Task": lambda: tr("Sottoagente"),
-            "Agent": lambda: tr("Sottoagente"),
-            "TodoWrite": lambda: tr("Elenco delle attività"),
-            "AskUserQuestion": lambda: tr("Domanda all’utente"),
-            "Skill": lambda: tr("Competenza"),
-            "ToolSearch": lambda: tr("Ricerca degli strumenti"),
-            "EnterPlanMode": lambda: tr("Inizio della pianificazione"),
-            "ExitPlanMode": lambda: tr("Fine della pianificazione"),
-        }
+        native = cls.NATIVE_TOOL_LABELS
         label: Any
         if name in labels:
             label = labels[name]()
@@ -400,8 +444,8 @@ class TranscriptModel(QAbstractListModel):
         row["attachments"] = [dict(item) for item in fields.get("attachments", [])[:4]
                               if isinstance(item, dict)]
         row["body"] = self.bounded(str(row["body"]))
-        row["raw"] = self.bounded(str(row["raw"]))
-        row.update(self._preview_fields(row))
+        if not (self._batch_depth and isinstance(row["raw"], DeferredRaw)):
+            row["raw"] = self.bounded(str(row["raw"]))
         row["outputExpanded"] = False
         row["receiptExpanded"] = False
         row.update(self.GROUP_DEFAULTS)
@@ -409,11 +453,17 @@ class TranscriptModel(QAbstractListModel):
             **self._receipt_evidence(str(row["title"]), fields.get("toolArguments"), result=False),
             **self._receipt_evidence(str(row["title"]), fields.get("toolResult"), result=True),
         }
-        row.update(self._receipt_fields(row))
+        if self._batch_depth:
+            row["previewBody"] = ""
+            row["previewTruncated"] = False
+            row.update(self.RECEIPT_DEFAULTS)
+        else:
+            row.update(self._preview_fields(row))
+            row.update(self._receipt_fields(row))
         self._tool_group_token += 1
         row["_toolGroupToken"] = self._tool_group_token
         self.rows.append(row)
-        changes = self._refresh_tool_groups()
+        changes = {} if self._batch_depth else self._refresh_tool_groups()
         if not self._batch_depth:
             self.endInsertRows()
         self._emit_role_changes(changes, inserted=position)
@@ -445,29 +495,33 @@ class TranscriptModel(QAbstractListModel):
                       *self.RECEIPT_DEFAULTS, "receiptExpanded"}}
         if "body" in fields:
             fields["body"] = self.bounded(str(fields["body"]))
-        if "raw" in fields:
+        if "raw" in fields and not (self._batch_depth and isinstance(fields["raw"], DeferredRaw)):
             fields["raw"] = self.bounded(str(fields["raw"]))
-        group_changed = ((self.rows[index]["kind"] == "tool" or fields.get("kind") == "tool")
+        group_changed = (not self._batch_depth
+                         and (self.rows[index]["kind"] == "tool" or fields.get("kind") == "tool")
                          and any(key in fields and fields[key] != self.rows[index][key]
                                  for key in ("kind", "runId", "toolId", "status")))
         self.rows[index].update(fields)
         self.rows[index]["_receiptEvidence"] = evidence
-        receipt = self._receipt_fields(self.rows[index])
-        fields.update({key: value for key, value in receipt.items()
-                       if value != self.rows[index][key]})
-        self.rows[index].update(receipt)
-        if "body" in fields or "kind" in fields:
-            preview = self._preview_fields(self.rows[index])
-            fields.update({key: value for key, value in preview.items()
+        if not self._batch_depth:
+            receipt = self._receipt_fields(self.rows[index])
+            fields.update({key: value for key, value in receipt.items()
                            if value != self.rows[index][key]})
-            self.rows[index].update(preview)
+            self.rows[index].update(receipt)
+            if "body" in fields or "kind" in fields:
+                preview = self._preview_fields(self.rows[index])
+                fields.update({key: value for key, value in preview.items()
+                               if value != self.rows[index][key]})
+                self.rows[index].update(preview)
         changes = self._refresh_tool_groups() if group_changed else {}
-        if fields:
+        if fields and not self._batch_depth:
             changes[index] = [*fields, *changes.get(index, [])]
         self._emit_role_changes(changes)
 
     @Slot(int, bool)
     def setToolGroupExpanded(self, index: int, expanded: bool) -> None:
+        if self._batch_depth:
+            self._refresh_tool_groups()
         if not 0 <= index < len(self.rows) or not self.rows[index]["toolGroupCount"]:
             return
         if self.rows[index]["toolGroupExpanded"] == expanded:
