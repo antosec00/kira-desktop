@@ -8,6 +8,7 @@ RowLayout {
     property bool motionEnabled: false
     property string outcome: "unknown"
     property string startedAt: ""
+    property string durationText: ""
     property bool clockEnabled: false
     property int elapsedSeconds: 0
     readonly property real startedMilliseconds: Date.parse(startedAt)
@@ -71,5 +72,13 @@ RowLayout {
             text: qsTr("Tempo trascorso dall’avvio della richiesta") + "\n" + kformat.timestamp(indicator.startedAt)
         }
         MouseArea { id: elapsedHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+    }
+    Text {
+        objectName: "activityDuration"
+        visible: !isFinite(indicator.startedMilliseconds) && indicator.durationText.length > 0
+        text: "⏱ " + indicator.durationText; textFormat: Text.PlainText
+        color: appearance.colors.muted
+        font.family: appearance.codeFont.family
+        font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
     }
 }

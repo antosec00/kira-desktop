@@ -198,21 +198,43 @@ class TeamController(QObject):
         result = []
         for row in self._team.get("members", []):
             preview = str(row.get("last_output") or "")
-            if row.get("id") == "coordinator" and preview.lstrip().startswith("{"):
-                try:
-                    plan = json.loads(preview)
-                    if isinstance(plan, dict):
-                        preview = str(plan.get("summary") or tr("Piano registrato nell'esecuzione."))
-                except ValueError:
-                    preview = str(self._team.get("summary") or tr("Piano registrato nell'esecuzione."))
+            if row.get("id") == "coordinator":
+                if preview.lstrip().startswith("{"):
+                    try:
+                        plan = json.loads(preview)
+                        if isinstance(plan, dict):
+                            preview = str(plan.get("summary") or tr("Piano registrato nell'esecuzione."))
+                    except ValueError:
+                        preview = str(self._team.get("summary") or tr("Piano registrato nell'esecuzione."))
+                elif '{"decision"' in preview:
+                    idx = preview.find('{"decision"')
+                    prose = preview[:idx].rstrip().removesuffix("```json").removesuffix("```").rstrip()
+                    summary = str(self._team.get("summary") or "").strip()
+                    preview = f"{prose}\n\n{summary}".strip() if prose and summary else (summary or prose)
+            if preview.endswith("\n}"):
+                preview = preview[:-2].rstrip()
+            elif preview.strip() == "}":
+                preview = ""
             result.append({**row, "output_preview": preview,
                            "state_label": state_label(str(row.get("state", "")))})
         return result
 
     @qt_property("QVariantList", notify=changed)
     def steps(self) -> list[Json]:
-        return [{**row, "state_label": state_label(str(row.get("state", "")))}
-                for row in self._team.get("steps", [])]
+        out = []
+        for row in self._team.get("steps", []):
+            outcome = row.get("outcome") if isinstance(row.get("outcome"), dict) else {}
+            preview = str(outcome.get("final_text") or outcome.get("summary") or "").strip()
+            if preview.endswith("\n}"):
+                preview = preview[:-2].rstrip()
+            elif preview == "}":
+                preview = ""
+            out.append({
+                **row,
+                "state_label": state_label(str(row.get("state", ""))),
+                "outcome_preview": preview,
+            })
+        return out
 
     @qt_property("QVariantList", notify=changed)
     def approvals(self) -> list[Json]:
@@ -535,6 +557,10 @@ class TeamController(QObject):
     @qt_property(str, notify=evidenceChanged)
     def evidenceNotice(self) -> str:
         return tr("Ultimi 600 eventi caricati · {count} precedenti non mostrati", count=self.evidence.omitted) if self.evidence.omitted else ""
+
+    @qt_property(bool, notify=evidenceChanged)
+    def evidenceHideDeltas(self) -> bool:
+        return self.evidence.hide_deltas
 
     @qt_property(str, notify=draftChanged)
     def messageDraft(self) -> str:
@@ -1087,6 +1113,11 @@ class TeamController(QObject):
     @Slot(str, result=str)
     def readableEvidence(self, source: str) -> str:
         return readable_payload(source)
+
+    @Slot(bool)
+    def setEvidenceHideDeltas(self, value: bool) -> None:
+        self.evidence.set_hide_deltas(value)
+        self.evidenceChanged.emit()
 
     @Slot()
     def closeRunEvidence(self) -> None:

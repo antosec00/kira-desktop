@@ -1464,6 +1464,37 @@ class Workspace(QObject):
             pass
         return ""
 
+    @staticmethod
+    def _format_run_duration(started_at: Any, ended_at: Any) -> str:
+        if (not isinstance(started_at, str) or not isinstance(ended_at, str)
+                or len(started_at) > 64 or len(ended_at) > 64):
+            return ""
+        try:
+            start_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+            if start_dt.tzinfo is None or end_dt.tzinfo is None or end_dt < start_dt:
+                return ""
+            elapsed = max(0, int((end_dt - start_dt).total_seconds()))
+            hours, rem = divmod(elapsed, 3600)
+            minutes, seconds = divmod(rem, 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours > 0 else f"{minutes:02d}:{seconds:02d}"
+        except (ValueError, OverflowError):
+            return ""
+
+    @qt_property(str, notify=changed)
+    def activityDurationText(self) -> str:
+        run = self._selected_activity_run()
+        if not run or run.get("state") in ACTIVE_RUN_STATES:
+            return ""
+        return self._format_run_duration(run.get("created_at"), run.get("updated_at"))
+
+    @Slot(str, result=str)
+    def runDurationText(self, run_id: str) -> str:
+        run = self._runs.get(run_id, {})
+        if not run or not self._is_selected_run(run) or run.get("state") in ACTIVE_RUN_STATES:
+            return ""
+        return self._format_run_duration(run.get("created_at"), run.get("updated_at"))
+
     @qt_property(str, notify=changed)
     def activityDetails(self) -> str:
         run = self._selected_activity_run()

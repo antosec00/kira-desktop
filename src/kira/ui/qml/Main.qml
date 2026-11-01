@@ -1072,6 +1072,7 @@ ApplicationWindow {
                                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; visible: entry.kind !== "state" && entry.kind !== "user"; textFormat: Text.PlainText; text: entry.kind === "tool" ? "⌘  " + entry.title : entry.title; color: entry.kind === "assistant" ? appearance.colors.textSecondary : accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold; font.letterSpacing: entry.kind === "assistant" ? 1.2 : 0; Layout.fillWidth: true; elide: Text.ElideRight }
                                                     Item { visible: entry.kind === "user"; Layout.fillWidth: true }
                                                     Item { visible: entry.kind === "state"; Layout.fillWidth: true }
+                                                    Text { font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; objectName: "messageDuration_" + entry.index; textFormat: Text.PlainText; text: { workspace.revision; if (entry.kind !== "assistant" || !entry.runId) return ""; if (entry.runId === workspace.selectedActiveRunId && activityIndicator.clockRunning) return "⏱ " + activityIndicator.elapsedText; var d = workspace.runDurationText(entry.runId); return d.length > 0 ? "⏱ " + d : "" } color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); visible: entry.kind === "assistant" && text.length > 0 }
                                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "messageStatus_" + entry.index; Layout.maximumWidth: entry.kind === "user" ? messageColumn.width * 0.6 : Infinity; Layout.minimumWidth: 0; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: { localization.revision; return qsTr(entry.status) } color: entry.status === "errore" || entry.status === "incompleto" ? appearance.colors.danger : muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); visible: entry.kind !== "state" }
                                                     KButton { objectName: "messageDetails_" + entry.index; text: entry.kind === "state" ? qsTr("Dettagli") : qsTr("Dati"); subtle: true; implicitHeight: 23 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: entry.kind === "state" ? 65 : 38; visible: entry.raw.length > 0; Accessible.name: entry.kind === "state" ? qsTr("Apri dettagli esecuzione") : entry.kind === "team" ? qsTr("Apri dati del team") : qsTr("Apri dati dello strumento"); onClicked: { window.eventDetails = entry.raw; window.eventDetailsIsRun = entry.kind === "state"; eventDialog.open() } }
                                                     KButton { objectName: "commandCopy_" + entry.index; text: qsTr("Copia comando"); subtle: true; implicitHeight: 23 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: Math.ceil(105 * appearance.uiFont.pixelSize / 13); visible: entry.kind === "tool" && entry.command.length > 0; onClicked: workspace.copy(entry.command) }
@@ -1174,6 +1175,7 @@ ApplicationWindow {
                                 Layout.alignment: Qt.AlignHCenter
                                 columns: stacked ? 1 : 3; columnSpacing: 8; rowSpacing: 2
                                 ActivityIndicator {
+                                    id: activityIndicator
                                     objectName: "activityIndicator"
                                     Layout.fillWidth: true; Layout.minimumWidth: 0
                                     Layout.maximumWidth: implicitWidth
@@ -1181,6 +1183,7 @@ ApplicationWindow {
                                     outcome: workbench.activityOutcome
                                     motionEnabled: window.chatMotionEnabled
                                     startedAt: workspace.activityStartedAt
+                                    durationText: workspace.activityDurationText
                                     animate: workspace.activityAnimating && window.chatMotionEnabled
                                     clockEnabled: workspace.connected && window.visible && window.visibility !== Window.Minimized && window.page === 0
                                 }
