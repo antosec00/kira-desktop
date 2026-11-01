@@ -138,6 +138,7 @@ class InputController(QObject):
             answer[question["id"]] = {"answers": [value]}
         return answer
 
+    @Slot()
     def _workspace_changed(self) -> None:
         project_id = str(self.workspace.project.get("id", ""))
         connected = self.workspace.connected

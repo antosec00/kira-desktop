@@ -551,6 +551,7 @@ class TeamController(QObject):
             return str(pending["params"].get("instruction", ""))
         return self._continuations.get(self._selected_id, "")
 
+    @Slot()
     def _workspace_changed(self) -> None:
         if self._retranslating:
             return
@@ -585,6 +586,7 @@ class TeamController(QObject):
         self.approvalModel.sync([])
         self.recipientModel.sync([{"id": "all", "label": tr("Tutto il team")}])
 
+    @Slot()
     def _ready(self) -> None:
         self._enabled = True
         self._generation += 1
@@ -596,6 +598,7 @@ class TeamController(QObject):
         for key in list(self._pending):
             self._send_command(key)
 
+    @Slot()
     def _disconnected(self) -> None:
         self._generation += 1
         self._loading = self._subscribing = False
@@ -845,6 +848,7 @@ class TeamController(QObject):
         self.client.request("team.subscribe", {"team_id": team_id,
                             "after_seq": self._cursors.get(team_id, 0)}, done, failed)
 
+    @Slot(dict)
     def _event(self, event: Json) -> None:
         if not self._selected_id or event.get("team_id") != self._selected_id:
             if any(row.get("id") == event.get("team_id") for row in self._teams):

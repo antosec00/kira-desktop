@@ -143,6 +143,7 @@ class ContextController(QObject):
                 "deepseek_account" if self.workspace.backend == "deepseek_account" else "",
                 self.workspace.connected, self.workspace._chat_generation)
 
+    @Slot()
     def _context_changed(self) -> None:
         if self._stamp() != self._identity:
             self._timer.stop()

@@ -113,6 +113,7 @@ class StudioController(QObject):
     def _selected(self) -> str:
         return str(self.workspace.project.get("id", ""))
 
+    @Slot()
     def _disconnected(self) -> None:
         self._generation += 1
         self._busy = False

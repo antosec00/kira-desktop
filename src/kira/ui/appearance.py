@@ -247,6 +247,7 @@ class Appearance(QObject):
         workspace.preferencesChanged.connect(self._preferences_changed)
         self._preferences_changed()
 
+    @Slot()
     def _preferences_changed(self) -> None:
         if self._unsaved:
             # Another preference was saved first: write the newer live appearance
@@ -269,6 +270,7 @@ class Appearance(QObject):
         self._revision += 1
         self.changed.emit()
 
+    @Slot(Qt.ColorScheme)
     def _system_color_changed(self, scheme: Qt.ColorScheme) -> None:
         if scheme == Qt.ColorScheme.Unknown:
             dark = QGuiApplication.palette().window().color().lightness() < 128
@@ -279,6 +281,7 @@ class Appearance(QObject):
             if self._config.get("mode") == "system":
                 self._refresh()
 
+    @Slot()
     def _system_motion_changed(self) -> None:
         self._refresh()
 

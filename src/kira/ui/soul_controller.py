@@ -128,6 +128,7 @@ class SoulController(QObject):
         self._storage_error = ""
         return True
 
+    @Slot()
     def _context_changed(self) -> None:
         stamp = self._stamp()
         if stamp != self._identity:

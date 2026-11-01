@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtNetwork import QLocalSocket
 
 from kira.ui.presentation import tr
@@ -69,6 +69,7 @@ class LocalClient(QObject):
         self._retry.setInterval(1800)
         self._retry.timeout.connect(self.connect_service)
 
+    @Slot()
     def connect_service(self) -> None:
         if self.incompatible:
             return
@@ -88,6 +89,7 @@ class LocalClient(QObject):
         )
         self.socket.abort()
 
+    @Slot()
     def _hello(self) -> None:
         def checked(result: Json) -> None:
             if result.get("version") != IPC_VERSION or result.get("app_version") != __version__:
@@ -140,6 +142,7 @@ class LocalClient(QObject):
         self.socket.write(payload)
         return True
 
+    @Slot()
     def _read(self) -> None:
         self._buffer.extend(self.socket.readAll().data())
         connection = self._connection
@@ -190,6 +193,7 @@ class LocalClient(QObject):
         self.problem.emit(message)
         self.socket.abort()
 
+    @Slot()
     def _disconnected(self) -> None:
         self._connection += 1
         self.compatible = False
@@ -201,6 +205,7 @@ class LocalClient(QObject):
         if not self.incompatible:
             self._retry.start()
 
+    @Slot(QLocalSocket.LocalSocketError)
     def _error(self, _error: QLocalSocket.LocalSocketError) -> None:
         if not self.compatible and not self.incompatible:
             self.problem.emit(tr("In attesa del servizio locale…"))

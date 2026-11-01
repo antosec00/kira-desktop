@@ -50,6 +50,7 @@ class DirectAccountController(QObject):
         workspace.preferencesChanged.connect(self.changed.emit)
         workspace.client.disconnected.connect(self.close)
 
+    @Slot()
     def _workspace_changed(self) -> None:
         state = (self.workspace.connected, self.workspace.busy, self.workspace.teams.busy,
                  self.workspace.assistant.active, self.workspace.backend,

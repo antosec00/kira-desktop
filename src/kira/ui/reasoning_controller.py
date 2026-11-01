@@ -77,6 +77,7 @@ class ReasoningController(QObject):
         self._identity = ("", "", "")
         self.changed.emit()
 
+    @Slot()
     def sync(self) -> None:
         run = self.workspace._selected_activity_run()
         identity = (self.workspace.sessionId, str(run.get("id", "")), str(run.get("state", "")))

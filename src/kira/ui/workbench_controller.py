@@ -149,6 +149,7 @@ class WorkbenchController(QObject):
         self.historyChanged.emit()
         self.goalChanged.emit()
 
+    @Slot()
     def _sync_context(self) -> None:
         project = str(self.workspace.project.get("id", ""))
         context = (project, self.workspace.sessionId)
@@ -193,11 +194,13 @@ class WorkbenchController(QObject):
         self._adopt_goal_run()
         self.changed.emit()
 
+    @Slot()
     def _opened(self) -> None:
         self._sync_context()
         self.refreshQueue()
         self._timer.start()
 
+    @Slot()
     def _disconnected(self) -> None:
         self._queue_loading = False
         self._loading.clear()
@@ -209,6 +212,7 @@ class WorkbenchController(QObject):
         self._goal_poll_timer.stop()
         self.changed.emit()
 
+    @Slot(dict)
     def _event(self, event: Json) -> None:
         if event.get("type") == "run.state" and event.get("payload", {}).get("state") in {
                 "completed", "failed", "interrupted", "cancelled"}:
@@ -580,6 +584,7 @@ class WorkbenchController(QObject):
         else:
             self.send(prompt)
 
+    @Slot(dict)
     def _guidance_event(self, event: Json) -> None:
         if not str(event.get("type", "")).startswith("steering."):
             return
@@ -1298,6 +1303,7 @@ class WorkbenchController(QObject):
             if self._compaction:
                 self._poll_compact()
 
+    @Slot()
     def _poll_compact(self) -> None:
         if not self._compaction or self._compact_inflight:
             return
@@ -1340,6 +1346,7 @@ class WorkbenchController(QObject):
 
         self.workspace.client.request("session.compact", submitted, received, failed)
 
+    @Slot()
     def _read_goal_anchor(self) -> None:
         """Read the saved header anchor without reserving composer actions."""
         if not self.workspace.connected or not self.workspace.sessionId:
