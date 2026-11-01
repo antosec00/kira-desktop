@@ -909,3 +909,167 @@ async def test_google_cloud_intercepts_canned_security_refusal_and_strips_prior_
         await account.close()
 
 
+async def test_google_cloud_multi_account_quota_pool_rotation_and_cooldowns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
+    paths = _paths(tmp_path)
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://oauth2.googleapis.com/token":
+            body_str = request.content.decode("utf-8")
+            if "rtok-acc1" in body_str:
+                return httpx.Response(200, json={"access_token": "ya29.token-acc1", "expires_in": 3600})
+            return httpx.Response(200, json={"access_token": "ya29.token-acc2", "expires_in": 3600})
+
+        auth_hdr = request.headers.get("authorization", "")
+        calls.append((url, auth_hdr))
+        # Direct global routing for gemini-4-argon even when account.location is us-central1
+        assert "/locations/global/publishers/google/models/gemini-4-argon:" in url
+        if "ya29.token-acc1" in auth_hdr:
+            return httpx.Response(
+                429,
+                json={
+                    "error": {
+                        "code": 429,
+                        "message": "Resource exhausted on project-1.",
+                        "status": "RESOURCE_EXHAUSTED",
+                    }
+                },
+            )
+        assert "projects/proj-acc2/" in url
+        sse = (
+            'data: {"candidates": [{"content": {"role": "model", "parts": ['
+            '{"text": "Risposta da Gemini 4 Argon tramite secondo account."}]}}], '
+            '"usageMetadata": {"promptTokenCount": 900, "candidatesTokenCount": 15}}\n\n'
+        )
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(
+        paths.config / "google-cloud",
+        client=httpx.AsyncClient(transport=transport),
+    )
+    account.accounts = {
+        "kira-acc1": {
+            "id": "kira-acc1",
+            "email": "acc1@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok-acc1",
+            "project_id": "proj-acc1",
+        },
+        "kira-acc2": {
+            "id": "kira-acc2",
+            "email": "acc2@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok-acc2",
+            "project_id": "proj-acc2",
+        },
+    }
+    account.active_account_id = "kira-acc1"
+    account.location = "us-central1"
+
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    try:
+        # Turn 1: kira-acc1 hits 429 -> immediately rotates to kira-acc2 on gemini-4-argon (no downgrade to 3.1)
+        msg1, term1 = await backend._stream(
+            {
+                "model": "gemini-4-argon",
+                "messages": [{"role": "user", "content": "Test rotazione multi-account"}],
+            },
+            ctx=None,
+            item_id="item-rot-1",
+        )
+        assert msg1["content"] == "Risposta da Gemini 4 Argon tramite secondo account."
+        assert term1["done"] is True
+        assert len(calls) == 2
+        assert "projects/proj-acc1/" in calls[0][0]
+        assert "projects/proj-acc2/" in calls[1][0]
+
+        # Turn 2: kira-acc1 is on cooldown for gemini-4-argon, so backend selects kira-acc2 directly!
+        calls.clear()
+        msg2, term2 = await backend._stream(
+            {
+                "model": "gemini-4-argon",
+                "messages": [{"role": "user", "content": "Secondo round immediato"}],
+            },
+            ctx=None,
+            item_id="item-rot-2",
+        )
+        assert msg2["content"] == "Risposta da Gemini 4 Argon tramite secondo account."
+        assert term2["done"] is True
+        assert len(calls) == 1
+        assert "projects/proj-acc2/" in calls[0][0]
+    finally:
+        await backend.close()
+        await account.close()
+
+
+async def test_google_cloud_exclude_and_reenable_system_account_without_touching_wsl2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gcloud_dir = tmp_path / "wsl2_gcloud_excl"
+    configs_dir = gcloud_dir / "configurations"
+    configs_dir.mkdir(parents=True)
+    (configs_dir / "config_default").write_text(
+        "[core]\naccount = paultesla5@gmail.com\nproject = wsl2-system-proj\n",
+        encoding="utf-8",
+    )
+    adc_file = gcloud_dir / "application_default_credentials.json"
+    original_adc = json.dumps(
+        {
+            "type": "authorized_user",
+            "client_id": "sys-cid",
+            "client_secret": "sys-csec",
+            "refresh_token": "1//sys-rtok",
+            "quota_project_id": "wsl2-system-proj",
+        }
+    )
+    adc_file.write_text(original_adc, encoding="utf-8")
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(gcloud_dir))
+
+    paths = _paths(tmp_path)
+    account = GoogleCloudAccount(paths.config / "google-cloud")
+    account.accounts = {
+        "kira-iso1": {
+            "id": "kira-iso1",
+            "email": "desecurity00@gmail.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok-iso1",
+            "project_id": "proj-iso1",
+        }
+    }
+    account.active_account_id = "system"
+    account._save()
+
+    try:
+        assert account.candidate_account_ids() == ["system", "kira-iso1"]
+
+        # Exclude system account (paultesla5@gmail.com) from Kira's pool
+        st_excl = account.set_account_enabled("system", False)
+        assert "system" in st_excl["disabled_accounts"]
+        assert st_excl["active_account_id"] == "kira-iso1"
+        assert account.candidate_account_ids() == ["kira-iso1"]
+        sys_row = next(r for r in st_excl["accounts"] if r["id"] == "system")
+        assert sys_row["excluded"] is True
+        assert "(Escluso da Kira)" in sys_row["label"]
+        # WSL2 credentials file is 100% untouched
+        assert adc_file.read_text("utf-8") == original_adc
+
+        # Re-enable system account
+        st_reen = account.set_account_enabled("system", True)
+        assert "system" not in st_reen["disabled_accounts"]
+        assert "system" in account.candidate_account_ids()
+        sys_row2 = next(r for r in st_reen["accounts"] if r["id"] == "system")
+        assert sys_row2["excluded"] is False
+    finally:
+        await account.close()
+
+
+
+

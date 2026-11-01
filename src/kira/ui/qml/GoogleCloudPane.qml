@@ -64,23 +64,34 @@ Rectangle {
             spacing: 6
             Label { text: qsTr("Account Google Cloud (isolati da WSL2)") }
             ReadText {
-                text: qsTr("L'account di sistema WSL2 (gcloud) viene letto in sola lettura senza mai disconnettere il terminale o Antigravity. Puoi aggiungere altri account Google isolati solo per Kira e passare da uno all'altro con un clic.")
+                text: qsTr("L'account di sistema WSL2 (gcloud) viene letto in sola lettura senza mai disconnettere il terminale o Antigravity. Puoi aggiungere altri account Google isolati solo per Kira, passare da uno all'altro o escludere qualsiasi account dal pool di Kira con un clic.")
                 Layout.fillWidth: true
                 color: appearance.colors.muted
             }
-            Flow {
+            ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: 6
                 visible: googleAccount.accounts.length > 0
                 Repeater {
                     model: googleAccount.accounts
-                    delegate: KButton {
+                    delegate: RowLayout {
                         required property var modelData
-                        objectName: "googleAccountOption_" + modelData.id
-                        text: modelData.label
-                        checked: googleAccount.activeAccountId === modelData.id
-                        enabled: workspace.connected && !googleAccount.busy
-                        onClicked: googleAccount.selectAccount(modelData.id)
+                        spacing: 6
+                        KButton {
+                            objectName: "googleAccountOption_" + modelData.id
+                            text: modelData.label
+                            checked: googleAccount.activeAccountId === modelData.id && !modelData.excluded
+                            subtle: modelData.excluded
+                            enabled: workspace.connected && !googleAccount.busy
+                            onClicked: googleAccount.selectAccount(modelData.id)
+                        }
+                        KButton {
+                            objectName: "googleAccountToggle_" + modelData.id
+                            text: modelData.excluded ? qsTr("Riattiva in Kira") : qsTr("Escludi da Kira")
+                            subtle: true
+                            enabled: workspace.connected && !googleAccount.busy
+                            onClicked: googleAccount.setAccountEnabled(modelData.id, modelData.excluded)
+                        }
                     }
                 }
             }
@@ -198,6 +209,13 @@ Rectangle {
                 visible: googleAccount.pending
                 enabled: !googleAccount.busy
                 onClicked: googleAccount.cancel()
+            }
+            KButton {
+                objectName: "googleAccountExcludeActive"
+                text: qsTr("Escludi account selezionato dal pool di Kira")
+                visible: pane.selectedMode === "adc" && googleAccount.connected && googleAccount.activeAccountId.length > 0
+                enabled: workspace.connected && !googleAccount.busy
+                onClicked: googleAccount.setAccountEnabled(googleAccount.activeAccountId, false)
             }
             KButton {
                 objectName: "googleAccountLogout"

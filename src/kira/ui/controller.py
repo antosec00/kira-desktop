@@ -34,7 +34,7 @@ from kira.ui.account_usage import AccountUsageController
 from kira.ui.workbench_controller import WorkbenchController, guidance_label
 from kira.ui.ipc import LocalClient
 from kira.ui.markdown import safe_href
-from kira.ui.models import TranscriptModel
+from kira.ui.models import DeferredRaw, TranscriptModel
 from kira.ui.reasoning_controller import ReasoningController, SUMMARY_EVENTS
 from kira.ui.native_labels import native_text
 from kira.ui.preferences import read_preferences, valid_preference, write_preferences
@@ -165,6 +165,34 @@ def formatted(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, default=str)
 
 
+def _trim_for_raw(value: Any, limit: int = TranscriptModel.MAX_BODY) -> Any:
+    if isinstance(value, str):
+        return value[:limit] if len(value) > limit else value
+    if isinstance(value, dict):
+        return {key: _trim_for_raw(item, limit) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_trim_for_raw(item, limit) for item in value]
+    return value
+
+
+def _bounded_formatted(value: Any, limit: int = TranscriptModel.MAX_BODY) -> str:
+    return formatted(_trim_for_raw(value, limit))
+
+
+def _raw_value(value: Any, *, deferred: bool = False) -> str | DeferredRaw:
+    return DeferredRaw(_bounded_formatted, value) if deferred else _bounded_formatted(value)
+
+
+def _append_raw(existing: str | DeferredRaw, value: Any, *, deferred: bool = False) -> str | DeferredRaw:
+    if isinstance(existing, DeferredRaw):
+        return existing.append(value)
+    if deferred:
+        return DeferredRaw(_bounded_formatted, existing, value)
+    remaining = TranscriptModel.MAX_BODY - len(existing)
+    if remaining <= 0:
+        return existing
+    return existing + "\n\n" + _bounded_formatted(value, remaining)
+
 
 def run_state_presentation(run: Json, event: Json) -> Json:
     """Describe this execution, independently of selected session or replay order."""
@@ -242,7 +270,7 @@ def tool_summary(data: Json) -> str:
         sections.append(tr("Errore: ") + formatted(data["error"]))
     if data.get("truncated"):
         sections.append(tr("Output limitato dal servizio; consulta gli artefatti."))
-    return join_ui(sections, "\n\n") if sections else formatted(data)
+    return join_ui(sections, "\n\n") if sections else _bounded_formatted(data)
 
 
 class BackgroundJob(QThread):
@@ -357,6 +385,7 @@ class Workspace(QObject):
         self._draft_timer.timeout.connect(self.flushDrafts)
         self._runs: dict[str, Json] = {}
         self._artifacts: list[Json] = []
+        self._artifact_paths: set[Any] = set()
         self._catalogs: dict[str, Json] = {}
         self._direct_catalogs: dict[str, Json] = {}
         self._catalog_pending: set[tuple[str, str]] = set()
@@ -1824,6 +1853,7 @@ class Workspace(QObject):
             self._sessions = [row for row in result.get("sessions", []) if not row.get("team_id")]
             self._runs = {run["id"]: run for run in result.get("runs", []) if not run.get("team_id")}
             self._artifacts = []
+            self._artifact_paths.clear()
             if not same_project:
                 self._session = {}
             self._active_tools.clear()
@@ -1940,6 +1970,7 @@ class Workspace(QObject):
                 self._sessions.append(session)
             self._remember_session()
             self._artifacts = result.get("artifacts", [])
+            self._artifact_paths = {a.get("path") for a in self._artifacts}
             runs = [r for r in result.get("runs", []) if r.get("session_id") == session_id]
             for run in runs:
                 self._runs[run["id"]] = run
@@ -1961,6 +1992,7 @@ class Workspace(QObject):
             self._finish_replay()
             self._session = {}
             self._artifacts = []
+            self._artifact_paths.clear()
             self.chatChanged.emit()
             self._problem(str(error.get("message", tr("Chat non disponibile"))))
 
@@ -2017,6 +2049,7 @@ class Workspace(QObject):
             return
         self._session = {}
         self._artifacts = []
+        self._artifact_paths.clear()
         self._reset_chat()
         self.ensure_direct_catalog()
         for run in list(self._runs.values()):
@@ -2519,7 +2552,9 @@ class Workspace(QObject):
             self._deltas[key] = TranscriptModel.bounded(
                 self._deltas.get(key, "") + str(payload.get("content", "")))
             return
-        self._flush()
+        if self._deltas:
+            self._flush()
+        batch = bool(self.transcript._batch_depth)
         if kind.startswith("steering.") or (kind == "message.user" and payload.get("source") == "steer" and payload.get("request_id")):
             request_id = str(payload.get("request_id") or "")
             if request_id:
@@ -2527,14 +2562,14 @@ class Workspace(QObject):
                     "provider_accepted" if kind == "steering.accepted" else
                     "submitted" if kind == "message.user" else "unknown"))
                 row = self.transcript.find(run_id, "user", "steer:" + request_id)
-                fields = {"status": guidance_label(state), "raw": formatted(payload)}
+                fields: Json = {"status": guidance_label(state), "raw": _raw_value(payload, deferred=batch)}
                 if isinstance(payload.get("content"), str):
                     fields["body"] = payload["content"]
                 if row is None:
                     self.transcript.append(kind="user", title=tr("TU"), runId=run_id,
                                            toolId="steer:" + request_id, **fields)
                 else:
-                    fields["raw"] = self.transcript.rows[row]["raw"] + "\n\n" + formatted(payload)
+                    fields["raw"] = _append_raw(self.transcript.rows[row]["raw"], payload, deferred=batch)
                     self.transcript.update(row, **fields)
         elif kind == "message.user":
             # The snapshot may contain only a prompt preview; durable user evidence
@@ -2565,7 +2600,8 @@ class Workspace(QObject):
             self.transcript.append(kind="tool", title=str(payload.get("name", tr("Strumento"))),
                                    body=body, status="in esecuzione", runId=run_id,
                                    toolId=str(payload.get("tool_id", "")),
-                                   command=tool_command(arguments), raw=formatted(payload),
+                                   command=tool_command(arguments),
+                                   raw=_raw_value(payload, deferred=batch),
                                    toolArguments=arguments)
         elif kind == "tool.progress":
             tool_id, name = payload.get("tool_id"), payload.get("name")
@@ -2584,7 +2620,7 @@ class Workspace(QObject):
                     status = "in esecuzione"
                 # Keep original arguments/output intact; progress is a distinct
                 # durable record available alongside them in the raw details.
-                raw = self.transcript.rows[row]["raw"] + "\n\n" + formatted(payload)
+                raw = _append_raw(self.transcript.rows[row]["raw"], payload, deferred=batch)
                 self.transcript.update(row, status=status, raw=raw)
         elif kind == "tool.completed":
             tool_id = str(payload.get("tool_id", ""))
@@ -2602,13 +2638,13 @@ class Workspace(QObject):
                 self.transcript.append(kind="tool", title=str(payload.get("name", tr("Strumento"))),
                                        body=tool_summary(result), status=status, runId=run_id,
                                        toolId=tool_id, command=tool_command(result),
-                                       raw=formatted(payload), toolResult=result)
+                                       raw=_raw_value(payload, deferred=batch), toolResult=result)
             else:
                 command = tool_command(result) or self.transcript.rows[row]["command"]
                 body = tool_summary(result)
                 if command and not tool_command(result):
                     body = "$ " + command + "\n\n" + body
-                raw = self.transcript.rows[row]["raw"] + "\n\n" + formatted(payload)
+                raw = _append_raw(self.transcript.rows[row]["raw"], payload, deferred=batch)
                 self.transcript.update(row, body=body, status=status, command=command, raw=raw,
                                        toolResult=result)
         elif kind == "run.state":
@@ -2640,7 +2676,11 @@ class Workspace(QObject):
                 else:
                     self.transcript.update(row, **fields)
         elif kind == "artifact.created":
-            if not any(a.get("path") == payload.get("path") for a in self._artifacts):
+            if len(self._artifact_paths) != len(self._artifacts):
+                self._artifact_paths = {a.get("path") for a in self._artifacts}
+            path = payload.get("path")
+            if path not in self._artifact_paths:
+                self._artifact_paths.add(path)
                 self._artifacts.append(payload)
         elif kind == "usage":
             if payload.get("scope") == "account":

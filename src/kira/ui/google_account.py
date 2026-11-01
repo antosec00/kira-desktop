@@ -170,6 +170,7 @@ class GoogleAccountController(QObject):
                     "project_id": str(row.get("project_id") or ""),
                     "source": str(row.get("source") or "kira"),
                     "read_only": row.get("read_only") is True,
+                    "excluded": row.get("excluded") is True,
                     "connected": row.get("connected") is True,
                 }
                 for row in raw_accounts
@@ -377,6 +378,12 @@ class GoogleAccountController(QObject):
     def logout(self, account_id: str = "") -> None:
         self._action("logout", {"account_id": account_id} if account_id else None)
 
+    @Slot(str, bool)
+    def setAccountEnabled(self, account_id: str, enabled: bool) -> None:
+        if not account_id:
+            return
+        self._action("set_enabled", {"account_id": account_id, "enabled": bool(enabled)})
+
     def _action(self, action: str, extra: Json | None = None) -> None:
         if self._busy or not self.workspace.connected:
             return
@@ -388,11 +395,11 @@ class GoogleAccountController(QObject):
             if generation != self._generation:
                 return
             self._busy = False
-            if action == "logout":
+            if action in {"logout", "set_enabled"}:
                 self.workspace._catalogs.pop(BACKEND, None)
                 self.workspace.changed.emit()
             self._apply(result)
-            if action == "logout" and self._connected:
+            if action in {"logout", "set_enabled"} and self._connected:
                 self.workspace.discover(BACKEND)
 
         def failed(error: Json) -> None:

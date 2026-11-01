@@ -91,6 +91,41 @@ def test_empty_nested_batch_commits_once(qapp):
     assert model.rowCount() == 0 and resets.count() == 1
 
 
+def test_deferred_raw_skips_evicted_rows_during_batch(qapp):
+    from kira.ui.models import DeferredRaw
+
+    model = TranscriptModel()
+    formatted_calls: list[int] = []
+
+    def formatter(value, _limit):
+        formatted_calls.append(value["id"])
+        return f'{{"id": {value["id"]}}}'
+
+    model.begin_batch()
+    for number in range(model.MAX_ROWS + 5):
+        pos = model.append(
+            kind="tool",
+            title="read_file",
+            runId="r1",
+            toolId=f"t-{number}",
+            status="in esecuzione",
+            raw=DeferredRaw(formatter, {"id": number}),
+            toolArguments={"path": f"file_{number}.py"},
+        )
+        model.update(
+            pos,
+            status="confermato",
+            raw=model.rows[pos]["raw"].append({"id": number + 1000}),
+            toolResult={"ok": True, "path": f"file_{number}.py"},
+        )
+    assert formatted_calls == []
+    model.end_batch()
+    assert formatted_calls[0] == 5
+    assert model.rows[0]["raw"] == '{"id": 5}\n\n{"id": 1005}'
+    assert model.rows[0]["receiptTarget"] == "file_5.py"
+    assert model.rows[0]["toolGroupCount"] == model.MAX_ROWS
+
+
 def item(root, name):
     if root.objectName() == name:
         return root

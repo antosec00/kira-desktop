@@ -386,15 +386,24 @@ class Store:
 
     def events(self, run_id: str, after: int = 0, limit: int = 250) -> Json:
         run = self.one("runs", run_id)
-        rows = self.all("SELECT * FROM events WHERE run_id=? AND seq>? ORDER BY seq LIMIT ?",
-                        (run_id, after, limit))
+        rows = self.db.execute("SELECT * FROM events WHERE run_id=? AND seq>? ORDER BY seq LIMIT ?",
+                               (run_id, after, limit))
         result: list[Json] = []
         byte_count = 0
-        for row in rows:
-            row["schema_version"] = EVENT_SCHEMA_VERSION
-            size = len(encode(row).encode("utf-8"))
+        fixed_bytes = 74 + len(str(EVENT_SCHEMA_VERSION))
+        for stored in rows:
+            size = (
+                fixed_bytes
+                + len(stored["run_id"].encode("utf-8"))
+                + len(str(stored["seq"]))
+                + len(stored["type"].encode("utf-8"))
+                + len(stored["timestamp"].encode("utf-8"))
+                + len(stored["payload"].encode("utf-8"))
+            )
             if result and byte_count + size > 700_000:
                 break
+            row = self.record(stored)
+            row["schema_version"] = EVENT_SCHEMA_VERSION
             result.append(row)
             byte_count += size
         cursor = result[-1]["seq"] if result else after

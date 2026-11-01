@@ -80,8 +80,18 @@ def locale() -> QLocale:
     return QLocale(current_language())
 
 
+_fallback_catalog: tuple[object, dict[str, str]] | None = None
+
+
 def _effective_catalog() -> dict[str, str]:
-    return _registrations[_order[-1]].catalog if _order else _safe_catalog("it")
+    global _fallback_catalog
+    if _order:
+        return _registrations[_order[-1]].catalog
+    from kira.ui import language_catalog
+
+    if _fallback_catalog is None or _fallback_catalog[0] != language_catalog.CATALOG_ROOT:
+        _fallback_catalog = (language_catalog.CATALOG_ROOT, _safe_catalog("it"))
+    return _fallback_catalog[1]
 
 
 def translate_ui(text: str) -> str:
