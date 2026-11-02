@@ -214,3 +214,209 @@ def test_background_running_chat_can_switch_without_cancelling_it(view, qtbot):
     assert workspace.activityLabel == "Altra chat in esecuzione"
     assert not named(window, "sendButton").isEnabled()
     assert not any(c[0] in {"run.cancel", "run.start"} for c in calls)
+
+
+def test_chat_context_menu_pin_unread_branch_copy_archive_and_delete(view, qtbot):
+    workspace, window, calls = view
+    # By default (without hover or open menu), chat pill spans full width and action buttons are hidden (opacity 0)
+    assert named(window, "chatSelect_b").width() == named(window, "chatSelect_b").parentItem().width()
+    assert named(window, "chatMenu_a").parentItem().opacity() == 0.0
+    assert named(window, "projectMenu_q").parentItem().opacity() == 0.0
+
+    # Open context menu on chat B
+    click(window, named(window, "chatMenu_b"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatContextMenu.opened")))
+    qtbot.waitUntil(lambda: named(window, "chatMenu_b").parentItem().opacity() > 0.9)
+    assert named(window, "chatMenuRename").isVisible()
+    assert named(window, "chatMenuPin").isVisible()
+    assert named(window, "chatMenuUnread").isVisible()
+    assert named(window, "chatMenuCopyToggle").isVisible()
+    assert named(window, "chatMenuBranch").isVisible()
+    assert named(window, "chatMenuExport").isVisible()
+    assert named(window, "chatMenuArchive").isVisible()
+    assert named(window, "chatMenuDelete").isVisible()
+
+    # Expand Copy submenu and copy title
+    assert not named(window, "chatMenuCopyTitle").isVisible()
+    click(window, named(window, "chatMenuCopyToggle"))
+    qtbot.wait(30)
+    assert named(window, "chatMenuCopyTitle").isVisible()
+    assert named(window, "chatMenuCopyMarkdown").isVisible()
+    assert named(window, "chatMenuCopyId").isVisible()
+    assert named(window, "chatMenuCopyPath").isVisible()
+    click(window, named(window, "chatMenuCopyTitle"))
+    qtbot.wait(40)
+    assert not evaluate(window, "chatContextMenu.opened")
+
+    # Pin chat B via context menu -> B moves above A and shows pin badge
+    click(window, named(window, "chatMenu_b"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatContextMenu.opened")))
+    click(window, named(window, "chatMenuPin"))
+    pin_req = request(calls, "session.pin", session_id="b")
+    assert pin_req[1] == {"project_id": "p", "session_id": "b", "pinned": True}
+    pinned_b = chat("b")
+    pinned_b["pinned"] = True
+    pinned_b["settings"]["chat_pinned"] = True
+    pin_req[2]({"session": pinned_b})
+    qtbot.wait(40)
+    assert [s["id"] for s in workspace.sessions] == ["b", "a"]
+    assert named(window, "chatPinBadge_b").isVisible()
+
+    # Mark chat B as unread via context menu -> shows unread dot, then selecting B marks it read
+    click(window, named(window, "chatMenu_b"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatContextMenu.opened")))
+    click(window, named(window, "chatMenuUnread"))
+    unread_req = request(calls, "session.unread", session_id="b")
+    assert unread_req[1] == {"project_id": "p", "session_id": "b", "unread": True}
+    unread_b = copy.deepcopy(pinned_b)
+    unread_b["unread"] = True
+    unread_b["settings"]["chat_unread"] = True
+    unread_req[2]({"session": unread_b})
+    qtbot.wait(40)
+    assert named(window, "chatUnreadDot_b").isVisible()
+
+    # Selecting unread chat B automatically sends session.unread with unread=False
+    click(window, named(window, "chatSelect_b"))
+    read_req = request(calls, "session.unread", session_id="b", unread=False)
+    assert read_req[1] == {"project_id": "p", "session_id": "b", "unread": False}
+    read_b = copy.deepcopy(unread_b)
+    read_b["unread"] = False
+    read_b["settings"]["chat_unread"] = False
+    read_req[2]({"session": read_b})
+    reply_chat(calls, "b", content="Messaggio nella chat B")
+    qtbot.wait(50)
+
+    # Branch chat A (non-active chat) via context menu -> calls session.fork
+    click(window, named(window, "chatMenu_a"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatContextMenu.opened")))
+    click(window, named(window, "chatMenuBranch"))
+    branch_req = request(calls, "session.fork", session_id="a")
+    assert branch_req[1]["project_id"] == "p" and branch_req[1]["session_id"] == "a"
+    branch_req[2]({"session": chat("a-branch", title="Chat A · Ramo")})
+    reply_chat(calls, "a-branch", content="Ramo di A")
+    qtbot.wait(50)
+    assert workspace.sessionId == "a-branch"
+
+    # Delete chat B via context menu
+    click(window, named(window, "chatMenu_b"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatContextMenu.opened")))
+    click(window, named(window, "chatMenuDelete"))
+    del_req = request(calls, "session.delete", session_id="b")
+    assert del_req[1] == {"project_id": "p", "session_id": "b"}
+    del_req[2]({"deleted": True, "session_id": "b"})
+    qtbot.wait(50)
+    assert "b" not in [s["id"] for s in workspace.sessions]
+
+
+def test_chat_filter_menu_and_project_quick_actions(view, qtbot):
+    workspace, window, calls = view
+    # Archive chat B using inline quick button
+    click(window, named(window, "chatArchive_b"))
+    arch_req = request(calls, "session.archive", session_id="b")
+    assert arch_req[1] == {"project_id": "p", "session_id": "b", "archived": True}
+    archived_b = chat("b")
+    archived_b["archived"] = 1
+    arch_req[2]({"session": archived_b})
+    qtbot.wait(40)
+    # Default 'all' filter hides archived chats
+    assert [s["id"] for s in workspace.sessions] == ["a"]
+
+    # Switch filter to 'archived' via chatFilterButton
+    click(window, named(window, "chatFilterButton"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatFilterMenu.opened")))
+    click(window, named(window, "chatFilter_archived"))
+    qtbot.wait(40)
+    assert workspace.sessionFilter == "archived"
+    assert [s["id"] for s in workspace.sessions] == ["b"]
+
+    # Reset filter to 'all'
+    click(window, named(window, "chatFilterButton"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "chatFilterMenu.opened")))
+    click(window, named(window, "chatFilter_all"))
+    qtbot.wait(40)
+    assert workspace.sessionFilter == "all"
+    assert [s["id"] for s in workspace.sessions] == ["a"]
+
+    # Open project context menu via projectMenu_p
+    click(window, named(window, "projectMenu_p"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "projectContextMenu.opened")))
+    assert named(window, "projectMenuNewChat").isVisible()
+    assert named(window, "projectMenuPermissions").isVisible()
+    assert named(window, "projectMenuOpenFolder").isVisible()
+    assert named(window, "projectMenuCopyPath").isVisible()
+    click(window, named(window, "projectMenuCopyPath"))
+    qtbot.wait(40)
+    assert not evaluate(window, "projectContextMenu.opened")
+
+
+def test_top_application_menu_bar_opens_menus_and_triggers_actions(view, qtbot):
+    workspace, window, calls = view
+    assert named(window, "appMenuBar").isVisible()
+    for menu_name in ("appMenuFile", "appMenuEdit", "appMenuView", "appMenuChat", "appMenuTools", "appMenuHelp"):
+        assert named(window, menu_name).isVisible()
+
+    # Open Chat top menu and verify items exist
+    click(window, named(window, "appMenuChat"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "appTopMenuPopup.opened")))
+    assert named(window, "menuChatNew").isVisible()
+    assert named(window, "menuChatPin").isVisible()
+    assert named(window, "menuChatUnread").isVisible()
+    assert named(window, "menuChatBranch").isVisible()
+    assert named(window, "menuChatArchive").isVisible()
+    assert named(window, "menuChatDelete").isVisible()
+
+    # Click Pin from top Chat menu -> pins active chat 'a'
+    click(window, named(window, "menuChatPin"))
+    pin_req = request(calls, "session.pin", session_id="a")
+    assert pin_req[1] == {"project_id": "p", "session_id": "a", "pinned": True}
+
+    # Open View top menu and cycle sidebar mode
+    click(window, named(window, "appMenuView"))
+    qtbot.waitUntil(lambda: bool(evaluate(window, "appTopMenuPopup.opened")))
+    initial_mode = workspace.sidebarMode
+    click(window, named(window, "menuViewSidebar"))
+    qtbot.wait(40)
+    assert workspace.sidebarMode != initial_mode
+
+
+def test_project_chats_pin_unread_and_soft_delete_persistence(tmp_path):
+    from kira.domain.contracts import KiraError
+    from kira.service.project_context import ProjectChats
+    from kira.service.storage import Store, encode
+
+    store = Store(tmp_path / "state.db")
+    try:
+        store.db.execute(
+            "INSERT INTO projects VALUES (?,?,?,?,?,?,?,?)",
+            ("p1", "Test", str(tmp_path), "", "workspace-write", "{}", "2026-11-01T10:00:00+00:00", "2026-11-01T10:00:00+00:00"),
+        )
+        store.db.execute(
+            "INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
+            ("s1", "p1", "codex", "gpt-5", encode({"chat_title": "Prima", "chat_pinned": True}), None, "2026-11-01T10:00:00+00:00"),
+        )
+        store.db.execute(
+            "INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
+            ("s2", "p1", "codex", "gpt-5", encode({"chat_title": "Seconda", "chat_unread": True}), None, "2026-11-01T11:00:00+00:00"),
+        )
+        chats = ProjectChats(store)
+        listed = chats.list("p1", 0, 200)["sessions"]
+        # Pinned s1 appears before newer unpinned s2
+        assert [row["id"] for row in listed] == ["s1", "s2"]
+        assert listed[0]["pinned"] is True and listed[0]["unread"] is False
+        assert listed[1]["pinned"] is False and listed[1]["unread"] is True
+
+        # Soft-delete s1 (as session.delete does)
+        store.db.execute(
+            "UPDATE sessions SET settings=? WHERE id='s1'",
+            (encode({"chat_title": "Prima", "chat_deleted": True}),),
+        )
+        store.db.execute(
+            "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES ('s1',1,'2026-11-01T12:00:00+00:00','2026-11-01T12:00:00+00:00')",
+        )
+        assert [row["id"] for row in chats.list("p1", 0, 200, False)["sessions"]] == ["s2"]
+        assert [row["id"] for row in chats.list("p1", 0, 200, True)["sessions"]] == []
+        with pytest.raises(KiraError):
+            chats.owned_session("p1", "s1")
+    finally:
+        store.db.close()
+

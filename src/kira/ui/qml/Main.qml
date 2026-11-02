@@ -217,6 +217,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+L"; onActivated: { window.page = 0; prompt.forceActiveFocus() } }
     Shortcut { sequence: "Ctrl+Shift+C"; onActivated: workspace.copyTranscript() }
     Shortcut { sequence: "Alt+Space"; onActivated: ambient.toggleSpotlight() }
+    Shortcut { sequence: "Alt+Shift+P"; enabled: hasProject && workspace.sessionId.length > 0; onActivated: workspace.pinSession(workspace.sessionId, !workspace.currentSessionPinned) }
     Connections {
         target: ambient
         function onRaiseMainWindowRequested() {
@@ -268,10 +269,160 @@ ApplicationWindow {
         }
     }
 
+    property string chatMenuSessionId: ""
+    property string chatMenuTitle: ""
+    property bool chatMenuPinned: false
+    property bool chatMenuUnread: false
+    property bool chatMenuArchived: false
+    property bool chatMenuCopyExpanded: false
+    property string projectMenuId: ""
+    property string projectMenuName: ""
+    property string projectMenuRoot: ""
+    property string exportChatSessionId: ""
+    property string activeTopMenu: ""
+
+    function openRenameChat(sessionId, title) {
+        if (!sessionId) return
+        renameChatDialog.chatId = sessionId
+        chatNameInput.text = title || ""
+        renameChatDialog.open()
+    }
+
+    function openChatContextMenu(sessionData, targetItem) {
+        if (!sessionData || !sessionData.id) return
+        chatMenuSessionId = String(sessionData.id)
+        chatMenuTitle = String(sessionData.title || sessionData.label || qsTr("Nuova chat"))
+        chatMenuPinned = Boolean(sessionData.pinned)
+        chatMenuUnread = Boolean(sessionData.unread)
+        chatMenuArchived = Boolean(sessionData.archived)
+        chatMenuCopyExpanded = false
+        if (targetItem) {
+            const pt = targetItem.mapToItem(window.contentItem, 0, targetItem.height + 4)
+            chatContextMenu.x = Math.max(8, Math.min(window.width - chatContextMenu.width - 8, pt.x))
+            chatContextMenu.y = Math.max(8, Math.min(window.height - chatContextMenu.implicitHeight - 16, pt.y))
+        }
+        chatContextMenu.open()
+    }
+
+    function openProjectContextMenu(projData, targetItem) {
+        if (!projData || !projData.id) return
+        projectMenuId = String(projData.id)
+        projectMenuName = String(projData.name || "")
+        projectMenuRoot = String(projData.root || "")
+        if (targetItem) {
+            const pt = targetItem.mapToItem(window.contentItem, 0, targetItem.height + 4)
+            projectContextMenu.x = Math.max(8, Math.min(window.width - projectContextMenu.width - 8, pt.x))
+            projectContextMenu.y = Math.max(8, Math.min(window.height - projectContextMenu.implicitHeight - 16, pt.y))
+        }
+        projectContextMenu.open()
+    }
+
+    function openTopMenu(menuKey, targetButton) {
+        if (appTopMenuPopup.opened && activeTopMenu === menuKey) {
+            appTopMenuPopup.close()
+            activeTopMenu = ""
+            return
+        }
+        activeTopMenu = menuKey
+        if (targetButton) {
+            const pt = targetButton.mapToItem(window.contentItem, 0, targetButton.height + 2)
+            appTopMenuPopup.x = Math.max(6, Math.min(window.width - appTopMenuPopup.width - 8, pt.x))
+            appTopMenuPopup.y = Math.max(24, pt.y)
+        }
+        if (!appTopMenuPopup.opened) appTopMenuPopup.open()
+    }
+
+    function topMenuItems(menuKey) {
+        const hasChat = hasProject && workspace.sessionId.length > 0
+        if (menuKey === "file") {
+            return [
+                { id: "menuFileNewProject", label: qsTr("Nuovo progetto…"), shortcut: "Ctrl+N", icon: "folder-plus", enabled: true, action: function() { newProject.open() } },
+                { id: "menuFileNewChat", label: qsTr("Nuova chat"), shortcut: "Ctrl+Shift+N", icon: "plus", enabled: hasProject, action: function() { window.performAction("new_chat") } },
+                { separator: true },
+                { id: "menuFileOpenFolder", label: qsTr("Apri cartella del progetto"), shortcut: "", icon: "folder", enabled: hasProject, action: function() { workspace.openProjectFolder() } },
+                { id: "menuFileAttach", label: qsTr("Allega file del progetto…"), shortcut: "@", icon: "attach", enabled: hasProject, action: function() { window.performAction("files") } },
+                { separator: true },
+                { id: "menuFileExportChat", label: qsTr("Esporta chat in Markdown…"), shortcut: "", icon: "export", enabled: hasChat, action: function() { window.exportChatSessionId = workspace.sessionId; chatMarkdownExport.open() } },
+                { id: "menuFileExportMemory", label: qsTr("Esporta memoria del progetto…"), shortcut: "", icon: "memory", enabled: hasProject, action: function() { window.memoryExport = true; exportDialog.open() } },
+                { id: "menuFileBackup", label: qsTr("Backup database locale"), shortcut: "", icon: "drive", enabled: workspace.connected, action: function() { workspace.backup() } },
+                { separator: true },
+                { id: "menuFileSettings", label: qsTr("Impostazioni"), shortcut: "", icon: "settings", enabled: true, action: function() { window.page = 3 } },
+                { id: "menuFileQuit", label: qsTr("Esci"), shortcut: "", icon: "close", enabled: true, action: function() { window.close() } }
+            ]
+        }
+        if (menuKey === "edit") {
+            return [
+                { id: "menuEditSearch", label: qsTr("Cerca progetti e azioni…"), shortcut: "Ctrl+K", icon: "search", enabled: true, action: function() { actionDialog.open() } },
+                { id: "menuEditPalette", label: qsTr("Tavolozza comandi…"), shortcut: "Ctrl+Shift+P", icon: "actions", enabled: true, action: function() { window.commandStart = -1; window.openActions("") } },
+                { separator: true },
+                { id: "menuEditCopyTranscript", label: qsTr("Copia trascrizione visibile"), shortcut: "Ctrl+Shift+C", icon: "copy", enabled: hasChat, action: function() { workspace.copyTranscript() } },
+                { id: "menuEditCopyMarkdown", label: qsTr("Copia trascrizione Markdown"), shortcut: "", icon: "document", enabled: hasChat, action: function() { workspace.copySessionItem(workspace.sessionId, "markdown") } },
+                { id: "menuEditCopyLast", label: qsTr("Copia ultima risposta"), shortcut: "", icon: "copy", enabled: hasChat, action: function() { workbench.copyLastOutput() } },
+                { id: "menuEditCopyPath", label: qsTr("Copia percorso del progetto"), shortcut: "", icon: "link", enabled: hasProject, action: function() { workspace.copySessionItem(workspace.sessionId || "project", "path") } },
+                { separator: true },
+                { id: "menuEditPermissions", label: qsTr("Memoria e permessi del progetto…"), shortcut: "", icon: "lock", enabled: hasProject, action: function() { memoryDialog.open() } }
+            ]
+        }
+        if (menuKey === "view") {
+            return [
+                { id: "menuViewProjects", label: qsTr("Conversazione e Progetti"), shortcut: "", icon: "projects", enabled: true, action: function() { window.page = 0 } },
+                { id: "menuViewModels", label: qsTr("Modelli e Provider"), shortcut: "", icon: "models", enabled: true, action: function() { window.page = 1 } },
+                { id: "menuViewActivity", label: qsTr("Attività registrate"), shortcut: "", icon: "activity", enabled: true, action: function() { window.page = 2 } },
+                { id: "menuViewTeam", label: qsTr("Team del progetto"), shortcut: "", icon: "team", enabled: hasProject, action: function() { window.page = 4 } },
+                { id: "menuViewSettings", label: qsTr("Impostazioni"), shortcut: "", icon: "settings", enabled: true, action: function() { window.page = 3 } },
+                { separator: true },
+                { id: "menuViewSidebar", label: qsTr("Alterna barra laterale"), shortcut: "Ctrl+B", icon: "sidebar", enabled: true, action: function() { workspace.cycleSidebarMode() } },
+                { id: "menuViewDetails", label: window.detailsVisible ? qsTr("Nascondi dettagli del progetto") : qsTr("Mostra dettagli del progetto"), shortcut: "", icon: "details", enabled: hasProject, action: function() { workspace.setUiPreference("details_visible", !window.detailsVisible) } },
+                { id: "menuViewToolLabels", label: workspace.toolLabels ? qsTr("Nascondi etichette strumenti") : qsTr("Mostra etichette strumenti"), shortcut: "", icon: "labels", enabled: true, action: function() { workspace.setToolLabels(!workspace.toolLabels) } },
+                { separator: true },
+                { id: "menuViewTheme", label: appearance.dark ? qsTr("Passa al tema chiaro") : qsTr("Passa al tema scuro"), shortcut: "", icon: appearance.dark ? "sun" : "moon", enabled: true, action: function() { appearance.setOption("mode", appearance.dark ? "light" : "dark") } }
+            ]
+        }
+        if (menuKey === "chat") {
+            return [
+                { id: "menuChatNew", label: qsTr("Nuova chat"), shortcut: "Ctrl+Shift+N", icon: "plus", enabled: hasProject, action: function() { window.performAction("new_chat") } },
+                { id: "menuChatRename", label: qsTr("Rinomina chat…"), shortcut: "", icon: "rename", enabled: hasChat, action: function() { window.openRenameChat(workspace.sessionId, workspace.sessionTitle) } },
+                { id: "menuChatPin", label: workspace.currentSessionPinned ? qsTr("Rimuovi fissaggio") : qsTr("Fissa in alto"), shortcut: "", icon: "pin", enabled: hasChat, action: function() { workspace.pinSession(workspace.sessionId, !workspace.currentSessionPinned) } },
+                { id: "menuChatUnread", label: workspace.currentSessionUnread ? qsTr("Segna come letta") : qsTr("Segna come non letta"), shortcut: "", icon: "unread", enabled: hasChat, action: function() { workspace.markSessionUnread(workspace.sessionId, !workspace.currentSessionUnread) } },
+                { separator: true },
+                { id: "menuChatBranch", label: qsTr("Dirama chat"), shortcut: "", icon: "branch", enabled: hasChat, action: function() { workspace.branchSession(workspace.sessionId) } },
+                { id: "menuChatCompact", label: qsTr("Riduci contesto (Compatta)…"), shortcut: "", icon: "context", enabled: hasChat, action: function() { window.performAction("compact") } },
+                { id: "menuChatExport", label: qsTr("Esporta Markdown…"), shortcut: "", icon: "export", enabled: hasChat, action: function() { window.exportChatSessionId = workspace.sessionId; chatMarkdownExport.open() } },
+                { separator: true },
+                { id: "menuChatArchive", label: workbench.sessionArchived ? qsTr("Ripristina dall'archivio") : qsTr("Archivia chat"), shortcut: "", icon: "archive", enabled: hasChat, action: function() { workspace.archiveSession(workspace.sessionId, !workbench.sessionArchived) } },
+                { id: "menuChatDelete", label: qsTr("Elimina chat"), shortcut: "", icon: "trash", destructive: true, enabled: hasChat, action: function() { workspace.deleteSession(workspace.sessionId) } }
+            ]
+        }
+        if (menuKey === "tools") {
+            return [
+                { id: "menuToolsEditor", label: qsTr("Editor di codice Kira"), shortcut: "", icon: "code", enabled: hasProject, action: function() { window.performAction("editor") } },
+                { id: "menuToolsCanvas", label: qsTr("Canvas interattivo"), shortcut: "", icon: "studio", enabled: hasProject, action: function() { window.page = 0; workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.toggleCanvas() } },
+                { id: "menuToolsBrowser", label: qsTr("Browser integrato"), shortcut: "", icon: "browser", enabled: workspace.web.available, action: function() { window.page = 0; workspace.studio.hideStudio(); workspace.canvas.hideCanvas(); workspace.web.showBrowser() } },
+                { id: "menuToolsStudio", label: qsTr("Studio creativo"), shortcut: "", icon: "image", enabled: workspace.studio.available, action: function() { window.page = 0; workspace.studio.showStudio() } },
+                { separator: true },
+                { id: "menuToolsQueue", label: qsTr("Coda del progetto"), shortcut: "", icon: "queue", enabled: hasProject, action: function() { workbenchDialog.openSection("queue") } },
+                { id: "menuToolsChanges", label: qsTr("Modifiche e Checkpoint"), shortcut: "", icon: "file", enabled: hasProject, action: function() { workbenchDialog.openSection("changes") } },
+                { id: "menuToolsGoal", label: qsTr("Obiettivo autonomo e Trigger"), shortcut: "", icon: "goal", enabled: hasProject, action: function() { workbenchDialog.openSection("goal") } },
+                { id: "menuToolsArchives", label: qsTr("Archivio chat"), shortcut: "", icon: "archive", enabled: hasProject, action: function() { workbenchDialog.openSection("archives") } },
+                { separator: true },
+                { id: "menuToolsResearch", label: qsTr("Ricerca del progetto"), shortcut: "", icon: "research", enabled: hasProject, action: function() { researchDialog.open() } },
+                { id: "menuToolsSoul", label: qsTr("Anima di Kira"), shortcut: "", icon: "anima", enabled: souls.available, action: function() { soulDialog.open() } },
+                { id: "menuToolsSpotlight", label: qsTr("Spotlight rapido"), shortcut: "Alt+Space", icon: "spotlight", enabled: true, action: function() { ambient.openSpotlight() } }
+            ]
+        }
+        return [
+            { id: "menuHelpGuide", label: qsTr("Guida iniziale"), shortcut: "", icon: "help", enabled: true, action: function() { onboardingDialog.open() } },
+            { id: "menuHelpResume", label: qsTr("Riprendi lavoro"), shortcut: "Ctrl+Shift+R", icon: "resume", enabled: hasProject, action: function() { resumeDialog.open() } },
+            { id: "menuHelpUsage", label: qsTr("Uso e risorse misurati"), shortcut: "", icon: "usage", enabled: true, action: function() { metricsDialog.open() } },
+            { id: "menuHelpDiagnostics", label: qsTr("Diagnostica di sistema"), shortcut: "", icon: "details", enabled: true, action: function() { diagnosticsDialog.open() } },
+            { id: "menuHelpUpdates", label: qsTr("Controlla aggiornamenti"), shortcut: "", icon: "update", enabled: true, action: function() { updateDialog.open() } }
+        ]
+    }
+
     KiraPanelHost {
         id: panelHost
-        x: workspaceColumn.x
-        y: workspaceColumn.y + workspaceStack.y
+        x: mainRow.x + workspaceColumn.x
+        y: mainRow.y + workspaceColumn.y + workspaceStack.y
         width: workspaceColumn.width
         height: workspaceStack.height
         onPanelPresented: {
@@ -294,9 +445,69 @@ ApplicationWindow {
         function onChanged() { if (workspace.studio.paneVisible) panelHost.closeCurrent() }
     }
 
-    RowLayout {
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
+        Rectangle {
+            id: appMenuBar
+            objectName: "appMenuBar"
+            Layout.fillWidth: true
+            implicitHeight: window.compact ? 24 : 28
+            color: appearance.colors.sidebar
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: appearance.colors.border }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 12
+                spacing: 2
+                Repeater {
+                    model: [
+                        { key: "file", label: qsTr("File"), objectName: "appMenuFile" },
+                        { key: "edit", label: qsTr("Modifica"), objectName: "appMenuEdit" },
+                        { key: "view", label: qsTr("Visualizza"), objectName: "appMenuView" },
+                        { key: "chat", label: qsTr("Chat"), objectName: "appMenuChat" },
+                        { key: "tools", label: qsTr("Strumenti"), objectName: "appMenuTools" },
+                        { key: "help", label: qsTr("Aiuto"), objectName: "appMenuHelp" }
+                    ]
+                    delegate: KButton {
+                        id: topMenuBtn
+                        required property var modelData
+                        objectName: modelData.objectName
+                        text: modelData.label
+                        subtle: true
+                        quietSelection: true
+                        checked: appTopMenuPopup.opened && window.activeTopMenu === modelData.key
+                        implicitHeight: appMenuBar.implicitHeight - 4
+                        implicitWidth: Math.max(42, topMenuBtnMetrics.advanceWidth + 18)
+                        font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 1)
+                        Accessible.name: modelData.label
+                        TextMetrics { id: topMenuBtnMetrics; text: topMenuBtn.text; font: topMenuBtn.font }
+                        onClicked: window.openTopMenu(modelData.key, topMenuBtn)
+                        onHoveredChanged: {
+                            if (hovered && appTopMenuPopup.opened && window.activeTopMenu !== modelData.key) {
+                                window.openTopMenu(modelData.key, topMenuBtn)
+                            }
+                        }
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    visible: window.width >= 960
+                    text: workspace.project.name ? (workspace.project.name + (workspace.sessionId ? "  ·  " + workspace.sessionTitle : "")) : "Kira Desktop"
+                    color: muted
+                    font.family: appearance.uiFont.family
+                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 2)
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: Math.max(140, window.width * 0.35)
+                }
+            }
+        }
+        RowLayout {
+            id: mainRow
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
         Rectangle {
             id: sidebar
             objectName: "sidebar"
@@ -373,8 +584,45 @@ ApplicationWindow {
                 Rectangle { visible: !sidebar.rail; Layout.fillWidth: true; Layout.topMargin: window.compact ? 8 : 15; Layout.bottomMargin: window.compact ? 4 : 9; height: 1; color: appearance.colors.border }
                 RowLayout {
                     visible: !sidebar.rail
-                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("PROGETTI E CHAT"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); font.letterSpacing: 1.1; Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.WordWrap }
-                    KButton { text: "+"; subtle: true; implicitWidth: Math.ceil(28 * appearance.uiFont.pixelSize / 13); implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13); onClicked: newProject.open(); Accessible.name: qsTr("Nuovo progetto"); toolTipText: qsTr("Nuovo progetto · Ctrl+N") }
+                    spacing: 2
+                    Text {
+                        font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText
+                        text: workspace.sessionFilter === "pinned" ? qsTr("PROGETTI · FISSATE")
+                            : workspace.sessionFilter === "unread" ? qsTr("PROGETTI · NON LETTE")
+                            : workspace.sessionFilter === "archived" ? qsTr("PROGETTI · ARCHIVIATE")
+                            : qsTr("PROGETTI E CHAT")
+                        color: workspace.sessionFilter !== "all" ? appearance.colors.accent : muted
+                        font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); font.letterSpacing: 1.1
+                        Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.WordWrap
+                    }
+                    KButton {
+                        id: chatFilterButton
+                        objectName: "chatFilterButton"
+                        iconName: "filter"
+                        subtle: true
+                        quietSelection: true
+                        checked: workspace.sessionFilter !== "all" || chatFilterMenu.opened
+                        implicitWidth: Math.ceil(26 * appearance.uiFont.pixelSize / 13)
+                        implicitHeight: 26 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                        onClicked: {
+                            const pt = chatFilterButton.mapToItem(window.contentItem, 0, chatFilterButton.height + 4)
+                            chatFilterMenu.x = Math.max(8, Math.min(window.width - chatFilterMenu.width - 8, pt.x))
+                            chatFilterMenu.y = Math.max(8, Math.min(window.height - chatFilterMenu.implicitHeight - 16, pt.y))
+                            if (chatFilterMenu.opened) chatFilterMenu.close()
+                            else chatFilterMenu.open()
+                        }
+                        Accessible.name: qsTr("Filtra chat")
+                        toolTipText: qsTr("Filtra chat (Tutte, Fissate, Non lette, Archiviate)")
+                    }
+                    KButton {
+                        objectName: "sidebarNewProjectButton"
+                        text: "+"; subtle: true
+                        implicitWidth: Math.ceil(26 * appearance.uiFont.pixelSize / 13)
+                        implicitHeight: 26 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                        onClicked: newProject.open()
+                        Accessible.name: qsTr("Nuovo progetto")
+                        toolTipText: qsTr("Nuovo progetto · Ctrl+N")
+                    }
                 }
                 Item { visible: sidebar.rail; Layout.fillHeight: true }
                 ListView {
@@ -387,51 +635,130 @@ ApplicationWindow {
                     clip: true
                     spacing: 5
                     model: workspace.projects
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: ScrollBar {
+                        interactive: projectList.contentHeight > projectList.height
+                        policy: projectList.contentHeight > projectList.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                    }
                     delegate: Column {
                         id: projectEntry
                         required property var modelData
                         property bool expanded: true
-                        width: projectList.width
+                        readonly property bool projectMenuOpen: projectContextMenu.opened && window.projectMenuId === modelData.id
+                        readonly property bool projectActionsVisible: projectEntryHover.hovered || projectRowHover.hovered || projectMenuOpen
+                        width: projectList.width - (projectList.contentHeight > projectList.height ? 10 : 0)
                         spacing: 3
-                        KButton {
-                            width: parent.width; implicitHeight: 38 + Math.max(0, appearance.uiFont.pixelSize - 13)
-                            text: (workspace.project.id === projectEntry.modelData.id && projectEntry.expanded ? "▾  " : "▸  ") + projectEntry.modelData.name
-                            leftAligned: true; subtle: true
-                            font.weight: workspace.project.id === projectEntry.modelData.id ? Font.DemiBold : Font.Normal
-                            toolTipText: projectEntry.modelData.root
-                            onClicked: { if (workspace.project.id === projectEntry.modelData.id) projectEntry.expanded = !projectEntry.expanded; else { projectEntry.expanded = true; workspace.openProject(projectEntry.modelData.id) } window.page = 0; window.followOutput = true }
+                        HoverHandler { id: projectEntryHover }
+                        Item {
+                            id: projectHeaderRow
+                            width: parent.width
+                            height: 36 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                            HoverHandler { id: projectRowHover }
+                            KButton {
+                                id: projectSelectButton
+                                objectName: "projectSelect_" + projectEntry.modelData.id
+                                anchors.fill: parent
+                                cornerRadius: 8
+                                forceHover: projectRowHover.hovered || projectEntry.projectMenuOpen
+                                text: (workspace.project.id === projectEntry.modelData.id && projectEntry.expanded ? "▾  " : "▸  ") + projectEntry.modelData.name
+                                leftAligned: true; subtle: true
+                                font.weight: workspace.project.id === projectEntry.modelData.id ? Font.DemiBold : Font.Normal
+                                toolTipText: projectEntry.modelData.root
+                                onClicked: { if (workspace.project.id === projectEntry.modelData.id) projectEntry.expanded = !projectEntry.expanded; else { projectEntry.expanded = true; workspace.openProject(projectEntry.modelData.id) } window.page = 0; window.followOutput = true }
+                            }
+                            Row {
+                                id: projectActionsRow
+                                anchors.right: parent.right; anchors.rightMargin: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                opacity: projectEntry.projectActionsVisible ? 1.0 : 0.0
+                                Behavior on opacity {
+                                    enabled: window.motionEnabled
+                                    NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                                }
+                                KButton {
+                                    id: projectMenuButton
+                                    objectName: "projectMenu_" + projectEntry.modelData.id
+                                    iconName: "more-vertical"; iconSize: 14; cornerRadius: 6; subtle: true
+                                    checked: projectEntry.projectMenuOpen; quietSelection: true
+                                    implicitWidth: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                    implicitHeight: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                    toolTipText: qsTr("Opzioni progetto")
+                                    Accessible.name: qsTr("Opzioni progetto %1").arg(projectEntry.modelData.name)
+                                    onClicked: window.openProjectContextMenu(projectEntry.modelData, projectMenuButton)
+                                }
+                                KButton {
+                                    objectName: "projectNewChat_" + projectEntry.modelData.id
+                                    iconName: "plus"; iconSize: 14; cornerRadius: 6; subtle: true
+                                    implicitWidth: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                    implicitHeight: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                    toolTipText: qsTr("Nuova chat nel progetto")
+                                    Accessible.name: qsTr("Nuova chat in %1").arg(projectEntry.modelData.name)
+                                    onClicked: { projectEntry.expanded = true; workspace.newChatInProject(projectEntry.modelData.id); window.page = 0 }
+                                }
+                            }
                         }
                         Column {
                             id: chatChildren
-                            x: 12; width: parent.width - 12; spacing: 2
+                            x: 10; width: parent.width - 10; spacing: 2
                             visible: workspace.project.id === projectEntry.modelData.id && projectEntry.expanded
                             Repeater {
                                 model: chatChildren.visible ? workspace.sessions : []
-                                delegate: RowLayout {
+                                delegate: Item {
                                     id: chatEntry
                                     required property var modelData
                                     readonly property var activity: window.chatIndicators[modelData.id] || ({})
                                     readonly property bool indicatorVisible: !!activity.state
+                                    readonly property bool isPinned: Boolean(modelData.pinned)
+                                    readonly property bool isUnread: Boolean(modelData.unread)
+                                    readonly property bool isArchived: Boolean(modelData.archived)
+                                    readonly property bool menuOpenForChat: chatContextMenu.opened && window.chatMenuSessionId === modelData.id
+                                    readonly property bool actionsVisible: chatRowHover.hovered || menuOpenForChat
                                     readonly property real listY: projectEntry.y + chatChildren.y + y
-                                    width: chatChildren.width; height: 36 + Math.max(0, appearance.uiFont.pixelSize - 13); spacing: 2
+                                    width: chatChildren.width; height: 34 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                    HoverHandler { id: chatRowHover }
                                     KButton {
                                         id: chatSelect
                                         objectName: "chatSelect_" + chatEntry.modelData.id
-                                        Layout.fillWidth: true; implicitHeight: 34 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                        anchors.fill: parent
+                                        cornerRadius: 8
+                                        forceHover: chatRowHover.hovered || chatEntry.menuOpenForChat
                                         text: chatEntry.modelData.title || chatEntry.modelData.label || qsTr("Nuova chat")
                                         checked: workspace.sessionId === chatEntry.modelData.id
                                         quietSelection: true; selectionMark: true
                                         subtle: true; leftAligned: true
+                                        font.weight: chatEntry.isUnread ? Font.DemiBold : Font.Normal
                                         toolTipText: text + " · " + (chatEntry.modelData.backend === "deepseek_web" ? "DeepSeek Web" : kformat.providerLabel(chatEntry.modelData.backend) + " · " + chatEntry.modelData.model)
                                             + (chatEntry.indicatorVisible ? " · " + chatEntry.activity.label : "")
                                         Accessible.name: qsTr("Apri chat %1").arg(text)
                                             + (chatEntry.indicatorVisible ? " · " + chatEntry.activity.label : "")
+                                        TapHandler {
+                                            acceptedButtons: Qt.RightButton
+                                            onTapped: window.openChatContextMenu(chatEntry.modelData, chatSelect)
+                                        }
                                         contentItem: Item {
+                                            Rectangle {
+                                                id: chatUnreadDot
+                                                objectName: "chatUnreadDot_" + chatEntry.modelData.id
+                                                visible: chatEntry.isUnread
+                                                width: 7; height: 7; radius: 3.5
+                                                color: appearance.colors.accent
+                                                anchors.left: parent.left; anchors.leftMargin: 4
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                            KIcon {
+                                                id: chatPinBadge
+                                                objectName: "chatPinBadge_" + chatEntry.modelData.id
+                                                name: "pin"
+                                                visible: chatEntry.isPinned && !chatEntry.isUnread
+                                                width: 11; height: 11
+                                                ink: appearance.colors.accent
+                                                anchors.left: parent.left; anchors.leftMargin: 3
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
                                             Text {
                                                 anchors.fill: parent
-                                                leftPadding: 10
-                                                rightPadding: (chatAgeLabel.visible ? chatAgeLabel.implicitWidth + 14 : 10) + (chatEntry.indicatorVisible ? 18 : 0)
+                                                leftPadding: (chatEntry.isUnread || chatEntry.isPinned) ? 16 : 10
+                                                rightPadding: (chatEntry.actionsVisible ? chatActionsRow.width + 8 : (chatAgeLabel.visible ? chatAgeLabel.implicitWidth + 12 : 8)) + (chatEntry.indicatorVisible && !chatEntry.actionsVisible ? 16 : 0)
                                                 text: chatSelect.text; font: chatSelect.font; color: chatSelect.foreground
                                                 textFormat: Text.PlainText; elide: Text.ElideRight
                                                 verticalAlignment: Text.AlignVCenter
@@ -440,10 +767,10 @@ ApplicationWindow {
                                                 id: chatAgeLabel
                                                 objectName: "chatAge_" + chatEntry.modelData.id
                                                 anchors.right: chatEntry.indicatorVisible ? chatStatusIcon.left : parent.right
-                                                anchors.rightMargin: chatEntry.indicatorVisible ? 6 : 8
+                                                anchors.rightMargin: chatEntry.indicatorVisible ? 5 : 8
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 text: { localization.revision; return kformat.relativeTime(chatEntry.modelData.updated_at || chatEntry.modelData.created_at) }
-                                                visible: text.length > 0
+                                                visible: text.length > 0 && !chatEntry.actionsVisible
                                                 color: appearance.colors.muted
                                                 font.family: appearance.uiFont.family
                                                 font.styleName: appearance.uiFont.styleName
@@ -455,9 +782,9 @@ ApplicationWindow {
                                             StatusIndicator {
                                                 id: chatStatusIcon
                                                 objectName: "chatStatus_" + chatEntry.modelData.id
-                                                anchors.right: parent.right; anchors.rightMargin: 7
+                                                anchors.right: parent.right; anchors.rightMargin: 5
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                visible: chatEntry.indicatorVisible
+                                                visible: chatEntry.indicatorVisible && !chatEntry.actionsVisible
                                                 state: chatEntry.activity.state || "idle"
                                                 diameter: 10
                                                 animate: window.motionEnabled && chatEntry.visible
@@ -465,13 +792,62 @@ ApplicationWindow {
                                                     && chatEntry.listY < projectList.contentY + projectList.height
                                             }
                                         }
-                                        onClicked: { workspace.selectSession(chatEntry.modelData.id); window.page = 0 }
+                                        onClicked: { const sid = chatEntry.modelData.id; window.page = 0; workspace.selectSession(sid) }
                                     }
                                     KButton {
                                         objectName: "chatRename_" + chatEntry.modelData.id
-                                        text: "⋯"; subtle: true; implicitWidth: Math.ceil(25 * appearance.uiFont.pixelSize / 13); implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                        anchors.right: chatActionsRow.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        implicitWidth: 4
+                                        implicitHeight: 20
+                                        opacity: 0.0
+                                        subtle: true
                                         toolTipText: qsTr("Rinomina chat"); Accessible.name: qsTr("Rinomina chat")
-                                        onClicked: { renameChatDialog.chatId = chatEntry.modelData.id; chatNameInput.text = chatEntry.modelData.title || ""; renameChatDialog.open() }
+                                        onClicked: window.openRenameChat(chatEntry.modelData.id, chatEntry.modelData.title || "")
+                                    }
+                                    Row {
+                                        id: chatActionsRow
+                                        anchors.right: parent.right; anchors.rightMargin: 3
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 1
+                                        opacity: chatEntry.actionsVisible ? 1.0 : 0.0
+                                        Behavior on opacity {
+                                            enabled: window.motionEnabled
+                                            NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                                        }
+                                        KButton {
+                                            id: chatMenuButton
+                                            objectName: "chatMenu_" + chatEntry.modelData.id
+                                            iconName: "more-vertical"; iconSize: 14; cornerRadius: 6; subtle: true
+                                            checked: chatEntry.menuOpenForChat; quietSelection: true
+                                            implicitWidth: Math.ceil(22 * appearance.uiFont.pixelSize / 13)
+                                            implicitHeight: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                            toolTipText: qsTr("Opzioni chat")
+                                            Accessible.name: qsTr("Opzioni chat")
+                                            onClicked: window.openChatContextMenu(chatEntry.modelData, chatMenuButton)
+                                        }
+                                        KButton {
+                                            id: chatPinButton
+                                            objectName: "chatPin_" + chatEntry.modelData.id
+                                            iconName: "pin"; iconSize: 14; cornerRadius: 6; subtle: true
+                                            checked: chatEntry.isPinned; quietSelection: true
+                                            implicitWidth: Math.ceil(22 * appearance.uiFont.pixelSize / 13)
+                                            implicitHeight: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                            toolTipText: chatEntry.isPinned ? qsTr("Rimuovi fissaggio") : qsTr("Fissa chat")
+                                            Accessible.name: chatEntry.isPinned ? qsTr("Rimuovi fissaggio") : qsTr("Fissa chat")
+                                            onClicked: workspace.pinSession(chatEntry.modelData.id, !chatEntry.isPinned)
+                                        }
+                                        KButton {
+                                            id: chatArchiveButton
+                                            objectName: "chatArchive_" + chatEntry.modelData.id
+                                            iconName: "archive"; iconSize: 14; cornerRadius: 6; subtle: true
+                                            checked: chatEntry.isArchived; quietSelection: true
+                                            implicitWidth: Math.ceil(22 * appearance.uiFont.pixelSize / 13)
+                                            implicitHeight: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
+                                            toolTipText: chatEntry.isArchived ? qsTr("Ripristina dall'archivio") : qsTr("Archivia chat")
+                                            Accessible.name: chatEntry.isArchived ? qsTr("Ripristina dall'archivio") : qsTr("Archivia chat")
+                                            onClicked: workspace.archiveSession(chatEntry.modelData.id, !chatEntry.isArchived)
+                                        }
                                     }
                                 }
                             }
@@ -2147,6 +2523,417 @@ ApplicationWindow {
                 }
             }
         }
+        }
+    }
+
+    Popup {
+        id: appTopMenuPopup
+        objectName: "appTopMenuPopup"
+        width: 280 + Math.max(0, appearance.uiFont.pixelSize - 13) * 8
+        padding: 6
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: window.activeTopMenu = ""
+        background: Rectangle {
+            color: appearance.colors.surfaceAlt
+            radius: 10
+            border.color: appearance.colors.border
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            spacing: 2
+            Repeater {
+                model: window.topMenuItems(window.activeTopMenu)
+                delegate: Item {
+                    id: topMenuRow
+                    required property var modelData
+                    readonly property bool isSep: Boolean(modelData.separator)
+                    Layout.fillWidth: true
+                    implicitHeight: isSep ? 9 : (30 + Math.max(0, appearance.uiFont.pixelSize - 13))
+                    Rectangle {
+                        visible: topMenuRow.isSep
+                        anchors.left: parent.left; anchors.right: parent.right
+                        anchors.leftMargin: 8; anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 1
+                        color: appearance.colors.border
+                    }
+                    KButton {
+                        id: topMenuItemBtn
+                        visible: !topMenuRow.isSep
+                        objectName: topMenuRow.modelData.id || ""
+                        anchors.fill: parent
+                        text: topMenuRow.modelData.label || ""
+                        iconName: topMenuRow.modelData.icon || ""
+                        enabled: topMenuRow.modelData.enabled !== false
+                        destructive: Boolean(topMenuRow.modelData.destructive)
+                        subtle: true
+                        leftAligned: true
+                        Accessible.name: text
+                        contentItem: Item {
+                            KIcon {
+                                visible: (topMenuRow.modelData.icon || "").length > 0
+                                name: topMenuRow.modelData.icon || ""
+                                ink: topMenuItemBtn.foreground
+                                width: 16; height: 16
+                                anchors.left: parent.left; anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                anchors.fill: parent
+                                leftPadding: 34
+                                rightPadding: topMenuShortcut.visible ? topMenuShortcut.implicitWidth + 18 : 12
+                                text: topMenuItemBtn.text
+                                font: topMenuItemBtn.font
+                                color: topMenuItemBtn.foreground
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            Text {
+                                id: topMenuShortcut
+                                visible: Boolean(topMenuRow.modelData.shortcut)
+                                anchors.right: parent.right; anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: topMenuRow.modelData.shortcut || ""
+                                font.family: appearance.codeFont.family
+                                font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 2)
+                                color: appearance.colors.muted
+                                textFormat: Text.PlainText
+                            }
+                        }
+                        onClicked: {
+                            const fn = topMenuRow.modelData.action
+                            appTopMenuPopup.close()
+                            if (typeof fn === "function") fn()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: chatFilterMenu
+        objectName: "chatFilterMenu"
+        width: 210 + Math.max(0, appearance.uiFont.pixelSize - 13) * 6
+        padding: 6
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: appearance.colors.surfaceAlt
+            radius: 10
+            border.color: appearance.colors.border
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            spacing: 2
+            Repeater {
+                model: [
+                    { key: "all", label: qsTr("Tutte le chat"), icon: "projects" },
+                    { key: "pinned", label: qsTr("Fissate in alto"), icon: "pin" },
+                    { key: "unread", label: qsTr("Non lette"), icon: "unread" },
+                    { key: "archived", label: qsTr("Archiviate"), icon: "archive" }
+                ]
+                delegate: KButton {
+                    required property var modelData
+                    objectName: "chatFilter_" + modelData.key
+                    Layout.fillWidth: true
+                    implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                    text: modelData.label
+                    iconName: workspace.sessionFilter === modelData.key ? "check" : modelData.icon
+                    checked: workspace.sessionFilter === modelData.key
+                    quietSelection: true
+                    subtle: true
+                    leftAligned: true
+                    Accessible.name: modelData.label
+                    onClicked: {
+                        workspace.setSessionFilter(modelData.key)
+                        chatFilterMenu.close()
+                    }
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: projectContextMenu
+        objectName: "projectContextMenu"
+        width: 240 + Math.max(0, appearance.uiFont.pixelSize - 13) * 6
+        padding: 6
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: appearance.colors.surfaceAlt
+            radius: 10
+            border.color: appearance.colors.border
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            spacing: 2
+            KButton {
+                objectName: "projectMenuNewChat"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Nuova chat")
+                iconName: "plus"; subtle: true; leftAligned: true
+                onClicked: {
+                    const pid = window.projectMenuId
+                    projectContextMenu.close()
+                    workspace.newChatInProject(pid)
+                    window.page = 0
+                }
+            }
+            KButton {
+                objectName: "projectMenuOpenFolder"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Apri cartella del progetto")
+                iconName: "folder"; subtle: true; leftAligned: true
+                onClicked: {
+                    const pid = window.projectMenuId
+                    projectContextMenu.close()
+                    if (workspace.project.id !== pid) workspace.openProject(pid)
+                    workspace.openProjectFolder()
+                }
+            }
+            KButton {
+                objectName: "projectMenuPermissions"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Memoria e permessi…")
+                iconName: "lock"; subtle: true; leftAligned: true
+                onClicked: {
+                    const pid = window.projectMenuId
+                    projectContextMenu.close()
+                    if (workspace.project.id !== pid) workspace.openProject(pid)
+                    memoryDialog.open()
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.leftMargin: 8; Layout.rightMargin: 8; height: 1; color: appearance.colors.border }
+            KButton {
+                objectName: "projectMenuCopyPath"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Copia percorso progetto")
+                iconName: "copy"; subtle: true; leftAligned: true
+                onClicked: {
+                    const rootPath = window.projectMenuRoot
+                    projectContextMenu.close()
+                    workspace.copy(rootPath)
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: chatContextMenu
+        objectName: "chatContextMenu"
+        width: 245 + Math.max(0, appearance.uiFont.pixelSize - 13) * 6
+        padding: 6
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: appearance.colors.surfaceAlt
+            radius: 10
+            border.color: appearance.colors.border
+            border.width: 1
+        }
+        contentItem: ColumnLayout {
+            spacing: 2
+            KButton {
+                objectName: "chatMenuRename"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Rinomina")
+                iconName: "rename"; subtle: true; leftAligned: true
+                Accessible.name: text
+                onClicked: {
+                    const sid = window.chatMenuSessionId
+                    const title = window.chatMenuTitle
+                    chatContextMenu.close()
+                    window.openRenameChat(sid, title)
+                }
+            }
+            KButton {
+                objectName: "chatMenuPin"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: window.chatMenuPinned ? qsTr("Rimuovi fissaggio") : qsTr("Fissa")
+                iconName: "pin"; subtle: true; leftAligned: true
+                Accessible.name: text
+                onClicked: {
+                    const sid = window.chatMenuSessionId
+                    const nextPinned = !window.chatMenuPinned
+                    chatContextMenu.close()
+                    workspace.pinSession(sid, nextPinned)
+                }
+            }
+            KButton {
+                objectName: "chatMenuUnread"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: window.chatMenuUnread ? qsTr("Segna come letta") : qsTr("Segna come non letta")
+                iconName: "unread"; subtle: true; leftAligned: true
+                Accessible.name: text
+                onClicked: {
+                    const sid = window.chatMenuSessionId
+                    const nextUnread = !window.chatMenuUnread
+                    chatContextMenu.close()
+                    workspace.markSessionUnread(sid, nextUnread)
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.leftMargin: 8; Layout.rightMargin: 8; height: 1; color: appearance.colors.border }
+            KButton {
+                id: chatMenuCopyToggleBtn
+                objectName: "chatMenuCopyToggle"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Copia")
+                iconName: "copy"; subtle: true; leftAligned: true
+                checked: window.chatMenuCopyExpanded; quietSelection: true
+                Accessible.name: text
+                contentItem: Item {
+                    KIcon {
+                        name: "copy"
+                        ink: chatMenuCopyToggleBtn.foreground
+                        width: 16; height: 16
+                        anchors.left: parent.left; anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        anchors.fill: parent
+                        leftPadding: 34; rightPadding: 26
+                        text: chatMenuCopyToggleBtn.text
+                        font: chatMenuCopyToggleBtn.font
+                        color: chatMenuCopyToggleBtn.foreground
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    KIcon {
+                        name: window.chatMenuCopyExpanded ? "chevron-down" : "chevron-right"
+                        ink: appearance.colors.muted
+                        width: 14; height: 14
+                        anchors.right: parent.right; anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                onClicked: window.chatMenuCopyExpanded = !window.chatMenuCopyExpanded
+            }
+            ColumnLayout {
+                visible: window.chatMenuCopyExpanded
+                Layout.fillWidth: true
+                Layout.leftMargin: 14
+                spacing: 1
+                KButton {
+                    objectName: "chatMenuCopyMarkdown"
+                    Layout.fillWidth: true
+                    implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                    text: qsTr("Copia trascrizione Markdown")
+                    iconName: "document"; subtle: true; leftAligned: true
+                    Accessible.name: text
+                    onClicked: {
+                        const sid = window.chatMenuSessionId
+                        chatContextMenu.close()
+                        workspace.copySessionItem(sid, "markdown")
+                    }
+                }
+                KButton {
+                    objectName: "chatMenuCopyTitle"
+                    Layout.fillWidth: true
+                    implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                    text: qsTr("Copia titolo")
+                    iconName: "labels"; subtle: true; leftAligned: true
+                    Accessible.name: text
+                    onClicked: {
+                        const sid = window.chatMenuSessionId
+                        chatContextMenu.close()
+                        workspace.copySessionItem(sid, "title")
+                    }
+                }
+                KButton {
+                    objectName: "chatMenuCopyId"
+                    Layout.fillWidth: true
+                    implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                    text: qsTr("Copia ID sessione")
+                    iconName: "code"; subtle: true; leftAligned: true
+                    Accessible.name: text
+                    onClicked: {
+                        const sid = window.chatMenuSessionId
+                        chatContextMenu.close()
+                        workspace.copySessionItem(sid, "id")
+                    }
+                }
+                KButton {
+                    objectName: "chatMenuCopyPath"
+                    Layout.fillWidth: true
+                    implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                    text: qsTr("Copia percorso progetto")
+                    iconName: "link"; subtle: true; leftAligned: true
+                    Accessible.name: text
+                    onClicked: {
+                        const sid = window.chatMenuSessionId
+                        chatContextMenu.close()
+                        workspace.copySessionItem(sid, "path")
+                    }
+                }
+            }
+            KButton {
+                objectName: "chatMenuBranch"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Dirama chat")
+                iconName: "branch"; subtle: true; leftAligned: true
+                Accessible.name: text
+                onClicked: {
+                    const sid = window.chatMenuSessionId
+                    chatContextMenu.close()
+                    workspace.branchSession(sid)
+                }
+            }
+            KButton {
+                objectName: "chatMenuExport"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Esporta Markdown…")
+                iconName: "export"; subtle: true; leftAligned: true
+                Accessible.name: text
+                onClicked: {
+                    window.exportChatSessionId = window.chatMenuSessionId
+                    chatContextMenu.close()
+                    chatMarkdownExport.open()
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.leftMargin: 8; Layout.rightMargin: 8; height: 1; color: appearance.colors.border }
+            KButton {
+                objectName: "chatMenuArchive"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: window.chatMenuArchived ? qsTr("Ripristina dall'archivio") : qsTr("Archivia")
+                iconName: "archive"; subtle: true; leftAligned: true
+                Accessible.name: text
+                onClicked: {
+                    const sid = window.chatMenuSessionId
+                    const nextArch = !window.chatMenuArchived
+                    chatContextMenu.close()
+                    workspace.archiveSession(sid, nextArch)
+                }
+            }
+            KButton {
+                objectName: "chatMenuDelete"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Elimina")
+                iconName: "trash"; subtle: true; leftAligned: true; destructive: true
+                Accessible.name: text
+                onClicked: {
+                    const sid = window.chatMenuSessionId
+                    chatContextMenu.close()
+                    workspace.deleteSession(sid)
+                }
+            }
+        }
     }
 
     Component {
@@ -2243,7 +3030,16 @@ ApplicationWindow {
     KiraLoadingScreen { parent: Overlay.overlay }
     UpdateDialog { id: updateDialog }
     WorkbenchDialog { id: workbenchDialog; parent: Overlay.overlay }
-    KiraFileDialog { id: chatMarkdownExport; mode: "save"; purpose: "export"; title: qsTr("Esporta chat"); nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; suggestedName: window.exportName(qsTr("chat")); onAccepted: workbench.exportChat(selectedFile.toString()) }
+    KiraFileDialog {
+        id: chatMarkdownExport; mode: "save"; purpose: "export"; title: qsTr("Esporta chat")
+        nameFilters: [qsTr("Markdown (*.md)")]; defaultSuffix: "md"; suggestedName: window.exportName(qsTr("chat"))
+        onAccepted: {
+            const targetSid = window.exportChatSessionId || workspace.sessionId
+            window.exportChatSessionId = ""
+            if (targetSid && targetSid !== workspace.sessionId) workspace.exportSessionMarkdown(targetSid, selectedFile.toString())
+            else workbench.exportChat(selectedFile.toString())
+        }
+    }
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
     ActionDialog { id: actionDialog; parent: Overlay.overlay; onProjectSelected: { window.page = 0; window.followOutput = true } }
     DiagnosticsDialog { id: diagnosticsDialog; parent: Overlay.overlay }

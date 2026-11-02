@@ -575,5 +575,14 @@
   "Blocco #{idx} rifiutato e ripristinato.": "Hunk #{idx} rejected and reverted.",
   "Blocco #{idx} confermato.": "Hunk #{idx} accepted.",
   "Finestra interattiva 60fps aperta in modalità isolata offline.": "60fps interactive window opened in offline isolated mode.",
-  "Finestra interattiva aperta.": "Interactive window opened."
+  "Finestra interattiva aperta.": "Interactive window opened.",
+  "Impossibile aggiornare il fissaggio della chat.": "Could not update chat pin status.",
+  "Impossibile aggiornare lo stato di lettura della chat.": "Could not update chat read status.",
+  "Impossibile eliminare la chat.": "Could not delete chat.",
+  "Impossibile diramare la chat.": "Could not branch chat.",
+  "Titolo della chat copiato negli appunti.": "Chat title copied to clipboard.",
+  "ID della chat copiato negli appunti.": "Chat ID copied to clipboard.",
+  "Percorso del progetto copiato negli appunti.": "Project path copied to clipboard.",
+  "Trascrizione Markdown copiata negli appunti.": "Markdown transcript copied to clipboard.",
+  "Impossibile copiare la trascrizione Markdown.": "Could not copy Markdown transcript."
 }

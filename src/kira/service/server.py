@@ -746,10 +746,14 @@ class Service:
                 self.store.db.execute("ROLLBACK")
                 raise
             return {"session": chats.enrich(updated)}
-        if method in {"session.list", "session.snapshot", "session.rename", "project.context"}:
+        if method in {"session.list", "session.snapshot", "session.rename", "session.pin", "session.unread", "session.delete", "project.context"}:
             allowed = {"project_id", "offset", "limit", "archived"} if method == "session.list" else {"project_id", "session_id"}
             if method == "session.rename":
                 allowed.add("title")
+            elif method == "session.pin":
+                allowed.add("pinned")
+            elif method == "session.unread":
+                allowed.add("unread")
             fields(params, allowed)
             project_id = string(params, "project_id", maximum=128)
             chats = ProjectChats(self.store)
@@ -765,6 +769,62 @@ class Service:
             if method == "session.snapshot":
                 return chats.snapshot(project_id, session_id)
             session = chats.owned_session(project_id, session_id)
+            if method == "session.pin":
+                pinned = params.get("pinned")
+                if not isinstance(pinned, bool):
+                    raise KiraError("INVALID_ARGUMENT", "pinned must be a boolean")
+                if pinned:
+                    session["settings"]["chat_pinned"] = True
+                else:
+                    session["settings"].pop("chat_pinned", None)
+                self.store.db.execute("UPDATE sessions SET settings=? WHERE id=? AND project_id=?",
+                                      (encode(session["settings"]), session_id, project_id))
+                return {"session": chats.enrich(session)}
+            if method == "session.unread":
+                unread = params.get("unread")
+                if not isinstance(unread, bool):
+                    raise KiraError("INVALID_ARGUMENT", "unread must be a boolean")
+                if unread:
+                    session["settings"]["chat_unread"] = True
+                else:
+                    session["settings"].pop("chat_unread", None)
+                self.store.db.execute("UPDATE sessions SET settings=? WHERE id=? AND project_id=?",
+                                      (encode(session["settings"]), session_id, project_id))
+                return {"session": chats.enrich(session)}
+            if method == "session.delete":
+                if self.store.db.execute(
+                        "SELECT 1 FROM runs WHERE session_id=? AND state NOT IN ('completed','failed','cancelled','interrupted') LIMIT 1",
+                        (session_id,)).fetchone():
+                    raise KiraError("BUSY", "Stop the active run in this chat before deleting it")
+                timestamp = now()
+                session["settings"]["chat_deleted"] = True
+                session["settings"].pop("chat_pinned", None)
+                session["settings"].pop("chat_unread", None)
+                self.store.db.execute("BEGIN IMMEDIATE")
+                try:
+                    self.store.db.execute("UPDATE sessions SET settings=? WHERE id=? AND project_id=?",
+                                          (encode(session["settings"]), session_id, project_id))
+                    self.store.db.execute(
+                        "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES (?,1,?,?) "
+                        "ON CONFLICT(session_id) DO UPDATE SET archived=1,updated_at=excluded.updated_at",
+                        (session_id, timestamp, timestamp))
+                    self.store.db.execute(
+                        "UPDATE prompt_queue SET status='removed',updated_at=? WHERE session_id=? AND status IN ('pending','starting')",
+                        (timestamp, session_id))
+                    self.store.db.execute(
+                        "UPDATE studio_grants SET enabled=0,generation=generation+1,updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
+                        (timestamp, project_id, session_id))
+                    self.store.db.execute(
+                        "UPDATE session_triggers SET enabled=0,status='paused',updated_at=? WHERE session_id=?",
+                        (timestamp, session_id))
+                    self.store.db.execute(
+                        "UPDATE autonomous_goals SET status='paused',updated_at=? WHERE session_id=? AND status='active'",
+                        (timestamp, session_id))
+                    self.store.db.execute("COMMIT")
+                except BaseException:
+                    self.store.db.execute("ROLLBACK")
+                    raise
+                return {"deleted": True, "session_id": session_id}
             session["settings"]["chat_title"] = self._chat_title(params)
             self.store.db.execute("UPDATE sessions SET settings=? WHERE id=? AND project_id=?",
                                   (encode(session["settings"]), session_id, project_id))
@@ -1224,7 +1284,7 @@ class Service:
     def _snapshot(self, project_id: str, *, bounded: bool = True) -> Json:
         project = self.store.one("projects", project_id)
         if bounded:
-            sessions = list(reversed(self.store.all("SELECT * FROM sessions WHERE project_id=? AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=sessions.id) AND NOT EXISTS (SELECT 1 FROM session_workbench w WHERE w.session_id=sessions.id AND w.archived=1) ORDER BY created_at DESC LIMIT 200", (project_id,))))
+            sessions = list(reversed(self.store.all("SELECT * FROM sessions WHERE project_id=? AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=sessions.id) AND COALESCE(json_extract(sessions.settings,'$.chat_deleted'),0)=0 AND NOT EXISTS (SELECT 1 FROM session_workbench w WHERE w.session_id=sessions.id AND w.archived=1) ORDER BY created_at DESC LIMIT 200", (project_id,))))
             runs = list(reversed(self.store.all(
                 "SELECT r.id,r.session_id,r.request_id,substr(r.prompt,1,2000) AS prompt,r.state,"
                 "r.created_at,r.updated_at,substr(r.error,1,2000) AS error,r.last_seq,"

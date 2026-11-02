@@ -32,7 +32,8 @@ class ProjectChats:
         self.store.one("projects", project_id)
         rows = self.store.all(
             "SELECT s.* FROM sessions s WHERE s.id=? AND s.project_id=? "
-            "AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=s.id)",
+            "AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=s.id) "
+            "AND COALESCE(json_extract(s.settings,'$.chat_deleted'),0)=0",
             (session_id, project_id),
         )
         if not rows:
@@ -56,7 +57,10 @@ class ProjectChats:
         generation = self.store.db.execute(
             "SELECT COALESCE(MAX(generation),0) FROM session_provider_generations WHERE session_id=?",
             (session["id"],)).fetchone()[0]
-        return {**session, "updated_at": updated_at, "provider_generation": generation, "title": title or "Nuova chat", "archived": False,
+        pinned = bool(session["settings"].get("chat_pinned"))
+        unread = bool(session["settings"].get("chat_unread"))
+        return {**session, "updated_at": updated_at, "provider_generation": generation, "title": title or "Nuova chat",
+                "archived": False, "pinned": pinned, "unread": unread,
                 **({**metadata[0], "archived": bool(metadata[0]["archived"])} if metadata else {})}
 
     def list(self, project_id: str, offset: int, limit: int, archived: bool = False) -> Json:
@@ -64,8 +68,10 @@ class ProjectChats:
         rows = self.store.all(
             "SELECT s.* FROM sessions s WHERE project_id=? "
             "AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=s.id) "
+            "AND COALESCE(json_extract(s.settings,'$.chat_deleted'),0)=0 "
             "AND COALESCE((SELECT archived FROM session_workbench w WHERE w.session_id=s.id),0)=? "
-            "ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", (project_id, int(archived), limit + 1, offset),
+            "ORDER BY CASE WHEN COALESCE(json_extract(s.settings,'$.chat_pinned'),0)!=0 THEN 1 ELSE 0 END DESC,"
+            "created_at DESC,id DESC LIMIT ? OFFSET ?", (project_id, int(archived), limit + 1, offset),
         )
         sessions: list[Json] = []
         size = 0
@@ -149,6 +155,7 @@ class ProjectChats:
             "AND COALESCE((SELECT sr.epoch FROM soul_run_snapshots sr WHERE sr.run_id=r.id),0)="
             "COALESCE((SELECT sb.epoch FROM soul_bindings sb WHERE sb.session_id=s.id),0) "
             "AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=s.id) "
+            "AND COALESCE(json_extract(s.settings,'$.chat_deleted'),0)=0 "
             "AND NOT EXISTS (SELECT 1 FROM session_workbench w WHERE w.session_id=s.id AND w.archived=1) "
             "ORDER BY r.created_at DESC,r.id DESC LIMIT ?",
             (project_id, session_id or "", session_id or "", CONTEXT_SESSIONS + 1),
