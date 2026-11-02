@@ -46,7 +46,7 @@ PROVIDER_SETTINGS: dict[str, frozenset[str]] = {
     backend: settings | (WEB_SETTINGS if backend in WEB_BACKENDS else frozenset())
     for backend, settings in _OWN_SETTINGS.items()
 }
-CHAT_SETTINGS = frozenset({"chat_title", "handoff"})
+CHAT_SETTINGS = frozenset({"chat_title", "handoff", "chat_pinned", "chat_unread", "chat_deleted"})
 MAX_TRANSITIONS = 100
 
 

@@ -1239,6 +1239,8 @@ class WorkbenchController(QObject):
         def received(result: Json) -> None:
             self._archives.extend(result.get("sessions", []))
             self._archives_more = bool(result.get("has_more"))
+            if getattr(self.workspace, "_session_filter", "all") == "archived":
+                self.workspace.changed.emit()
         self._request("session.list", {"project_id": self.workspace.project.get("id"),
                       "archived": True, "offset": offset, "limit": 50}, received, scope_session=False)
 

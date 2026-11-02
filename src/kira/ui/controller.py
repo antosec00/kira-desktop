@@ -361,6 +361,7 @@ class Workspace(QObject):
         self._message_link_generation = 0
         self._sessions: list[Json] = []
         self._session: Json = {}
+        self._session_filter = "all"
         self._chat_generation = 0
         self._sessions_generation = 0
         self._sessions_loading = False
@@ -871,18 +872,65 @@ class Workspace(QObject):
             stamp = str(run.get("updated_at") or run.get("created_at") or "")
             if sid and stamp > latest_by_session.get(sid, ""):
                 latest_by_session[sid] = stamp
+        source_sessions = list(self._sessions)
+        if self._session_filter == "archived" and hasattr(self, "workbench"):
+            known_ids = {str(s.get("id") or "") for s in source_sessions}
+            for arch in self.workbench._archives:
+                aid = str(arch.get("id") or "")
+                if aid and aid not in known_ids:
+                    source_sessions.append({**arch, "archived": True})
+                    known_ids.add(aid)
         rows: list[Json] = []
-        for s in self._sessions:
-            if s.get("archived"):
+        for s in source_sessions:
+            if (s.get("settings") or {}).get("chat_deleted"):
+                continue
+            is_archived = bool(s.get("archived"))
+            if self._session_filter == "archived":
+                if not is_archived:
+                    continue
+            elif is_archived:
+                continue
+            pinned = bool(s.get("pinned", (s.get("settings") or {}).get("chat_pinned")))
+            unread = bool(s.get("unread", (s.get("settings") or {}).get("chat_unread")))
+            if self._session_filter == "pinned" and not pinned:
+                continue
+            if self._session_filter == "unread" and not unread:
                 continue
             sid = str(s.get("id") or "")
             stamp = max(str(s.get("updated_at") or s.get("created_at") or ""), latest_by_session.get(sid, ""))
             rows.append({
                 **s,
+                "pinned": pinned,
+                "unread": unread,
+                "archived": is_archived,
                 "label": str(s.get("title") or tr("Nuova chat")),
                 **({"updated_at": stamp} if stamp else {}),
             })
-        return rows
+        pinned_rows = [row for row in rows if row.get("pinned")]
+        unpinned_rows = [row for row in rows if not row.get("pinned")]
+        return pinned_rows + unpinned_rows
+
+    @qt_property(str, notify=changed)
+    def sessionFilter(self) -> str:
+        return self._session_filter
+
+    @Slot(str)
+    def setSessionFilter(self, filter_mode: str) -> None:
+        normalized = filter_mode if filter_mode in {"all", "pinned", "unread", "archived"} else "all"
+        if normalized == self._session_filter:
+            return
+        self._session_filter = normalized
+        if normalized == "archived" and hasattr(self, "workbench"):
+            self.workbench.refreshArchives()
+        self.changed.emit()
+
+    @qt_property(bool, notify=changed)
+    def currentSessionPinned(self) -> bool:
+        return bool(self._session.get("pinned", (self._session.get("settings") or {}).get("chat_pinned")))
+
+    @qt_property(bool, notify=changed)
+    def currentSessionUnread(self) -> bool:
+        return bool(self._session.get("unread", (self._session.get("settings") or {}).get("chat_unread")))
 
     @qt_property(str, notify=changed)
     def sessionTitle(self) -> str:
@@ -1935,7 +1983,11 @@ class Workspace(QObject):
             return
         if session_id == self.sessionId and not self._chat_loading and not self._chat_failed:
             return
+        target = next((s for s in self._sessions if s.get("id") == session_id), None)
+        was_unread = bool(target and target.get("unread", (target.get("settings") or {}).get("chat_unread")))
         self._select_chat(session_id)
+        if was_unread:
+            self.markSessionUnread(session_id, False)
 
     def _select_chat(self, session_id: str, *, force_reload: bool = False) -> None:
         if (not force_reload and session_id == self.sessionId
@@ -2059,6 +2111,21 @@ class Workspace(QObject):
                 self._subscribe(run["id"])
         self.changed.emit()
 
+    @Slot(str)
+    def newChatInProject(self, project_id: str) -> None:
+        if not project_id:
+            return
+        if self._project.get("id") == project_id:
+            self.newChat()
+            return
+        remembered = self._preferences.get("selected_sessions", {})
+        if isinstance(remembered, dict) and project_id in remembered:
+            selections = dict(remembered)
+            selections.pop(project_id, None)
+            self._save_preferences({"selected_sessions": selections})
+        self.openProject(project_id)
+        self.newChat()
+
     @Slot(str, str)
     def renameSession(self, session_id: str, title: str) -> None:
         project_id = self._project.get("id")
@@ -2074,6 +2141,252 @@ class Workspace(QObject):
             self.changed.emit()
         self.client.request("session.rename", {"project_id": project_id, "session_id": session_id,
                             "title": title.strip()}, done)
+
+    @Slot(str, bool)
+    def pinSession(self, session_id: str, pinned: bool) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id:
+            return
+        target_pinned = bool(pinned)
+        for s in self._sessions:
+            if s.get("id") == session_id:
+                s["pinned"] = target_pinned
+                if isinstance(s.get("settings"), dict):
+                    s["settings"]["chat_pinned"] = target_pinned
+        if self.sessionId == session_id:
+            self._session["pinned"] = target_pinned
+            if isinstance(self._session.get("settings"), dict):
+                self._session["settings"]["chat_pinned"] = target_pinned
+        self.changed.emit()
+
+        def done(result: Json) -> None:
+            if project_id != self._project.get("id"):
+                return
+            row = result.get("session")
+            if isinstance(row, dict):
+                self._sessions = [row if s.get("id") == session_id else s for s in self._sessions]
+                if self.sessionId == session_id:
+                    self._session = row
+                self.changed.emit()
+
+        def failed(error: Json) -> None:
+            self._problem(service_error_text(error, tr("Impossibile aggiornare il fissaggio della chat.")))
+            self.refreshSessions()
+
+        self.client.request(
+            "session.pin",
+            {"project_id": project_id, "session_id": session_id, "pinned": target_pinned},
+            done,
+            failed,
+        )
+
+    @Slot(str, bool)
+    def markSessionUnread(self, session_id: str, unread: bool) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id:
+            return
+        target_unread = bool(unread)
+        for s in self._sessions:
+            if s.get("id") == session_id:
+                s["unread"] = target_unread
+                if isinstance(s.get("settings"), dict):
+                    s["settings"]["chat_unread"] = target_unread
+        if self.sessionId == session_id:
+            self._session["unread"] = target_unread
+            if isinstance(self._session.get("settings"), dict):
+                self._session["settings"]["chat_unread"] = target_unread
+        self.changed.emit()
+
+        def done(result: Json) -> None:
+            if project_id != self._project.get("id"):
+                return
+            row = result.get("session")
+            if isinstance(row, dict):
+                self._sessions = [row if s.get("id") == session_id else s for s in self._sessions]
+                if self.sessionId == session_id:
+                    self._session = row
+                self.changed.emit()
+
+        def failed(error: Json) -> None:
+            self._problem(service_error_text(error, tr("Impossibile aggiornare lo stato di lettura della chat.")))
+            self.refreshSessions()
+
+        self.client.request(
+            "session.unread",
+            {"project_id": project_id, "session_id": session_id, "unread": target_unread},
+            done,
+            failed,
+        )
+
+    @Slot(str, bool)
+    def archiveSession(self, session_id: str, archived: bool) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id:
+            return
+        target_archived = bool(archived)
+        for s in self._sessions:
+            if s.get("id") == session_id:
+                s["archived"] = target_archived
+        if hasattr(self, "workbench"):
+            self.workbench.archive(session_id, target_archived)
+        self.changed.emit()
+
+    @Slot(str)
+    def deleteSession(self, session_id: str) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id:
+            return
+
+        def done(_result: Json) -> None:
+            if project_id != self._project.get("id"):
+                return
+            self._sessions = [s for s in self._sessions if s.get("id") != session_id]
+            if hasattr(self, "workbench"):
+                self.workbench._archives = [s for s in self.workbench._archives if s.get("id") != session_id]
+            self._drafts.pop((str(project_id), session_id), None)
+            self._draft_images.pop((str(project_id), session_id), None)
+            self._draft_dirty = True
+            self.flushDrafts()
+            if self.sessionId == session_id:
+                remaining = [s for s in self._sessions if not s.get("archived") and not (s.get("settings") or {}).get("chat_deleted")]
+                if remaining:
+                    self.selectSession(str(remaining[0]["id"]))
+                else:
+                    self.newChat()
+            self.changed.emit()
+
+        def failed(error: Json) -> None:
+            self._problem(service_error_text(error, tr("Impossibile eliminare la chat.")))
+
+        self.client.request(
+            "session.delete",
+            {"project_id": project_id, "session_id": session_id},
+            done,
+            failed,
+        )
+
+    @Slot(str)
+    def branchSession(self, session_id: str) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id:
+            return
+        if session_id == self.sessionId and hasattr(self, "workbench") and self.workbench.canFork:
+            self.workbench.fork("")
+            return
+        params: Json = {
+            "project_id": project_id,
+            "session_id": session_id,
+            "request_id": str(uuid.uuid4()),
+        }
+
+        def done(result: Json) -> None:
+            if project_id != self._project.get("id"):
+                return
+            forked = result.get("session")
+            if not isinstance(forked, dict) or not forked.get("id"):
+                self._problem(tr("Esito della diramazione non confermato. Controlla le chat prima di riprovare."))
+                return
+            self._sessions.insert(0, forked)
+            self.selectSession(str(forked["id"]))
+            self.refreshSessions()
+
+        def failed(error: Json) -> None:
+            self._problem(service_error_text(error, tr("Impossibile diramare la chat.")))
+
+        self.client.request("session.fork", params, done, failed)
+
+    @Slot(str, str)
+    def copySessionItem(self, session_id: str, kind: str) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id:
+            return
+        target = next((s for s in self._sessions if s.get("id") == session_id), None)
+        if target is None and self.sessionId == session_id:
+            target = self._session
+        if kind == "id":
+            self.copy(session_id)
+            self._problem(tr("ID della chat copiato negli appunti."))
+            return
+        if kind == "title":
+            title = str((target or {}).get("title") or (self.sessionTitle if self.sessionId == session_id else tr("Nuova chat")))
+            self.copy(title)
+            self._problem(tr("Titolo della chat copiato negli appunti."))
+            return
+        if kind == "path":
+            root = str(self._project.get("root") or "")
+            self.copy(root)
+            self._problem(tr("Percorso del progetto copiato negli appunti."))
+            return
+        if kind == "markdown":
+            def done(result: Json) -> None:
+                if "text" in result:
+                    self.copy(str(result["text"]))
+                    self._problem(tr("Trascrizione Markdown copiata negli appunti."))
+                    return
+                export_path = result.get("path")
+                if isinstance(export_path, str) and export_path:
+                    try:
+                        text = Path(export_path).read_text(encoding="utf-8")
+                        self.copy(text)
+                        self._problem(tr("Trascrizione Markdown copiata negli appunti."))
+                        return
+                    except OSError:
+                        pass
+                if self.sessionId == session_id:
+                    self.copyTranscript()
+
+            def failed(error: Json) -> None:
+                if self.sessionId == session_id and self.transcript.rows:
+                    self.copyTranscript()
+                else:
+                    self._problem(service_error_text(error, tr("Impossibile copiare la trascrizione Markdown.")))
+
+            self.client.request(
+                "session.export",
+                {"project_id": project_id, "session_id": session_id},
+                done,
+                failed,
+            )
+
+    @Slot(str, str)
+    def exportSessionMarkdown(self, session_id: str, url: str) -> None:
+        project_id = self._project.get("id")
+        if not project_id or not session_id or not url:
+            return
+        if session_id == self.sessionId:
+            self.exportTranscript(url)
+            return
+
+        def done(result: Json) -> None:
+            if "text" in result:
+                self._save(url, str(result["text"]))
+                return
+            destination = QUrl(url)
+            if not destination.isLocalFile():
+                self._problem(tr("Scegli un file locale per l'esportazione."))
+                return
+
+            def copy_export() -> None:
+                source = Path(str(result.get("path") or ""))
+                if source.is_symlink() or not source.is_file():
+                    raise ValueError(tr("Il servizio non ha fornito un file di esportazione regolare."))
+                source.resolve(strict=True).relative_to((self.paths.data / "exports").resolve())
+                shutil.copyfile(source, destination.toLocalFile())
+
+            self._background(
+                copy_export,
+                lambda _: self._problem(tr("Esportato: {path}", path=destination.toLocalFile())),
+            )
+
+        def failed(error: Json) -> None:
+            self._problem(service_error_text(error, tr("Esportazione non riuscita.")))
+
+        self.client.request(
+            "session.export",
+            {"project_id": project_id, "session_id": session_id},
+            done,
+            failed,
+        )
 
     @Slot()
     def refreshSharedContext(self) -> None:
@@ -2691,16 +3004,15 @@ class Workspace(QObject):
                 merged = dict(payload)
                 in_tok = merged.get("input_tokens")
                 out_tok = merged.get("output_tokens")
-                if ("total_tokens" not in merged
-                        and type(in_tok) is int and 0 <= in_tok < 2**52
-                        and type(out_tok) is int and 0 <= out_tok < 2**52):
-                    merged["total_tokens"] = in_tok + out_tok
+                if type(in_tok) is int and 0 <= in_tok < 2**52 and type(out_tok) is int and 0 <= out_tok < 2**52:
+                    if "total_tokens" not in merged:
+                        merged["total_tokens"] = in_tok + out_tok
                     if "cached_input_tokens" not in merged:
                         merged["cached_input_tokens"] = 0
-                if "model" not in merged and self._model:
-                    merged["model"] = self._model
-                if "model_context_window" not in merged and self.selectedModelContextWindow > 0:
-                    merged["model_context_window"] = self.selectedModelContextWindow
+                    if "model" not in merged and self._model:
+                        merged["model"] = self._model
+                    if "model_context_window" not in merged and self.selectedModelContextWindow > 0:
+                        merged["model_context_window"] = self.selectedModelContextWindow
                 round_key = merged.get("round")
                 if round_key is None:
                     round_key = merged.get("measurement_id") or event.get("seq", 0)
