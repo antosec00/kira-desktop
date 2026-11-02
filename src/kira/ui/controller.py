@@ -2236,6 +2236,20 @@ class Workspace(QObject):
         project_id = self._project.get("id")
         if not project_id or not session_id:
             return
+        self._sessions = [s for s in self._sessions if s.get("id") != session_id]
+        if hasattr(self, "workbench"):
+            self.workbench._archives = [s for s in self.workbench._archives if s.get("id") != session_id]
+        self._drafts.pop((str(project_id), session_id), None)
+        self._draft_images.pop((str(project_id), session_id), None)
+        self._draft_dirty = True
+        self.flushDrafts()
+        if self.sessionId == session_id:
+            remaining = [s for s in self._sessions if not s.get("archived") and not (s.get("settings") or {}).get("chat_deleted")]
+            if remaining:
+                self.selectSession(str(remaining[0]["id"]))
+            else:
+                self.newChat()
+        self.changed.emit()
 
         def done(_result: Json) -> None:
             if project_id != self._project.get("id"):
@@ -2243,20 +2257,11 @@ class Workspace(QObject):
             self._sessions = [s for s in self._sessions if s.get("id") != session_id]
             if hasattr(self, "workbench"):
                 self.workbench._archives = [s for s in self.workbench._archives if s.get("id") != session_id]
-            self._drafts.pop((str(project_id), session_id), None)
-            self._draft_images.pop((str(project_id), session_id), None)
-            self._draft_dirty = True
-            self.flushDrafts()
-            if self.sessionId == session_id:
-                remaining = [s for s in self._sessions if not s.get("archived") and not (s.get("settings") or {}).get("chat_deleted")]
-                if remaining:
-                    self.selectSession(str(remaining[0]["id"]))
-                else:
-                    self.newChat()
             self.changed.emit()
 
         def failed(error: Json) -> None:
             self._problem(service_error_text(error, tr("Impossibile eliminare la chat.")))
+            self.refreshSessions()
 
         self.client.request(
             "session.delete",
