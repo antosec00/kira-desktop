@@ -379,44 +379,51 @@ def test_top_application_menu_bar_opens_menus_and_triggers_actions(view, qtbot):
     assert workspace.sidebarMode != initial_mode
 
 
-def test_project_chats_pin_unread_and_soft_delete_persistence(tmp_path):
+@pytest.mark.asyncio
+async def test_project_chats_pin_unread_and_soft_delete_persistence(tmp_path):
     from kira.domain.contracts import KiraError
     from kira.service.project_context import ProjectChats
+    from kira.service.server import Service
     from kira.service.storage import Store, encode
 
-    store = Store(tmp_path / "state.db")
+    paths = Paths(*(tmp_path / n for n in ("config", "data", "state", "runtime")))
+    for p in (paths.config, paths.data, paths.state, paths.runtime):
+        p.mkdir(parents=True, exist_ok=True)
+        p.chmod(0o700)
+    service = Service(paths)
+    service.store = Store(paths.db)
     try:
-        store.db.execute(
+        service.store.db.execute(
             "INSERT INTO projects VALUES (?,?,?,?,?,?,?,?)",
             ("p1", "Test", str(tmp_path), "", "workspace-write", "{}", "2026-11-01T10:00:00+00:00", "2026-11-01T10:00:00+00:00"),
         )
-        store.db.execute(
+        service.store.db.execute(
             "INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
-            ("s1", "p1", "codex", "gpt-5", encode({"chat_title": "Prima", "chat_pinned": True}), None, "2026-11-01T10:00:00+00:00"),
+            ("s1", "p1", "codex", "gpt-5", encode({"chat_title": "Prima"}), None, "2026-11-01T10:00:00+00:00"),
         )
-        store.db.execute(
+        service.store.db.execute(
             "INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
-            ("s2", "p1", "codex", "gpt-5", encode({"chat_title": "Seconda", "chat_unread": True}), None, "2026-11-01T11:00:00+00:00"),
+            ("s2", "p1", "codex", "gpt-5", encode({"chat_title": "Seconda"}), None, "2026-11-01T11:00:00+00:00"),
         )
-        chats = ProjectChats(store)
+        pinned = await service.dispatch("session.pin", {"project_id": "p1", "session_id": "s1", "pinned": True})
+        assert pinned["session"]["pinned"] is True
+        unread = await service.dispatch("session.unread", {"project_id": "p1", "session_id": "s2", "unread": True})
+        assert unread["session"]["unread"] is True
+
+        chats = ProjectChats(service.store)
         listed = chats.list("p1", 0, 200)["sessions"]
         # Pinned s1 appears before newer unpinned s2
         assert [row["id"] for row in listed] == ["s1", "s2"]
         assert listed[0]["pinned"] is True and listed[0]["unread"] is False
         assert listed[1]["pinned"] is False and listed[1]["unread"] is True
 
-        # Soft-delete s1 (as session.delete does)
-        store.db.execute(
-            "UPDATE sessions SET settings=? WHERE id='s1'",
-            (encode({"chat_title": "Prima", "chat_deleted": True}),),
-        )
-        store.db.execute(
-            "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES ('s1',1,'2026-11-01T12:00:00+00:00','2026-11-01T12:00:00+00:00')",
-        )
+        # Delete s1 through real Service.dispatch("session.delete")
+        deleted = await service.dispatch("session.delete", {"project_id": "p1", "session_id": "s1"})
+        assert deleted == {"deleted": True, "session_id": "s1"}
         assert [row["id"] for row in chats.list("p1", 0, 200, False)["sessions"]] == ["s2"]
         assert [row["id"] for row in chats.list("p1", 0, 200, True)["sessions"]] == []
         with pytest.raises(KiraError):
             chats.owned_session("p1", "s1")
     finally:
-        store.db.close()
+        service.store.db.close()
 

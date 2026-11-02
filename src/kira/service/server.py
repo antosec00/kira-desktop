@@ -792,10 +792,16 @@ class Service:
                                       (encode(session["settings"]), session_id, project_id))
                 return {"session": chats.enrich(session)}
             if method == "session.delete":
-                if self.store.db.execute(
-                        "SELECT 1 FROM runs WHERE session_id=? AND state NOT IN ('completed','failed','cancelled','interrupted') LIMIT 1",
-                        (session_id,)).fetchone():
-                    raise KiraError("BUSY", "Stop the active run in this chat before deleting it")
+                active_runs = self.store.all(
+                    "SELECT id FROM runs WHERE session_id=? AND state NOT IN ('completed','failed','cancelled','interrupted')",
+                    (session_id,),
+                )
+                if active_runs:
+                    self.goals.pause_session(session_id, "The user deleted the chat")
+                    self.assistant.followups.suppress_session(session_id)
+                    for active_run in active_runs:
+                        if not self.teams.data.link(active_run["id"]):
+                            await self._request_cancel(active_run["id"])
                 timestamp = now()
                 session["settings"]["chat_deleted"] = True
                 session["settings"].pop("chat_pinned", None)
@@ -815,11 +821,16 @@ class Service:
                         "UPDATE studio_grants SET enabled=0,generation=generation+1,updated_at=? WHERE project_id=? AND session_id=? AND enabled=1",
                         (timestamp, project_id, session_id))
                     self.store.db.execute(
-                        "UPDATE session_triggers SET enabled=0,status='paused',updated_at=? WHERE session_id=?",
+                        "UPDATE session_goals SET status='paused',updated_at=? WHERE session_id=? AND status='active'",
                         (timestamp, session_id))
                     self.store.db.execute(
-                        "UPDATE autonomous_goals SET status='paused',updated_at=? WHERE session_id=? AND status='active'",
+                        "UPDATE autonomous_goals SET status='paused',updated_at=? WHERE session_id=? AND status IN ('active','blocked')",
                         (timestamp, session_id))
+                    if self.store.db.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_triggers'").fetchone():
+                        self.store.db.execute(
+                            "UPDATE automation_triggers SET enabled=0,status='paused',updated_at=? WHERE session_id=?",
+                            (timestamp, session_id))
                     self.store.db.execute("COMMIT")
                 except BaseException:
                     self.store.db.execute("ROLLBACK")
