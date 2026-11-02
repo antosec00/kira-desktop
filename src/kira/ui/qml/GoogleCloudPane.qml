@@ -100,6 +100,37 @@ Rectangle {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
+            Label { text: qsTr("Continuità modello in caso di quota 429") }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 8
+                KButton {
+                    objectName: "googleFallbackModeAuto"
+                    text: qsTr("Scala automaticamente a Gemini 3.1 Pro / Flash")
+                    checked: !googleAccount.strictModel
+                    enabled: workspace.connected && !googleAccount.busy
+                    onClicked: googleAccount.setStrictModel(false)
+                }
+                KButton {
+                    objectName: "googleFallbackModeStrict"
+                    text: qsTr("Attendi sempre il modello selezionato (es. Gemini 4 Argon)")
+                    checked: googleAccount.strictModel
+                    enabled: workspace.connected && !googleAccount.busy
+                    onClicked: googleAccount.setStrictModel(true)
+                }
+            }
+            ReadText {
+                text: googleAccount.strictModel
+                    ? qsTr("Modalità attesa attiva: se tutti gli account del pool raggiungono il limite HTTP 429 o un timeout temporaneo, Kira attende il ripristino della quota e riprova a rotazione sugli account abilitati senza mai declassare il turno a modelli inferiori.")
+                    : qsTr("Modalità fallback attiva: se tutti gli account del pool esauriscono temporaneamente la quota sul modello scelto, Kira può passare automaticamente a Gemini 3.1 Pro o Flash per proseguire subito.")
+                Layout.fillWidth: true
+                color: appearance.colors.muted
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
             Label { text: qsTr("Google Cloud Project ID") }
             TextField {
                 id: projectInput

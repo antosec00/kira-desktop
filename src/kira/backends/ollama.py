@@ -906,11 +906,21 @@ class OllamaBackend:
             request_index += 1
             for source, target in [("prompt_eval_count", "input_tokens"),
                                    ("eval_count", "output_tokens"),
+                                   ("cached_input_tokens", "cached_input_tokens"),
+                                   ("cache_creation_input_tokens", "cache_creation_input_tokens"),
+                                   ("reasoning_output_tokens", "reasoning_output_tokens"),
+                                   ("total_tokens", "total_tokens"),
                                    ("eval_duration", "eval_duration_ns"),
                                    ("total_duration", "total_duration_ns"),
                                    ("load_duration", "load_duration_ns")]:
                 if terminal.get(source) is not None:
                     usage[target] = terminal[source]
+            in_tok = usage.get("input_tokens")
+            out_tok = usage.get("output_tokens")
+            if "total_tokens" not in usage and isinstance(in_tok, int) and isinstance(out_tok, int):
+                usage["total_tokens"] = in_tok + out_tok
+            if "cached_input_tokens" not in usage and isinstance(in_tok, int):
+                usage["cached_input_tokens"] = 0
             await ctx.emit("usage", usage)
             if durable_context is not None:
                 active_turn.append(message)

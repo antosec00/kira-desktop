@@ -43,6 +43,7 @@ class GoogleAccountController(QObject):
         self._active_account_is_system = False
         self._accounts: list[Json] = []
         self._custom_models: list[str] = []
+        self._strict_model = False
         self._supported_locations = list(SUPPORTED_LOCATIONS)
         self._generation = 0
         self._timer = QTimer(self)
@@ -119,6 +120,10 @@ class GoogleAccountController(QObject):
     def customModelsText(self) -> str:
         return ", ".join(self._custom_models)
 
+    @qt_property(bool, notify=changed)
+    def strictModel(self) -> bool:
+        return self._strict_model
+
     @qt_property(str, notify=changed)
     def statusText(self) -> str:
         if self.pending:
@@ -181,6 +186,7 @@ class GoogleAccountController(QObject):
         models = result.get("custom_models")
         if isinstance(models, list):
             self._custom_models = [str(m) for m in models if isinstance(m, str)]
+        self._strict_model = result.get("strict_model") is True
         locs = result.get("supported_locations")
         if isinstance(locs, list) and locs:
             self._supported_locations = [str(loc) for loc in locs if isinstance(loc, str)]
@@ -383,6 +389,10 @@ class GoogleAccountController(QObject):
         if not account_id:
             return
         self._action("set_enabled", {"account_id": account_id, "enabled": bool(enabled)})
+
+    @Slot(bool)
+    def setStrictModel(self, strict_model: bool) -> None:
+        self._action("set_strict_model", {"strict_model": bool(strict_model)})
 
     def _action(self, action: str, extra: Json | None = None) -> None:
         if self._busy or not self.workspace.connected:

@@ -1071,5 +1071,200 @@ async def test_google_cloud_exclude_and_reenable_system_account_without_touching
         await account.close()
 
 
+async def test_google_cloud_strict_model_waits_for_selected_model_without_downgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
+    paths = _paths(tmp_path)
+    calls: list[tuple[str, str]] = []
 
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://oauth2.googleapis.com/token":
+            body_str = request.content.decode("utf-8")
+            if "rtok-acc1" in body_str:
+                return httpx.Response(200, json={"access_token": "ya29.token-acc1", "expires_in": 3600})
+            return httpx.Response(200, json={"access_token": "ya29.token-acc2", "expires_in": 3600})
+
+        auth_hdr = request.headers.get("authorization", "")
+        calls.append((url, auth_hdr))
+        # Must NEVER downgrade to gemini-3.1-pro-preview or gemini-3-flash-preview
+        assert "/models/gemini-4-argon:" in url
+        if len(calls) < 6:
+            return httpx.Response(
+                429,
+                headers={"retry-after": "0.01"},
+                json={
+                    "error": {
+                        "code": 429,
+                        "message": "Resource exhausted on gemini-4-argon.",
+                        "status": "RESOURCE_EXHAUSTED",
+                    }
+                },
+            )
+        sse = (
+            'data: {"candidates": [{"content": {"role": "model", "parts": ['
+            '{"text": "Completato su Gemini 4 Argon dopo aver atteso il ripristino della quota."}]}}], '
+            '"usageMetadata": {"promptTokenCount": 1400, "candidatesTokenCount": 22}}\n\n'
+        )
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(
+        paths.config / "google-cloud",
+        client=httpx.AsyncClient(transport=transport),
+    )
+    account.accounts = {
+        "kira-acc1": {
+            "id": "kira-acc1",
+            "email": "acc1@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok-acc1",
+            "project_id": "proj-acc1",
+        },
+        "kira-acc2": {
+            "id": "kira-acc2",
+            "email": "acc2@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok-acc2",
+            "project_id": "proj-acc2",
+        },
+    }
+    account.active_account_id = "kira-acc1"
+    st = account.set_strict_model(True)
+    assert st["strict_model"] is True
+
+    reloaded = GoogleCloudAccount(
+        paths.config / "google-cloud",
+        client=httpx.AsyncClient(transport=transport),
+    )
+    assert reloaded.strict_model is True
+
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    backend._backoff_delays = (0.01, 0.01, 0.01, 0.01, 0.01, 0.01)
+    try:
+        msg, term = await backend._stream(
+            {
+                "model": "gemini-4-argon",
+                "messages": [{"role": "user", "content": "Continua esclusivamente con Gemini 4 Argon"}],
+            },
+            ctx=None,
+            item_id="item-strict-argon",
+        )
+        assert len(calls) == 6
+        assert all("/models/gemini-4-argon:" in u for u, _ in calls)
+        # Both accounts in the pool were tried in rotation while waiting for quota recovery
+        assert any("projects/proj-acc1/" in u for u, _ in calls)
+        assert any("projects/proj-acc2/" in u for u, _ in calls)
+        assert msg["content"] == "Completato su Gemini 4 Argon dopo aver atteso il ripristino della quota."
+        assert term["done"] is True
+    finally:
+        await backend.close()
+        await reloaded.close()
+        await account.close()
+
+
+def test_vertex_compaction_bounds_serialized_chars_and_prunes_old_thought_signatures() -> None:
+    from kira.backends.google_cloud import _compact_messages_for_vertex, _message_serialized_chars
+
+    messages: list[dict[str, object]] = [
+        {"role": "system", "content": "System instructions."},
+        {"role": "user", "content": "Analizza l'intero repository per bug critici."},
+    ]
+    for i in range(95):
+        messages.append({
+            "role": "assistant",
+            "content": f"Round {i} analysis " + ("A" * 600),
+            "tool_calls": [
+                {
+                    "id": f"call_{i}",
+                    "thought_signature": "SIG_" + ("S" * 1200),
+                    "function": {
+                        "name": "fs.read_file",
+                        "arguments": {"path": f"src/file_{i}.py", "blob": "B" * 2000},
+                    },
+                }
+            ],
+        })
+        messages.append({
+            "role": "tool",
+            "name": "fs.read_file",
+            "tool_call_id": f"call_{i}",
+            "content": f"Content of file_{i}.py:\n" + ("C" * 5000),
+        })
+
+    compacted = _compact_messages_for_vertex(messages, max_chars=75_000)
+    total_serialized = sum(_message_serialized_chars(m) for m in compacted)
+    assert total_serialized <= 75_000
+    # All assistant tool_calls preserve thought_signature so Vertex AI never returns HTTP 400
+    older_assistant = next(m for m in compacted[2:20] if m.get("role") == "assistant")
+    assert older_assistant["tool_calls"][0].get("thought_signature", "").startswith("SIG_")
+    recent_assistant = [m for m in compacted[-4:] if m.get("role") == "assistant"][-1]
+    assert recent_assistant["tool_calls"][0].get("thought_signature", "").startswith("SIG_")
+
+
+@pytest.mark.asyncio
+async def test_google_cloud_round_robin_alternates_healthy_accounts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
+    paths = _paths(tmp_path)
+    used_projects: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "oauth2.googleapis.com/token" in url:
+            return httpx.Response(200, json={"access_token": "ya29.tok", "expires_in": 3600})
+        for p in ("proj-rr-1", "proj-rr-2"):
+            if f"projects/{p}/" in url:
+                used_projects.append(p)
+        sse = (
+            'data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "OK"}]}}], '
+            '"usageMetadata": {"promptTokenCount": 500, "candidatesTokenCount": 10, '
+            '"cachedContentTokenCount": 200, "thoughtsTokenCount": 5, "totalTokenCount": 515}}\n\n'
+        )
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(paths.config / "google-cloud", client=httpx.AsyncClient(transport=transport))
+    account.accounts = {
+        "rr-1": {
+            "id": "rr-1",
+            "email": "rr1@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok1",
+            "project_id": "proj-rr-1",
+            "enabled": True,
+        },
+        "rr-2": {
+            "id": "rr-2",
+            "email": "rr2@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok2",
+            "project_id": "proj-rr-2",
+            "enabled": True,
+        },
+    }
+    account.active_account_id = "rr-1"
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    try:
+        for turn in range(4):
+            _, term = await backend._stream(
+                {"model": "gemini-4-argon", "messages": [{"role": "user", "content": f"Turn {turn}"}]},
+                ctx=None,
+                item_id=f"rr-{turn}",
+            )
+            assert term["prompt_eval_count"] == 500
+            assert term["eval_count"] == 15
+            assert term["cached_input_tokens"] == 200
+            assert term["reasoning_output_tokens"] == 5
+            assert term["total_tokens"] == 515
+        assert used_projects == ["proj-rr-1", "proj-rr-2", "proj-rr-1", "proj-rr-2"]
+    finally:
+        await backend.close()
+        await account.close()
 

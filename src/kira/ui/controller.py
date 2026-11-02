@@ -399,6 +399,7 @@ class Workspace(QObject):
         self._settings: Json = {}
         self._resources: Json = {}
         self._usage: Json = {}
+        self._session_usage_rounds: dict[tuple[str, int | str], Json] = {}
         self._token_budget: int = 0
         self._cost_budget_usd: float = 0.0
         self._context: str = tr("Nessun contesto ancora inviato.")
@@ -1826,6 +1827,7 @@ class Workspace(QObject):
         self._waiting_browser_tools.clear()
         self._tool_issues.clear()
         self._usage = {}
+        self._session_usage_rounds.clear()
         self._context = tr("Nessun contesto ancora inviato.")
         self._subscribe_pending.clear()
         self._buffered_events.clear()
@@ -2686,7 +2688,57 @@ class Workspace(QObject):
             if payload.get("scope") == "account":
                 self.accountUsage.observed(payload)  # Plan limits are not a request measure.
             else:
-                self._usage = payload
+                merged = dict(payload)
+                in_tok = merged.get("input_tokens")
+                out_tok = merged.get("output_tokens")
+                if ("total_tokens" not in merged
+                        and type(in_tok) is int and 0 <= in_tok < 2**52
+                        and type(out_tok) is int and 0 <= out_tok < 2**52):
+                    merged["total_tokens"] = in_tok + out_tok
+                    if "cached_input_tokens" not in merged:
+                        merged["cached_input_tokens"] = 0
+                if "model" not in merged and self._model:
+                    merged["model"] = self._model
+                if "model_context_window" not in merged and self.selectedModelContextWindow > 0:
+                    merged["model_context_window"] = self.selectedModelContextWindow
+                round_key = merged.get("round")
+                if round_key is None:
+                    round_key = merged.get("measurement_id") or event.get("seq", 0)
+                self._session_usage_rounds[(run_id, round_key)] = merged
+                if not isinstance(merged.get("thread_total"), dict):
+                    tot_in = 0
+                    tot_cached = 0
+                    tot_out = 0
+                    tot_reasoning = 0
+                    tot_all = 0
+                    valid_rounds = 0
+                    for r_usage in self._session_usage_rounds.values():
+                        r_in = r_usage.get("input_tokens")
+                        r_out = r_usage.get("output_tokens")
+                        if type(r_in) is int and type(r_out) is int:
+                            valid_rounds += 1
+                            tot_in += r_in
+                            tot_out += r_out
+                            r_cached = r_usage.get("cached_input_tokens")
+                            if type(r_cached) is int:
+                                tot_cached += r_cached
+                            r_reason = r_usage.get("reasoning_output_tokens")
+                            if type(r_reason) is int:
+                                tot_reasoning += r_reason
+                            r_tot = r_usage.get("total_tokens")
+                            tot_all += r_tot if type(r_tot) is int else (r_in + r_out)
+                    if valid_rounds > 0:
+                        merged["thread_total"] = {
+                            "totalTokens": tot_all,
+                            "inputTokens": tot_in,
+                            "cachedInputTokens": tot_cached,
+                            "outputTokens": tot_out,
+                            "reasoningOutputTokens": tot_reasoning,
+                            "requests": valid_rounds,
+                        }
+                        if "requests" not in merged:
+                            merged["requests"] = valid_rounds
+                self._usage = merged
         elif kind == "context.supplied":
             self._context = str(payload.get("content", ""))
         elif kind == "approval.requested":
