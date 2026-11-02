@@ -6,7 +6,7 @@ Rectangle {
     id: card
     objectName: "accountUsageCard"
     readonly property var report: { localization.revision; return accountUsage.report }
-    readonly property var providers: ["codex", "openai_chatgpt", "ollama", "claude_code"]
+    readonly property var providers: ["codex", "openai_chatgpt", "ollama", "claude_code", "google_cloud", "deepseek_account"]
     readonly property bool chatgptLinks: accountUsage.backend === "codex" || accountUsage.backend === "openai_chatgpt"
     readonly property bool claudeLinks: accountUsage.backend === "claude_code"
     implicitHeight: column.implicitHeight + 28
@@ -29,7 +29,7 @@ Rectangle {
             KComboBox {
                 objectName: "usageProviderChoice"
                 Layout.fillWidth: true
-                model: ["Codex", qsTr("OpenAI diretto · ChatGPT"), "Ollama", qsTr("Claude Code")]
+                model: ["Codex", qsTr("OpenAI diretto · ChatGPT"), "Ollama", qsTr("Claude Code"), qsTr("Google Cloud · Vertex AI"), qsTr("DeepSeek Account")]
                 currentIndex: card.providers.indexOf(accountUsage.backend)
                 Accessible.name: qsTr("Provider di cui mostrare l'utilizzo")
                 onActivated: accountUsage.setBackend(card.providers[currentIndex])

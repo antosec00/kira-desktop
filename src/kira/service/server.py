@@ -877,7 +877,7 @@ class Service:
         if method == "backend.usage":
             fields(params, {"backend", "account_id"})
             name = string(params, "backend", maximum=32)
-            if name not in {"codex", "openai_chatgpt", "ollama", "claude_code"}:
+            if name not in {"codex", "openai_chatgpt", "ollama", "claude_code", "google_cloud", "deepseek_account"}:
                 raise KiraError("INVALID_ARGUMENT", "Unknown usage provider")
             account_id = string(params, "account_id", maximum=128) if "account_id" in params else None
             if account_id and name != DIRECT_BACKEND:
@@ -889,7 +889,7 @@ class Service:
                 allowed.add("account_id")
             elif method == "backend.account":
                 allowed |= {"action", "account_id", "url", "api_key", "enabled", "token",
-                            "auth_mode", "project_id", "location", "custom_models"}
+                            "auth_mode", "project_id", "location", "custom_models", "strict_model"}
             fields(params, allowed)
             name = string(params, "backend", maximum=32)
             if name not in PROVIDER_SETTINGS:

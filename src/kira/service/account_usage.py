@@ -63,6 +63,17 @@ class AccountUsage:
                 rejected = True
                 continue
             measured.setdefault((row["run_id"], round_), payload)
+        for m_key, item in list(measured.items()):
+            in_tok = item.get("input_tokens")
+            out_tok = item.get("output_tokens")
+            if ("total_tokens" not in item
+                    and type(in_tok) is int and 0 <= in_tok < 2**52
+                    and type(out_tok) is int and 0 <= out_tok < 2**52):
+                normalized = dict(item)
+                normalized["total_tokens"] = in_tok + out_tok
+                if "cached_input_tokens" not in normalized:
+                    normalized["cached_input_tokens"] = 0
+                measured[m_key] = normalized
         coverage = {field: sum(type(item.get(field)) is int and 0 <= item[field] < 2**53
                               for item in measured.values()) for field in TOKEN_FIELDS}
         totals = {field: sum(item[field] for item in measured.values())
@@ -127,7 +138,53 @@ class AccountUsage:
         observed_at = now()
         if backend == "claude_code":
             return {**self.claude_plan(), "local_usage": self.local(backend, None, observed_at)}
-        account: Json = {"type": "local", "label": "Ollama", "plan_type": None}
+        if backend == "google_cloud":
+            g_status = self.service.google_accounts.auth.status()
+            accounts = g_status.get("accounts", [])
+            active_id = g_status.get("active_account_id")
+            found = next((item for item in accounts if item.get("id") == active_id), accounts[0] if accounts else None)
+            label_text = (
+                f"{found.get('email') or found.get('label') or 'Google Cloud'} ({len(accounts)} account)"
+                if found and len(accounts) > 1
+                else (found.get("email") or found.get("label") or "Google Cloud")
+                if found
+                else "Google Cloud"
+            )
+            account: Json = {
+                "type": "google_cloud",
+                "label": label_text,
+                "plan_type": found.get("project_id") if found else None,
+                "connected": bool(g_status.get("connected")),
+            }
+            return {
+                "available": True,
+                "source": backend,
+                "scope": "kira_recorded",
+                "observed_at": observed_at,
+                "account": account,
+                "limits": [],
+                "reason": "not_exposed",
+                "local_usage": self.local(backend, None, observed_at),
+            }
+        if backend == "deepseek_account":
+            d_status = self.service.deepseek_accounts.auth.status()
+            account = {
+                "type": "deepseek_account",
+                "label": d_status.get("label") or "DeepSeek",
+                "plan_type": "API",
+                "connected": bool(d_status.get("connected")),
+            }
+            return {
+                "available": True,
+                "source": backend,
+                "scope": "kira_recorded",
+                "observed_at": observed_at,
+                "account": account,
+                "limits": [],
+                "reason": "not_exposed",
+                "local_usage": self.local(backend, None, observed_at),
+            }
+        account = {"type": "local", "label": "Ollama", "plan_type": None}
         if backend == "openai_chatgpt":
             status = await self.service.direct_accounts.status()
             selected = account_id or status.get("active_account_id")

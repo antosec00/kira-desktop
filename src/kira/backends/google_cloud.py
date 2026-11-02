@@ -415,6 +415,9 @@ class GoogleCloudAccount:
         self.active_account_id = ""
         self.accounts: dict[str, Json] = {}
         self.disabled_accounts: set[str] = set()
+        self.strict_model: bool = False
+        self._last_used_account_id: str = ""
+        self._quota_cooldowns: dict[tuple[str, str], float] = {}
         self._cached_token = ""
         self._cached_token_expiry = 0.0
         self.pending: asyncio.subprocess.Process | None = None
@@ -496,6 +499,7 @@ class GoogleCloudAccount:
                 for m in models
                 if isinstance(m, str) and str(m).strip()
             ][:32]
+        self.strict_model = bool(raw.get("strict_model", False))
         self._sync_redaction()
 
     def _save(self) -> None:
@@ -514,6 +518,7 @@ class GoogleCloudAccount:
                 "accounts": self.accounts,
                 "disabled_accounts": sorted(self.disabled_accounts),
                 "custom_models": self.custom_models,
+                "strict_model": self.strict_model,
             },
             ensure_ascii=False,
             indent=2,
@@ -692,9 +697,16 @@ class GoogleCloudAccount:
             "accounts": self.accounts_summary(),
             "disabled_accounts": sorted(self.disabled_accounts),
             "custom_models": list(self.custom_models),
+            "strict_model": self.strict_model,
             "supported_locations": list(SUPPORTED_LOCATIONS),
             "login": dict(self.state),
         }
+
+    def set_strict_model(self, strict_model: Any) -> Json:
+        """Toggle whether Kira waits for the selected model instead of falling back to lower-tier models."""
+        self.strict_model = bool(strict_model)
+        self._save()
+        return self.status()
 
     def select(self, account_id: Any) -> Json:
         if not isinstance(account_id, str) or not account_id.strip():
@@ -747,6 +759,7 @@ class GoogleCloudAccount:
         location: Any = None,
         api_key: Any = None,
         custom_models: Any = None,
+        strict_model: Any = None,
     ) -> Json:
         if auth_mode is not None:
             if not isinstance(auth_mode, str) or auth_mode not in {"adc", "api_key"}:
@@ -785,6 +798,8 @@ class GoogleCloudAccount:
                 if item not in deduped:
                     deduped.append(item)
             self.custom_models = deduped
+        if strict_model is not None:
+            self.strict_model = bool(strict_model)
         self.state = {"phase": "signed_in" if self.connected else "idle", "connected": self.connected}
         self._save()
         return self.status()
@@ -1369,12 +1384,15 @@ class GoogleCloudAccounts:
                     "accounts": [],
                     "disabled_accounts": [],
                     "custom_models": [],
+                    "strict_model": False,
                     "supported_locations": list(SUPPORTED_LOCATIONS),
                     "login": {"phase": "idle", "connected": False},
                 }
             raise KiraError("UNAVAILABLE", "Google Cloud sign-in is unavailable in the test backend")
         if action == "status":
             return self.auth.status()
+        if action == "set_strict_model":
+            return self.auth.set_strict_model(params.get("strict_model", False))
         if self.busy():
             raise KiraError("BUSY", "Finish Google Cloud requests before changing account access")
         self.changing = True
@@ -1396,6 +1414,7 @@ class GoogleCloudAccounts:
                     location=params.get("location"),
                     api_key=params.get("api_key"),
                     custom_models=params.get("custom_models"),
+                    strict_model=params.get("strict_model"),
                 )
             else:
                 raise KiraError("INVALID_ARGUMENT", "Unsupported Google Cloud account action")
@@ -1617,6 +1636,32 @@ def _thinking_config_for_gemini(model_id: str, effort: str | None, max_output: i
 
 
 RATE_LIMIT_BACKOFF_DELAYS: tuple[float, ...] = (2.5, 5.0, 10.0, 18.0, 28.0, 40.0)
+STRICT_MODEL_BACKOFF_DELAYS: tuple[float, ...] = (
+    4.0,
+    8.0,
+    12.0,
+    18.0,
+    25.0,
+    30.0,
+    35.0,
+    45.0,
+    45.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+)
 
 VERTEX_RATE_LIMIT_FALLBACKS: dict[str, tuple[str, ...]] = {
     "gemini-4-argon": ("gemini-3.1-pro-preview", "gemini-3-flash-preview"),
@@ -1725,8 +1770,22 @@ def _synthesize_tool_thought_summary(tool_calls: list[Json], text_preamble: str 
     return "\n\n".join(steps)
 
 
+def _message_serialized_chars(msg: Json) -> int:
+    """Estimate serialized character length of message content and function arguments (excluding protocol thought_signature)."""
+    size = len(str(msg.get("content") or ""))
+    tcs = msg.get("tool_calls")
+    if isinstance(tcs, list):
+        for tc in tcs:
+            if isinstance(tc, dict):
+                fn = tc.get("function")
+                if isinstance(fn, dict):
+                    fn_without_sig = {k: v for k, v in fn.items() if k != "thought_signature"}
+                    size += len(json.dumps(fn_without_sig, ensure_ascii=False))
+    return size
+
+
 def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[Json]:
-    """Strip prior canned refusals and bound historical tool outputs for Vertex AI DSQ TPM quotas."""
+    """Strip prior canned refusals and bound historical tool outputs for Vertex AI DSQ TPM quotas while preserving required thought_signature."""
     if not isinstance(source, list):
         return []
     sanitized: list[Json] = []
@@ -1741,11 +1800,55 @@ def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[J
         ):
             continue
         sanitized.append(dict(item))
-    total = sum(len(str(m.get("content", ""))) for m in sanitized)
+
+    keep_recent = max(1, len(sanitized) - 6)
+    max_recent_tool = max(8_000, max_chars // 4)
+
+    # Cap oversized historical tool_call string arguments while strictly preserving thought_signature
+    for idx, msg in enumerate(sanitized):
+        tcs = msg.get("tool_calls")
+        if isinstance(tcs, list) and idx < keep_recent:
+            cleaned_tcs: list[Json] = []
+            for tc in tcs:
+                if not isinstance(tc, dict):
+                    continue
+                tc_copy = dict(tc)
+                fn = tc_copy.get("function")
+                if isinstance(fn, dict):
+                    fn_copy = dict(fn)
+                    # If thought_signature was placed inside function, lift it to tc_copy so _gemini_contents emits thoughtSignature
+                    if "thought_signature" in fn_copy and not tc_copy.get("thought_signature"):
+                        tc_copy["thought_signature"] = fn_copy.pop("thought_signature")
+                    args = fn_copy.get("arguments")
+                    if isinstance(args, dict):
+                        bounded_args: Json = {}
+                        for ak, av in args.items():
+                            if isinstance(av, str) and len(av) > 900:
+                                bounded_args[ak] = av[:500] + "...[compacted]..." + av[-250:]
+                            else:
+                                bounded_args[ak] = av
+                        fn_copy["arguments"] = bounded_args
+                    tc_copy["function"] = fn_copy
+                cleaned_tcs.append(tc_copy)
+            msg["tool_calls"] = cleaned_tcs
+
+        # Even recent tool outputs must not individually blow up the DSQ token bucket
+        if idx >= keep_recent and msg.get("role") == "tool":
+            content = msg.get("content")
+            if isinstance(content, str) and len(content) > max_recent_tool:
+                r_head = max(4_000, (max_recent_tool * 3) // 5)
+                r_tail = max(2_500, max_recent_tool - r_head - 120)
+                msg["content"] = (
+                    content[:r_head]
+                    + "\n...[recent tool output truncated for Vertex AI quota]...\n"
+                    + content[-r_tail:]
+                )
+
+    total = sum(_message_serialized_chars(m) for m in sanitized)
     if total <= max_chars:
         return sanitized
+
     compacted: list[Json] = sanitized
-    keep_recent = max(1, len(compacted) - 6)
     head_len = max(400, min(900, max_chars // 40))
     tail_len = max(350, min(700, max_chars // 50))
     for idx in range(keep_recent):
@@ -1757,7 +1860,7 @@ def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[J
         if not isinstance(content, str) or len(content) <= head_len + tail_len + 120:
             continue
         if (
-            role == "tool"
+            role in {"tool", "assistant"}
             or "Recorded tool outcome" in content
             or "Kira-supplied project context:" in content
         ):
@@ -1766,9 +1869,10 @@ def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[J
                 + "\n...[historical tool output compacted for Vertex AI quota]...\n"
                 + content[-tail_len:]
             )
-    total_after_pass1 = sum(len(str(m.get("content", ""))) for m in compacted)
-    if total_after_pass1 > max_chars and len(compacted) > 20:
-        deep_cutoff = max(1, len(compacted) - 16)
+
+    total_after_pass1 = sum(_message_serialized_chars(m) for m in compacted)
+    if total_after_pass1 > max_chars and len(compacted) > 12:
+        deep_cutoff = max(1, len(compacted) - 10)
         for idx in range(deep_cutoff):
             msg = compacted[idx]
             if not isinstance(msg, dict):
@@ -1777,12 +1881,46 @@ def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[J
             content = msg.get("content")
             if not isinstance(content, str) or len(content) <= 360:
                 continue
-            if role == "tool" or "Recorded tool outcome" in content:
+            if role in {"tool", "assistant"} or "Recorded tool outcome" in content:
                 msg["content"] = (
                     content[:180]
                     + "\n...[earlier tool output summarized]...\n"
                     + content[-140:]
                 )
+
+    total_after_pass2 = sum(_message_serialized_chars(m) for m in compacted)
+    if total_after_pass2 > max_chars and len(compacted) > 16:
+        ultra_cutoff = max(1, len(compacted) - 10)
+        for idx in range(1, ultra_cutoff):
+            if total_after_pass2 <= max_chars:
+                break
+            msg = compacted[idx]
+            if not isinstance(msg, dict):
+                continue
+            before_chars = _message_serialized_chars(msg)
+            content = msg.get("content")
+            if isinstance(content, str) and len(content) > 90:
+                msg["content"] = content[:70] + " ...[compacted]"
+            tcs = msg.get("tool_calls")
+            if isinstance(tcs, list):
+                slim_tcs: list[Json] = []
+                for tc in tcs:
+                    if not isinstance(tc, dict):
+                        continue
+                    tc_copy = dict(tc)
+                    fn = tc_copy.get("function")
+                    if isinstance(fn, dict):
+                        args = fn.get("arguments")
+                        if isinstance(args, dict):
+                            slim_args = {
+                                ak: (av[:60] + "...[compacted]" if isinstance(av, str) and len(av) > 75 else av)
+                                for ak, av in args.items()
+                            }
+                            tc_copy["function"] = {**fn, "arguments": slim_args}
+                    slim_tcs.append(tc_copy)
+                msg["tool_calls"] = slim_tcs
+            after_chars = _message_serialized_chars(msg)
+            total_after_pass2 -= max(0, before_chars - after_chars)
     return compacted
 
 
@@ -1838,7 +1976,7 @@ class GoogleCloudBackend(OllamaBackend):
         self._last_request_completed_at: float = 0.0
         self._last_prompt_tokens: int = 0
         self._backoff_delays: tuple[float, ...] = RATE_LIMIT_BACKOFF_DELAYS
-        self._quota_cooldowns: dict[tuple[str, str], float] = {}
+        self._quota_cooldowns: dict[tuple[str, str], float] = getattr(account, "_quota_cooldowns", {})
         self._cooldown_seconds: float = 180.0
         self._populate_builtin_details()
 
@@ -1867,10 +2005,24 @@ class GoogleCloudBackend(OllamaBackend):
         exclude: set[str] | None = None,
     ) -> str | None:
         excluded = exclude or set()
-        for acc_id in self.account.candidate_account_ids():
+        candidates = self.account.candidate_account_ids()
+        last_used = getattr(self.account, "_last_used_account_id", "")
+        if not excluded and len(candidates) > 1 and last_used in candidates:
+            start_idx = (candidates.index(last_used) + 1) % len(candidates)
+            candidates = candidates[start_idx:] + candidates[:start_idx]
+        for acc_id in candidates:
             if acc_id not in excluded and not self._is_on_cooldown(acc_id, model_id):
                 return acc_id
         return None
+
+    def _select_earliest_cooldown_account_for_model(self, model_id: str) -> str | None:
+        candidates = self.account.candidate_account_ids()
+        if not candidates:
+            return None
+        return min(
+            candidates,
+            key=lambda acc_id: self._quota_cooldowns.get((acc_id, model_id), 0.0),
+        )
 
     async def _pace_before_request(self, ctx: RunContext | None) -> None:
         if ctx is None or self._last_request_completed_at <= 0:
@@ -2062,7 +2214,13 @@ class GoogleCloudBackend(OllamaBackend):
         ctx: RunContext | None,
         item_id: str | None,
     ) -> tuple[Json, Json]:
-        rate_limit_fallbacks = list(VERTEX_RATE_LIMIT_FALLBACKS.get(model_id, ()))
+        strict_model = bool(getattr(self.account, "strict_model", False))
+        rate_limit_fallbacks = [] if strict_model else list(VERTEX_RATE_LIMIT_FALLBACKS.get(model_id, ()))
+        active_backoff_delays = (
+            STRICT_MODEL_BACKOFF_DELAYS
+            if (strict_model and self._backoff_delays == RATE_LIMIT_BACKOFF_DELAYS)
+            else self._backoff_delays
+        )
         effective_model_id = model_id
         active_acc_id = self._select_best_account_for_model(model_id)
         if active_acc_id is None and rate_limit_fallbacks:
@@ -2073,6 +2231,8 @@ class GoogleCloudBackend(OllamaBackend):
                     active_acc_id = fb_acc
                     rate_limit_fallbacks = rate_limit_fallbacks[fb_idx + 1 :]
                     break
+        if active_acc_id is None and strict_model:
+            active_acc_id = self._select_earliest_cooldown_account_for_model(model_id)
         if not active_acc_id:
             active_acc_id = self.account.effective_account_id
         headers, query_params, secret, project, acc_label = await self._auth_context_for_account(active_acc_id)
@@ -2172,7 +2332,10 @@ class GoogleCloudBackend(OllamaBackend):
         thought_text = ""
         tool_calls: list[Json] = []
         input_tokens: int | None = None
+        cached_input_tokens: int | None = None
         output_tokens: int | None = None
+        reasoning_output_tokens: int | None = None
+        total_tokens: int | None = None
         finish_reason = ""
         limit = int(ctx.settings.get("max_output_bytes", 4 * 1024 * 1024)) if ctx else 65_536
         total_bytes = 0
@@ -2191,6 +2354,8 @@ class GoogleCloudBackend(OllamaBackend):
         rate_limit_retries = 0
         timeout_retries = 0
         empty_turn_retries = 0
+        max_timeout_retries = 5 if strict_model else 2
+        max_empty_retries = 3 if strict_model else 2
         tried_accounts_for_model: set[str] = {active_acc_id} if active_acc_id else set()
         await self._pace_before_request(ctx)
         idx = 0
@@ -2329,10 +2494,31 @@ class GoogleCloudBackend(OllamaBackend):
                                         },
                                     )
                                 continue
-                            if rate_limit_retries < len(self._backoff_delays):
-                                delay = _retry_delay_for_response(response, rate_limit_retries, self._backoff_delays)
+                            if rate_limit_retries < len(active_backoff_delays):
+                                delay = _retry_delay_for_response(response, rate_limit_retries, active_backoff_delays)
                                 rate_limit_retries += 1
+                                if strict_model and ctx is not None:
+                                    await ctx.emit(
+                                        "backend.notice",
+                                        {
+                                            "message": (
+                                                f"Quota temporanea esaurita su {cur_model} (HTTP {response.status_code}); "
+                                                f"attendo {max(1, int(round(delay)))}s il ripristino della quota su {cur_model} "
+                                                f"senza scalare a modelli inferiori "
+                                                f"(tentativo {rate_limit_retries}/{len(active_backoff_delays)})."
+                                            ),
+                                            "model": cur_model,
+                                        },
+                                    )
                                 if await _cancelable_sleep(delay, ctx):
+                                    if strict_model:
+                                        candidates = self.account.candidate_account_ids()
+                                        for c_acc in candidates:
+                                            self._quota_cooldowns.pop((c_acc, cur_model), None)
+                                        if len(candidates) > 1 and active_acc_id in candidates:
+                                            next_idx = (candidates.index(active_acc_id) + 1) % len(candidates)
+                                            active_acc_id = candidates[next_idx]
+                                        tried_accounts_for_model = {active_acc_id} if active_acc_id else set()
                                     headers, query_params, secret, project, acc_label = await self._auth_context_for_account(
                                         active_acc_id
                                     )
@@ -2364,15 +2550,21 @@ class GoogleCloudBackend(OllamaBackend):
                             if isinstance(usage_meta, dict):
                                 if isinstance(usage_meta.get("promptTokenCount"), int):
                                     input_tokens = usage_meta["promptTokenCount"]
+                                if isinstance(usage_meta.get("cachedContentTokenCount"), int):
+                                    cached_input_tokens = usage_meta["cachedContentTokenCount"]
                                 cand_tokens = usage_meta.get("candidatesTokenCount")
                                 thought_tokens = usage_meta.get("thoughtsTokenCount") or 0
+                                if isinstance(thought_tokens, int) and thought_tokens > 0:
+                                    reasoning_output_tokens = thought_tokens
                                 if isinstance(cand_tokens, int):
                                     output_tokens = cand_tokens + (
                                         thought_tokens if isinstance(thought_tokens, int) else 0
                                     )
-                            candidates = record.get("candidates")
-                            if isinstance(candidates, list) and candidates:
-                                cand = candidates[0]
+                                if isinstance(usage_meta.get("totalTokenCount"), int):
+                                    total_tokens = usage_meta["totalTokenCount"]
+                            resp_candidates = record.get("candidates")
+                            if isinstance(resp_candidates, list) and resp_candidates:
+                                cand = resp_candidates[0]
                                 if isinstance(cand, dict):
                                     if isinstance(cand.get("finishReason"), str):
                                         finish_reason = cand["finishReason"]
@@ -2400,7 +2592,7 @@ class GoogleCloudBackend(OllamaBackend):
                                                 value = part["text"]
                                                 if value:
                                                     text += value
-                                                    if not rate_limit_fallbacks or deltas_flushed:
+                                                    if deltas_flushed:
                                                         if ctx:
                                                             await ctx.emit(
                                                                 "message.delta",
@@ -2432,7 +2624,7 @@ class GoogleCloudBackend(OllamaBackend):
                                                         call_entry["thought_signature"] = sig
                                                     tool_calls.append(call_entry)
             except (httpx.TimeoutException, httpx.TransportError):
-                if rate_limit_fallbacks or timeout_retries < 2:
+                if rate_limit_fallbacks or timeout_retries < max_timeout_retries:
                     timeout_retries += 1
                     if rate_limit_fallbacks:
                         next_fb = rate_limit_fallbacks.pop(0)
@@ -2443,6 +2635,11 @@ class GoogleCloudBackend(OllamaBackend):
                         target_model_label = next_fb
                     else:
                         target_model_label = cur_model
+                        if strict_model:
+                            candidates = self.account.candidate_account_ids()
+                            if len(candidates) > 1 and active_acc_id in candidates:
+                                next_idx = (candidates.index(active_acc_id) + 1) % len(candidates)
+                                active_acc_id = candidates[next_idx]
                     text = ""
                     tool_calls = []
                     finish_reason = ""
@@ -2475,7 +2672,7 @@ class GoogleCloudBackend(OllamaBackend):
                     or not text.strip()
                 )
             )
-            if is_refusal_or_cutoff and (rate_limit_fallbacks or empty_turn_retries < 2):
+            if is_refusal_or_cutoff and (rate_limit_fallbacks or empty_turn_retries < max_empty_retries):
                 empty_turn_retries += 1
                 if rate_limit_fallbacks:
                     next_fb = rate_limit_fallbacks.pop(0)
@@ -2516,11 +2713,19 @@ class GoogleCloudBackend(OllamaBackend):
                 for chunk_val in pending_deltas:
                     await ctx.emit("message.delta", {"content": chunk_val, "item_id": item_id})
                 pending_deltas.clear()
+            if active_acc_id:
+                self.account._last_used_account_id = active_acc_id
             break
 
         self._last_request_completed_at = time.monotonic()
         if isinstance(input_tokens, int) and input_tokens > 0:
             self._last_prompt_tokens = input_tokens
+        if cached_input_tokens is None and isinstance(input_tokens, int):
+            cached_input_tokens = 0
+        if output_tokens is None and isinstance(total_tokens, int) and isinstance(input_tokens, int):
+            output_tokens = max(0, total_tokens - input_tokens)
+        if total_tokens is None and isinstance(input_tokens, int) and isinstance(output_tokens, int):
+            total_tokens = input_tokens + output_tokens
 
         if (
             ctx
@@ -2571,7 +2776,10 @@ class GoogleCloudBackend(OllamaBackend):
             "done": True,
             "done_reason": "tool_use" if tool_calls else ("length" if finish_reason == "MAX_TOKENS" else "stop"),
             "prompt_eval_count": input_tokens,
+            "cached_input_tokens": cached_input_tokens,
             "eval_count": output_tokens,
+            "reasoning_output_tokens": reasoning_output_tokens,
+            "total_tokens": total_tokens,
             "max_output_tokens": max_output,
             "tool_input_incomplete": False,
         }

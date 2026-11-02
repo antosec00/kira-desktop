@@ -1661,7 +1661,7 @@ ApplicationWindow {
                                             TextMetrics { id: gaugeMetrics; text: contextWindowGauge.displayLabel; font: contextWindowGauge.font }
                                             toolTipText: gaugeData.tooltip || qsTr("Finestra di contesto")
                                             Accessible.name: qsTr("Finestra di contesto: %1").arg(gaugeData.label || "0%")
-                                            onClicked: if (workspace.sessionId.length > 0) chatContextDialog.open(); else metricsDialog.open()
+                                            onClicked: metricsDialog.open()
                                             contentItem: Item {
                                                 Text {
                                                     objectName: "contextWindowGaugeLabel"

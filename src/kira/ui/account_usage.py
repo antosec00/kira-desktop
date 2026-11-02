@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from kira.ui.controller import Workspace
 
 Json = dict[str, Any]
-BACKENDS = ("codex", "openai_chatgpt", "ollama", "claude_code")
+BACKENDS = ("codex", "openai_chatgpt", "ollama", "claude_code", "google_cloud", "deepseek_account")
 CLAUDE_USAGE_URL = "https://claude.ai/settings/usage"
 MAX_TIMESTAMP = 253402300799
 
@@ -215,12 +215,14 @@ def present_account_usage(data: Json, backend: str) -> Json:
         })
     direct = backend == "openai_chatgpt"
     claude = backend == "claude_code"
+    gcloud = backend == "google_cloud"
+    deepseek = backend == "deepseek_account"
     available = data.get("available") is True
     if direct and data.get("reason") == "not_connected":
         note = tr("L’account di questa chat non è collegato. Accedi nelle impostazioni per consultarne l’utilizzo.")
     elif direct:
         note = tr("Il collegamento diretto non fornisce a Kira le quote settimanali o i crediti del piano. Controllali in ChatGPT.")
-    elif backend == "ollama":
+    elif backend == "ollama" or gcloud or deepseek:
         note = tr("Ollama non fornisce quote di abbonamento. Sono disponibili le misure registrate da Kira.")
     elif claude and available:
         note = tr("Limiti del piano comunicati da Claude Code durante le esecuzioni di Kira: sono gli stessi valori del suo indicatore di utilizzo e si aggiornano a ogni turno. Kira non legge le credenziali di Claude Code.")
@@ -230,7 +232,7 @@ def present_account_usage(data: Json, backend: str) -> Json:
         note = tr("Quote riportate dall'account collegato a Codex. L'account e i limiti possono essere diversi da quelli di OpenAI diretto.")
     else:
         note = tr("Quote dell'account Codex non disponibili. Verifica l'accesso e premi Aggiorna.")
-    account_status = (tr("Account non collegato") if direct and account.get("connected") is False
+    account_status = (tr("Account non collegato") if (direct or gcloud or deepseek) and account.get("connected") is False
                       else tr("Uso del piano non autorizzato") if direct and account.get("plan_enabled") is False
                       else "")
     account_label: str
@@ -245,7 +247,9 @@ def present_account_usage(data: Json, backend: str) -> Json:
             "plan": plan, "groups": groups, "note": note,
             "source": tr("Account Codex") if backend == "codex" else
                       tr("Account OpenAI diretto") if direct else
-                      tr("Claude Code") if claude else "Ollama",
+                      tr("Claude Code") if claude else
+                      tr("Google Cloud · Vertex AI") if gcloud else
+                      tr("DeepSeek Account") if deepseek else "Ollama",
             "observed": tr("Aggiornato: {time}", time=_date(data.get("observed_at"))),
             "local_rows": local_rows,
             "local_period": tr("Periodo: {start} — {end}", start=_date(local.get("since")), end=_date(local.get("until"))),

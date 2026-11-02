@@ -265,16 +265,47 @@ def present_context_gauge(
         catalog_window=catalog_window if catalog_window > 0 else None,
     )
     cost = calculate_cost_telemetry(u, backend=gauge["backend"], model=gauge["model"])
+    thread = mapping(u.get("thread_total"))
+    session_total_tokens = number(thread.get("totalTokens"))
+    if session_total_tokens is None:
+        session_total_tokens = number(u.get("total_tokens"))
+    session_cost = None
+    if thread and number(thread.get("inputTokens")) is not None:
+        session_cost = calculate_cost_telemetry(
+            {
+                "input_tokens": thread.get("inputTokens"),
+                "cached_input_tokens": thread.get("cachedInputTokens", 0),
+                "output_tokens": thread.get("outputTokens", 0),
+                "total_tokens": thread.get("totalTokens"),
+            },
+            backend=gauge["backend"],
+            model=gauge["model"],
+        )
+    active_cost = session_cost if (session_cost and session_cost["measured"]) else cost
+
     pct_str = f"{decimal(gauge['fill_percent'], 0 if gauge['fill_percent'] >= 10 else 1)}%"
     used_compact = compact_tokens(gauge["used_tokens"])
     cap_compact = compact_tokens(gauge["capacity_tokens"])
-    full_label = f"{used_compact} / {cap_compact} · {pct_str}"
+    if session_total_tokens is not None and session_total_tokens > 0:
+        consumed_compact = compact_tokens(session_total_tokens)
+        if int(session_total_tokens) != int(gauge["used_tokens"]):
+            full_label = f"{consumed_compact} tok · {used_compact} / {cap_compact} · {pct_str}"
+        else:
+            full_label = f"{used_compact} / {cap_compact} · {pct_str}"
+        short_label = f"{consumed_compact} · {pct_str}"
+    else:
+        full_label = f"{used_compact} / {cap_compact} · {pct_str}"
+        short_label = f"{used_compact} · {pct_str}" if (gauge["used_tokens"] > 0 and u) else pct_str
 
-    cost_badge = usd_text(cost["total_cost_usd"], cost["billing_mode"], with_mode=False) if cost["measured"] else ""
-    cache_pct = cost["cache_hit_percent"]
-    cache_badge = f"Cache {decimal(cache_pct, 0)}%" if cost["measured"] and cache_pct > 0 else ""
+    cost_badge = (
+        usd_text(active_cost["total_cost_usd"], active_cost["billing_mode"], with_mode=False)
+        if active_cost["measured"]
+        else ""
+    )
+    cache_pct = active_cost["cache_hit_percent"]
+    cache_badge = f"Cache {decimal(cache_pct, 0)}%" if active_cost["measured"] and cache_pct > 0 else ""
 
-    lines = [
+    lines: list[str] = [
         tr(
             "Finestra di contesto: {used} / {capacity} token ({percent}%)",
             used=count(gauge["used_tokens"]),
@@ -282,6 +313,13 @@ def present_context_gauge(
             percent=decimal(gauge["fill_percent"], 1),
         )
     ]
+    if session_total_tokens is not None and session_total_tokens > 0:
+        in_total = thread.get("inputTokens", u.get("input_tokens"))
+        out_total = thread.get("outputTokens", u.get("output_tokens"))
+        lines.append(
+            f"{tr('Totale della sessione del provider')}: {count(session_total_tokens)} "
+            f"({tr('Token in ingresso')}: {count(in_total)} · {tr('Token in uscita')}: {count(out_total)})"
+        )
     if gauge["draft_tokens"] > 0:
         lines.append(tr("Bozza in scrittura: +{tokens} token stimati", tokens=count(gauge["draft_tokens"])))
     if cost["measured"]:
@@ -291,18 +329,24 @@ def present_context_gauge(
                 cost=usd_text(cost["total_cost_usd"], cost["billing_mode"], with_mode=True),
             )
         )
-        if (cost.get("cached_input_tokens") or 0) > 0:
+        if session_cost and session_cost["measured"]:
+            lines.append(
+                f"{tr('Totale cumulativo sessione')}: "
+                f"{usd_text(session_cost['total_cost_usd'], session_cost['billing_mode'], with_mode=True)}"
+            )
+        if (active_cost.get("cached_input_tokens") or 0) > 0:
             lines.append(
                 tr(
                     "Prompt Caching: {hit}% in cache · risparmio {saved}",
                     hit=decimal(cache_pct, 1),
-                    saved=usd_text(cost["cache_savings_usd"], cost["billing_mode"], with_mode=False),
+                    saved=usd_text(active_cost["cache_savings_usd"], active_cost["billing_mode"], with_mode=False),
                 )
             )
     return {
         **gauge,
+        "session_total_tokens": int(session_total_tokens) if session_total_tokens is not None else 0,
         "label": full_label,
-        "short_label": pct_str,
+        "short_label": short_label,
         "cost_badge": cost_badge,
         "cache_badge": cache_badge,
         "tooltip": "\n".join(lines),

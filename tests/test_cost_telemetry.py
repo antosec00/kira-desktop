@@ -228,3 +228,45 @@ def test_qml_context_window_gauge_and_usage_dialog_telemetry(qapp, qtbot, tmp_pa
         workspace.close()
         workspace.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_workspace_accumulates_session_tokens_across_rounds_and_displays_real_total(qapp, tmp_path):
+    from kira.ui.metrics import present_context_gauge
+
+    paths = Paths(*(tmp_path / name for name in ("config", "data", "state", "runtime")))
+    workspace = Workspace(paths)
+    try:
+        workspace._backend = "google_cloud"
+        workspace._model = "gemini-4-argon"
+        workspace._session = {"id": "sess-1", "backend": "google_cloud", "model": "gemini-4-argon"}
+        workspace._runs["run-1"] = {"id": "run-1", "session_id": "sess-1", "state": "running"}
+
+        workspace._apply_event({
+            "run_id": "run-1",
+            "seq": 1,
+            "type": "usage",
+            "payload": {"source": "google_cloud", "round": 0, "input_tokens": 20_000, "output_tokens": 500},
+        })
+        workspace._apply_event({
+            "run_id": "run-1",
+            "seq": 2,
+            "type": "usage",
+            "payload": {"source": "google_cloud", "round": 1, "input_tokens": 35_000, "output_tokens": 800},
+        })
+
+        usage = workspace.usageData
+        assert usage["total_tokens"] == 35_800
+        assert usage["requests"] == 2
+        assert usage["thread_total"]["inputTokens"] == 55_000
+        assert usage["thread_total"]["outputTokens"] == 1_300
+        assert usage["thread_total"]["totalTokens"] == 56_300
+
+        gauge = present_context_gauge(usage, backend="google_cloud", model="gemini-4-argon", catalog_window=1_048_576)
+        assert gauge["session_total_tokens"] == 56_300
+        assert "56" in gauge["short_label"] and "%" in gauge["short_label"]
+        assert "56" in gauge["label"] and "tok" in gauge["label"]
+    finally:
+        workspace.close()
+        workspace.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
