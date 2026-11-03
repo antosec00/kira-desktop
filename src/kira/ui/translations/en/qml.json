@@ -975,5 +975,15 @@
   "Studio creativo": "Creative studio",
   "Tavolozza comandi…": "Command palette…",
   "Tutte le chat": "All chats",
-  "Visualizza": "View"
+  "Visualizza": "View",
+  "Contenuto registrato": "Recorded content",
+  "Errore riscontrato": "Recorded error",
+  "Esito e diagnostica": "Outcome and diagnostics",
+  "Mostra dati grezzi (JSON)": "Show raw data (JSON)",
+  "Nascondi dati grezzi (JSON)": "Hide raw data (JSON)",
+  "Parametri dello strumento": "Tool parameters",
+  "Richiesta inviata": "Sent request",
+  "Riferimenti tecnici": "Technical references",
+  "Tempi di esecuzione": "Execution timings"
 }
+
