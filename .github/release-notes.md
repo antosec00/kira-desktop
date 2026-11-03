@@ -1,28 +1,32 @@
-## Novità in Kira Desktop 0.23.0
+## Novità in Kira Desktop 0.24.0
 
-- **Nuovo Provider Google Cloud · Vertex AI (`google_cloud`)**:
-  - Supporto completo per i modelli nativi di Google su Vertex AI (**`Gemini 4 Argon`** / `argon`, **`Gemini 3.1 Pro Preview`**, **`Gemini 3.8 Flash`**, **`Gemini 3.5 Flash`**, **`Gemini 3.5 Flash-Lite`**, **`Gemini 3 Flash Preview`**) e per i modelli Partner del Model Garden (**`Claude Opus 5.5`**, **`Claude Sonnet 5.5`**) con visione multimodale, esecuzione degli strumenti di Kira, telemetria dei costi in USD e riepiloghi pubblici del ragionamento (`thinkingLevel` / `includeThoughts`).
-  - **Multi-Account OAuth2 PKCE Isolato**: accedi con uno o più account Google direttamente da Kira (**«Aggiungi / Cambia account Google»**) e passa da un account all'altro con un clic senza mai modificare o scollegare il tuo `~/.config/gcloud` di sistema su WSL2/Linux (letto in sola lettura con badge dedicato).
-  - **Auto-configurazione Progetto & API**: rilevamento automatico del `project_id` tramite *Cloud Resource Manager API*, attivazione automatica di `aiplatform.googleapis.com` (*Service Usage API*) al login o al primo invio e fallback automatico sull'endpoint `locations/global`.
-  - **Filtri di sicurezza disabilitati (`safetySettings: OFF` / `BLOCK_NONE`)**: soglie automatiche disabilitate su tutte le categorie (incluso `HARM_CATEGORY_DANGEROUS_CONTENT`) per evitare falsi positivi durante analisi di sicurezza, exploit, payload e codice vulnerabile.
-  - **Chiarezza su Crediti Free Trial vs Fatturazione Reale**: i crediti gratuiti della prova Google Cloud abilitano da subito tutti i modelli nativi Google (Gemini 4 Argon, Gemini 3.1 Pro, 3.8 Flash), mentre i modelli Partner di terze parti (Claude) richiedono un ciclo di fatturazione reale attivo e l'abilitazione nel *Vertex AI Model Garden*.
-- **Sistema di `@Mentions` Universali e `/Slash Commands` Contestuali nel Composer**:
-  - Digita **`@`** nella casella di scrittura per aprire il menu istantaneo con ricerca fuzzy: `@file` e `@folder` (allega file o struttura di cartelle del progetto), `@git` (inietta al volo `git status` + `git diff` + ultimi commit), `@terminal` (allega l'ultimo output/errore dei comandi eseguiti nella sessione), `@web` (attiva la ricerca web per il turno), `@soul` e `@team` (cambia Anima o Team direttamente dalla tastiera).
-  - Digita **`/`** all'inizio del messaggio per i comandi rapidi contestuali: `/compact` (compatta il contesto), `/clear` (avvia una nuova chat pulita), `/research` (passa in modalità Ricerca), `/plan` (passa in modalità Piano), `/execute` (passa in modalità Esecuzione), `/goal` (imposta o avvia un obiettivo autonomo) e `/web` (attiva/disattiva la ricerca web).
+- **Apertura e Cambio Chat Istantanei**:
+  - **Cache in memoria delle sessioni**: passando da una chat all'altra la conversazione compare istantaneamente senza attese, schermate di caricamento o sfarfallii; le sessioni già aperte e senza esecuzioni attive vengono ripristinate in 0 RTT di rete.
+  - **Stato di esecuzione coerente e payload IPC leggeri**: gli stati terminali (`completed`, `failed`, `cancelled`, `interrupted`) non regrediscono più a *"In esecuzione"* durante il replay degli eventi storici e i snapshot grezzi del provider vengono esclusi dal trasporto UI.
+  - **Fluidità del thread UI**: cache dei font di sistema (`QFont`), indicizzazione $O(1)$ delle righe di trascrizione, virtualizzazione adattiva della conversazione e cache reattive per `@Mentions` e contesto della chat.
+- **Gestione Avanzata delle Chat, Azioni al Passaggio del Mouse e Barra dei Menu**:
+  - **Azioni rapide su hover e menu contestuale (`⋯` / clic destro)**: fissa in alto (*Pin*), rinomina, segna come non letto, copia (ID sessione, trascrizione, link), esporta in Markdown, archivia o elimina definitivamente qualsiasi chat direttamente dalla barra laterale; menu contestuale dedicato anche per i progetti.
+  - **Barra dei menu superiore nativa**: nuovi menu *File*, *Modifica*, *Visualizza*, *Strumenti* e *Aiuto* con scorciatoie da tastiera integrate.
+- **Pannello «Dettagli dell'esecuzione» Leggibile e Strutturato**:
+  - Schede riepilogative per stato e durata (`⏱ MM:SS`), testo della richiesta inviata (con copia rapida), errori evidenziati, tempi di avvio/conclusione, diagnostica dell'esito tradotta in linguaggio naturale e riferimenti tecnici, con possibilità di espandere o copiare il JSON grezzo.
+- **Google Cloud · Vertex AI (`google_cloud`) & Ragionamento Live**:
+  - **Rotazione automatica del Quota Pool multi-account**, compattazione DSQ della cronologia, streaming in tempo reale dei passaggi di ragionamento prima delle chiamate agli strumenti e telemetria cumulativa dei token per sessione.
 
 ---
 
-## What's New in Kira Desktop 0.23.0
+## What's New in Kira Desktop 0.24.0
 
-- **New Google Cloud · Vertex AI Provider (`google_cloud`)**:
-  - Full support for native Google models on Vertex AI (**`Gemini 4 Argon`** / `argon`, **`Gemini 3.1 Pro Preview`**, **`Gemini 3.8 Flash`**, **`Gemini 3.5 Flash`**, **`Gemini 3.5 Flash-Lite`**, **`Gemini 3 Flash Preview`**) and Vertex AI Model Garden Partner models (**`Claude Opus 5.5`**, **`Claude Sonnet 5.5`**) with multimodal vision, Kira tool execution, USD cost telemetry, and public reasoning summaries (`thinkingLevel` / `includeThoughts`).
-  - **Isolated Multi-Account OAuth2 PKCE**: sign in with one or more Google accounts directly inside Kira (**"Add / Switch Google account"**) and switch between accounts with one click without ever modifying or disconnecting your host WSL2/Linux `~/.config/gcloud` credentials (detected in read-only mode).
-  - **Automatic Project Detection & API Enablement**: automatic `project_id` discovery via the *Cloud Resource Manager API*, automatic enablement of `aiplatform.googleapis.com` (*Service Usage API*) on login or first request, and automatic regional-to-`global` endpoint fallback.
-  - **Safety Filters Disabled (`safetySettings: OFF` / `BLOCK_NONE`)**: automatic safety thresholds disabled across all harm categories (including `HARM_CATEGORY_DANGEROUS_CONTENT`) to prevent false positives during security research, exploit analysis, and vulnerability auditing.
-  - **Free Trial Credits vs Real Billing Clarity**: Google Cloud Free Trial credits work out of the box with all native Google models (Gemini 4 Argon, Gemini 3.1 Pro, 3.8 Flash), while third-party Marketplace Partner models (Claude) require an active paid billing cycle and Model Garden activation.
-- **Universal `@Mentions` and Contextual `/Slash Commands` in the Composer**:
-  - Type **`@`** in the composer to open an instant fuzzy-search popup: `@file` and `@folder` (attach project files or directory trees), `@git` (inject live `git status` + `git diff` + recent commits), `@terminal` (attach the latest command output/error from the session), `@web` (enable web search), `@soul` and `@team` (switch Soul or Team inline).
-  - Type **`/`** at the start of the composer for quick contextual commands: `/compact`, `/clear`, `/research`, `/plan`, `/execute`, `/goal`, and `/web`.
+- **Instant Chat Opening & Switching**:
+  - **In-memory session cache**: switching between chats renders conversations instantaneously with zero blank screens or redundant reloads; previously visited idle chats restore in 0 network RTTs.
+  - **Consistent run state & lean IPC payloads**: terminal run states (`completed`, `failed`, `cancelled`, `interrupted`) never regress to *"Running"* during historical event replay, and heavy provider snapshots are stripped from UI event transport.
+  - **Main-thread UI responsiveness**: cached `QFont` resolution, $O(1)$ transcript row indexing, adaptive conversation `ListView` virtualization, and cached `@Mentions` / chat context reports.
+- **Rich Chat Management, Hover Actions & Top Menu Bar**:
+  - **Hover actions and context menus (`⋯` / right-click)**: pin to top, rename, mark as unread, copy (session ID, transcript, deep link), export as Markdown, archive, or permanently delete any chat directly from the sidebar; dedicated context menu for projects as well.
+  - **Native top menu bar**: *File*, *Edit*, *View*, *Tools*, and *Help* menus with keyboard shortcuts.
+- **Human-Readable "Execution Details" Inspector**:
+  - Structured cards for status badge and duration (`⏱ MM:SS`), sent request text (with quick copy), highlighted errors, start/completion timestamps, human-readable outcome diagnostics, and technical reference IDs, plus a collapsible raw JSON view.
+- **Google Cloud · Vertex AI (`google_cloud`) & Live Reasoning**:
+  - **Multi-account Quota Pool rotation**, DSQ history compaction, live step-by-step reasoning summaries before tool calls, and cumulative session token telemetry.
 
 ---
 

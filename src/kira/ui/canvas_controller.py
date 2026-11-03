@@ -1611,7 +1611,7 @@ class CanvasController(QObject):
 
     @Slot(dict)
     def _onRunEvent(self, event: Json) -> None:
-        if event.get("type") != "tool.completed":
+        if self.workspace.chatLoading or event.get("type") != "tool.completed":
             return
         payload = event.get("payload")
         if isinstance(payload, dict) and payload.get("name") == "kira.canvas":

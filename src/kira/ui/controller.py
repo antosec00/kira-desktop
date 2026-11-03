@@ -238,6 +238,243 @@ def run_state_presentation(run: Json, event: Json) -> Json:
             "status": state, "raw": formatted(details)}
 
 
+def present_event_details(raw: str, is_run: bool = True) -> Json:
+    """Parse raw JSON event/run details into structured human-readable sections for the inspector."""
+    text = (raw or "").strip()
+    if not text:
+        return {"parsed": False}
+    decoder = json.JSONDecoder()
+    dicts: list[Json] = []
+    notes: list[str] = []
+    pos = 0
+    length = len(text)
+    while pos < length:
+        while pos < length and text[pos].isspace():
+            pos += 1
+        if pos >= length:
+            break
+        if text[pos] == "{":
+            try:
+                obj, end = decoder.raw_decode(text, pos)
+                if isinstance(obj, dict):
+                    dicts.append(obj)
+                    pos = end
+                    continue
+            except json.JSONDecodeError:
+                pass
+        next_brace = text.find("\n{", pos + 1)
+        chunk_end = next_brace if next_brace != -1 else length
+        note = text[pos:chunk_end].strip()
+        if note:
+            notes.append(note)
+        pos = chunk_end
+
+    if not dicts:
+        return {"parsed": False}
+
+    def fmt_ts(value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            return ""
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if moment.tzinfo is None:
+                return value
+            return moment.astimezone(UTC).strftime("%d/%m/%Y · %H:%M:%S UTC")
+        except (ValueError, OverflowError):
+            return value
+
+    main = dicts[0]
+    looks_like_run = is_run or "execution_id" in main or ("state" in main and "started_at" in main)
+    if looks_like_run:
+        state = str(main.get("state") or "")
+        state_meta: dict[str, tuple[str, str, str]] = {
+            "completed": (
+                tr("Completata"),
+                "success",
+                tr("L'esecuzione si è conclusa regolarmente."),
+            ),
+            "cancelled": (
+                tr("Interrotta"),
+                "warning",
+                tr("L'esecuzione è stata interrotta prima del completamento."),
+            ),
+            "failed": (
+                tr("Non riuscita"),
+                "danger",
+                tr("L'esecuzione si è fermata a causa di un errore."),
+            ),
+            "interrupted": (
+                tr("Incompleta"),
+                "warning",
+                tr("L'esecuzione si è interrotta prima della conferma finale."),
+            ),
+            "running": (
+                tr("In esecuzione"),
+                "accent",
+                tr("Kira sta elaborando la richiesta."),
+            ),
+            "queued": (
+                tr("In coda"),
+                "muted",
+                tr("La richiesta è in attesa di avvio."),
+            ),
+            "awaiting_input": (
+                tr("In attesa di indicazioni"),
+                "accent",
+                tr("Kira attende una tua risposta per proseguire."),
+            ),
+            "awaiting_approval": (
+                tr("In attesa di approvazione"),
+                "warning",
+                tr("È richiesta la tua conferma per eseguire uno strumento."),
+            ),
+        }
+        status_label, status_tone, status_desc = state_meta.get(
+            state,
+            (tr(STATE_LABELS.get(state, state or "Registrata")), "muted", ""),
+        )
+        started_raw = main.get("started_at")
+        ended_raw = main.get("event_timestamp")
+        duration = Workspace._format_run_duration(started_raw, ended_raw)
+        time_rows: list[Json] = []
+        if started_fmt := fmt_ts(started_raw):
+            time_rows.append({"label": tr("Avvio"), "value": started_fmt})
+        if ended_fmt := fmt_ts(ended_raw):
+            end_label = tr("Conclusione") if state in TERMINAL_STATES else tr("Ultimo aggiornamento")
+            time_rows.append({"label": end_label, "value": ended_fmt})
+        if duration:
+            time_rows.append({"label": tr("Durata complessiva"), "value": duration})
+
+        outcome_rows: list[Json] = []
+        outcome = main.get("outcome")
+        if isinstance(outcome, dict):
+            scope_labels = {
+                "client_stream_closed": tr("Flusso locale chiuso dal client"),
+                "provider_stream_closed": tr("Flusso chiuso dal provider"),
+                "local_cancel": tr("Annullamento richiesto localmente"),
+                "service_shutdown": tr("Arresto del servizio locale"),
+            }
+            for k, v in outcome.items():
+                if v is None or v == "":
+                    continue
+                if k == "scope":
+                    outcome_rows.append({
+                        "label": tr("Modalità di chiusura"),
+                        "value": scope_labels.get(str(v), str(v)),
+                    })
+                elif k == "remote_generation_termination_confirmed":
+                    outcome_rows.append({
+                        "label": tr("Interruzione remota del provider"),
+                        "value": (
+                            tr("Confermata dal provider")
+                            if v is True
+                            else tr("Non confermata (chiusura locale)")
+                            if v is False
+                            else str(v)
+                        ),
+                    })
+                elif k in {"http_status", "status_code"}:
+                    outcome_rows.append({"label": tr("Stato HTTP"), "value": str(v)})
+                elif k == "code":
+                    outcome_rows.append({"label": tr("Codice esito"), "value": str(v)})
+                elif k == "reason":
+                    val = tr("Controllo manuale del browser") if v == "manual_control" else str(v)
+                    outcome_rows.append({"label": tr("Motivo"), "value": val})
+                elif k == "request_id":
+                    outcome_rows.append({"label": tr("ID richiesta provider"), "value": str(v)})
+                elif k == "source":
+                    outcome_rows.append({"label": tr("Origine dato"), "value": str(v)})
+                elif k == "truncated":
+                    outcome_rows.append({"label": tr("Dati troncati"), "value": tr("Sì") if v else tr("No")})
+                else:
+                    label = k.replace("_", " ").capitalize()
+                    val = str(v) if not isinstance(v, (dict, list)) else formatted(v)
+                    outcome_rows.append({"label": label, "value": val})
+
+        for extra in dicts[1:]:
+            rto = extra.get("recorded_tool_outcomes")
+            if isinstance(rto, dict):
+                if rto.get("failed"):
+                    outcome_rows.append({"label": tr("Strumenti con errore"), "value": str(rto["failed"])})
+                if rto.get("unconfirmed"):
+                    outcome_rows.append({"label": tr("Strumenti non confermati"), "value": str(rto["unconfirmed"])})
+            wt = extra.get("waiting_tools")
+            if isinstance(wt, list) and wt:
+                outcome_rows.append({"label": tr("Strumenti in attesa"), "value": ", ".join(str(x) for x in wt)})
+
+        ref_rows: list[Json] = []
+        if main.get("execution_id"):
+            ref_rows.append({"label": tr("ID esecuzione"), "value": str(main["execution_id"])})
+        if main.get("session_id"):
+            ref_rows.append({"label": tr("ID chat"), "value": str(main["session_id"])})
+        if main.get("request_id"):
+            ref_rows.append({"label": tr("ID richiesta"), "value": str(main["request_id"])})
+        if main.get("event_seq") is not None:
+            ref_rows.append({"label": tr("Sequenza evento"), "value": str(main["event_seq"])})
+
+        return {
+            "parsed": True,
+            "isRun": True,
+            "statusLabel": status_label,
+            "statusTone": status_tone,
+            "statusDescription": status_desc,
+            "duration": duration,
+            "requestText": str(main.get("request") or "").strip(),
+            "requestTruncated": bool(main.get("request_truncated")),
+            "errorText": str(main.get("error") or "").strip(),
+            "errorTruncated": bool(main.get("error_truncated")),
+            "timeRows": time_rows,
+            "outcomeRows": outcome_rows,
+            "referenceRows": ref_rows,
+            "notesText": "\n\n".join(notes),
+        }
+
+    # Tool or generic structured JSON payloads
+    merged: Json = {}
+    for d in dicts:
+        merged.update(d)
+    ok = merged.get("ok")
+    status_label = (
+        tr("Completato") if ok is True
+        else tr("Errore") if ok is False or merged.get("error")
+        else tr("Dati registrati")
+    )
+    status_tone = "success" if ok is True else "danger" if (ok is False or merged.get("error")) else "accent"
+    outcome_rows = []
+    if cmd := tool_command(merged):
+        outcome_rows.append({"label": tr("Comando"), "value": cmd})
+    for key, label in (
+        ("path", tr("Percorso")),
+        ("cwd", tr("Cartella di lavoro")),
+        ("query", tr("Ricerca")),
+        ("url", "URL"),
+    ):
+        if merged.get(key):
+            outcome_rows.append({"label": label, "value": str(merged[key])})
+    exit_code = merged.get("exit_code", merged.get("exitCode"))
+    if exit_code is not None:
+        outcome_rows.append({"label": tr("Codice di uscita"), "value": str(exit_code)})
+    if merged.get("sha256"):
+        outcome_rows.append({"label": "SHA-256", "value": str(merged["sha256"])})
+    output_parts = [str(merged[k]).strip() for k in ("content", "stdout", "aggregatedOutput", "stderr") if merged.get(k)]
+    return {
+        "parsed": True,
+        "isRun": False,
+        "statusLabel": status_label,
+        "statusTone": status_tone,
+        "statusDescription": "",
+        "duration": "",
+        "requestText": "\n\n".join(output_parts),
+        "requestTruncated": bool(merged.get("truncated")),
+        "errorText": str(merged.get("error") or "").strip(),
+        "errorTruncated": False,
+        "timeRows": [],
+        "outcomeRows": outcome_rows,
+        "referenceRows": [],
+        "notesText": "\n\n".join(notes),
+    }
+
+
 def tool_command(arguments: Json) -> str:
     argv = arguments.get("argv")
     if isinstance(argv, list) and all(isinstance(part, str) for part in argv):
@@ -370,6 +607,7 @@ class Workspace(QObject):
         self._chat_loading = False
         self._chat_failed = False
         self._replay_queue: list[str] = []
+        self._session_cache: dict[str, Json] = {}
         self._shared_context = ""
         self._shared_context_loading = False
         self._shared_context_generation = 0
@@ -544,7 +782,7 @@ class Workspace(QObject):
         if self._preferences.get(key) != value:
             self._save_preferences({key: value})
 
-    def _save_preferences(self, update: Json) -> None:
+    def _save_preferences(self, update: Json, *, emit: bool = True) -> None:
         preferences = deepcopy({**self._preferences, **update})
         try:
             write_preferences(self.paths.config, preferences)
@@ -552,7 +790,8 @@ class Workspace(QObject):
             self._problem(tr("Preferenze non salvate: {error}", error=preference_error_text(str(exc))))
             return
         self._preferences = preferences
-        self.preferencesChanged.emit()
+        if emit:
+            self.preferencesChanged.emit()
 
     @Slot(bool)
     def completeOnboarding(self, complete: bool) -> None:
@@ -1596,6 +1835,10 @@ class Workspace(QObject):
         suffix = tr("\n\nDettagli limitati nella vista. Esporta la chat per consultare la cronologia completa.")
         return details[:MAX_ACTIVITY_DETAILS_CHARS - len(suffix)] + suffix
 
+    @Slot(str, bool, result="QVariantMap")
+    def presentEventDetails(self, raw: str, is_run: bool) -> Json:
+        return present_event_details(raw, is_run)
+
     @qt_property("QVariantMap", notify=changed)
     def runFailure(self) -> Json:
         """Show only the latest durable failure in the selected ordinary chat."""
@@ -1766,6 +2009,7 @@ class Workspace(QObject):
     def _disconnected(self) -> None:
         self._connected_value = False
         self._status = tr("Riconnessione · il servizio conserva il lavoro")
+        self._session_cache.clear()
         self._subscribe_pending.clear()
         self._catalog_pending.clear()
         self._catalog_generation += 1
@@ -1857,7 +2101,7 @@ class Workspace(QObject):
     def _is_selected_run(self, run: Json) -> bool:
         return str(run.get("session_id", "")) == self.sessionId
 
-    def _reset_chat(self, *, preserve_transcript: bool = False) -> None:
+    def _reset_chat(self, *, preserve_transcript: bool = False, emit_signals: bool = True) -> None:
         self.transcript.abort_batch()
         self._configuring_session = False
         self._configuration_generation += 1
@@ -1865,6 +2109,8 @@ class Workspace(QObject):
         self._shared_context_generation += 1
         self._shared_context_loading = False
         self._shared_context = ""
+        if self._notice == tr("Cronologia limitata alle ultime 60 esecuzioni; esporta per la cronologia completa."):
+            self._notice = ""
         self._set_chat_loading(False)
         self._chat_failed = False
         self._replay_queue.clear()
@@ -1872,6 +2118,8 @@ class Workspace(QObject):
             self.transcript.clear()
         self._reasoning.reset()
         self._deltas.clear()
+        self._active_tools.clear()
+        self._streaming_items.clear()
         self._waiting_browser_tools.clear()
         self._tool_issues.clear()
         self._usage = {}
@@ -1880,9 +2128,47 @@ class Workspace(QObject):
         self._subscribe_pending.clear()
         self._buffered_events.clear()
         self._cursors.clear()
-        self.chatChanged.emit()
-        if not preserve_transcript:
-            self.transcriptChanged.emit()
+        if emit_signals:
+            self.chatChanged.emit()
+            if not preserve_transcript:
+                self.transcriptChanged.emit()
+
+    def _save_session_cache(self) -> None:
+        session_id = self.sessionId
+        project_id = str(self._project.get("id", ""))
+        if (not session_id or not project_id or self._chat_loading
+                or self._chat_failed or self.transcript._batch_depth):
+            return
+        selected_runs = [r for r in self._runs.values() if r.get("session_id") == session_id]
+        if not selected_runs or not all(
+            isinstance(r.get("last_seq"), int)
+            and r["last_seq"] > 0
+            and self._cursors.get(str(r["id"]), 0) >= r["last_seq"]
+            for r in selected_runs
+        ):
+            return
+        self._session_cache.pop(session_id, None)
+        self._session_cache[session_id] = {
+            "project_id": project_id,
+            "session": dict(self._session),
+            "transcript": self.transcript.snapshot_state(),
+            "run_order": [str(r["id"]) for r in selected_runs],
+            "runs": {str(r["id"]): dict(r) for r in selected_runs},
+            "cursors": {str(r["id"]): self._cursors.get(str(r["id"]), 0) for r in selected_runs},
+            "usage": dict(self._usage),
+            "session_usage_rounds": deepcopy(self._session_usage_rounds),
+            "context": self._context,
+            "artifacts": [dict(a) for a in self._artifacts],
+            "tool_issues": {
+                str(r["id"]): dict(self._tool_issues[str(r["id"])])
+                for r in selected_runs
+                if str(r["id"]) in self._tool_issues
+            },
+            "reasoning_runs": deepcopy(self._reasoning._runs),
+            "history_truncated": self._notice == tr("Cronologia limitata alle ultime 60 esecuzioni; esporta per la cronologia completa."),
+        }
+        while len(self._session_cache) > 16:
+            self._session_cache.pop(next(iter(self._session_cache)))
 
     @Slot(str)
     def openProject(self, project_id: str) -> None:
@@ -1899,6 +2185,8 @@ class Workspace(QObject):
                 return
             same_project = self._project.get("id") == project_id
             previous = self.sessionId if same_project else ""
+            if not same_project:
+                self._session_cache.clear()
             self._project = result["project"]
             self._sessions = [row for row in result.get("sessions", []) if not row.get("team_id")]
             self._runs = {run["id"]: run for run in result.get("runs", []) if not run.get("team_id")}
@@ -1997,20 +2285,55 @@ class Workspace(QObject):
         if session and session.get("project_id", self._project.get("id")) != self._project.get("id"):
             self._problem(tr("Questa chat non appartiene al progetto selezionato."))
             return
+        self._save_session_cache()
+        if force_reload:
+            self._session_cache.pop(session_id, None)
+        cached = (
+            self._session_cache.get(session_id)
+            if not force_reload and self._project.get("id")
+            else None
+        )
+        if cached is not None and cached.get("project_id") != self._project.get("id"):
+            cached = None
         preserve_transcript = (session_id == self.sessionId and bool(self.transcript.rows)
                                and not self._chat_failed)
-        self._session = session or {"id": session_id}
-        if session:
-            self._adopt_session(session)
-        self._reset_chat(preserve_transcript=preserve_transcript)
+        self._session = session or (dict(cached["session"]) if cached else {"id": session_id})
+        if session or cached:
+            self._adopt_session(self._session)
+        self._reset_chat(
+            preserve_transcript=preserve_transcript or cached is not None,
+            emit_signals=cached is None,
+        )
         project_id = self._project.get("id")
         if not project_id:
+            if cached is not None:
+                self.chatChanged.emit()
             self.changed.emit()
             return
         generation = self._chat_generation
-        self.transcript.begin_batch()
-        self._set_chat_loading(True)
-        self.changed.emit()
+        if cached is not None:
+            self.transcript.restore_state(cached["transcript"])
+            for r_id, r_row in cached["runs"].items():
+                self._runs[r_id] = dict(r_row)
+            self._cursors.update(cached["cursors"])
+            self._usage = dict(cached["usage"])
+            self._session_usage_rounds = deepcopy(cached["session_usage_rounds"])
+            self._context = str(cached["context"])
+            self._artifacts = [dict(a) for a in cached["artifacts"]]
+            self._artifact_paths = {a.get("path") for a in self._artifacts}
+            for r_id, issues in cached["tool_issues"].items():
+                self._tool_issues[r_id] = dict(issues)
+            self._reasoning._runs = deepcopy(cached["reasoning_runs"])
+            self._reasoning.sync()
+            if cached.get("history_truncated"):
+                self._notice = tr("Cronologia limitata alle ultime 60 esecuzioni; esporta per la cronologia completa.")
+            self.chatChanged.emit()
+            self.transcriptChanged.emit()
+            self.changed.emit()
+        else:
+            self.transcript.begin_batch()
+            self._set_chat_loading(True)
+            self.changed.emit()
 
         def loaded(result: Json) -> None:
             if generation != self._chat_generation or project_id != self._project.get("id"):
@@ -2028,6 +2351,37 @@ class Workspace(QObject):
             runs = [r for r in result.get("runs", []) if r.get("session_id") == session_id]
             for run in runs:
                 self._runs[run["id"]] = run
+            if cached is not None:
+                cached_order = cached["run_order"]
+                run_ids = [str(r["id"]) for r in runs]
+                can_incremental = (
+                    run_ids[:len(cached_order)] == cached_order
+                    and all(
+                        isinstance(r.get("last_seq"), int)
+                        and self._cursors.get(str(r["id"]), 0) <= r["last_seq"]
+                        for r in runs[:len(cached_order)]
+                    )
+                )
+                if can_incremental:
+                    self._replay_queue = [
+                        str(r["id"]) for r in runs
+                        if self._cursors.get(str(r["id"]), 0) < (r.get("last_seq") or 0)
+                        or r.get("state") not in TERMINAL_STATES
+                    ]
+                    if result.get("history_truncated"):
+                        self._notice = tr("Cronologia limitata alle ultime 60 esecuzioni; esporta per la cronologia completa.")
+                    for run in list(self._runs.values()):
+                        if not self._is_selected_run(run) and run.get("state") not in TERMINAL_STATES:
+                            self._subscribe(run["id"])
+                    if self._replay_queue:
+                        self._replay_next()
+                        self.changed.emit()
+                    return
+                self._session_cache.pop(session_id, None)
+                self._cursors.clear()
+                self.transcript.begin_batch()
+                self._set_chat_loading(True)
+                self.transcript.clear()
             self._replay_queue = [r["id"] for r in runs]
             if preserve_transcript:
                 self.transcript.clear()
@@ -2042,6 +2396,7 @@ class Workspace(QObject):
         def failed(error: Json) -> None:
             if generation != self._chat_generation:
                 return
+            self._session_cache.pop(session_id, None)
             self._chat_failed = True
             self._finish_replay()
             self._session = {}
@@ -2062,7 +2417,9 @@ class Workspace(QObject):
         selections[project_id] = self.sessionId
         while len(selections) > 32:
             selections.pop(next(iter(selections)))
-        self._save_preferences({"selected_sessions": selections})
+        if isinstance(remembered, dict) and list(remembered.items()) == list(selections.items()):
+            return
+        self._save_preferences({"selected_sessions": selections}, emit=False)
 
     def _adopt_session(self, session: Json) -> None:
         self._session = session
@@ -2092,6 +2449,8 @@ class Workspace(QObject):
         self._flush()
         self.transcript.end_batch()
         self._set_chat_loading(False)
+        if not self._chat_failed:
+            self._save_session_cache()
         self.transcriptChanged.emit()
         self.changed.emit()
 
@@ -2101,6 +2460,7 @@ class Workspace(QObject):
             return
         if not self._session and not self._chat_failed:
             return
+        self._save_session_cache()
         self._session = {}
         self._artifacts = []
         self._artifact_paths.clear()
@@ -2236,6 +2596,7 @@ class Workspace(QObject):
         project_id = self._project.get("id")
         if not project_id or not session_id:
             return
+        self._session_cache.pop(session_id, None)
         self._sessions = [s for s in self._sessions if s.get("id") != session_id]
         if hasattr(self, "workbench"):
             self.workbench._archives = [s for s in self.workbench._archives if s.get("id") != session_id]
@@ -2737,6 +3098,7 @@ class Workspace(QObject):
         def started(result: Json) -> None:
             run = result["run"]
             self._runs[run["id"]] = run
+            self._session_cache.pop(str(submitted["session_id"]), None)
             self._pending_start = None
             self._pending_raw_prompt = ""
             self.workbench._settle_intent(str(submitted["request_id"]))
@@ -2794,6 +3156,16 @@ class Workspace(QObject):
         self.client.request("run.subscribe", {"run_id": run_id,
                             "after_seq": self._cursors.get(run_id, 0)}, received, failed)
 
+    @staticmethod
+    def _should_emit_event_applied(event: Json) -> bool:
+        kind = str(event.get("type", ""))
+        if kind in {"run.state", "team.delegation"} or kind.startswith("steering."):
+            return True
+        if kind == "tool.completed":
+            payload = event.get("payload")
+            return isinstance(payload, dict) and payload.get("name") in {"kira.canvas", "kira.studio"}
+        return False
+
     @Slot(dict)
     def _event(self, event: Json) -> None:
         run_id = str(event.get("run_id", ""))
@@ -2824,7 +3196,11 @@ class Workspace(QObject):
             self._apply_event(next_event)
             cursor += 1
             self._cursors[run_id] = cursor
-            self.eventApplied.emit(next_event)
+            last_seq = self._runs[run_id].get("last_seq")
+            if isinstance(last_seq, int) and cursor > last_seq:
+                self._runs[run_id]["last_seq"] = cursor
+            if not self._chat_loading or self._should_emit_event_applied(next_event):
+                self.eventApplied.emit(next_event)
         if pending and run_id not in self._subscribe_pending:
             self._subscribe(run_id)
 
@@ -2835,10 +3211,17 @@ class Workspace(QObject):
         selected = self._is_selected_run(self._runs[run_id])
         if not selected:
             if kind == "run.state":
+                prior_state = self._runs[run_id].get("state")
+                prior_updated = self._runs[run_id].get("updated_at")
                 self._runs[run_id].update(payload)
                 if "error" in payload:
                     self._runs[run_id]["error_truncated"] = False
-                self._runs[run_id]["updated_at"] = event.get("timestamp")
+                if prior_state in TERMINAL_STATES and payload.get("state") not in TERMINAL_STATES:
+                    self._runs[run_id]["state"] = prior_state
+                    if prior_updated:
+                        self._runs[run_id]["updated_at"] = prior_updated
+                else:
+                    self._runs[run_id]["updated_at"] = event.get("timestamp")
                 if payload.get("state") in TERMINAL_STATES:
                     self._active_tools.pop(run_id, None)
                     self._waiting_browser_tools.pop(run_id, None)
@@ -2968,11 +3351,18 @@ class Workspace(QObject):
                 self.transcript.update(row, body=body, status=status, command=command, raw=raw,
                                        toolResult=result)
         elif kind == "run.state":
+            prior_state = self._runs[run_id].get("state")
+            prior_updated = self._runs[run_id].get("updated_at")
             self._runs[run_id].update(payload)
             if "error" in payload:
                 self._runs[run_id]["error_truncated"] = False
             state = payload.get("state", "")
-            self._runs[run_id]["updated_at"] = event.get("timestamp")
+            if prior_state in TERMINAL_STATES and state not in TERMINAL_STATES:
+                self._runs[run_id]["state"] = prior_state
+                if prior_updated:
+                    self._runs[run_id]["updated_at"] = prior_updated
+            else:
+                self._runs[run_id]["updated_at"] = event.get("timestamp")
             if state in TERMINAL_STATES:
                 issues = self._tool_issues.setdefault(run_id, {})
                 for tool_id in self._active_tools.get(run_id, ()):

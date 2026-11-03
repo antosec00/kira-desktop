@@ -88,6 +88,35 @@ class TranscriptModel(QAbstractListModel):
         self._published_tool_group_states: dict[
             tuple[str, str] | int, tuple[bool, str]
         ] | None = None
+        self._find_index: dict[tuple[str, str, str], int] = {}
+
+    def _rebuild_find_index(self) -> None:
+        self._find_index = {
+            (str(row.get("runId", "")), str(row.get("kind", "")), str(row.get("toolId", ""))): self.omitted + idx
+            for idx, row in enumerate(self.rows)
+        }
+
+    def snapshot_state(self) -> dict[str, Any]:
+        rows = self.rows if self._published_rows is None else self._published_rows
+        omitted = self.omitted if self._published_rows is None else self._published_omitted
+        states = (self._tool_group_states if self._published_tool_group_states is None
+                  else self._published_tool_group_states)
+        return {
+            "rows": [dict(row) for row in rows],
+            "omitted": omitted,
+            "tool_group_states": dict(states),
+            "tool_group_token": self._tool_group_token,
+        }
+
+    def restore_state(self, state: dict[str, Any]) -> None:
+        self.abort_batch()
+        self.beginResetModel()
+        self.rows = [dict(row) for row in state.get("rows", [])]
+        self.omitted = int(state.get("omitted", 0))
+        self._tool_group_states = dict(state.get("tool_group_states", {}))
+        self._tool_group_token = max(self._tool_group_token, int(state.get("tool_group_token", 0)))
+        self._rebuild_find_index()
+        self.endResetModel()
 
     def roleNames(self) -> dict[int, QByteArray]:
         return {int(Qt.ItemDataRole.UserRole) + i: QByteArray(name.encode())
@@ -114,6 +143,7 @@ class TranscriptModel(QAbstractListModel):
             self._published_omitted = self.omitted
             self._published_tool_group_states = dict(self._tool_group_states)
             self.rows = [dict(row) for row in self.rows]
+            self._rebuild_find_index()
         self._batch_depth += 1
 
     def _finalize_batch_rows(self) -> None:
@@ -152,17 +182,20 @@ class TranscriptModel(QAbstractListModel):
         self._published_rows = None
         self._batch_depth = 0
         self._rebuilding_batch = False
+        self._rebuild_find_index()
 
     def clear(self) -> None:
         if self._batch_depth:
             self.rows.clear()
             self.omitted = 0
+            self._find_index.clear()
             self._rebuilding_batch = True
             self._prune_tool_group_states()
             return
         self.beginResetModel()
         self.rows.clear()
         self.omitted = 0
+        self._find_index.clear()
         self._tool_group_states.clear()
         self.endResetModel()
 
@@ -463,6 +496,7 @@ class TranscriptModel(QAbstractListModel):
         self._tool_group_token += 1
         row["_toolGroupToken"] = self._tool_group_token
         self.rows.append(row)
+        self._find_index[(str(row["runId"]), str(row["kind"]), str(row["toolId"]))] = self.omitted + position
         changes = {} if self._batch_depth else self._refresh_tool_groups()
         if not self._batch_depth:
             self.endInsertRows()
@@ -470,10 +504,13 @@ class TranscriptModel(QAbstractListModel):
         return position
 
     def find(self, run_id: str, kind: str, tool_id: str = "") -> int | None:
-        for index in range(len(self.rows) - 1, -1, -1):
-            row = self.rows[index]
-            if row["runId"] == run_id and row["kind"] == kind and row["toolId"] == tool_id:
-                return index
+        abs_index = self._find_index.get((run_id, kind, tool_id))
+        if abs_index is not None:
+            index = abs_index - self.omitted
+            if 0 <= index < len(self.rows):
+                row = self.rows[index]
+                if row["runId"] == run_id and row["kind"] == kind and row["toolId"] == tool_id:
+                    return index
         return None
 
     def update(self, index: int, **fields: Any) -> None:
@@ -501,7 +538,11 @@ class TranscriptModel(QAbstractListModel):
                          and (self.rows[index]["kind"] == "tool" or fields.get("kind") == "tool")
                          and any(key in fields and fields[key] != self.rows[index][key]
                                  for key in ("kind", "runId", "toolId", "status")))
+        identity_changed = any(key in fields for key in ("runId", "kind", "toolId"))
         self.rows[index].update(fields)
+        if identity_changed:
+            row = self.rows[index]
+            self._find_index[(str(row["runId"]), str(row["kind"]), str(row["toolId"]))] = self.omitted + index
         self.rows[index]["_receiptEvidence"] = evidence
         if not self._batch_depth:
             receipt = self._receipt_fields(self.rows[index])

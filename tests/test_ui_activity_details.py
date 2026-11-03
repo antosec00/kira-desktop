@@ -188,3 +188,41 @@ def test_terminal_run_duration_and_fenced_structured_output(workspace):
     assert obj["decision"] == "completed"
     assert json.loads(raw_json) == obj
 
+
+def test_present_event_details_formats_run_and_tool_payloads_cleanly(workspace):
+    view, _ = workspace
+    view._session["id"] = "ses_b95baecdf7"
+    view._runs = {
+        "run_2c751146b7": run(
+            id="run_2c751146b7",
+            session_id="ses_b95baecdf7",
+            request_id="b04769df41b849e98f91068115f0b95f",
+            prompt="continua con la tua ricerca sull'architettura di kira",
+            state="cancelled",
+            created_at="2026-10-31T21:41:59.650794+00:00",
+            updated_at="2026-10-31T21:42:05.331667+00:00",
+            outcome={"scope": "client_stream_closed", "remote_generation_termination_confirmed": False},
+        )
+    }
+    raw = view.activityDetails
+    presented = view.presentEventDetails(raw, True)
+    assert presented["parsed"] is True
+    assert presented["isRun"] is True
+    assert presented["statusLabel"] == "Interrotta"
+    assert presented["statusTone"] == "warning"
+    assert presented["duration"] == "00:05"
+    assert presented["requestText"] == "continua con la tua ricerca sull'architettura di kira"
+    outcome_map = {row["label"]: row["value"] for row in presented["outcomeRows"]}
+    assert outcome_map["Modalità di chiusura"] == "Flusso locale chiuso dal client"
+    assert outcome_map["Interruzione remota del provider"] == "Non confermata (chiusura locale)"
+    ref_map = {row["label"]: row["value"] for row in presented["referenceRows"]}
+    assert ref_map["ID esecuzione"] == "run_2c751146b7"
+    assert ref_map["ID chat"] == "ses_b95baecdf7"
+
+    tool_presented = view.presentEventDetails('{"ok": true, "path": "src/kira/ui/controller.py", "content": "ok"}', False)
+    assert tool_presented["parsed"] is True
+    assert tool_presented["isRun"] is False
+    assert tool_presented["statusLabel"] == "Completato"
+    assert tool_presented["requestText"] == "ok"
+
+
