@@ -129,11 +129,17 @@ class ContextController(QObject):
         self._source: Json = {}
         self._source_busy = False
         self._source_offsets: list[int] = []
+        self._report_cache: Json | None = None
+        self.changed.connect(self._invalidate_report_cache)
         workspace.changed.connect(self._context_changed)
         workspace.chatChanged.connect(self._context_changed)
         workspace.accountChanged.connect(self._context_changed)
         workspace.preferencesChanged.connect(self.changed)
         workspace.client.eventReceived.connect(self._event)
+
+    @Slot()
+    def _invalidate_report_cache(self) -> None:
+        self._report_cache = None
 
     def _stamp(self) -> tuple[Any, ...]:
         return (self.workspace.project.get("id", ""), self.workspace.sessionId,
@@ -281,7 +287,9 @@ class ContextController(QObject):
 
     @qt_property("QVariantMap", notify=changed)
     def report(self) -> Json:
-        return present_context(self.metricsContext)
+        if self._report_cache is None:
+            self._report_cache = present_context(self.metricsContext)
+        return self._report_cache
 
     @qt_property(str, notify=changed)
     def noteDraft(self) -> str:

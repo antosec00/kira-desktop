@@ -110,3 +110,69 @@ def test_session_list_loading_does_not_hide_loaded_chat(history):
     view.refreshSessions()
     assert view.sessionsLoading and not view.chatLoading
     assert view.transcript.rowCount() == 1
+
+
+def test_completed_run_replay_never_regresses_state_to_running_mid_replay(history):
+    view, calls = history
+    view._sessions.append({"id": "other", "project_id": "project", "backend": "codex", "model": "model", "settings": {}})
+    view.selectSession("chat")
+    calls[-1][2]({
+        "session": view._sessions[0],
+        "runs": [{"id": "run", "session_id": "chat", "state": "completed", "last_seq": 3}],
+    })
+    # Mid-replay page contains early queued/running state events for a run already known to be completed.
+    calls[-1][2]({
+        "events": [
+            event(1, "run.state", state="queued"),
+            event(2, "run.state", state="running"),
+        ],
+        "has_more": True,
+    })
+    assert view._runs["run"]["state"] == "completed"
+    assert view.activeRunId == ""
+    # Switching to another chat mid-replay must not leave the completed run marked as running ("busy").
+    view.selectSession("other")
+    calls[-1][2]({"session": view._sessions[1], "runs": []})
+    assert view._runs["run"]["state"] == "completed"
+    assert view.activeRunId == ""
+    assert not view.busy
+
+
+def test_session_cache_restores_previously_loaded_chat_immediately(history):
+    view, calls = history
+    second = {"id": "second", "project_id": "project", "backend": "codex", "model": "model", "settings": {}}
+    view._sessions.append(second)
+    view.selectSession("chat")
+    calls[-1][2]({
+        "session": view._sessions[0],
+        "runs": [{"id": "run", "session_id": "chat", "state": "completed", "last_seq": 2}],
+    })
+    calls[-1][2]({
+        "events": [
+            event(1, "message.user", content="First chat question"),
+            event(2, "message.completed", item_id="a", content="First chat answer"),
+        ],
+        "has_more": False,
+    })
+    assert not view.chatLoading and view.transcript.rowCount() == 2
+
+    # Switch to second chat and load it
+    view.selectSession("second")
+    assert "chat" in view._session_cache
+    calls[-1][2]({
+        "session": second,
+        "runs": [{"id": "run-2", "session_id": "second", "state": "completed", "last_seq": 1}],
+    })
+    calls[-1][2]({
+        "events": [{"run_id": "run-2", "seq": 1, "type": "message.user", "payload": {"content": "Second chat"}}],
+        "has_more": False,
+    })
+    assert not view.chatLoading and view.transcript.rowCount() == 1
+
+    # Switch back to "chat": must restore immediately from cache without chatLoading=True
+    view.selectSession("chat")
+    assert not view.chatLoading
+    assert view.transcript.rowCount() == 2
+    assert view.transcript.rows[0]["body"] == "First chat question"
+    assert view.transcript.rows[1]["body"] == "First chat answer"
+

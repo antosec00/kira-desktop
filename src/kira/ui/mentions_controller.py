@@ -44,6 +44,8 @@ class MentionsController(QObject):
         self.workspace = workspace
         self._chips: list[Json] = []
         self._universal_query = ""
+        self._universal_cache_key: tuple[Any, ...] | None = None
+        self._universal_cache_items: list[Json] = []
         self._inline_visible = False
         self._inline_trigger = ""
         self._inline_token_start = 0
@@ -55,6 +57,7 @@ class MentionsController(QObject):
         workspace.chatChanged.connect(self._on_chat_changed)
 
     def retranslate(self) -> None:
+        self._universal_cache_key = None
         self.changed.emit()
         self.chipsChanged.emit()
         self.suggestionsChanged.emit()
@@ -62,6 +65,7 @@ class MentionsController(QObject):
     @Slot()
     def _on_project_changed(self) -> None:
         self._universal_query = ""
+        self._universal_cache_key = None
         self.changed.emit()
 
     @Slot()
@@ -121,13 +125,25 @@ class MentionsController(QObject):
 
     @qt_property("QVariantList", notify=changed)
     def universalItems(self) -> list[Json]:
-        return search_universal_mentions(
+        root = self._project_root()
+        souls = self._available_souls()
+        has_terminal = bool(self.latest_terminal_output())
+        cache_key = (
             self._universal_query,
-            self._project_root(),
-            self._available_souls(),
-            has_terminal=bool(self.latest_terminal_output()),
-            limit=14,
+            str(root or ""),
+            tuple(str(s.get("id") or s.get("name") or "") for s in souls),
+            has_terminal,
         )
+        if self._universal_cache_key != cache_key:
+            self._universal_cache_items = search_universal_mentions(
+                self._universal_query,
+                root,
+                souls,
+                has_terminal=has_terminal,
+                limit=14,
+            )
+            self._universal_cache_key = cache_key
+        return [dict(item) for item in self._universal_cache_items]
 
     @qt_property(bool, notify=suggestionsChanged)
     def inlinePopupVisible(self) -> bool:

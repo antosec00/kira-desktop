@@ -392,17 +392,25 @@ class Store:
         byte_count = 0
         fixed_bytes = 74 + len(str(EVENT_SCHEMA_VERSION))
         for stored in rows:
+            row = self.record(stored)
+            payload = row.get("payload")
+            raw_payload = stored["payload"]
+            if isinstance(payload, dict) and "provider_messages" in payload:
+                payload = {k: v for k, v in payload.items() if k != "provider_messages"}
+                row["payload"] = payload
+                payload_bytes = len(encode(payload).encode("utf-8"))
+            else:
+                payload_bytes = len(raw_payload.encode("utf-8"))
             size = (
                 fixed_bytes
                 + len(stored["run_id"].encode("utf-8"))
                 + len(str(stored["seq"]))
                 + len(stored["type"].encode("utf-8"))
                 + len(stored["timestamp"].encode("utf-8"))
-                + len(stored["payload"].encode("utf-8"))
+                + payload_bytes
             )
             if result and byte_count + size > 700_000:
                 break
-            row = self.record(stored)
             row["schema_version"] = EVENT_SCHEMA_VERSION
             result.append(row)
             byte_count += size

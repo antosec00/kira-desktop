@@ -229,6 +229,7 @@ class Appearance(QObject):
         self._system_dark = True
         self._config: dict[str, Any] = {}
         self._colors: dict[str, str] = {}
+        self._fonts: dict[str, QFont] = {}
         self._legacy_motion = False
         self._unsaved = False
         self._persist_timer = QTimer(self)
@@ -267,6 +268,7 @@ class Appearance(QObject):
         if not self._config:
             return
         self._colors = palette(self.style, self.dark, self._config["contrast"])
+        self._fonts = {role: self._font(role) for role in ("ui", "content", "code")}
         self._revision += 1
         self.changed.emit()
 
@@ -321,15 +323,15 @@ class Appearance(QObject):
 
     @qt_property(QFont, notify=changed)
     def uiFont(self) -> QFont:
-        return self._font("ui")
+        return self._fonts.get("ui") or self._font("ui")
 
     @qt_property(QFont, notify=changed)
     def contentFont(self) -> QFont:
-        return self._font("content")
+        return self._fonts.get("content") or self._font("content")
 
     @qt_property(QFont, notify=changed)
     def codeFont(self) -> QFont:
-        return self._font("code")
+        return self._fonts.get("code") or self._font("code")
 
     @qt_property(bool, notify=changed)
     def dark(self) -> bool:

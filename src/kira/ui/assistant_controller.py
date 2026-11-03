@@ -209,7 +209,7 @@ class AssistantController(QObject):
         if not run:
             return
         kind = event.get("type")
-        if kind == "team.delegation" or (kind == "run.state" and
+        if kind == "team.delegation" or (kind == "run.state" and not self.workspace.chatLoading and
                 event.get("payload", {}).get("state") in {"completed", "failed", "cancelled", "interrupted"}):
             self._schedule()
 

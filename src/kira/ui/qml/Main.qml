@@ -1131,7 +1131,7 @@ ApplicationWindow {
                                     // Visible delegates own their spacing so collapsed
                                     // group members do not accumulate empty gaps.
                                     clip: true; spacing: 0; model: transcriptModel
-                                    cacheBuffer: 10000000
+                                    cacheBuffer: count <= 48 ? 10000000 : 320
                                     reuseItems: false
                                     // Keep layout active while replay is staged, but reveal only
                                     // after the final rows have been positioned at the latest reply.
@@ -1143,7 +1143,7 @@ ApplicationWindow {
                                     function scrollToEnd() {
                                         layoutStepping = true
                                         forceLayout()
-                                        if (count > 0 && (!itemAtIndex(0) || !itemAtIndex(count - 1))) {
+                                        if (count > 0 && count <= 48 && (!itemAtIndex(0) || !itemAtIndex(count - 1))) {
                                             if (!itemAtIndex(0)) {
                                                 positionViewAtBeginning()
                                                 forceLayout()
@@ -1154,7 +1154,7 @@ ApplicationWindow {
                                                 while (probe + 1 < count && itemAtIndex(probe + 1)) probe++
                                                 var last = itemAtIndex(probe)
                                                 if (!last) break
-                                                contentY = last.y + Math.max(0, last.height - 1)
+                                                contentY = Math.max(contentY + Math.max(64, height * 0.8), last.y + Math.max(1, last.height - 1))
                                                 forceLayout()
                                                 steps++
                                             }
@@ -1241,6 +1241,15 @@ ApplicationWindow {
                                     onMovementEnded: window.followOutput = atYEnd
                                     onCountChanged: scheduleFollow()
                                     onContentHeightChanged: scheduleFollow()
+                                    Connections {
+                                        target: transcriptModel
+                                        function onModelReset() {
+                                            if (!workspace.chatLoading && conversation.count > 48 && window.followOutput) {
+                                                conversation.positionViewAtEnd()
+                                            }
+                                            conversation.scheduleFollow()
+                                        }
+                                    }
                                     // Keep the inspected card anchored while its height changes.
                                     // A deferred follow-to-end must also observe followOutput.
                                     function toggleOutput(item) {
@@ -1448,7 +1457,7 @@ ApplicationWindow {
                                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; visible: entry.kind !== "state" && entry.kind !== "user"; textFormat: Text.PlainText; text: entry.kind === "tool" ? "⌘  " + entry.title : entry.title; color: entry.kind === "assistant" ? appearance.colors.textSecondary : accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold; font.letterSpacing: entry.kind === "assistant" ? 1.2 : 0; Layout.fillWidth: true; elide: Text.ElideRight }
                                                     Item { visible: entry.kind === "user"; Layout.fillWidth: true }
                                                     Item { visible: entry.kind === "state"; Layout.fillWidth: true }
-                                                    Text { font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; objectName: "messageDuration_" + entry.index; textFormat: Text.PlainText; text: { workspace.revision; if (entry.kind !== "assistant" || !entry.runId) return ""; if (entry.runId === workspace.selectedActiveRunId && activityIndicator.clockRunning) return "⏱ " + activityIndicator.elapsedText; var d = workspace.runDurationText(entry.runId); return d.length > 0 ? "⏱ " + d : "" } color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); visible: entry.kind === "assistant" && text.length > 0 }
+                                                    Text { font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; objectName: "messageDuration_" + entry.index; textFormat: Text.PlainText; text: { workspace.revision; if (entry.kind !== "assistant" || !entry.runId) return ""; if (entry.runId === workspace.selectedActiveRunId && activityIndicator.clockRunning) return "⏱ " + activityIndicator.elapsedText; var d = workspace.runDurationText(entry.runId) || ""; return d.length > 0 ? "⏱ " + d : "" } color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); visible: entry.kind === "assistant" && text.length > 0 }
                                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; objectName: "messageStatus_" + entry.index; Layout.maximumWidth: entry.kind === "user" ? messageColumn.width * 0.6 : Infinity; Layout.minimumWidth: 0; wrapMode: Text.Wrap; textFormat: Text.PlainText; text: { localization.revision; return qsTr(entry.status) } color: entry.status === "errore" || entry.status === "incompleto" ? appearance.colors.danger : muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); visible: entry.kind !== "state" }
                                                     KButton { objectName: "messageDetails_" + entry.index; text: entry.kind === "state" ? qsTr("Dettagli") : qsTr("Dati"); subtle: true; implicitHeight: 23 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: entry.kind === "state" ? 65 : 38; visible: entry.raw.length > 0; Accessible.name: entry.kind === "state" ? qsTr("Apri dettagli esecuzione") : entry.kind === "team" ? qsTr("Apri dati del team") : qsTr("Apri dati dello strumento"); onClicked: { window.eventDetails = entry.raw; window.eventDetailsIsRun = entry.kind === "state"; eventDialog.open() } }
                                                     KButton { objectName: "commandCopy_" + entry.index; text: qsTr("Copia comando"); subtle: true; implicitHeight: 23 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: Math.ceil(105 * appearance.uiFont.pixelSize / 13); visible: entry.kind === "tool" && entry.command.length > 0; onClicked: workspace.copy(entry.command) }
@@ -1465,7 +1474,7 @@ ApplicationWindow {
                                                     Layout.maximumHeight: entry.kind === "tool" && !entry.outputExpanded ? entry.previewHeight : Infinity
                                                     clip: entry.kind === "tool" && !entry.outputExpanded
                                                     textFormat: entry.kind === "assistant" && !entry.showSource ? TextEdit.RichText : TextEdit.PlainText
-                                                    text: entry.kind === "assistant" && !entry.showSource ? markdownRenderer.renderForAppearance(entry.body, appearance.revision + localization.revision) : entry.kind === "tool" && !entry.outputExpanded ? entry.previewBody : entry.body
+                                                    text: (entry.kind === "tool" && entry.toolGroupCount > 0 && !entry.toolGroupExpanded) ? "" : (entry.kind === "assistant" && !entry.showSource ? markdownRenderer.renderForAppearance(entry.body, appearance.revision + localization.revision) : entry.kind === "tool" && !entry.outputExpanded ? entry.previewBody : entry.body)
                                                     onLinkActivated: function(link) { workspace.openMessageLink(link) }
                                                     font.family: entry.kind === "tool" || entry.showSource ? appearance.codeFont.family : appearance.contentFont.family
                                                     font.styleName: entry.kind === "tool" || entry.showSource ? appearance.codeFont.styleName : appearance.contentFont.styleName
@@ -3134,7 +3143,407 @@ ApplicationWindow {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
         id: eventDialog; objectName: "eventDialog"; title: window.eventDetailsTitle
         standardButtons: Dialog.Close
-        ScrollView { anchors.fill: parent; clip: true; ReadText { color: appearance.colors.codeText; objectName: "eventDetailsText"; text: window.eventDetails; width: parent.width; font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; font.pixelSize: appearance.codeFont.pixelSize } }
+        property bool rawExpanded: false
+        readonly property var parsed: {
+            void localization.revision
+            return workspace.presentEventDetails(window.eventDetails, window.eventDetailsIsRun)
+        }
+        onOpened: rawExpanded = false
+        ScrollView {
+            id: eventDetailsScroll
+            anchors.fill: parent
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ColumnLayout {
+                width: eventDetailsScroll.availableWidth
+                spacing: 12
+
+                // Status & Duration card
+                Rectangle {
+                    objectName: "eventDetailsStatusCard"
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed)
+                    Layout.fillWidth: true
+                    implicitHeight: statusCol.implicitHeight + 24
+                    radius: 10
+                    color: appearance.colors.surfaceAlt
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: statusCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Rectangle {
+                                radius: 6
+                                implicitHeight: statusBadgeLabel.implicitHeight + 8
+                                implicitWidth: statusBadgeLabel.implicitWidth + 16
+                                color: {
+                                    const tone = String((eventDialog.parsed && eventDialog.parsed.statusTone) || "muted")
+                                    if (tone === "success") return appearance.colors.successBackground
+                                    if (tone === "warning") return appearance.colors.warningBackground
+                                    if (tone === "danger") return appearance.colors.dangerBackground
+                                    if (tone === "accent") return appearance.colors.accentSoft
+                                    return appearance.colors.surfaceRaised
+                                }
+                                border.color: {
+                                    const tone = String((eventDialog.parsed && eventDialog.parsed.statusTone) || "muted")
+                                    if (tone === "success") return appearance.colors.success
+                                    if (tone === "warning") return appearance.colors.warning
+                                    if (tone === "danger") return appearance.colors.danger
+                                    if (tone === "accent") return appearance.colors.accent
+                                    return appearance.colors.border
+                                }
+                                Text {
+                                    id: statusBadgeLabel
+                                    objectName: "eventDetailsStatusBadge"
+                                    anchors.centerIn: parent
+                                    textFormat: Text.PlainText
+                                    text: String((eventDialog.parsed && eventDialog.parsed.statusLabel) || "")
+                                    font.family: appearance.uiFont.family
+                                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                                    font.weight: Font.DemiBold
+                                    color: {
+                                        const tone = String((eventDialog.parsed && eventDialog.parsed.statusTone) || "muted")
+                                        if (tone === "success") return appearance.colors.success
+                                        if (tone === "warning") return appearance.colors.warning
+                                        if (tone === "danger") return appearance.colors.danger
+                                        if (tone === "accent") return appearance.colors.accent
+                                        return appearance.colors.textSecondary
+                                    }
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Rectangle {
+                                visible: Boolean(eventDialog.parsed && eventDialog.parsed.duration)
+                                radius: 6
+                                implicitHeight: durationBadgeLabel.implicitHeight + 8
+                                implicitWidth: durationBadgeLabel.implicitWidth + 14
+                                color: appearance.colors.surfaceRaised
+                                border.color: appearance.colors.border
+                                Text {
+                                    id: durationBadgeLabel
+                                    objectName: "eventDetailsDurationBadge"
+                                    anchors.centerIn: parent
+                                    textFormat: Text.PlainText
+                                    text: "⏱ " + String((eventDialog.parsed && eventDialog.parsed.duration) || "")
+                                    font.family: appearance.codeFont.family
+                                    font.pixelSize: Math.max(8, appearance.codeFont.pixelSize - 1)
+                                    color: appearance.colors.textSecondary
+                                }
+                            }
+                        }
+                        Text {
+                            visible: Boolean(eventDialog.parsed && eventDialog.parsed.statusDescription)
+                            Layout.fillWidth: true
+                            textFormat: Text.PlainText
+                            wrapMode: Text.WordWrap
+                            text: String((eventDialog.parsed && eventDialog.parsed.statusDescription) || "")
+                            font.family: appearance.uiFont.family
+                            font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                            color: appearance.colors.textSecondary
+                        }
+                    }
+                }
+
+                // Error card (if present)
+                Rectangle {
+                    objectName: "eventDetailsErrorCard"
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed && eventDialog.parsed.errorText)
+                    Layout.fillWidth: true
+                    implicitHeight: errorCol.implicitHeight + 24
+                    radius: 10
+                    color: appearance.colors.dangerBackground
+                    border.color: appearance.colors.danger
+                    ColumnLayout {
+                        id: errorCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 6
+                        Text {
+                            textFormat: Text.PlainText
+                            text: qsTr("Errore riscontrato")
+                            font.family: appearance.uiFont.family
+                            font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                            font.weight: Font.DemiBold
+                            color: appearance.colors.danger
+                            Layout.fillWidth: true
+                        }
+                        ReadText {
+                            objectName: "eventDetailsErrorSummary"
+                            text: String((eventDialog.parsed && eventDialog.parsed.errorText) || "")
+                            Layout.fillWidth: true
+                            color: appearance.colors.text
+                            font.family: appearance.codeFont.family
+                            font.pixelSize: Math.max(8, appearance.codeFont.pixelSize - 1)
+                        }
+                    }
+                }
+
+                // Request / Output card
+                Rectangle {
+                    objectName: "eventDetailsRequestCard"
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed && eventDialog.parsed.requestText)
+                    Layout.fillWidth: true
+                    implicitHeight: reqCol.implicitHeight + 24
+                    radius: 10
+                    color: appearance.colors.surfaceAlt
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: reqCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 6
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                textFormat: Text.PlainText
+                                text: (eventDialog.parsed && eventDialog.parsed.isRun) ? qsTr("Richiesta inviata") : qsTr("Contenuto registrato")
+                                font.family: appearance.uiFont.family
+                                font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                                font.weight: Font.DemiBold
+                                color: appearance.colors.muted
+                                Layout.fillWidth: true
+                            }
+                            KButton {
+                                text: qsTr("Copia")
+                                subtle: true
+                                implicitHeight: 26
+                                onClicked: workspace.copy(String((eventDialog.parsed && eventDialog.parsed.requestText) || ""))
+                            }
+                        }
+                        ReadText {
+                            objectName: "eventDetailsRequestSummary"
+                            text: String((eventDialog.parsed && eventDialog.parsed.requestText) || "")
+                            Layout.fillWidth: true
+                            color: appearance.colors.text
+                        }
+                    }
+                }
+
+                // Timings card
+                Rectangle {
+                    objectName: "eventDetailsTimeCard"
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed && (eventDialog.parsed.timeRows || []).length > 0)
+                    Layout.fillWidth: true
+                    implicitHeight: timeCol.implicitHeight + 24
+                    radius: 10
+                    color: appearance.colors.surfaceAlt
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: timeCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        Text {
+                            textFormat: Text.PlainText
+                            text: qsTr("Tempi di esecuzione")
+                            font.family: appearance.uiFont.family
+                            font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                            font.weight: Font.DemiBold
+                            color: appearance.colors.muted
+                            Layout.fillWidth: true
+                        }
+                        Repeater {
+                            model: (eventDialog.parsed && eventDialog.parsed.timeRows) ? eventDialog.parsed.timeRows : []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text {
+                                    textFormat: Text.PlainText
+                                    text: String(modelData.label || "")
+                                    font.family: appearance.uiFont.family
+                                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                                    color: appearance.colors.muted
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                }
+                                ReadText {
+                                    text: String(modelData.value || "")
+                                    font.family: appearance.codeFont.family
+                                    font.pixelSize: Math.max(8, appearance.codeFont.pixelSize - 1)
+                                    color: appearance.colors.text
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Outcome & Diagnostics card
+                Rectangle {
+                    objectName: "eventDetailsOutcomeCard"
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed && (eventDialog.parsed.outcomeRows || []).length > 0)
+                    Layout.fillWidth: true
+                    implicitHeight: outcomeCol.implicitHeight + 24
+                    radius: 10
+                    color: appearance.colors.surfaceAlt
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: outcomeCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        Text {
+                            textFormat: Text.PlainText
+                            text: (eventDialog.parsed && eventDialog.parsed.isRun) ? qsTr("Esito e diagnostica") : qsTr("Parametri dello strumento")
+                            font.family: appearance.uiFont.family
+                            font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                            font.weight: Font.DemiBold
+                            color: appearance.colors.muted
+                            Layout.fillWidth: true
+                        }
+                        Repeater {
+                            model: (eventDialog.parsed && eventDialog.parsed.outcomeRows) ? eventDialog.parsed.outcomeRows : []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text {
+                                    textFormat: Text.PlainText
+                                    text: String(modelData.label || "")
+                                    font.family: appearance.uiFont.family
+                                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                                    color: appearance.colors.muted
+                                    Layout.preferredWidth: Math.min(180, outcomeCol.width * 0.44)
+                                    Layout.alignment: Qt.AlignTop
+                                    wrapMode: Text.WordWrap
+                                }
+                                ReadText {
+                                    text: String(modelData.value || "")
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignTop
+                                    color: appearance.colors.text
+                                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Notes card (if any trailing notes exist)
+                Rectangle {
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed && eventDialog.parsed.notesText)
+                    Layout.fillWidth: true
+                    implicitHeight: notesCol.implicitHeight + 20
+                    radius: 10
+                    color: appearance.colors.surfaceAlt
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: notesCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 10
+                        ReadText {
+                            text: String((eventDialog.parsed && eventDialog.parsed.notesText) || "")
+                            Layout.fillWidth: true
+                            color: appearance.colors.textSecondary
+                            font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1)
+                        }
+                    }
+                }
+
+                // Technical References card
+                Rectangle {
+                    objectName: "eventDetailsRefCard"
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed && (eventDialog.parsed.referenceRows || []).length > 0)
+                    Layout.fillWidth: true
+                    implicitHeight: refCol.implicitHeight + 24
+                    radius: 10
+                    color: appearance.colors.surfaceAlt
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: refCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        Text {
+                            textFormat: Text.PlainText
+                            text: qsTr("Riferimenti tecnici")
+                            font.family: appearance.uiFont.family
+                            font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 1)
+                            font.weight: Font.DemiBold
+                            color: appearance.colors.muted
+                            Layout.fillWidth: true
+                        }
+                        Repeater {
+                            model: (eventDialog.parsed && eventDialog.parsed.referenceRows) ? eventDialog.parsed.referenceRows : []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Text {
+                                    textFormat: Text.PlainText
+                                    text: String(modelData.label || "")
+                                    font.family: appearance.uiFont.family
+                                    font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2)
+                                    color: appearance.colors.muted
+                                    Layout.preferredWidth: Math.min(130, refCol.width * 0.36)
+                                    Layout.alignment: Qt.AlignTop
+                                    wrapMode: Text.WordWrap
+                                }
+                                ReadText {
+                                    text: String(modelData.value || "")
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignTop
+                                    font.family: appearance.codeFont.family
+                                    font.pixelSize: Math.max(8, appearance.codeFont.pixelSize - 1)
+                                    color: appearance.colors.textSecondary
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Raw JSON toggle & copy actions
+                RowLayout {
+                    visible: Boolean(eventDialog.parsed && eventDialog.parsed.parsed)
+                    Layout.fillWidth: true
+                    spacing: 8
+                    KButton {
+                        objectName: "eventDetailsToggleRaw"
+                        subtle: true
+                        text: eventDialog.rawExpanded ? qsTr("Nascondi dati grezzi (JSON)") : qsTr("Mostra dati grezzi (JSON)")
+                        onClicked: eventDialog.rawExpanded = !eventDialog.rawExpanded
+                    }
+                    Item { Layout.fillWidth: true }
+                    KButton {
+                        objectName: "eventDetailsCopyRaw"
+                        subtle: true
+                        text: qsTr("Copia JSON")
+                        onClicked: workspace.copy(window.eventDetails)
+                    }
+                }
+
+                // Raw JSON container (always present in visual tree for literal inspection)
+                Rectangle {
+                    visible: !Boolean(eventDialog.parsed && eventDialog.parsed.parsed) || eventDialog.rawExpanded
+                    Layout.fillWidth: true
+                    implicitHeight: rawTextCol.implicitHeight + 20
+                    radius: 10
+                    color: appearance.colors.codeBackground
+                    border.color: appearance.colors.border
+                    ColumnLayout {
+                        id: rawTextCol
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 10
+                        ReadText {
+                            id: rawEventDetailsText
+                            objectName: "eventDetailsText"
+                            color: appearance.colors.codeText
+                            text: window.eventDetails
+                            Layout.fillWidth: true
+                            font.family: appearance.codeFont.family
+                            font.styleName: appearance.codeFont.styleName
+                            font.weight: appearance.codeFont.weight
+                            font.italic: appearance.codeFont.italic
+                            font.pixelSize: appearance.codeFont.pixelSize
+                        }
+                    }
+                }
+            }
+        }
     }
     KiraPanel {
         font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize

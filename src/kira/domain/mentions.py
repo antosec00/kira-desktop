@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import subprocess
 from typing import Any
@@ -138,19 +139,23 @@ def list_project_folders(project_root: Path | None, query: str = "", limit: int 
 
     try:
         visited = 0
-        for p in root.rglob("*"):
+        for dirpath, dirs, _ in os.walk(root):
+            dirs[:] = [
+                d for d in sorted(dirs)
+                if d not in IGNORED_DIRS and not d.startswith(".") and not (Path(dirpath) / d).is_symlink()
+            ]
+            rel_base = Path(dirpath).relative_to(root)
+            for d in dirs:
+                if visited > 1500:
+                    break
+                visited += 1
+                rel_parts = (*rel_base.parts, d)
+                rel = "/".join(rel_parts)
+                score = _fuzzy_score(q, rel, d)
+                if score > 0:
+                    scored.append((score, rel))
             if visited > 1500:
                 break
-            visited += 1
-            if not p.is_dir() or p.is_symlink():
-                continue
-            rel_parts = p.relative_to(root).parts
-            if any(part in IGNORED_DIRS or part.startswith(".") for part in rel_parts):
-                continue
-            rel = "/".join(rel_parts)
-            score = _fuzzy_score(q, rel, p.name)
-            if score > 0:
-                scored.append((score, rel))
     except OSError:
         pass
 
@@ -177,21 +182,28 @@ def list_project_files_quick(project_root: Path | None, query: str = "", limit: 
     scored: list[tuple[int, str]] = []
     try:
         visited = 0
-        for p in root.rglob("*"):
+        for dirpath, dirs, filenames in os.walk(root):
+            dirs[:] = [
+                d for d in sorted(dirs)
+                if d not in IGNORED_DIRS and not d.startswith(".") and not (Path(dirpath) / d).is_symlink()
+            ]
+            rel_base = Path(dirpath).relative_to(root)
+            for fname in sorted(filenames):
+                if visited > 2000:
+                    break
+                if fname.startswith(".") and fname not in {".env.example", ".gitignore"}:
+                    continue
+                fpath = Path(dirpath) / fname
+                if fpath.is_symlink():
+                    continue
+                visited += 1
+                rel_parts = (*rel_base.parts, fname)
+                rel = "/".join(rel_parts)
+                score = _fuzzy_score(q, rel, fname)
+                if score > 0:
+                    scored.append((score, rel))
             if visited > 2000:
                 break
-            visited += 1
-            if not p.is_file() or p.is_symlink():
-                continue
-            rel_parts = p.relative_to(root).parts
-            if any(part in IGNORED_DIRS or part.startswith(".") for part in rel_parts[:-1]):
-                continue
-            if rel_parts[-1].startswith(".") and rel_parts[-1] not in {".env.example", ".gitignore"}:
-                continue
-            rel = "/".join(rel_parts)
-            score = _fuzzy_score(q, rel, p.name)
-            if score > 0:
-                scored.append((score, rel))
     except OSError:
         pass
 

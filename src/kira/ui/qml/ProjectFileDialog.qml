@@ -59,7 +59,7 @@ Dialog {
         }
         ColumnLayout {
             objectName: "universalMentionsSection"
-            visible: mentions.universalItems.length > 0
+            visible: dialog.visible && mentions.universalItems.length > 0
             Layout.fillWidth: true
             spacing: 6
             Text {
@@ -75,7 +75,7 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: 6
                 Repeater {
-                    model: mentions.universalItems.slice(0, 8)
+                    model: dialog.visible ? mentions.universalItems.slice(0, 8) : []
                     delegate: KButton {
                         required property var modelData
                         required property int index
