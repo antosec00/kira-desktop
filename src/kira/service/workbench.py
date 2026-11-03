@@ -39,7 +39,8 @@ MAX_CONTEXT_CHARS = 100_000
 MAX_EXPORT_INLINE = 650_000
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
                  "build", "dist", "__pycache__", ".pytest_cache", ".mypy_cache",
-                 ".ruff_cache", ".ssh", ".gnupg", ".aws", ".azure", ".codex"}
+                 ".ruff_cache", ".ssh", ".gnupg", ".aws", ".azure", ".codex",
+                 ".local", ".cache", ".config", ".cargo", ".rustup", ".npm", ".nvm", ".kira"}
 SECRET_NAMES = {".env", ".netrc", ".npmrc", ".pypirc", "credentials", "credentials.json",
                 "auth.json", "id_rsa", "id_ed25519", "id_ecdsa", "secrets.json",
                 "secrets.yaml", "secrets.yml"}

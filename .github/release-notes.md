@@ -1,32 +1,30 @@
-## Novità in Kira Desktop 0.24.0
+## Novità in Kira Desktop 0.25.0
 
-- **Apertura e Cambio Chat Istantanei**:
-  - **Cache in memoria delle sessioni**: passando da una chat all'altra la conversazione compare istantaneamente senza attese, schermate di caricamento o sfarfallii; le sessioni già aperte e senza esecuzioni attive vengono ripristinate in 0 RTT di rete.
-  - **Stato di esecuzione coerente e payload IPC leggeri**: gli stati terminali (`completed`, `failed`, `cancelled`, `interrupted`) non regrediscono più a *"In esecuzione"* durante il replay degli eventi storici e i snapshot grezzi del provider vengono esclusi dal trasporto UI.
-  - **Fluidità del thread UI**: cache dei font di sistema (`QFont`), indicizzazione $O(1)$ delle righe di trascrizione, virtualizzazione adattiva della conversazione e cache reattive per `@Mentions` e contesto della chat.
-- **Gestione Avanzata delle Chat, Azioni al Passaggio del Mouse e Barra dei Menu**:
-  - **Azioni rapide su hover e menu contestuale (`⋯` / clic destro)**: fissa in alto (*Pin*), rinomina, segna come non letto, copia (ID sessione, trascrizione, link), esporta in Markdown, archivia o elimina definitivamente qualsiasi chat direttamente dalla barra laterale; menu contestuale dedicato anche per i progetti.
-  - **Barra dei menu superiore nativa**: nuovi menu *File*, *Modifica*, *Visualizza*, *Strumenti* e *Aiuto* con scorciatoie da tastiera integrate.
-- **Pannello «Dettagli dell'esecuzione» Leggibile e Strutturato**:
-  - Schede riepilogative per stato e durata (`⏱ MM:SS`), testo della richiesta inviata (con copia rapida), errori evidenziati, tempi di avvio/conclusione, diagnostica dell'esito tradotta in linguaggio naturale e riferimenti tecnici, con possibilità di espandere o copiare il JSON grezzo.
-- **Google Cloud · Vertex AI (`google_cloud`) & Ragionamento Live**:
-  - **Rotazione automatica del Quota Pool multi-account**, compattazione DSQ della cronologia, streaming in tempo reale dei passaggi di ragionamento prima delle chiamate agli strumenti e telemetria cumulativa dei token per sessione.
+- **Google Cloud · Vertex AI (`google_cloud` / `gemini-4-argon`)**:
+  - **Recupero automatico da blocchi `PROMPT_SAFETY` e turni troncati senza loop**: quando il filtro di piattaforma Vertex AI interrompe uno stream su cronologie lunghe di ricerca di sicurezza, Kira compatta solo i turni più vecchi preservando integralmente l'ultima risposta dell'assistente, disattiva temporaneamente `thinkingConfig` per il retry e aggiorna la cronologia *in-place* per tutti i round di strumenti successivi.
+  - **Messaggi inviati durante l'esecuzione (*Mid-Run Steering*) compatibili con Gemini**: i messaggi inviati dall'utente mentre l'agente sta eseguendo strumenti vengono ora incorporati direttamente in `functionResponse` (`user_guidance` + allegati multimodali) rispettando il vincolo di adiacenza `functionCall → functionResponse` di Vertex AI senza errori `HTTP 400 INVALID_ARGUMENT`.
+- **Editor di Codice e File Integrato (*Canvas*)**:
+  - **Pulsante «A capo automatico» (*Word wrap*)**: nuovo pulsante nella barra superiore dell'editor per attivare o disattivare l'andata a capo automatica del testo, con preferenza salvata tra le sessioni.
+  - **Scorrimento e visibilità dell'ultima riga**: corretto il taglio dell'ultima riga quando è presente la barra di scorrimento orizzontale e migliorato il contrasto visivo dei cursori di scorrimento (`KScrollBar`).
+- **Isolamento dei File di Progetto**:
+  - Ogni progetto dispone ora di una directory workspace dedicata (`<data>/projects/<slug>-<id>`); i progetti che puntavano erroneamente alla cartella globale `~/.local/share/kira` vengono migrati automaticamente così che le viste *File* e *Dettagli* mostrino esclusivamente i file del progetto attivo.
+- **Apertura e Cambio Chat Istantanei & Ispettore «Dettagli dell'esecuzione»**:
+  - Cache in memoria delle sessioni per il cambio chat istantaneo, menu contestuali completi nella barra laterale e pannello *Dettagli dell'esecuzione* strutturato e leggibile.
 
 ---
 
-## What's New in Kira Desktop 0.24.0
+## What's New in Kira Desktop 0.25.0
 
-- **Instant Chat Opening & Switching**:
-  - **In-memory session cache**: switching between chats renders conversations instantaneously with zero blank screens or redundant reloads; previously visited idle chats restore in 0 network RTTs.
-  - **Consistent run state & lean IPC payloads**: terminal run states (`completed`, `failed`, `cancelled`, `interrupted`) never regress to *"Running"* during historical event replay, and heavy provider snapshots are stripped from UI event transport.
-  - **Main-thread UI responsiveness**: cached `QFont` resolution, $O(1)$ transcript row indexing, adaptive conversation `ListView` virtualization, and cached `@Mentions` / chat context reports.
-- **Rich Chat Management, Hover Actions & Top Menu Bar**:
-  - **Hover actions and context menus (`⋯` / right-click)**: pin to top, rename, mark as unread, copy (session ID, transcript, deep link), export as Markdown, archive, or permanently delete any chat directly from the sidebar; dedicated context menu for projects as well.
-  - **Native top menu bar**: *File*, *Edit*, *View*, *Tools*, and *Help* menus with keyboard shortcuts.
-- **Human-Readable "Execution Details" Inspector**:
-  - Structured cards for status badge and duration (`⏱ MM:SS`), sent request text (with quick copy), highlighted errors, start/completion timestamps, human-readable outcome diagnostics, and technical reference IDs, plus a collapsible raw JSON view.
-- **Google Cloud · Vertex AI (`google_cloud`) & Live Reasoning**:
-  - **Multi-account Quota Pool rotation**, DSQ history compaction, live step-by-step reasoning summaries before tool calls, and cumulative session token telemetry.
+- **Google Cloud · Vertex AI (`google_cloud` / `gemini-4-argon`)**:
+  - **Loop-free `PROMPT_SAFETY` & thought-cutoff recovery**: when Vertex AI's platform filter blocks a long security-research history, Kira trims only older turns while keeping the previous assistant response intact, suppresses `thinkingConfig` on the safety retry, and updates the message list in-place across subsequent tool rounds.
+  - **Mid-run user steering on Gemini**: messages sent while the agent is executing tools are now embedded directly into `functionResponse` (`user_guidance` + multimodal parts), preserving Vertex AI's strict `functionCall → functionResponse` adjacency requirement without `HTTP 400 INVALID_ARGUMENT` errors.
+- **Built-in Code & File Editor (*Canvas*)**:
+  - **"Word wrap" (*A capo automatico*) toggle**: new header button to switch between wrapped lines and horizontal scrolling, persisted across sessions.
+  - **Bottom-line padding & scrollbar contrast**: fixed last-line clipping above the horizontal scrollbar and improved scrollbar thumb contrast (`KScrollBar`).
+- **Project Workspace Isolation**:
+  - Every project now receives its own isolated workspace directory (`<data>/projects/<slug>-<id>`), automatically migrating legacy projects that pointed to `~/.local/share/kira` so the *Files* and *Details* views only list files belonging to the active project.
+- **Instant Chat Switching & Human-Readable "Execution Details" Inspector**:
+  - In-memory session cache for zero-latency chat switching, full sidebar context menus, and structured *Execution Details* cards.
 
 ---
 

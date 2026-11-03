@@ -96,7 +96,8 @@ class ProjectChats:
         artifacts = self.store.all(
             "SELECT a.* FROM artifacts a JOIN runs r ON r.id=a.run_id "
             "JOIN sessions s ON s.id=r.session_id WHERE s.id=? AND s.project_id=? "
-            "AND a.project_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 201",
+            "AND a.project_id=? AND a.kind NOT IN ('tool_output','browser_screenshot','host_file') "
+            "ORDER BY a.created_at DESC,a.id DESC LIMIT 201",
             (session_id, project_id, project_id),
         )
         truncated = len(rows) > 60 or len(artifacts) > 200

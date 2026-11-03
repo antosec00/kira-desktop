@@ -1577,21 +1577,67 @@ def _gemini_contents(source: Any, image_inputs: dict[str, list[Json]]) -> tuple[
                 parsed_result = content
             if not isinstance(parsed_result, dict):
                 parsed_result = {"result": parsed_result}
-            tool_parts: list[Json] = [
-                {"functionResponse": {"name": name, "response": parsed_result}},
-            ]
+            else:
+                parsed_result = dict(parsed_result)
+            fn_response: Json = {"name": name, "response": parsed_result}
             images = message.get("images", [])
-            if isinstance(images, list):
-                tool_parts.extend(_gemini_image_part(img) for img in images)
-            append_turn("user", tool_parts)
+            if isinstance(images, list) and images:
+                fn_response["parts"] = [_gemini_image_part(img) for img in images]
+            if (
+                contents
+                and contents[-1]["role"] == "user"
+                and not any("functionResponse" in p for p in contents[-1]["parts"])
+            ):
+                prior_texts = [
+                    p["text"]
+                    for p in contents[-1]["parts"]
+                    if isinstance(p.get("text"), str) and p["text"]
+                ]
+                prior_imgs = [p for p in contents[-1]["parts"] if "inlineData" in p]
+                if prior_texts:
+                    parsed_result["user_context"] = "\n\n".join(prior_texts)
+                if prior_imgs:
+                    existing_parts = list(fn_response.get("parts") or [])
+                    existing_parts.extend(prior_imgs)
+                    fn_response["parts"] = existing_parts
+                contents[-1]["parts"] = [{"functionResponse": fn_response}]
+            else:
+                append_turn("user", [{"functionResponse": fn_response}])
         elif role == "user":
-            user_parts: list[Json] = []
-            if isinstance(content, str) and content:
-                user_parts.append({"text": content})
             run_id = message.get("run_id")
             images = image_inputs.get(run_id, []) if isinstance(run_id, str) else []
-            user_parts.extend(_gemini_image_part(img) for img in images)
-            append_turn("user", user_parts)
+            if (
+                contents
+                and contents[-1]["role"] == "user"
+                and any("functionResponse" in p for p in contents[-1]["parts"])
+            ):
+                # Vertex AI Gemini 3/4 rejects turns that mix top-level functionResponse
+                # and text/inlineData parts ("Requests ending with a model turn are not supported.").
+                # Fold mid-run user steering text and images into the preceding functionResponse.
+                last_fn_resp = next(
+                    p["functionResponse"]
+                    for p in reversed(contents[-1]["parts"])
+                    if isinstance(p.get("functionResponse"), dict)
+                )
+                if isinstance(content, str) and content:
+                    resp_dict = dict(last_fn_resp.get("response") or {})
+                    existing_guidance = resp_dict.get("user_guidance")
+                    if isinstance(existing_guidance, str) and existing_guidance:
+                        resp_dict["user_guidance"] = existing_guidance + "\n\n" + content
+                    else:
+                        resp_dict["user_guidance"] = content
+                    last_fn_resp["response"] = resp_dict
+                if images:
+                    img_parts = [_gemini_image_part(img) for img in images]
+                    existing_parts = list(last_fn_resp.get("parts") or [])
+                    existing_parts.extend(img_parts)
+                    last_fn_resp["parts"] = existing_parts
+            else:
+                user_parts: list[Json] = []
+                if isinstance(content, str) and content:
+                    user_parts.append({"text": content})
+                user_parts.extend(_gemini_image_part(img) for img in images)
+                append_turn("user", user_parts)
 
     if not contents or contents[-1]["role"] != "user":
         append_turn("user", [{"text": "Continue."}])
@@ -1924,6 +1970,56 @@ def _compact_messages_for_vertex(source: Any, max_chars: int = 75_000) -> list[J
     return compacted
 
 
+def _is_recorded_tool_outcome_message(msg: Json) -> bool:
+    return (
+        msg.get("role") == "user"
+        and isinstance(msg.get("content"), str)
+        and msg["content"].startswith("Recorded tool outcome (historical data,")
+    )
+
+
+def _trim_history_for_safety_retry(source: Any, retry_step: int) -> list[Json]:
+    """Progressively compact/trim historical turns when Vertex AI blocks a prompt or emits an empty refusal turn."""
+    if not isinstance(source, list):
+        return []
+    system_msgs = [dict(m) for m in source if isinstance(m, dict) and m.get("role") == "system"]
+    conv_msgs = [dict(m) for m in source if isinstance(m, dict) and m.get("role") != "system"]
+    if not conv_msgs:
+        return system_msgs
+
+    real_user_indices = [
+        idx
+        for idx, m in enumerate(conv_msgs)
+        if m.get("role") == "user" and not _is_recorded_tool_outcome_message(m)
+    ]
+    last_user_idx = real_user_indices[-1] if real_user_indices else 0
+    active_turn_msgs = [dict(m) for m in conv_msgs[last_user_idx:]]
+
+    if retry_step <= 1:
+        if len(real_user_indices) >= 2 and real_user_indices[-2] > 0:
+            sliced = [dict(m) for m in conv_msgs[real_user_indices[-2] :]]
+            return _compact_messages_for_vertex(system_msgs + sliced, max_chars=75_000)
+        if len(real_user_indices) >= 2:
+            prev_user_msg = dict(conv_msgs[real_user_indices[-2]])
+            bridged: list[Json] = [prev_user_msg]
+            if last_user_idx > 1 and conv_msgs[last_user_idx - 1].get("role") == "assistant":
+                bridged.append(dict(conv_msgs[last_user_idx - 1]))
+            return _compact_messages_for_vertex(system_msgs + bridged + active_turn_msgs, max_chars=50_000)
+        return _compact_messages_for_vertex(system_msgs + active_turn_msgs, max_chars=40_000)
+
+    if retry_step == 2:
+        return _compact_messages_for_vertex(system_msgs + active_turn_msgs, max_chars=35_000)
+
+    user_msg = dict(active_turn_msgs[0]) if active_turn_msgs else {"role": "user", "content": "Continue."}
+    tail_rounds: list[Json] = []
+    rest = active_turn_msgs[1:]
+    for r_idx in range(len(rest) - 1, -1, -1):
+        if rest[r_idx].get("role") == "assistant":
+            tail_rounds = [dict(m) for m in rest[r_idx:]]
+            break
+    return _compact_messages_for_vertex(system_msgs + [user_msg, *tail_rounds], max_chars=16_000)
+
+
 async def _cancelable_sleep(seconds: float, ctx: RunContext | None) -> bool:
     """Sleep up to `seconds`, returning False early if the run is cancelled."""
     if seconds <= 0:
@@ -2240,9 +2336,14 @@ class GoogleCloudBackend(OllamaBackend):
         configured_location = (self.account.location or "global").strip()
         location = "global" if _is_global_only_vertex_model(effective_model_id) else configured_location
 
-        source = body.get("messages", [])
-        if ctx is not None and ctx.image_inputs.get(ctx.run_id):
-            source = _bind_active_prompt(source, ctx)
+        raw_source = body.get("messages", [])
+        source = (
+            _bind_active_prompt(raw_source, ctx)
+            if (ctx is not None and ctx.image_inputs.get(ctx.run_id))
+            else raw_source
+        )
+        initial_source = list(source) if isinstance(source, list) else source
+        suppress_thinking_config = bool(ctx and ctx.settings.get("_vertex_suppress_thinking"))
         effective_source = _compact_messages_for_vertex(source, max_chars=75_000)
         contents, system_text = _gemini_contents(effective_source, ctx.image_inputs if ctx else {})
         if system_text and not body.get("format"):
@@ -2298,7 +2399,11 @@ class GoogleCloudBackend(OllamaBackend):
                 temp = body["options"].get("temperature")
                 if isinstance(temp, (int, float)) and not isinstance(temp, bool):
                     gen_cfg["temperature"] = temp
-            think_cfg = _thinking_config_for_gemini(target_model, effort_str, max_output)
+            think_cfg = (
+                None
+                if suppress_thinking_config
+                else _thinking_config_for_gemini(target_model, effort_str, max_output)
+            )
             if think_cfg is not None:
                 gen_cfg["thinkingConfig"] = think_cfg
             safety_threshold = "BLOCK_NONE" if (self.account.auth_mode == "api_key" and not project) else "OFF"
@@ -2562,6 +2667,11 @@ class GoogleCloudBackend(OllamaBackend):
                                     )
                                 if isinstance(usage_meta.get("totalTokenCount"), int):
                                     total_tokens = usage_meta["totalTokenCount"]
+                            prompt_feedback = record.get("promptFeedback")
+                            if isinstance(prompt_feedback, dict):
+                                block_reason = prompt_feedback.get("blockReason")
+                                if isinstance(block_reason, str) and block_reason:
+                                    finish_reason = f"PROMPT_{block_reason}"
                             resp_candidates = record.get("candidates")
                             if isinstance(resp_candidates, list) and resp_candidates:
                                 cand = resp_candidates[0]
@@ -2667,6 +2777,7 @@ class GoogleCloudBackend(OllamaBackend):
                 and not tool_calls
                 and (
                     _is_canned_security_refusal(text)
+                    or finish_reason.startswith("PROMPT_")
                     or finish_reason
                     in {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "MALFORMED_FUNCTION_CALL", "RECITATION", "OTHER"}
                     or not text.strip()
@@ -2674,6 +2785,14 @@ class GoogleCloudBackend(OllamaBackend):
             )
             if is_refusal_or_cutoff and (rate_limit_fallbacks or empty_turn_retries < max_empty_retries):
                 empty_turn_retries += 1
+                suppress_thinking_config = True
+                if ctx is not None:
+                    ctx.settings["_vertex_suppress_thinking"] = True
+                trimmed_source = _trim_history_for_safety_retry(initial_source, empty_turn_retries)
+                source = trimmed_source
+                if isinstance(raw_source, list):
+                    raw_source[:] = trimmed_source
+                contents, _ = _gemini_contents(trimmed_source, ctx.image_inputs if ctx else {})
                 if rate_limit_fallbacks:
                     next_fb = rate_limit_fallbacks.pop(0)
                     target_loc = "global" if project else cur_loc
@@ -2683,12 +2802,25 @@ class GoogleCloudBackend(OllamaBackend):
                     target_model_label = next_fb
                 else:
                     target_model_label = cur_model
-                reason_label = (
-                    f"Risposta vuota/troncata dopo il pensiero ({finish_reason or 'nessun output'}) su {cur_model}"
-                    if not text.strip()
-                    else f"Rifiuto falso-positivo del classificatore interno su {cur_model}"
-                )
+                    if strict_model:
+                        candidates = self.account.candidate_account_ids()
+                        if len(candidates) > 1 and active_acc_id in candidates:
+                            next_idx = (candidates.index(active_acc_id) + 1) % len(candidates)
+                            if not self._is_on_cooldown(candidates[next_idx], cur_model):
+                                active_acc_id = candidates[next_idx]
+                if finish_reason.startswith("PROMPT_"):
+                    reason_label = (
+                        f"Blocco preventivo del filtro di input ({finish_reason}) sulla cronologia lunga su {cur_model}; "
+                        "compatto il contesto storico"
+                    )
+                elif not text.strip():
+                    reason_label = (
+                        f"Risposta vuota/troncata dopo il pensiero ({finish_reason or 'nessun output'}) su {cur_model}"
+                    )
+                else:
+                    reason_label = f"Rifiuto falso-positivo del classificatore interno su {cur_model}"
                 text = ""
+                thought_text = ""
                 finish_reason = ""
                 pending_deltas.clear()
                 if ctx is not None:

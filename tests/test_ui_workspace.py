@@ -525,3 +525,91 @@ print("Production Basic style: checked and unchecked tabs plus all ComboBox indi
     completed = subprocess.run([sys.executable, "-c", script, str(tmp_path)], env=environment,
                                capture_output=True, text=True, timeout=120, check=False)
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_project_artifacts_strictly_scoped_to_open_project_and_exclude_local_kira(workspace, tmp_path):
+    proj_root = tmp_path / "open-project"
+    (proj_root / "src").mkdir(parents=True)
+    readme = proj_root / "README.md"
+    readme.write_text("# Open Project\n")
+    app_py = proj_root / "src" / "app.py"
+    app_py.write_text("print('ok')\n")
+    hidden_local = proj_root / ".local" / "share" / "kira" / "artifacts" / "r1" / "tool.txt"
+    hidden_local.parent.mkdir(parents=True)
+    hidden_local.write_text("internal dump")
+    (proj_root / ".kira-write-probe.tmp").write_text("probe")
+
+    kira_tool_dump = workspace.paths.data / "artifacts" / "run-1" / "cmd.txt"
+    kira_tool_dump.parent.mkdir(parents=True)
+    kira_tool_dump.write_text("stdout dump")
+
+    other_proj_file = tmp_path / "other-project" / "notes.txt"
+    other_proj_file.parent.mkdir(parents=True)
+    other_proj_file.write_text("other project")
+
+    workspace._project = {"id": "p-open", "name": "Open Project", "root": str(proj_root)}
+    workspace._session_id = "s-open"
+    workspace._artifacts = [
+        {"id": "art-tool", "project_id": "p-open", "session_id": "s-open",
+         "kind": "tool_output", "path": str(kira_tool_dump)},
+        {"id": "art-hidden", "project_id": "p-open", "session_id": "s-open",
+         "kind": "file", "path": str(hidden_local)},
+        {"id": "art-other", "project_id": "p-other", "session_id": "s-other",
+         "kind": "file", "path": str(other_proj_file)},
+        {"id": "art-readme", "project_id": "p-open", "session_id": "s-open",
+         "kind": "file", "path": str(readme)},
+    ]
+
+    listed = workspace.artifacts
+    rel_paths = [item.get("rel_path") for item in listed]
+    paths = [item.get("path") for item in listed]
+
+    assert rel_paths == ["README.md", "src/app.py"]
+    assert paths == [str(readme.resolve()), str(app_py.resolve())]
+    assert all(".local" not in p for p in paths)
+
+
+def test_canvas_editor_horizontal_scrollbar_thumb_and_last_line_clearance(workspace, ui, tmp_path, qtbot):
+    ui.resize(1400, 900)
+    doc = tmp_path / "long-policy.md"
+    doc.write_text(
+        "\n".join(
+            f"Line {i}: "
+            + ("Any activities conducted in a manner consistent with this policy will be considered authorized conduct. " * 4)
+            for i in range(1, 196)
+        )
+    )
+    assert workspace.canvas.openProjectFile(str(doc))
+    qtbot.wait(80)
+
+    editor = find(ui, "canvasCodeEditor")
+    assert editor is not None
+    flick = editor.parentItem().parentItem()
+    wrap_btn = find(ui, "canvasWordWrapButton")
+    assert wrap_btn is not None and wrap_btn.property("checked")
+    assert workspace.canvas.wordWrap is True
+    assert editor.property("lineCount") > 195
+    assert flick.property("contentWidth") == flick.property("width")
+
+    # Toggle Word Wrap off -> horizontal scrollbar thumb is proportional and clearly visible.
+    workspace.canvas.toggleWordWrap()
+    qtbot.wait(60)
+    assert workspace.canvas.wordWrap is False
+    assert editor.property("lineCount") == 195
+    assert flick.property("contentWidth") > flick.property("width") * 2
+
+    bars = [c for c in flick.findChildren(QQuickItem) if "KScrollBar" in c.metaObject().className()]
+    hbar = [b for b in bars if str(b.property("orientation")).endswith("Horizontal")][0]
+    thumb = hbar.findChild(QObject, "scrollThumb")
+    bg = hbar.property("background")
+
+    assert hbar.property("minimumSize") < 0.25
+    assert 30 <= thumb.property("width") < hbar.property("width") * 0.6
+    assert thumb.property("color").name() != bg.property("color").name()
+
+    # Last line has vertical clearance above the horizontal scrollbar and horizontal clearance past the vertical scrollbar.
+    text_bottom = editor.property("topPadding") + editor.property("contentHeight")
+    assert flick.property("contentHeight") - text_bottom >= hbar.property("height") + 10
+    text_right = 48 + editor.property("leftPadding") + editor.property("contentWidth")
+    assert flick.property("contentWidth") - text_right >= 36
+
