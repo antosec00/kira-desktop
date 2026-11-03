@@ -2990,7 +2990,7 @@ ApplicationWindow {
                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("I risultati compariranno qui."); visible: workspace.artifacts.length === 0; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                     Repeater {
                                         model: workspace.artifacts
-                                        delegate: KButton { required property var modelData; Layout.fillWidth: true; text: "↗  " + String(modelData.path).split("/").pop(); onClicked: workspace.openArtifact(modelData.path); toolTipText: modelData.path }
+                                        delegate: KButton { required property var modelData; Layout.fillWidth: true; text: "↗  " + (modelData.rel_path || String(modelData.path).split("/").pop()); onClicked: workspace.openArtifact(modelData.path); toolTipText: modelData.path }
                                     }
                                     Rectangle { Layout.fillWidth: true; height: 1; color: appearance.colors.border }
                                     KButton { text: qsTr("Contesto fornito da Kira"); Layout.fillWidth: true; onClicked: contextDialog.open() }
@@ -3571,7 +3571,7 @@ ApplicationWindow {
                     spacing: 6
                     KButton {
                         Layout.fillWidth: true
-                        text: "↗  " + String(modelData.path).split("/").pop()
+                        text: "↗  " + (modelData.rel_path || String(modelData.path).split("/").pop())
                         onClicked: workspace.openArtifact(modelData.path)
                         toolTipText: modelData.path
                     }

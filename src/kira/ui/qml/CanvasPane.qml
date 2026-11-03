@@ -259,6 +259,19 @@ Rectangle {
                         onClicked: canvas.setViewMode("preview")
                     }
                     KButton {
+                        objectName: "canvasWordWrapButton"
+                        visible: canvas.viewMode === "code"
+                        text: qsTr("A capo")
+                        checked: canvas.wordWrap
+                        subtle: !canvas.wordWrap
+                        onClicked: {
+                            canvas.toggleWordWrap()
+                            if (canvas.wordWrap) {
+                                codeEditorFlick.contentX = 0
+                            }
+                        }
+                    }
+                    KButton {
                         objectName: "canvasTabDiff"
                         visible: !canvas.isProjectFileActive || canvas.diffHunks.length > 0
                         text: qsTr("Diff Blocchi (%1)").arg(canvas.diffHunks.length)
@@ -570,8 +583,14 @@ Rectangle {
                             Layout.fillHeight: true
                             clip: true
                             ReadText {
-                                width: docPreviewScroll.availableWidth
+                                objectName: "canvasDocPreviewText"
+                                width: Math.max(120, docPreviewScroll.availableWidth - 24)
+                                topPadding: 14
+                                bottomPadding: 28
+                                leftPadding: 16
+                                rightPadding: 16
                                 text: canvas.currentContent
+                                textFormat: canvas.currentKind === "markdown" ? TextEdit.MarkdownText : TextEdit.PlainText
                                 font: canvas.currentKind === "code" ? appearance.codeFont : appearance.uiFont
                                 color: appearance.colors.text
                                 wrapMode: TextEdit.Wrap
@@ -609,12 +628,12 @@ Rectangle {
                         Flickable {
                             id: codeEditorFlick
                             anchors.fill: parent
-                            contentWidth: Math.max(width, gutterCol.width + editorArea.implicitWidth + 24)
-                            contentHeight: Math.max(height, editorArea.contentHeight + 24)
+                            contentWidth: canvas.wordWrap ? width : Math.max(width, gutterCol.width + editorArea.width)
+                            contentHeight: Math.max(height, editorArea.height)
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            ScrollBar.vertical: KScrollBar {}
-                            ScrollBar.horizontal: KScrollBar {}
+                            ScrollBar.vertical: KScrollBar { z: 3 }
+                            ScrollBar.horizontal: KScrollBar { z: 3 }
 
                             // Active cursor line subtle highlight
                             Rectangle {
@@ -655,12 +674,10 @@ Rectangle {
                                     horizontalAlignment: Text.AlignRight
                                     textFormat: Text.PlainText
                                     text: {
-                                        var count = Math.max(1, editorArea.lineCount || canvas.currentLineCount);
-                                        var out = [];
-                                        for (var i = 1; i <= Math.min(count, 4000); ++i) {
-                                            out.push(i);
-                                        }
-                                        return out.join("\n");
+                                        void(editorArea.contentHeight);
+                                        void(editorArea.width);
+                                        void(editorArea.text);
+                                        return canvas.computeGutterLines(canvas.wordWrap, editorArea.lineCount, canvas.currentLineCount);
                                     }
                                 }
                             }
@@ -670,18 +687,20 @@ Rectangle {
                                 objectName: "canvasCodeEditor"
                                 x: gutterCol.width
                                 y: 0
-                                width: Math.max(codeEditorFlick.width - gutterCol.width, implicitWidth + 32)
-                                height: Math.max(codeEditorFlick.height, contentHeight + 24)
+                                width: canvas.wordWrap
+                                    ? Math.max(120, codeEditorFlick.width - gutterCol.width)
+                                    : Math.max(codeEditorFlick.width - gutterCol.width, Math.max(implicitWidth, contentWidth + leftPadding + rightPadding) + 32)
+                                height: Math.max(codeEditorFlick.height, contentHeight + topPadding + bottomPadding)
                                 topPadding: 12
-                                bottomPadding: 12
+                                bottomPadding: 32
                                 leftPadding: 12
-                                rightPadding: 16
+                                rightPadding: 36
                                 font: appearance.codeFont
                                 color: appearance.dark ? "#e6edf3" : "#0f172a"
                                 selectionColor: appearance.dark ? "#264f78" : "#bfdbfe"
                                 selectedTextColor: appearance.dark ? "#ffffff" : "#0f172a"
                                 text: canvas.currentContent
-                                wrapMode: TextEdit.NoWrap
+                                wrapMode: canvas.wordWrap ? TextEdit.Wrap : TextEdit.NoWrap
                                 selectByMouse: true
                                 textFormat: TextEdit.PlainText
                                 background: Item {}
@@ -699,8 +718,15 @@ Rectangle {
                                 onCursorRectangleChanged: {
                                     if (cursorRectangle.y < codeEditorFlick.contentY) {
                                         codeEditorFlick.contentY = Math.max(0, cursorRectangle.y - 12)
-                                    } else if (cursorRectangle.y + cursorRectangle.height > codeEditorFlick.contentY + codeEditorFlick.height - 12) {
-                                        codeEditorFlick.contentY = cursorRectangle.y + cursorRectangle.height - codeEditorFlick.height + 12
+                                    } else if (cursorRectangle.y + cursorRectangle.height > codeEditorFlick.contentY + codeEditorFlick.height - 32) {
+                                        codeEditorFlick.contentY = cursorRectangle.y + cursorRectangle.height - codeEditorFlick.height + 32
+                                    }
+                                    if (!canvas.wordWrap) {
+                                        if (cursorRectangle.x < codeEditorFlick.contentX) {
+                                            codeEditorFlick.contentX = Math.max(0, cursorRectangle.x - 16)
+                                        } else if (cursorRectangle.x + cursorRectangle.width + gutterCol.width > codeEditorFlick.contentX + codeEditorFlick.width - 36) {
+                                            codeEditorFlick.contentX = cursorRectangle.x + cursorRectangle.width + gutterCol.width - codeEditorFlick.width + 36
+                                        }
                                     }
                                 }
                                 onTextChanged: {
@@ -711,6 +737,12 @@ Rectangle {
                                 Keys.onPressed: function(event) {
                                     if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) {
                                         canvas.saveContent(editorArea.text, titleField.text)
+                                        event.accepted = true
+                                    } else if ((event.modifiers & Qt.AltModifier) && event.key === Qt.Key_Z) {
+                                        canvas.toggleWordWrap()
+                                        if (canvas.wordWrap) {
+                                            codeEditorFlick.contentX = 0
+                                        }
                                         event.accepted = true
                                     } else if (event.key === Qt.Key_Tab) {
                                         editorArea.insert(editorArea.cursorPosition, "    ")

@@ -1,6 +1,7 @@
 """Qt view model. RPC commands express intent; the service owns durable truth."""
 
 import asyncio
+import contextlib
 import json
 import math
 import os
@@ -625,6 +626,8 @@ class Workspace(QObject):
         self._runs: dict[str, Json] = {}
         self._artifacts: list[Json] = []
         self._artifact_paths: set[Any] = set()
+        self._scanned_project_root: str = ""
+        self._scanned_project_files: list[Json] = []
         self._catalogs: dict[str, Json] = {}
         self._direct_catalogs: dict[str, Json] = {}
         self._catalog_pending: set[tuple[str, str]] = set()
@@ -1871,9 +1874,81 @@ class Workspace(QObject):
                          "details": presentation["raw"], "description": presentation["body"]})
         return rows
 
+    def _is_project_artifact(self, item: Json) -> bool:
+        if not isinstance(item, dict):
+            return False
+        kind = str(item.get("kind") or "file")
+        if kind in {"tool_output", "browser_screenshot", "host_file"}:
+            return False
+        raw_path = str(item.get("path") or "").strip()
+        if not raw_path:
+            return False
+        try:
+            candidate = Path(raw_path)
+        except Exception:
+            return False
+        if candidate.name.startswith(".kira"):
+            return False
+        if any(part in {".local", ".cache", ".config", ".kira"} for part in candidate.parts):
+            return False
+        for internal_dir in (self.paths.data, self.paths.artifacts, self.paths.state, self.paths.config):
+            with contextlib.suppress(Exception):
+                if candidate.resolve(strict=False).is_relative_to(internal_dir.resolve(strict=False)):
+                    return False
+        root_str = str(self._project.get("root") or "").strip()
+        if root_str:
+            with contextlib.suppress(Exception):
+                root_path = Path(root_str).resolve(strict=False)
+                target_path = (candidate if candidate.is_absolute() else root_path / candidate).resolve(strict=False)
+                if not target_path.is_relative_to(root_path) or target_path == root_path:
+                    return False
+        return True
+
+    def _get_scanned_project_files(self) -> list[Json]:
+        root_str = str(self._project.get("root") or "").strip()
+        if not root_str:
+            return []
+        if root_str != self._scanned_project_root:
+            self._scanned_project_root = root_str
+            self._scanned_project_files = []
+            with contextlib.suppress(Exception):
+                from kira.ui.canvas_controller import _scan_project_files
+
+                root_path = Path(root_str).resolve(strict=True)
+                if root_path.is_dir():
+                    self._scanned_project_files = _scan_project_files(root_path, limit=100)
+        return self._scanned_project_files
+
     @qt_property("QVariantList", notify=changed)
     def artifacts(self) -> list[Json]:
-        return self._artifacts[-100:]
+        root_str = str(self._project.get("root") or "").strip()
+        root_path: Path | None = None
+        if root_str:
+            with contextlib.suppress(Exception):
+                root_path = Path(root_str).resolve(strict=False)
+        filtered: list[Json] = []
+        seen: set[str] = set()
+        for item in self._artifacts:
+            if not self._is_project_artifact(item):
+                continue
+            path_str = str(item.get("path") or "").strip()
+            if not path_str or path_str in seen:
+                continue
+            seen.add(path_str)
+            entry = dict(item)
+            if "rel_path" not in entry and root_path is not None:
+                with contextlib.suppress(Exception):
+                    cand = Path(path_str)
+                    resolved = (cand if cand.is_absolute() else root_path / cand).resolve(strict=False)
+                    if resolved.is_relative_to(root_path) and resolved != root_path:
+                        entry["rel_path"] = resolved.relative_to(root_path).as_posix()
+            filtered.append(entry)
+        for disk_file in self._get_scanned_project_files():
+            dpath = str(disk_file.get("path") or "").strip()
+            if dpath and dpath not in seen and self._is_project_artifact(disk_file):
+                seen.add(dpath)
+                filtered.append(dict(disk_file))
+        return filtered[-100:]
 
     @qt_property(str, notify=changed)
     def memoryText(self) -> str:
@@ -2190,8 +2265,10 @@ class Workspace(QObject):
             self._project = result["project"]
             self._sessions = [row for row in result.get("sessions", []) if not row.get("team_id")]
             self._runs = {run["id"]: run for run in result.get("runs", []) if not run.get("team_id")}
-            self._artifacts = []
-            self._artifact_paths.clear()
+            self._artifacts = [a for a in result.get("artifacts", []) if self._is_project_artifact(a)]
+            self._artifact_paths = {a.get("path") for a in self._artifacts}
+            self._scanned_project_root = ""
+            self._scanned_project_files = []
             if not same_project:
                 self._session = {}
             self._active_tools.clear()
@@ -2319,7 +2396,7 @@ class Workspace(QObject):
             self._usage = dict(cached["usage"])
             self._session_usage_rounds = deepcopy(cached["session_usage_rounds"])
             self._context = str(cached["context"])
-            self._artifacts = [dict(a) for a in cached["artifacts"]]
+            self._artifacts = [dict(a) for a in cached["artifacts"] if self._is_project_artifact(a)]
             self._artifact_paths = {a.get("path") for a in self._artifacts}
             for r_id, issues in cached["tool_issues"].items():
                 self._tool_issues[r_id] = dict(issues)
@@ -2346,7 +2423,7 @@ class Workspace(QObject):
             if not any(s["id"] == session["id"] for s in self._sessions):
                 self._sessions.append(session)
             self._remember_session()
-            self._artifacts = result.get("artifacts", [])
+            self._artifacts = [a for a in result.get("artifacts", []) if self._is_project_artifact(a)]
             self._artifact_paths = {a.get("path") for a in self._artifacts}
             runs = [r for r in result.get("runs", []) if r.get("session_id") == session_id]
             for run in runs:
@@ -3386,12 +3463,14 @@ class Workspace(QObject):
                 else:
                     self.transcript.update(row, **fields)
         elif kind == "artifact.created":
-            if len(self._artifact_paths) != len(self._artifacts):
-                self._artifact_paths = {a.get("path") for a in self._artifacts}
-            path = payload.get("path")
-            if path not in self._artifact_paths:
-                self._artifact_paths.add(path)
-                self._artifacts.append(payload)
+            if self._is_project_artifact(payload):
+                if len(self._artifact_paths) != len(self._artifacts):
+                    self._artifact_paths = {a.get("path") for a in self._artifacts}
+                path = payload.get("path")
+                if path not in self._artifact_paths:
+                    self._artifact_paths.add(path)
+                    self._artifacts.append(payload)
+                self._scanned_project_root = ""
         elif kind == "usage":
             if payload.get("scope") == "account":
                 self.accountUsage.observed(payload)  # Plan limits are not a request measure.
@@ -3602,7 +3681,7 @@ class Workspace(QObject):
 
     @Slot(str)
     def openArtifact(self, path: str) -> None:
-        registered = self._artifacts + self._workspace.get("captures", [])
+        registered = self.artifacts + self._artifacts + self._workspace.get("captures", [])
         if not any(a.get("path") == path for a in registered):
             self._problem(tr("Il file non è un artefatto registrato del progetto."))
             return

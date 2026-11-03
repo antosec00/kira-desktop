@@ -1303,7 +1303,7 @@ class Service:
                 "length(CAST(r.prompt AS BLOB))>2000 AS prompt_truncated "
                 "FROM runs r JOIN sessions s ON r.session_id=s.id WHERE s.project_id=? AND NOT EXISTS (SELECT 1 FROM team_run_links l WHERE l.run_id=r.id) ORDER BY r.created_at DESC LIMIT 500",
                 (project_id,))))
-            artifacts = list(reversed(self.store.all("SELECT * FROM artifacts WHERE project_id=? AND NOT EXISTS (SELECT 1 FROM team_run_links l WHERE l.run_id=artifacts.run_id) ORDER BY created_at DESC LIMIT 200", (project_id,))))
+            artifacts = list(reversed(self.store.all("SELECT * FROM artifacts WHERE project_id=? AND kind NOT IN ('tool_output','browser_screenshot','host_file') AND NOT EXISTS (SELECT 1 FROM team_run_links l WHERE l.run_id=artifacts.run_id) ORDER BY created_at DESC LIMIT 200", (project_id,))))
         else:
             sessions = self.store.all("SELECT * FROM sessions WHERE project_id=? ORDER BY created_at", (project_id,))
             runs = self.store.all("SELECT r.* FROM runs r JOIN sessions s ON r.session_id=s.id WHERE s.project_id=? ORDER BY r.created_at",
@@ -1327,7 +1327,7 @@ class Service:
             totals = {
                 "sessions": self.store.db.execute("SELECT COUNT(*) FROM sessions WHERE project_id=? AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id=sessions.id)", (project_id,)).fetchone()[0],
                 "runs": self.store.db.execute("SELECT COUNT(*) FROM runs r JOIN sessions s ON r.session_id=s.id WHERE s.project_id=? AND NOT EXISTS (SELECT 1 FROM team_run_links l WHERE l.run_id=r.id)", (project_id,)).fetchone()[0],
-                "artifacts": self.store.db.execute("SELECT COUNT(*) FROM artifacts WHERE project_id=? AND NOT EXISTS (SELECT 1 FROM team_run_links l WHERE l.run_id=artifacts.run_id)", (project_id,)).fetchone()[0],
+                "artifacts": self.store.db.execute("SELECT COUNT(*) FROM artifacts WHERE project_id=? AND kind NOT IN ('tool_output','browser_screenshot','host_file') AND NOT EXISTS (SELECT 1 FROM team_run_links l WHERE l.run_id=artifacts.run_id)", (project_id,)).fetchone()[0],
             }
         sessions = [ProjectChats(self.store).enrich(session) for session in sessions]
         for run in runs:

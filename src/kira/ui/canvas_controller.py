@@ -423,6 +423,18 @@ _IGNORED_DIRS: frozenset[str] = frozenset({
     "build",
     ".idea",
     ".vscode",
+    ".local",
+    ".cache",
+    ".config",
+    ".cargo",
+    ".rustup",
+    ".npm",
+    ".nvm",
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".azure",
+    ".codex",
 })
 
 _BINARY_EXTENSIONS: frozenset[str] = frozenset({
@@ -449,7 +461,7 @@ def _scan_project_files(root: Path, query: str = "", limit: int = 120) -> list[J
     try:
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = sorted(
-                d for d in dirnames if d not in _IGNORED_DIRS and not d.startswith(".kira")
+                d for d in dirnames if d not in _IGNORED_DIRS and not d.startswith(".")
             )
             for fname in sorted(filenames):
                 if fname.startswith(".") and fname not in {".env.example", ".gitignore"}:
@@ -595,6 +607,7 @@ class CanvasController(QObject):
         self._file_explorer_visible = False
         self._project_files: list[Json] = []
         self._file_search_query = ""
+        self._word_wrap = True
         self._highlighter: KiraSyntaxHighlighter | None = None
         self.liveFramePushed.connect(self._onLiveFramePushed)
         self.changed.connect(self._syncLiveStream)
@@ -611,6 +624,44 @@ class CanvasController(QObject):
             if text_doc is not None:
                 self._highlighter = KiraSyntaxHighlighter(text_doc)
                 self._highlighter.set_language(self.currentLanguage)
+
+    @qt_property(bool, notify=changed)
+    def wordWrap(self) -> bool:
+        return self._word_wrap
+
+    @Slot()
+    def toggleWordWrap(self) -> None:
+        self._word_wrap = not self._word_wrap
+        self.changed.emit()
+
+    @Slot(bool)
+    def setWordWrap(self, enabled: bool) -> None:
+        val = bool(enabled)
+        if self._word_wrap != val:
+            self._word_wrap = val
+            self.changed.emit()
+
+    @Slot(bool, int, int, result=str)
+    def computeGutterLines(self, word_wrap: bool, visual_line_count: int, fallback_count: int) -> str:
+        if word_wrap and self._highlighter is not None:
+            with contextlib.suppress(Exception):
+                doc = self._highlighter.document()
+                if doc is not None:
+                    out: list[str] = []
+                    block = doc.firstBlock()
+                    idx = 1
+                    while block.isValid() and idx <= 4000:
+                        layout = block.layout()
+                        wrapped = max(1, layout.lineCount() if layout is not None else 1)
+                        out.append(str(idx))
+                        for _ in range(wrapped - 1):
+                            out.append("")
+                        block = block.next()
+                        idx += 1
+                    if out:
+                        return "\n".join(out)
+        count = max(1, min(fallback_count or visual_line_count or 1, 4000))
+        return "\n".join(str(i) for i in range(1, count + 1))
 
     def _active_file_tab(self) -> Json | None:
         if not self._active_file_path:

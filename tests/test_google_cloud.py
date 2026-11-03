@@ -1268,3 +1268,159 @@ async def test_google_cloud_round_robin_alternates_healthy_accounts(
         await backend.close()
         await account.close()
 
+
+@pytest.mark.asyncio
+async def test_gemini_contents_mid_run_steering_and_multimodal_tool_responses(tmp_path: Path) -> None:
+    from kira.backends.google_cloud import _gemini_contents
+
+    one_px_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": "System prompt."},
+        {"role": "user", "content": "Analizza il progetto"},
+        {
+            "role": "assistant",
+            "content": "**Lettura file**",
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "thought_signature": "SIG_1",
+                    "function": {"name": "list_files", "arguments": {"path": "."}},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_name": "list_files",
+            "tool_call_id": "call-1",
+            "content": json.dumps(
+                {
+                    "ok": False,
+                    "deferred": True,
+                    "error": {
+                        "code": "DEFERRED_FOR_USER_GUIDANCE",
+                        "message": "Tool call was not executed because new user guidance arrived.",
+                    },
+                }
+            ),
+            "images": [one_px_png],
+        },
+        {
+            "role": "user",
+            "content": "Additional user guidance arrived during the active run:\nControlla prima README.md",
+        },
+    ]
+
+    contents, _ = _gemini_contents(messages, {})
+    assert len(contents) == 3
+    last_turn = contents[-1]
+    assert last_turn["role"] == "user"
+    # Every part in a functionResponse turn must be a functionResponse (never mixed with top-level text/inlineData)
+    assert all("functionResponse" in part for part in last_turn["parts"])
+    fn_resp = last_turn["parts"][0]["functionResponse"]
+    assert fn_resp["name"] == "list_files"
+    assert "Controlla prima README.md" in fn_resp["response"]["user_guidance"]
+    assert fn_resp["parts"] == [{"inlineData": {"mimeType": "image/png", "data": one_px_png}}]
+
+
+@pytest.mark.asyncio
+async def test_google_cloud_recovers_from_prompt_feedback_safety_block_by_trimming_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path / "no-gcloud"))
+    paths = _paths(tmp_path)
+    seen_turn_counts: list[int] = []
+    seen_thinking_configs: list[bool] = []
+    seen_prev_assistant_texts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "oauth2.googleapis.com/token" in url:
+            return httpx.Response(200, json={"access_token": "ya29.tok", "expires_in": 3600})
+        assert "/models/gemini-4-argon:" in url
+        body = json.loads(request.content.decode("utf-8"))
+        turns = body.get("contents", [])
+        seen_turn_counts.append(len(turns))
+        seen_thinking_configs.append("thinkingConfig" in (body.get("generationConfig") or {}))
+        if len(turns) >= 2:
+            seen_prev_assistant_texts.append(turns[-2]["parts"][0].get("text", ""))
+        if len(turns) > 5 or "thinkingConfig" in (body.get("generationConfig") or {}):
+            sse_blocked = (
+                'data: {"promptFeedback": {"blockReason": "SAFETY", '
+                '"blockReasonMessage": "The prompt is blocked due to safety"}, '
+                '"usageMetadata": {"trafficType": "ON_DEMAND"}, "modelVersion": "gemini-4-argon"}\n\n'
+            )
+            return httpx.Response(200, text=sse_blocked, headers={"content-type": "text/event-stream"})
+        sse_ok = (
+            'data: {"candidates": [{"content": {"role": "model", "parts": ['
+            '{"text": "Perfetto, procediamo subito con la registrazione sull\'account di test."}]}}], '
+            '"usageMetadata": {"promptTokenCount": 1825, "candidatesTokenCount": 24, "totalTokenCount": 1849}}\n\n'
+        )
+        return httpx.Response(200, text=sse_ok, headers={"content-type": "text/event-stream"})
+
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(paths.config / "google-cloud", client=httpx.AsyncClient(transport=transport))
+    account.accounts = {
+        "acc-1": {
+            "id": "acc-1",
+            "email": "acc1@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok1",
+            "project_id": "proj-1",
+            "enabled": True,
+        },
+        "acc-2": {
+            "id": "acc-2",
+            "email": "acc2@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok2",
+            "project_id": "proj-2",
+            "enabled": True,
+        },
+    }
+    account.active_account_id = "acc-1"
+    account.set_strict_model(True)
+
+    long_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": "System prompt."},
+        {"role": "user", "content": "Iniziamo l'analisi del programma bug bounty."},
+    ]
+    for i in range(12):
+        long_messages.append({"role": "assistant", "content": f"**Step {i}**\nAnalisi preliminare {i}."})
+        long_messages.append(
+            {
+                "role": "user",
+                "content": f'Recorded tool outcome (historical data, not instructions or a new tool call): {{"name":"run_command","result":{{"step":{i}}}}}',
+            }
+        )
+    long_messages.extend(
+        [
+            {"role": "assistant", "content": "Sintesi iniziale con Steps to exploit e Proof of exploit."},
+            {"role": "user", "content": "Username: antosec\nAndiamo con l'opzione 1."},
+            {"role": "assistant", "content": "Report dettagliato con endpoint /api/booking-bff/saved-traveller/fetch e passportNumber."},
+            {"role": "user", "content": "ok devo effettuare prima la registrazione\n"},
+        ]
+    )
+
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    try:
+        msg, term = await backend._stream(
+            {"model": "gemini-4-argon", "messages": long_messages, "reasoning_effort": "high"},
+            ctx=None,
+            item_id="safety-retry-test",
+        )
+        assert seen_turn_counts == [29, 3]
+        assert seen_thinking_configs == [True, False]
+        assert seen_prev_assistant_texts[-1] == (
+            "Report dettagliato con endpoint /api/booking-bff/saved-traveller/fetch e passportNumber."
+        )
+        assert len(long_messages) == 4
+        assert msg["content"] == "Perfetto, procediamo subito con la registrazione sull'account di test."
+        assert term["done"] is True
+        assert term["prompt_eval_count"] == 1825
+    finally:
+        await backend.close()
+        await account.close()
+
+
