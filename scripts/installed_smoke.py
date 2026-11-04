@@ -592,7 +592,8 @@ def main():
         assert [row["text"] for row in rows] == [
             "Ollama", "Codex", "OpenAI diretto · ChatGPT", "DeepSeek Account",
             "DeepSeek Web · sperimentale", "Claude Code · uso personale",
-            "Google Cloud · Vertex AI"]
+            "Google Cloud · Vertex AI", "OpenRouter"]
+
         assert {row["highlighted"] for row in rows} == {False, True}
         for row in rows:
             light, dark = sorted((luminance(row["foreground"]), luminance(row["background"])),
