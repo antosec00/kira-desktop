@@ -350,6 +350,7 @@ def test_address_keyboard_draft_survives_frames_and_submits_bare_host(browser, q
     window = engine.rootObjects()[0]
     try:
         ready(controller, requests)
+        controller._resize_timer.stop()
         controller._set_browser(state(url="about:blank"))
         address = window.findChild(QObject, "browserAddress")
         address.forceActiveFocus()
@@ -365,6 +366,9 @@ def test_address_keyboard_draft_survives_frames_and_submits_bare_host(browser, q
             controller._browser_event(event("state", state(url="about:blank"), seq=index * 2 + 1))
             assert address.property("text") == typed
         QTest.keyClick(window, Qt.Key.Key_Return)
+        for request in list(requests):
+            if request[0] == "session.browser.command" and request[1]["action"] == "viewer" and controller._command_pending:
+                request[2](snapshot(url="about:blank"))
         navigation = [request for request in requests if request[0] == "session.browser.command"
                       and request[1]["action"] == "ui_navigate"]
         assert len(navigation) == 1
