@@ -184,6 +184,27 @@ class AccountUsage:
                 "reason": "not_exposed",
                 "local_usage": self.local(backend, None, observed_at),
             }
+        if backend == "openrouter":
+            or_status = self.service.openrouter_accounts.auth.status()
+            raw_key_info = or_status.get("key_info")
+            key_info: Json = raw_key_info if isinstance(raw_key_info, dict) else {}
+            plan_type = "Free tier" if key_info.get("is_free_tier") else "API"
+            account = {
+                "type": "openrouter",
+                "label": key_info.get("label") or or_status.get("label") or "OpenRouter",
+                "plan_type": plan_type,
+                "connected": bool(or_status.get("connected")),
+            }
+            return {
+                "available": True,
+                "source": backend,
+                "scope": "kira_recorded",
+                "observed_at": observed_at,
+                "account": account,
+                "limits": [],
+                "reason": "not_exposed",
+                "local_usage": self.local(backend, None, observed_at),
+            }
         account = {"type": "local", "label": "Ollama", "plan_type": None}
         if backend == "openai_chatgpt":
             status = await self.service.direct_accounts.status()

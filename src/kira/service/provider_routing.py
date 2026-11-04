@@ -26,8 +26,9 @@ METHODS = frozenset({"session.providers", "session.switch"})
 DEEPSEEK_BACKEND = "deepseek_account"
 DEEPSEEK_WEB_BACKEND = "deepseek_web"
 GOOGLE_CLOUD_BACKEND = "google_cloud"
+OPENROUTER_BACKEND = "openrouter"
 BACKENDS = ("ollama", "codex", DIRECT_BACKEND, DEEPSEEK_BACKEND, DEEPSEEK_WEB_BACKEND,
-            CLAUDE_CODE_BACKEND, GOOGLE_CLOUD_BACKEND)
+            CLAUDE_CODE_BACKEND, GOOGLE_CLOUD_BACKEND, OPENROUTER_BACKEND)
 SHARED_SETTINGS = frozenset({"tools", "max_tool_rounds", "max_output_bytes"})
 _OWN_SETTINGS = {
     # The desktop offers every effort a model's catalog declares; Ollama keeps
@@ -39,6 +40,7 @@ _OWN_SETTINGS = {
     DEEPSEEK_WEB_BACKEND: SHARED_SETTINGS,
     CLAUDE_CODE_BACKEND: SHARED_SETTINGS | {"reasoning_effort"},
     GOOGLE_CLOUD_BACKEND: SHARED_SETTINGS | {"reasoning_effort", "temperature"},
+    OPENROUTER_BACKEND: SHARED_SETTINGS | {"reasoning_effort", "temperature"},
 }
 # The settings a chat can save for each provider. Browser preferences belong to
 # every provider that receives Kira's browser tools (session.web.update).
@@ -231,8 +233,8 @@ class ProviderRouting:
         allowed = PROVIDER_SETTINGS[backend] if previous else SHARED_SETTINGS
         config = {key: value for key, value in source.items() if key in allowed}
         config.update({key: value for key, value in session["settings"].items() if key in CHAT_SETTINGS})
-        if backend == DEEPSEEK_BACKEND:
-            # DeepSeek runs always install Kira's service-owned tool loop;
+        if backend in {DEEPSEEK_BACKEND, OPENROUTER_BACKEND}:
+            # DeepSeek and OpenRouter runs install Kira's service-owned tool loop;
             # do not inherit an Ollama-only tools-off preference.
             config["tools"] = True
         elif backend == DEEPSEEK_WEB_BACKEND:
@@ -289,6 +291,8 @@ class ProviderRouting:
             require_claude_code()
         elif backend == GOOGLE_CLOUD_BACKEND:
             await self.service.google_accounts.prepare()
+        elif backend == OPENROUTER_BACKEND:
+            await self.service.openrouter_accounts.prepare()
         if (backend != source["backend"] or model != source["model"] or
                 config.get("openai_account_id") != source["settings"].get("openai_account_id")):
             await self.service.web.before_configuration(project_id, session_id)

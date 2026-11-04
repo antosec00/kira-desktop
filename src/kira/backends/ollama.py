@@ -926,7 +926,7 @@ class OllamaBackend:
                 active_turn.append(message)
             else:
                 messages.append(message)
-            public_message = {k: v for k, v in message.items() if k != "thinking"}
+            public_message = {k: v for k, v in message.items() if k not in {"thinking", "reasoning_details"}}
             calls = message.get("tool_calls", [])
             await ctx.emit("message.completed", {"content": message.get("content", ""),
                             "item_id": item_id,

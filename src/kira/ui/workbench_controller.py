@@ -357,7 +357,7 @@ class WorkbenchController(QObject):
 
     @qt_property(bool, notify=changed)
     def steeringAvailable(self) -> bool:
-        return (self.workspace.backend in {"openai_chatgpt", "ollama", "deepseek_account", "google_cloud"}
+        return (self.workspace.backend in {"openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter"}
                 or self.workspace.backend == "codex" and self._capability("steering"))
 
     @qt_property(bool, notify=changed)

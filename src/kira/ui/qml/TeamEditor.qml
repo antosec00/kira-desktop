@@ -104,11 +104,30 @@ Dialog {
                 SectionHeading { text: qsTr("Modello e limiti") }
                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; text: qsTr("Provider e modello per tutto il team"); textFormat: Text.PlainText; color: appearance.colors.accent }
                 KComboBox {
+                    id: teamBackendBox
                     objectName: "teamBackendInput"
+                    readonly property var allTeamBackends: ["codex", "ollama", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter"]
+                    readonly property var availableTeamBackends: {
+                        workspace.disabledBackends
+                        const enabled = workspace.enabledBackends || []
+                        const filtered = enabled.length > 0 ? allTeamBackends.filter(function(b) { return enabled.indexOf(b) >= 0 }) : allTeamBackends
+                        const list = filtered.length > 0 ? filtered : allTeamBackends
+                        if (teams.draft.backend && list.indexOf(teams.draft.backend) < 0) list.push(teams.draft.backend)
+                        return list
+                    }
+                    function labelFor(backend) {
+                        if (backend === "codex") return "Codex"
+                        if (backend === "ollama") return "Ollama"
+                        if (backend === "openai_chatgpt") return qsTr("OpenAI diretto · ChatGPT")
+                        if (backend === "deepseek_account") return qsTr("DeepSeek Account")
+                        if (backend === "google_cloud") return qsTr("Google Cloud · Vertex AI")
+                        if (backend === "openrouter") return qsTr("OpenRouter")
+                        return backend
+                    }
                     Layout.fillWidth: true
-                    model: ["Codex", "Ollama", qsTr("OpenAI diretto · ChatGPT"), qsTr("DeepSeek Account"), qsTr("Google Cloud · Vertex AI")]
-                    currentIndex: teams.draft.backend === "ollama" ? 1 : teams.draft.backend === "openai_chatgpt" ? 2 : teams.draft.backend === "deepseek_account" ? 3 : teams.draft.backend === "google_cloud" ? 4 : 0
-                    onActivated: teams.setBackend(["codex", "ollama", "openai_chatgpt", "deepseek_account", "google_cloud"][currentIndex])
+                    model: availableTeamBackends.map(function(b) { return teamBackendBox.labelFor(b) })
+                    currentIndex: Math.max(0, availableTeamBackends.indexOf(teams.draft.backend))
+                    onActivated: teams.setBackend(availableTeamBackends[currentIndex])
                     enabled: !workspace.busy && !teams.busy
                     Accessible.name: qsTr("Provider condiviso dal team")
                 }
@@ -151,6 +170,7 @@ Dialog {
                 DirectAccountPane { objectPrefix: "teamChatGPT"; visible: teams.draft.backend === "openai_chatgpt" }
                 DeepSeekAccountPane { visible: teams.draft.backend === "deepseek_account" }
                 GoogleCloudPane { visible: teams.draft.backend === "google_cloud" }
+                OpenRouterPane { visible: teams.draft.backend === "openrouter" }
                 Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; text: teams.providerText; textFormat: Text.PlainText; color: muted; wrapMode: Text.Wrap; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
                 GridLayout {
                     Layout.fillWidth: true; columns: form.availableWidth < 540 ? 1 : 2

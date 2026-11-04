@@ -628,6 +628,25 @@
   "Strumenti non confermati": "Unconfirmed tools",
   "Sì": "Yes",
   "Ultimo aggiornamento": "Last updated",
-  "È richiesta la tua conferma per eseguire uno strumento.": "Your confirmation is required to run a tool."
+  "È richiesta la tua conferma per eseguire uno strumento.": "Your confirmation is required to run a tool.",
+  "Budget residuo chiave: ${amount}": "Remaining key budget: ${amount}",
+  "Chiave API OpenRouter configurata{detail}.": "OpenRouter API key configured{detail}.",
+  "Configura la chiave API OpenRouter dal pannello Modelli per caricare il catalogo.": "Configure the OpenRouter API key from the Models panel to load the catalog.",
+  "Free tier": "Free tier",
+  "Inserisci la chiave API OpenRouter (sk-or-v1-...)": "Enter your OpenRouter API key (sk-or-v1-...)",
+  "Inserisci la tua chiave API OpenRouter (sk-or-v1-...) per collegare qualsiasi modello con tutti gli strumenti di Kira.": "Enter your OpenRouter API key (sk-or-v1-...) to connect any model with all Kira tools.",
+  "Nessun modello OpenRouter disponibile; verifica la chiave API e aggiorna.": "No OpenRouter models available; verify your API key and refresh.",
+  "Oggi: ${amount}": "Today: ${amount}",
+  "OpenRouter": "OpenRouter",
+  "OpenRouter collegato tramite variabile d'ambiente OPENROUTER_API_KEY{detail}.": "OpenRouter connected via OPENROUTER_API_KEY environment variable{detail}.",
+  "OpenRouter non collegato. Configura la tua chiave API OpenRouter in Modelli.": "OpenRouter not connected. Configure your OpenRouter API key in Models.",
+  "Scegli un modello OpenRouter dal catalogo per il team.": "Choose an OpenRouter model from the catalog for the team.",
+  "Utilizzo chiave: ${amount}": "Key usage: ${amount}",
+  "{count} modelli OpenRouter disponibili": "{count} OpenRouter models available",
+  "Almeno un provider deve rimanere attivo.": "At least one provider must remain enabled.",
+  "Il provider {provider} è disattivato. Riattivalo nel pannello Modelli.": "Provider {provider} is disabled. Re-enable it in the Models panel.",
+  "Non puoi disattivare il provider mentre un'esecuzione è in corso.": "You cannot disable the provider while a run is in progress.",
+  "Provider {provider} attivato.": "Provider {provider} enabled.",
+  "Provider {provider} disattivato.": "Provider {provider} disabled."
 }
 

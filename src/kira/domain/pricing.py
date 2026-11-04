@@ -35,10 +35,28 @@ def _valid_int(value: Any) -> int | None:
     return int(num)
 
 
+_DYNAMIC_PRICING: dict[tuple[str, str], ModelPricing] = {}
+
+
+def register_dynamic_model_pricing(backend: str, model: str, pricing: ModelPricing) -> None:
+    """Register live per-model pricing and context window discovered from a provider catalog."""
+    b = (backend or "").strip().lower()
+    m = (model or "").strip().lower()
+    if not b or not m:
+        return
+    if len(_DYNAMIC_PRICING) >= 2048:
+        _DYNAMIC_PRICING.pop(next(iter(_DYNAMIC_PRICING)), None)
+    _DYNAMIC_PRICING[(b, m)] = pricing
+
+
 def resolve_model_pricing(backend: str, model: str = "") -> ModelPricing:
     """Return per-1M-token USD rates and default context window for a backend/model pair."""
     b = (backend or "").strip().lower()
     m = (model or "").strip().lower()
+
+    dynamic = _DYNAMIC_PRICING.get((b, m))
+    if dynamic is not None:
+        return dynamic
 
     if b == "ollama":
         return ModelPricing(

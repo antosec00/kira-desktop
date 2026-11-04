@@ -130,3 +130,57 @@ def test_model_cards_flow_in_two_columns_only_when_wide(models_ui, qtbot):
     assert first.mapToScene(QPoint(0, 0)).y() < second.mapToScene(QPoint(0, 0)).y()
     assert first.width() == second.width()
     assert first.mapToScene(QPoint(0, 0)).x() + first.width() <= window.width()
+
+
+def test_provider_enable_disable_toggle_button_persists_and_filters_selectors(models_ui, qtbot):
+    from PySide6.QtCore import QObject
+
+    from kira.ui.preferences import KNOWN_BACKENDS, read_preferences
+
+    workspace, window, _ = models_ui
+    toggle = named(window, "providerEnableToggleButton")
+    status_text = named(window, "providerStatusText")
+    ollama_pill = named(window, "ollamaBackendButton")
+    backend_box = window.findChild(QObject, "backendBox")
+    assert backend_box is not None
+
+    assert toggle.isVisible() and toggle.isEnabled()
+    assert toggle.property("text") == "Disattiva provider"
+    assert ollama_pill.property("text") == "Ollama"
+    assert "Ollama" in list(backend_box.property("model"))
+
+    click(window, toggle)
+    qtbot.wait(40)
+
+    assert not workspace.isProviderEnabled("ollama")
+    assert workspace.disabledBackends == ["ollama"]
+    assert read_preferences(workspace.paths.config)["disabled_backends"] == ["ollama"]
+    assert workspace.backend == "codex"
+    assert toggle.property("text") == "Attiva provider"
+
+    assert ollama_pill.property("text") == "Ollama · Off"
+    assert "Ollama è disattivato" in status_text.property("text")
+    assert not any(obj.objectName() == "modelCard_qwen" for obj in walk(window.contentItem()))
+    assert "Ollama" not in list(backend_box.property("model"))
+
+
+    click(window, toggle)
+    qtbot.wait(40)
+
+    assert workspace.isProviderEnabled("ollama")
+    assert workspace.disabledBackends == []
+    assert read_preferences(workspace.paths.config)["disabled_backends"] == []
+    assert toggle.property("text") == "Disattiva provider"
+    assert ollama_pill.property("text") == "Ollama"
+    assert named(window, "modelCard_qwen").isVisible()
+    assert "Ollama" in list(backend_box.property("model"))
+
+
+    for other in KNOWN_BACKENDS:
+        if other != "ollama":
+            workspace.setProviderEnabled(other, False)
+    qtbot.wait(30)
+    assert workspace.enabledBackends == ["ollama"]
+    assert not toggle.isEnabled()
+
+
