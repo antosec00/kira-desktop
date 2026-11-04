@@ -1972,20 +1972,32 @@ class Workspace(QObject):
             return False
         if candidate.name.startswith(".kira"):
             return False
-        if any(part in {".local", ".cache", ".config", ".kira"} for part in candidate.parts):
-            return False
-        for internal_dir in (self.paths.data, self.paths.artifacts, self.paths.state, self.paths.config):
+        cand_resolved = candidate.resolve(strict=False)
+        projects_root = (self.paths.data / "projects").resolve(strict=False)
+        for internal_dir in (self.paths.artifacts, self.paths.state, self.paths.config):
             with contextlib.suppress(Exception):
-                if candidate.resolve(strict=False).is_relative_to(internal_dir.resolve(strict=False)):
+                if cand_resolved.is_relative_to(internal_dir.resolve(strict=False)):
                     return False
+        with contextlib.suppress(Exception):
+            data_resolved = self.paths.data.resolve(strict=False)
+            if cand_resolved.is_relative_to(data_resolved) and not cand_resolved.is_relative_to(projects_root):
+                return False
         root_str = str(self._project.get("root") or "").strip()
         if root_str:
             with contextlib.suppress(Exception):
                 root_path = Path(root_str).resolve(strict=False)
                 target_path = (candidate if candidate.is_absolute() else root_path / candidate).resolve(strict=False)
-                if root_path.exists() and (not target_path.is_relative_to(root_path) or target_path == root_path):
+                if target_path == root_path:
                     return False
+                if target_path.is_relative_to(root_path):
+                    rel_parts = target_path.relative_to(root_path).parts
+                    return not any(part in {".local", ".cache", ".config", ".kira"} for part in rel_parts)
+                if root_path.exists():
+                    return False
+        if any(part in {".local", ".cache", ".config", ".kira"} for part in candidate.parts):
+            return False
         return True
+
 
     def _get_scanned_project_files(self) -> list[Json]:
         root_str = str(self._project.get("root") or "").strip()
