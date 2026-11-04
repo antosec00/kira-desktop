@@ -200,9 +200,11 @@ class OpenRouterAccountController(QObject):
             failed,
         )
 
+    @Slot()
     def close(self) -> None:
         self._generation += 1
         self._busy = False
         self._connected = False
         self._error = ""
         self.changed.emit()
+
