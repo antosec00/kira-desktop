@@ -20,7 +20,7 @@ GUI (PySide6/QML)  →  socket Unix privato  →  servizio asyncio  →  provide
   richieste, riceve risposte ed eventi e li presenta.
 - Solo il servizio scrive SQLite. Ogni modifica di stato è registrata nel
   database prima di essere pubblicata ai client.
-- I provider (Ollama, Codex, OpenAI diretto, DeepSeek, Claude Code) ricevono un
+- I provider (Ollama, Codex, OpenAI diretto, DeepSeek, Claude Code, Google Cloud, OpenRouter) ricevono un
   `RunContext` dal servizio e usano le sue callback per emettere eventi,
   eseguire strumenti e chiedere approvazioni. Un provider non ha accesso diretto
   al database né alla GUI.
@@ -223,9 +223,9 @@ Convenzione: `metodo {parametri} → {risultato}`; `?` indica un campo opzionale
 | `session.providers` | `{project_id, session_id}` → `{session, current_generation, providers:[{backend, model, reasoning_effort, account_id, used, current}], transitions:[...], transitions_truncated}` | Sola lettura; fino a 100 generazioni recenti. |
 | `session.switch` | `{project_id, session_id, request_id, backend, model, reasoning_effort, account_id?}` → `{session, current_generation, replayed, switch:{request_id, generation, backend, model, account_id, changed, transitioned}}` | `reasoning_effort` è obbligatorio anche se vuoto (DeepSeek Web non lo salva); `account_id` solo per OpenAI diretto. Le impostazioni che il nuovo provider non usa non vengono riportate. Richiede chat inattiva senza code, Team o prenotazioni. Una ripetizione restituisce la ricevuta originale più la sessione **corrente**. |
 | `session.compact` | `{project_id, session_id, request_id}` → `{operation}` | Compattazione nativa (Codex) di una chat inattiva; il completamento richiede l'esito terminale del provider. |
-| `session.context` | `{project_id, session_id}` → `{backend, model, account_id, provider_generation, mode, policy, metrics, memory:{pins, summary, sources}, status, operation, revision, has_state, error}` | Stato pubblico del contesto della chat. Con OpenAI diretto e DeepSeek Account, dove il contesto è gestito da Kira, include capacità, stime, memoria generata e ultima ricevuta; le note importanti sono in `memory.pins`. |
+| `session.context` | `{project_id, session_id}` → `{backend, model, account_id, provider_generation, mode, policy, metrics, memory:{pins, summary, sources}, status, operation, revision, has_state, error}` | Stato pubblico del contesto della chat. Con OpenAI diretto, DeepSeek Account, Google Cloud e OpenRouter, dove il contesto è gestito da Kira, include capacità, stime, memoria generata e ultima ricevuta; le note importanti sono in `memory.pins`. |
 | `session.context.pin` / `.unpin` | `{project_id, session_id, request_id, content}` / `{..., note_id}` | Note importanti dell'utente, fornite letteralmente a ogni turno. Richiedono una chat non archiviata (`ARCHIVED`), nessun lavoro attivo nel progetto o in uno sovrapposto e nessuna richiesta in coda (`BUSY`). |
-| `session.context.compact` | `{project_id, session_id, request_id}` → `{context, operation}` | Manutenzione esplicita del contesto con OpenAI diretto e DeepSeek Account, solo a chat inattiva e senza richieste in coda; prenota la radice del progetto. |
+| `session.context.compact` | `{project_id, session_id, request_id}` → `{context, operation}` | Manutenzione esplicita del contesto con OpenAI diretto, DeepSeek Account, Google Cloud e OpenRouter, solo a chat inattiva e senza richieste in coda; prenota la radice del progetto. |
 | `session.history.search` | `{project_id, session_id, query, limit?, before_id?}` → `{results, ...}` | Ricerca letterale Unicode nell'archivio originale della chat; pagine limitate. |
 | `session.history.read` | `{project_id, session_id, source_id, offset?, limit?}` → `{content, next_offset, ...}` | Lettura paginata di un record originale, fino a 32.000 caratteri per pagina. |
 | `session.web.get` | `{project_id, session_id}` → `{settings, browser}` | Preferenze web e stato/anteprima del browser della chat. |
@@ -298,7 +298,7 @@ sono rifiutate: l'accesso passa dal flusso di login del provider.
 
 ```
 team.start {project_id, request_id, origin_session_id?, goal,
-            mode:"manual"|"automatic", backend:"codex"|"openai_chatgpt"|"ollama"|"deepseek_account",
+            mode:"manual"|"automatic", backend:"codex"|"openai_chatgpt"|"ollama"|"deepseek_account"|"google_cloud"|"openrouter",
             model, settings:{reasoning_effort?, service_tier?, ...},
             members?:[{id, name, role, instructions, access:"read"|"write"}],
             max_agents?:4, concurrency?:2, round_limit?:3}  →  {team}
@@ -475,10 +475,10 @@ di ogni turno: le modifiche successive valgono dal turno seguente.
 
 | Metodo | Parametri → risultato | Regole |
 | --- | --- | --- |
-| `backend.discover` | `{backend, account_id?}` → `{available, models:[{id, name, capabilities, ...}], capabilities, account?, error?}` | `backend` ∈ `ollama, codex, openai_chatgpt, deepseek_account, deepseek_web, claude_code`; `account_id` solo per `openai_chatgpt`. Nessun cambio automatico di modello. |
-| `backend.login` | `{backend, account_id?}` → informazioni di accesso | Avvia l'accesso esplicito: Codex (facoltativo), OpenAI diretto (OAuth PKCE con listener locale), DeepSeek Account. DeepSeek Web non ha un flusso di accesso (`INVALID_ARGUMENT`): il suo token si salva con `backend.account` `login`. |
-| `backend.account` | `{backend, action, account_id?, ...}` → stato | OpenAI diretto: `status, login, select, logout, cancel`; DeepSeek Account: `status, login, cancel, logout, configure_proxy` (`url`, `api_key`, `enabled` per DeeperSeeker); DeepSeek Web: `status, login` (con `token`), `logout`, dove `login` e `logout` rispondono `BUSY` mentre c'è lavoro DeepSeek Web attivo o in coda. Le credenziali restano nel profilo privato, mai in SQLite, negli eventi o nelle esportazioni. Un archivio di credenziali non sicuro o non valido non impedisce l'avvio del servizio e rende non disponibile solo quel provider; per DeepSeek Web `status` risponde `UNSAFE_PATH` o `CREDENTIAL_STORE` finché il token non viene salvato di nuovo. |
-| `backend.usage` | `{backend, account_id?}` → limiti riportati e misurazioni locali | `backend` ∈ `codex, openai_chatgpt, ollama, claude_code`; sola lettura, nessuna inferenza né modifica di fatturazione; al massimo 10.000 eventi di utilizzo recenti esaminati. |
+| `backend.discover` | `{backend, account_id?}` → `{available, models:[{id, name, capabilities, ...}], capabilities, account?, error?}` | `backend` ∈ `ollama, codex, openai_chatgpt, deepseek_account, deepseek_web, claude_code, google_cloud, openrouter`; `account_id` solo per `openai_chatgpt`. Nessun cambio automatico di modello. |
+| `backend.login` | `{backend, account_id?}` → informazioni di accesso | Avvia l'accesso esplicito: Codex (facoltativo), OpenAI diretto (OAuth PKCE con listener locale), DeepSeek Account, Google Cloud (`gcloud auth application-default login`). DeepSeek Web e OpenRouter non hanno un flusso OAuth browser (`INVALID_ARGUMENT`): la credenziale si salva con `backend.account`. |
+| `backend.account` | `{backend, action, account_id?, ...}` → stato | OpenAI diretto: `status, login, select, logout, cancel`; DeepSeek Account: `status, login, cancel, logout, configure_proxy` (`url`, `api_key`, `enabled` per DeeperSeeker); DeepSeek Web: `status, login` (con `token`), `logout`, dove `login` e `logout` rispondono `BUSY` mentre c'è lavoro DeepSeek Web attivo o in coda; Google Cloud: `status, login, cancel, logout, configure_auth` (modalità ADC/Vertex, chiave Gemini API, Service Account JSON, `project_id`, `location`, `custom_models`); OpenRouter: `status, configure_auth, logout` (`api_key`, `custom_models`, più telemetria `/api/v1/key`). Le credenziali restano nel profilo privato, mai in SQLite, negli eventi o nelle esportazioni. Un archivio di credenziali non sicuro o non valido non impedisce l'avvio del servizio e rende non disponibile solo quel provider; per DeepSeek Web `status` risponde `UNSAFE_PATH` o `CREDENTIAL_STORE` finché il token non viene salvato di nuovo. |
+| `backend.usage` | `{backend, account_id?}` → limiti riportati e misurazioni locali | `backend` ∈ `codex, openai_chatgpt, ollama, claude_code, google_cloud, openrouter`; sola lettura, nessuna inferenza né modifica di fatturazione; al massimo 10.000 eventi di utilizzo recenti esaminati. |
 | `settings.get` / `settings.update` | `{}` / `{ollama_url?, codex_binary?, tool_timeout?, max_output_bytes?, max_tool_rounds?}` → `{settings}` | Rifiutato con `BUSY` finché c'è lavoro attivo o prenotazioni. Nessun cambio automatico di endpoint o modello. |
 | `system.resources` | `{}` → `{memory, gpus:[], platform}` | Valori sconosciuti `null`. |
 
@@ -604,7 +604,8 @@ sconosciuti.
 
 Le definizioni condivise sono in `src/kira/domain/contracts.py`. Ogni provider
 vive in `src/kira/backends/` (`ollama.py`, `codex.py`, `openai_chatgpt.py`,
-`deepseek_account.py`, `deepseek_web.py`, `claude_code.py`).
+`deepseek_account.py`, `deepseek_web.py`, `claude_code.py`, `google_cloud.py`,
+`openrouter.py`).
 
 ### `Backend`
 
@@ -618,10 +619,10 @@ class Backend(Protocol):
 
 Costruttori di riferimento: `OllamaBackend(endpoint="http://127.0.0.1:11434")`
 (il predefinito è `ollama_url` delle impostazioni) e
-`CodexBackend(binary="codex")`. OpenAI diretto e DeepSeek ricevono il gestore
-account del servizio; Claude Code riceve la cartella runtime privata, dove
-scrive il proprio launcher, e riceve gli strumenti di Kira da un server MCP
-interno al processo del servizio.
+`CodexBackend(binary="codex")`. OpenAI diretto, DeepSeek, Google Cloud e
+OpenRouter ricevono il gestore account del servizio; Claude Code riceve la
+cartella runtime privata, dove scrive il proprio launcher, e riceve gli
+strumenti di Kira da un server MCP interno al processo del servizio.
 
 ### `RunContext`
 
@@ -644,7 +645,7 @@ interno al processo del servizio.
 | `provider_started(pid)` | callback | Registra il processo figlio prima dell'inferenza, per pulizia e recupero. |
 | `register_control(handler)` | callback | Registra operazioni di controllo native (steering Codex, compattazione). |
 | `guidance(kind, payload)` | callback | Confine per le indicazioni dell'utente nei provider con inbox gestita dal servizio. |
-| `context_state`, `context_save`, `context_page`, `context_catalog` | stato e callback | Contesto durevole gestito da Kira (OpenAI diretto, DeepSeek Account). |
+| `context_state`, `context_save`, `context_page`, `context_catalog` | stato e callback | Contesto durevole gestito da Kira (OpenAI diretto, DeepSeek Account, Google Cloud, OpenRouter). |
 | `tool_image(ref)` | callback | Recupera i pixel di uno screenshot posseduto dal servizio. |
 
 ### Risultato di `run`
@@ -709,15 +710,16 @@ coincida con quella richiesta):
 
 Pianifica, Revisione e Riepiloga richiedono sempre `read-only`.
 
-**OpenAI diretto, Ollama, DeepSeek Account, DeepSeek Web**: gli strumenti sono
-eseguiti dal servizio tramite `execute_tool`, quindi la policy è una allowlist.
-In sola lettura il modello riceve `list_files`, `search_files`, `read_file`; con
-un permesso di scrittura si aggiunge `write_file`; con `trusted_host` o
-`full_access` si aggiunge `run_command`. Il servizio ricontrolla il permesso a
-ogni chiamata: un nome fuori allowlist è rifiutato anche se il modello lo
-invoca. Le azioni del browser e di Computer che modificano una pagina
-richiedono inoltre **Esegui**, un progetto scrivibile e il consenso dell'utente
-(singola azione o policy `always` della chat); DeepSeek Web non riceve Computer.
+**OpenAI diretto, Ollama, DeepSeek Account, DeepSeek Web, Google Cloud,
+OpenRouter**: gli strumenti sono eseguiti dal servizio tramite `execute_tool`,
+quindi la policy è una allowlist. In sola lettura il modello riceve
+`list_files`, `search_files`, `read_file`; con un permesso di scrittura si
+aggiunge `write_file`; con `trusted_host` o `full_access` si aggiunge
+`run_command`. Il servizio ricontrolla il permesso a ogni chiamata: un nome
+fuori allowlist è rifiutato anche se il modello lo invoca. Le azioni del browser
+e di Computer che modificano una pagina richiedono inoltre **Esegui**, un
+progetto scrivibile e il consenso dell'utente (singola azione o policy `always`
+della chat); DeepSeek Web non riceve Computer.
 
 **Claude Code · uso personale**: Kira avvia il binario Claude Code non
 modificato con `permission_mode:"dontAsk"` e un elenco `allowed_tools` derivato
@@ -738,7 +740,7 @@ nessun argomento può cambiare. Namespace riconosciuti: `team`, `kira`,
 | Namespace e strumento | Argomenti | Note |
 | --- | --- | --- |
 | `kira.environment` | `{}` | Capacità, ambito e stato correnti riportati dal servizio. |
-| `kira.team_delegate` | `{goal, brief, mode, members?, max_agents?, concurrency?, round_limit?}` | Solo in **Esegui** con strumenti attivi e un provider che esegue Team (`codex`, `openai_chatgpt`, `ollama`, `deepseek_account`); una delega accettata per run d'origine; il Team parte dopo il completamento e la pulizia del turno. |
+| `kira.team_delegate` | `{goal, brief, mode, members?, max_agents?, concurrency?, round_limit?}` | Solo in **Esegui** con strumenti attivi e un provider che esegue Team (`codex`, `openai_chatgpt`, `ollama`, `deepseek_account`, `google_cloud`, `openrouter`); una delega accettata per run d'origine; il Team parte dopo il completamento e la pulizia del turno. |
 | `kira.team_status` | `{delegation_id?}` | Senza ID: riepilogo recente leggero. |
 | `kira.team_message` | `{delegation_id, recipient_id, content}` | Mittente `assistant`; non riavvia un Team concluso. |
 | `kira.team_resume` | `{delegation_id, instruction?, round_limit?}` | Stessi provider di `kira.team_delegate`; continuazione in coda dopo il turno; Team sorgente concluso e pulito. |
@@ -761,8 +763,9 @@ nessun argomento può cambiare. Namespace riconosciuti: `team`, `kira`,
 
 Nomi sul filo: OpenAI diretto usa `kira_browser.*` e `kira_computer.*` (perché
 `browser` e `computer` sono namespace riservati del provider); Ollama, DeepSeek
-Account e DeepSeek Web ricevono funzioni piatte `<namespace>__<strumento>`, come
-`browser__navigate` e `computer__act` (DeepSeek Web senza Computer); Claude Code
+Account, DeepSeek Web, Google Cloud e OpenRouter ricevono funzioni piatte
+`<namespace>__<strumento>`, come `browser__navigate` e `computer__act`
+(DeepSeek Web senza Computer); Claude Code
 vede `mcp__kira__browser__*` e `mcp__kira__computer__*`; Codex riceve sul server
 MCP `kira` gli strumenti `kira.*` con il loro nome (per esempio `help_search`) e
 gli strumenti dell'obiettivo come `goal__status` e `goal__checkpoint`. Gli eventi

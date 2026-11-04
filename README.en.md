@@ -32,12 +32,15 @@ always see what really happened.
 - **Nothing leaves your computer without you.** Projects, chats, run events,
   screenshots and attachments live in a SQLite database and in private folders
   of your profile. Kira never reads cookies or other applications' credentials;
-  the tokens of the sign-ins it manages (ChatGPT, DeepSeek) stay in private
-  files of your profile, outside the database, exports and diagnostics.
+  the tokens and API keys of the sign-ins it manages (ChatGPT, Google Cloud,
+  OpenRouter, DeepSeek) stay in private files of your profile (`0600`), outside the
+  database, exports and diagnostics.
 - **Bring your own model.** Ollama on your computer, OpenAI Codex, your ChatGPT
   plan, Google Cloud · Vertex AI (with your GCP credits or balance and isolated
-  multi-account switching), DeepSeek or your Claude Code: pick the provider per
-  chat and change it without losing the conversation.
+  multi-account switching), OpenRouter (300+ models with automatic context
+  adaptation and `:free` model fallback), DeepSeek or your Claude Code: pick the
+  provider per chat, enable or disable the services you use in **Models**, and
+  switch providers without losing the conversation.
 
 ## Highlights
 
@@ -73,14 +76,16 @@ always see what really happened.
 | --- | --- | --- |
 | **Ollama** | Local HTTP API (`http://127.0.0.1:11434` by default) | Kira; tools verified on first use, no automatic model downloads |
 | **Codex** | OpenAI Codex App Server, with the official sign-in | Codex, with its sandboxes; Kira observes and records every operation |
-| **Direct OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
+| **OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
 | **Google Cloud · Vertex AI** | Isolated multi-account OAuth2 PKCE in Kira, read-only system `gcloud` ADC, or API Key | Kira; native Google models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) and Vertex AI Partner Claude models, vision, and public reasoning summaries |
-| **DeepSeek Account** (experimental) | Account sign-in | Kira |
-| **DeepSeek Web** (experimental) | Session token from the website | Kira, with a text protocol for the tools |
-| **Claude Code · personal use** (experimental) | Your already signed-in Claude Code (optional extra, not in the packages) | Claude Code, observed by Kira; browser, Computer, questions and Research through an internal MCP server |
+| **OpenRouter** | OpenRouter API key (`sk-or-v1-...` stored in your local `0600` profile or `OPENROUTER_API_KEY` env var) | Kira; dynamic catalog (`/api/v1/models`), automatic adaptation to context window, `max_tokens`, `reasoning`/`thinking`, prompt caching (Claude/Gemini), multimodal vision, and anti-stall fallback for `:free` models |
+| **DeepSeek API** | DeepSeek account sign-in or DeeperSeeker proxy | Kira |
+| **DeepSeek Web** | Session token from the website | Kira, with a text protocol for the tools |
+| **Claude Code** | Your already signed-in Claude Code (optional extra, not in the packages) | Claude Code, observed by Kira; browser, Computer, questions and Research through an internal MCP server |
 
-The provider is chosen per chat in **Models**. [Providers](docs/en/PROVIDERS.md)
+The provider is chosen per chat in **Models** (*Provider and Model Hub*), where you can also enable or disable each service to keep quick selectors clean. [Providers](docs/en/PROVIDERS.md)
 describes every connection, its capabilities and known limits.
+
 
 ## Quick start
 

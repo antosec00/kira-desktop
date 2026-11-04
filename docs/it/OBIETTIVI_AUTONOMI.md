@@ -135,13 +135,15 @@ Un comando ripetuto non crea un secondo obiettivo né un ciclo duplicato.
 | --- | --- |
 | **Codex** | Sì |
 | **OpenAI diretto · ChatGPT** | Sì |
+| **Google Cloud · Vertex AI** | Sì |
+| **OpenRouter** | Sì |
 | **Ollama** | Sì |
 | **DeepSeek Account** (sperimentale) | Sì (i punti di controllo usano gli strumenti gestiti da Kira) |
 | **Claude Code · uso personale** (sperimentale) | Sì |
 | **DeepSeek Web** (sperimentale) | No |
 
 Una vecchia preferenza che disattiva gli strumenti di Ollama non disattiva gli
-strumenti gestiti da Kira usati da DeepSeek Account.
+strumenti gestiti da Kira usati da DeepSeek Account, Google Cloud o OpenRouter.
 
 ## Consigli per obiettivi di ricerca continua
 

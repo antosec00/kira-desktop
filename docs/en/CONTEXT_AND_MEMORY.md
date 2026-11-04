@@ -205,18 +205,33 @@ provider change the first turn receives Kira's portable context. In **Usage
 and resources** you find, for every turn, the turn's tokens, those of the last
 request and the **context window occupancy** reported by Claude Code.
 
+### Google Cloud · Vertex AI and OpenRouter
+
+With **Google Cloud · Vertex AI** and **OpenRouter**, Kira maintains a
+**Kira-managed persistent context** in **Automatic — Kira compaction** mode,
+calibrated to the window and output limit declared by the model (for OpenRouter,
+read dynamically from `context_length` and
+`top_provider.max_completion_tokens` in the `/api/v1/models` catalog). When the
+conversation approaches the threshold or if the provider returns a full-context
+error (or a preventive `PROMPT_SAFETY` block on long history), Kira compacts the
+oldest runs into a source-linked structured summary and keeps the most recent
+turns verbatim. For Anthropic Claude and Google Gemini models on OpenRouter,
+Kira also inserts `cache_control: {"type": "ephemeral"}` markers on the system
+prompt and on the latest stable message to take advantage of provider prompt
+caching.
+
 ## 6. Context and memory: compacting
 
 Open **Context and memory** from the **Context** button under the chat, from
-**Manage chat** or from the **Usage** panel. With Direct OpenAI and DeepSeek
-Account, **Compact now** starts an explicit compaction: it requires an **idle
-chat** and an **empty queue** (complete or remove the waiting requests, even if
-the queue is paused). During the operation the chat's button shows
-**Compacting…** and the panel updates the status while it is open; closing it
-cancels nothing. Compaction uses the selected model, may consume plan quota and
-add waiting time, and does not modify the project files. If the confirmation is
-missing, press **Refresh**: Kira keeps the request identity and does not repeat
-an inference on its own.
+**Manage chat** or from the **Usage** panel. With Direct OpenAI, DeepSeek
+Account, Google Cloud and OpenRouter, **Compact now** starts an explicit
+compaction: it requires an **idle chat** and an **empty queue** (complete or
+remove the waiting requests, even if the queue is paused). During the operation
+the chat's button shows **Compacting…** and the panel updates the status while
+it is open; closing it cancels nothing. Compaction uses the selected model, may
+consume plan quota and add waiting time, and does not modify the project files.
+If the confirmation is missing, press **Refresh**: Kira keeps the request
+identity and does not repeat an inference on its own.
 
 If the native compaction's response is unusable (an index or format the local
 reader does not accept), Kira shows **Recovering context**, discards that

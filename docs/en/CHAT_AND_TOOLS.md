@@ -232,12 +232,12 @@ queue.
 ### How providers receive guidance
 
 - **Codex** uses its own delivery to the active turn, when the turn allows it.
-- **Direct OpenAI · ChatGPT**, **DeepSeek Account** and **Ollama** receive it
-  at the **next request** to the model: the response or tool already in
-  progress finishes normally, then the waiting text is added in order. Tools
-  of a group not yet started can be deferred with outcome
-  `DEFERRED_FOR_USER_GUIDANCE`, so that the model re-plans taking the
-  correction into account.
+- **Direct OpenAI · ChatGPT**, **DeepSeek Account**, **Google Cloud · Vertex
+  AI**, **OpenRouter** and **Ollama** receive it at the **next request** to the
+  model: the response or tool already in progress finishes normally, then the
+  waiting text is added in order. Tools of a group not yet started can be
+  deferred with outcome `DEFERRED_FOR_USER_GUIDANCE`, so that the model
+  re-plans taking the correction into account.
 - **DeepSeek Web** and **Claude Code · personal use** do not receive guidance
   during a turn: queue a separate request.
 - A response already in progress is not rewritten and private reasoning is
@@ -455,6 +455,8 @@ start or resume work.
 | Provider | Visual content of attachments |
 | --- | --- |
 | **Direct OpenAI · ChatGPT** | Yes |
+| **Google Cloud · Vertex AI** | Yes |
+| **OpenRouter** | Yes, with models whose catalog entry declares vision (`image` in `architecture.input_modalities`) |
 | **DeepSeek Account** (experimental) | Yes, only with the models whose catalog entry declares image support |
 | **DeepSeek Web** (experimental) | Yes, with DeepSeek V4 Flash (web) and DeepSeek Reasoner (web) |
 | **Claude Code · personal use** (experimental) | Yes, up to 4 PNGs |
@@ -665,9 +667,10 @@ credentials.
 | **Show reasoning summaries** | yes / no | Shows or hides the **Reasoning summary** panel under the chat without interrupting the work. |
 
 The **Reasoning summary** is the public summary that some providers (Codex,
-Direct OpenAI) supply during processing, or the reasoning that DeepSeek Web
-shows on its own site with DeepSeek Reasoner; it does not certify that an
-operation happened and is not the final response; with Ollama, DeepSeek Account
-and Claude Code it is not available. Themes, fonts, column width and interface
-language are in [Appearance and language](APPEARANCE_AND_LANGUAGE.md); the
-choice of provider and model in [Providers](PROVIDERS.md).
+Direct OpenAI, Google Cloud, OpenRouter) supply during processing, or the
+reasoning that DeepSeek Web shows on its own site with DeepSeek Reasoner; it
+does not certify that an operation happened and is not the final response; with
+Ollama, DeepSeek Account and Claude Code it is not available. Themes, fonts,
+column width and interface language are in
+[Appearance and language](APPEARANCE_AND_LANGUAGE.md); the choice of provider
+and model in [Providers](PROVIDERS.md).

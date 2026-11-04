@@ -66,9 +66,10 @@ Alcune precisazioni importanti:
   promettono che solo la cartella del progetto sia leggibile. Codex tratta
   **Host fidato** e **Accesso completo** allo stesso modo; la differenza fra i
   due vale per gli strumenti di file gestiti da Kira.
-- Con **OpenAI diretto · ChatGPT**, **Ollama**, **DeepSeek** e **Claude Code**
-  il modello riceve solo gli strumenti ammessi dal permesso: in sola lettura
-  non vede nemmeno la definizione dello strumento di scrittura.
+- Con **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**,
+  **OpenRouter**, **Ollama**, **DeepSeek** e **Claude Code** il modello riceve
+  solo gli strumenti ammessi dal permesso: in sola lettura non vede nemmeno la
+  definizione dello strumento di scrittura.
 - Cambiare permesso non cambia modello, account, livello di ragionamento o
   cartella del progetto. Un cambio richiesto mentre c'è lavoro attivo viene
   rifiutato: aspetta che il progetto sia libero.
@@ -293,6 +294,15 @@ Ogni provider gestisce le proprie credenziali con il flusso ufficiale:
   stanno nella cartella privata `openai-chatgpt/` sotto la configurazione di
   Kira (`$HOME/.config/kira/` o `config/` dentro `KIRA_HOME`), con permessi
   0600. Sono escluse da database, eventi, contesto, esportazioni e diagnostica.
+- **Google Cloud · Vertex AI** conserva le credenziali OAuth o la chiave API e
+  la configurazione di progetto/regione nella cartella privata `google-cloud/`
+  sotto la configurazione di Kira, con permessi 0600, escluse da database,
+  esportazioni e diagnostica.
+- **OpenRouter** conserva la chiave API (`sk-or-v1-...`) e la configurazione
+  nel file privato `openrouter/config.json` sotto la configurazione di Kira, con
+  permessi 0600 (oppure legge `OPENROUTER_API_KEY` dall'ambiente senza salvarla
+  su disco); la chiave non compare mai in database, eventi, esportazioni o
+  diagnostica.
 - **DeepSeek Account** e **DeepSeek Web** conservano i rispettivi token nelle
   cartelle private `deepseek-account/` (insieme alla chiave DeeperSeeker) e
   `deepseek-web/` sotto la configurazione di Kira; non compaiono nello stato né

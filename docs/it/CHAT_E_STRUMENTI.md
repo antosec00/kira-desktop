@@ -233,12 +233,13 @@ la voce e mette la coda in pausa.
 ### Come i provider ricevono le indicazioni
 
 - **Codex** usa il proprio invio al turno attivo, quando il turno lo consente.
-- **OpenAI diretto · ChatGPT**, **DeepSeek Account** e **Ollama** le ricevono
-  alla **richiesta successiva** al modello: la risposta o lo strumento già in
-  corso finisce normalmente, poi il testo in attesa viene aggiunto in ordine.
-  Gli strumenti di un gruppo non ancora avviati possono essere rinviati con
-  esito `DEFERRED_FOR_USER_GUIDANCE`, in modo che il modello ripianifichi
-  tenendo conto della correzione.
+- **OpenAI diretto · ChatGPT**, **DeepSeek Account**, **Google Cloud · Vertex
+  AI**, **OpenRouter** e **Ollama** le ricevono alla **richiesta successiva** al
+  modello: la risposta o lo strumento già in corso finisce normalmente, poi il
+  testo in attesa viene aggiunto in ordine. Gli strumenti di un gruppo non
+  ancora avviati possono essere rinviati con esito
+  `DEFERRED_FOR_USER_GUIDANCE`, in modo che il modello ripianifichi tenendo
+  conto della correzione.
 - **DeepSeek Web** e **Claude Code · uso personale** non ricevono indicazioni
   durante il turno: accoda una richiesta separata.
 - Una risposta già in corso non viene riscritta e il ragionamento privato non
@@ -462,6 +463,8 @@ approvano comandi e non avviano o riprendono lavoro.
 | Provider | Contenuto visivo degli allegati |
 | --- | --- |
 | **OpenAI diretto · ChatGPT** | Sì |
+| **Google Cloud · Vertex AI** | Sì |
+| **OpenRouter** | Sì, con i modelli che nel catalogo dichiarano visione (`image` in `architecture.input_modalities`) |
 | **DeepSeek Account** (sperimentale) | Sì, solo con i modelli che nel catalogo indicano il supporto alle immagini |
 | **DeepSeek Web** (sperimentale) | Sì, con DeepSeek V4 Flash (web) e DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Sì, fino a 4 PNG |
@@ -678,10 +681,10 @@ e non toccano permessi dei progetti, modelli o credenziali.
 | **Mostra riepiloghi del ragionamento** | sì / no | Mostra o nasconde il pannello **Riepilogo del ragionamento** sotto la chat senza interrompere il lavoro. |
 
 Il **Riepilogo del ragionamento** è il riassunto pubblico che alcuni provider
-(Codex, OpenAI diretto) forniscono durante l'elaborazione, o il ragionamento che
-DeepSeek Web mostra sul proprio sito con DeepSeek Reasoner; non certifica che
-un'operazione sia avvenuta e non è la risposta finale; con Ollama, DeepSeek
-Account e Claude Code non è disponibile. Temi, caratteri, larghezza della
-colonna e lingua dell'interfaccia sono in [Aspetto e
-lingua](ASPETTO_E_LINGUA.md); la scelta del provider e del modello in
+(Codex, OpenAI diretto, Google Cloud, OpenRouter) forniscono durante
+l'elaborazione, o il ragionamento che DeepSeek Web mostra sul proprio sito con
+DeepSeek Reasoner; non certifica che un'operazione sia avvenuta e non è la
+risposta finale; con Ollama, DeepSeek Account e Claude Code non è disponibile.
+Temi, caratteri, larghezza della colonna e lingua dell'interfaccia sono in
+[Aspetto e lingua](ASPETTO_E_LINGUA.md); la scelta del provider e del modello in
 [Provider](PROVIDER.md).

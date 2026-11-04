@@ -38,8 +38,8 @@
     "id": "providers",
     "title": "Provider differences and tool transport",
     "summary": "The common Kira identity does not make provider capabilities or context handling identical.",
-    "keywords": "provider modello modelli codex openai chatgpt ollama deepseek claude claude_code anthropic mcp differenze supporto strumenti memoria contesto public reasoning summaries riepilogo ragionamento pensiero",
-    "revision": "1809db8a5450a8cf17cb8193"
+    "keywords": "provider modello modelli codex openai chatgpt ollama deepseek claude claude_code anthropic google_cloud vertex gemini openrouter mcp differenze supporto strumenti memoria contesto public reasoning summaries riepilogo ragionamento pensiero",
+    "revision": "1b06fba2a396847cf0e353fe"
   },
   {
     "id": "browser-http",

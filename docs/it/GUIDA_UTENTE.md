@@ -47,10 +47,10 @@ servizio. Il servizio esegue un lavoro autonomo alla volta per ciascun progetto.
 ### Il modello ragiona, Kira esegue
 
 Il modello (quello che scegli tra i **provider** collegati: Ollama, Codex,
-OpenAI diretto, DeepSeek, Claude Code) decide che cosa fare e scrive le risposte.
-Kira mette a disposizione gli strumenti — lettura e scrittura di file, comandi,
-browser, memoria, team — e li esegue entro i permessi che hai dato al progetto.
-La scelta del modello è tua, chat per chat.
+OpenAI diretto, Google Cloud, OpenRouter, DeepSeek, Claude Code) decide che cosa
+fare e scrive le risposte. Kira mette a disposizione gli strumenti — lettura e
+scrittura di file, comandi, browser, memoria, team — e li esegue entro i
+permessi che hai dato al progetto. La scelta del modello è tua, chat per chat.
 
 ### Le ricevute degli strumenti sono la prova di ciò che è successo
 
@@ -141,13 +141,17 @@ futuri; quelli esistenti non cambiano. Tutti i dettagli sono in
 ### Collegare un provider
 
 Apri **Modelli** nella barra laterale. I provider sono una fila di pulsanti:
-**Ollama**, **Codex**, **OpenAI diretto · ChatGPT**, **DeepSeek Account**,
-**DeepSeek Web · sperimentale** e **Claude Code · uso personale**. Sotto, una
-riga riporta lo stato del provider con un punto colorato (verde collegato, ambra
-da collegare o senza modelli, rosso non disponibile) e l'eventuale azione da
-compiere, per esempio **Accedi con Codex** o **Continua con ChatGPT**. Premi
-**Aggiorna** per rileggere il catalogo, poi scegli un modello con
-**Usa modello** e, quando il modello lo dichiara, un livello di ragionamento.
+**Ollama**, **Codex**, **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**,
+**OpenRouter**, **DeepSeek Account**, **DeepSeek Web · sperimentale** e **Claude
+Code · uso personale**. Sotto, una riga riporta lo stato del provider con un
+punto colorato (verde collegato, ambra da collegare o senza modelli, rosso non
+disponibile, grigio disattivato), il pulsante **Disattiva provider** / **Attiva
+provider** (per nascondere o mostrare il provider nei selettori rapidi della
+chat e del Team conservando le credenziali salvate) e l'eventuale azione da
+compiere, per esempio **Accedi con Codex**, **Continua con ChatGPT** o
+**Configura OpenRouter**. Premi **Aggiorna** per rileggere il catalogo, poi
+scegli un modello con **Usa modello** e, quando il modello lo dichiara, un
+livello di ragionamento.
 
 ![La pagina Modelli con i provider e le schede dei modelli](../images/models.png)
 
@@ -389,16 +393,16 @@ memoria](#contesto-e-memoria)).
 - Mentre nella stessa chat un turno è attivo, il pulsante diventa **Invia
   indicazioni**: il testo viene aggiunto al lavoro in corso senza fermare lo
   strumento già avviato. Le indicazioni sono solo testo, fino a 32.000 byte; gli
-  allegati richiedono una richiesta separata. Con OpenAI diretto, DeepSeek
-  Account e Ollama le indicazioni entrano nella prossima chiamata al modello,
-  dopo la risposta o lo strumento in corso; con Codex Kira usa il suo invio al
-  turno attivo, quando disponibile. Con DeepSeek Web e Claude Code le
-  indicazioni non sono disponibili: usa **Accoda**. Le operazioni di un gruppo
-  non ancora iniziate possono essere rinviate per recepire la correzione. La
-  chat distingue attesa, invio, ricezione confermata ed esito da verificare: la
-  conferma del provider non prova che il modello abbia già applicato le
-  indicazioni, quindi controlla la risposta e le ricevute. Modello, ragionamento
-  e permessi del turno restano quelli scelti alla partenza.
+  allegati richiedono una richiesta separata. Con OpenAI diretto, Google Cloud,
+  OpenRouter, DeepSeek Account e Ollama le indicazioni entrano nella prossima
+  chiamata al modello, dopo la risposta o lo strumento in corso; con Codex Kira
+  usa il suo invio al turno attivo, quando disponibile. Con DeepSeek Web e
+  Claude Code le indicazioni non sono disponibili: usa **Accoda**. Le operazioni
+  di un gruppo non ancora iniziate possono essere rinviate per recepire la
+  correzione. La chat distingue attesa, invio, ricezione confermata ed esito da
+  verificare: la conferma del provider non prova che il modello abbia già
+  applicato le indicazioni, quindi controlla la risposta e le ricevute. Modello,
+  ragionamento e permessi del turno restano quelli scelti alla partenza.
 - **Accoda** compare mentre c'è lavoro in corso e salva una richiesta separata
   per un turno successivo. Se sta lavorando un'altra chat, il messaggio resta
   destinato alla chat selezionata e non modifica il lavoro dell'altra.
@@ -433,12 +437,13 @@ provider solo insieme al messaggio. Puoi inviare anche solo immagini, o
 accodarle con il testo.
 
 Le immagini arrivano al modello come **contenuto visivo** con
-**OpenAI diretto · ChatGPT**, **DeepSeek Account** (solo con i modelli che nel
-catalogo dichiarano il supporto alle immagini), **DeepSeek Web** (con entrambi
-i suoi modelli) e **Claude Code · uso personale** (fino a quattro PNG). Con
-**Codex** e **Ollama**, **Allega** e incolla inseriscono nel messaggio il
-percorso locale del file, anche per le immagini: il modello riceve testo, non
-pixel.
+**OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**, **OpenRouter** (solo
+con i modelli che nel catalogo dichiarano l'input `image`), **DeepSeek Account**
+(solo con i modelli che nel catalogo dichiarano il supporto alle immagini),
+**DeepSeek Web** (con entrambi i suoi modelli) e **Claude Code · uso personale**
+(fino a quattro PNG). Con **Codex** e **Ollama**, **Allega** e incolla
+inseriscono nel messaggio il percorso locale del file, anche per le immagini: il
+modello riceve testo, non pixel.
 
 Limiti per le immagini come contenuto visivo:
 
@@ -582,8 +587,9 @@ modello: prima di riprovare, controlla le azioni già eseguite.
 
 ### Il riepilogo del ragionamento
 
-Quando il provider lo fornisce (Codex, OpenAI diretto e DeepSeek Web con
-DeepSeek Reasoner), sotto la chat compare
+Quando il provider lo fornisce (Codex, OpenAI diretto, Google Cloud · Vertex AI,
+OpenRouter con i modelli di ragionamento e DeepSeek Web con DeepSeek Reasoner),
+sotto la chat compare
 **Riepilogo del ragionamento**: un'anteprima compatta che puoi espandere e
 selezionare, con l'indicazione del provider e di eventuali parti incomplete.
 Puoi consultare anche i riepiloghi delle esecuzioni precedenti della stessa
@@ -743,11 +749,12 @@ conteggio preliminare del provider**. Stima e conteggio descrivono l'ultimo
 calcolo disponibile, non il prossimo invio. I token in cache occupano comunque
 contesto; i totali cumulativi non indicano lo spazio libero.
 
-Con **DeepSeek Account** la modalità è **Automatico — compattazione Kira**: Kira
-stima la pressione prima dell'invio, la calibra con i token riportati dal
-provider, mantiene gli scambi recenti e usa il modello DeepSeek selezionato per
-sintetizzare quelli precedenti, senza strumenti. La sintesi consuma quota
-dell'account.
+Con **Google Cloud · Vertex AI**, **OpenRouter** e **DeepSeek Account** la
+modalità è **Automatico — compattazione Kira**: Kira stima la pressione prima
+dell'invio in base alla finestra di contesto del modello scelto, la calibra con
+i token riportati dal provider, mantiene gli scambi recenti e usa il modello
+selezionato per sintetizzare quelli precedenti, senza strumenti. La sintesi
+consuma quota dell'account o della chiave.
 
 Prima di esaurire il budget, anche durante un lavoro con strumenti, Kira prepara
 un contesto più compatto: preferisce la compattazione nativa quando il provider
@@ -761,15 +768,15 @@ con lo stesso modello; se fallisce anche quello, il contesto precedente resta
 disponibile e l'errore viene segnalato. Nessun comando viene ripetuto per
 ricostruire il risultato.
 
-Con OpenAI diretto e DeepSeek Account, **Compatta ora** avvia una compattazione
-esplicita a chat inattiva (termina il lavoro e completa o rimuovi le richieste
-in coda). Può usare risorse del piano e aggiungere attesa; non modifica file.
-Chiudere il pannello non annulla l'operazione. Per **Codex**, **Gestisci chat →
-Riduci il contesto** chiede al provider di compattare la sua conversazione, con
-conferma e chat inattiva; Kira conserva la propria cronologia. Se Codex segnala
-un proprio obiettivo nativo ancora aperto, Kira può rifiutare ripresa o
-compattazione. Nessuna di queste operazioni promette una quantità di token
-risparmiati.
+Con OpenAI diretto, Google Cloud, OpenRouter e DeepSeek Account, **Compatta
+ora** avvia una compattazione esplicita a chat inattiva (termina il lavoro e
+completa o rimuovi le richieste in coda). Può usare risorse del piano e
+aggiungere attesa; non modifica file. Chiudere il pannello non annulla
+l'operazione. Per **Codex**, **Gestisci chat → Riduci il contesto** chiede al
+provider di compattare la sua conversazione, con conferma e chat inattiva; Kira
+conserva la propria cronologia. Se Codex segnala un proprio obiettivo nativo
+ancora aperto, Kira può rifiutare ripresa o compattazione. Nessuna di queste
+operazioni promette una quantità di token risparmiati.
 
 **Memoria generata automaticamente** elenca decisioni, vincoli, risultati e
 questioni aperte conservati dalla compattazione; ogni voce è un'affermazione
@@ -810,6 +817,8 @@ limite sull'attesa, non sulla durata totale.
 | **Ollama** | Sì (strumenti verificati al primo uso; screenshot e Computer solo con un modello che accetta immagini) | No (percorsi come testo) | Sì | Sì | No |
 | **Codex** | No (usa i propri strumenti nativi) | No (percorsi come testo) | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
+| **Google Cloud · Vertex AI** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
+| **OpenRouter** | Sì (screenshot e Computer con modelli che accettano immagini) | Sì, solo modelli con visione (fino a 4) | Sì | Sì | Sì, con i modelli che espongono il ragionamento |
 | **DeepSeek Account** (sperimentale) | Sì | Sì, solo modelli con visione | Sì | Sì | No |
 | **DeepSeek Web** (sperimentale) | Browser sì, Computer no | Sì | No | No | Sì, con DeepSeek Reasoner |
 | **Claude Code · uso personale** (sperimentale) | Sì | Sì (fino a 4 PNG) | No | Sì | No |
@@ -850,6 +859,28 @@ più account: ogni chat resta legata all'account scelto per essa. Prima di
 cambiare accesso termina il lavoro e svuota la coda; se revochi l'accesso nel
 browser, annullalo anche nel pannello account. Puoi sempre disconnettere Kira
 dalle impostazioni di ChatGPT.
+
+**Google Cloud · Vertex AI.** In **Modelli → Google Cloud · Vertex AI** o in
+**Impostazioni → Connessioni** collega un account Google (OAuth con Application
+Default Credentials) o una chiave API Google Cloud / Vertex AI, scegli il
+progetto Google Cloud, la regione e un modello Gemini o partner del catalogo.
+Kira gestisce l'intero ciclo degli strumenti, le immagini allegate, il
+ragionamento, il browser, gli obiettivi autonomi e i Team.
+
+**OpenRouter.** In **Modelli → OpenRouter** o in **Impostazioni → Connessioni**
+incolla la tua chiave API OpenRouter (`sk-or-v1-...`, oppure imposta
+`OPENROUTER_API_KEY`). Kira la salva privatamente in
+`$XDG_CONFIG_HOME/kira/openrouter/config.json` (permessi `0600`), verifica lo
+stato e il consumo della chiave tramite `/api/v1/key` e scarica il catalogo
+dinamico da `/api/v1/models` (puoi aggiungere anche ID personalizzati o
+varianti come `:free`, `:nitro`, `:online`). Per ogni modello Kira adatta
+automaticamente finestra di contesto (`context_length`), budget di completamento
+(`max_completion_tokens`), chiamata nativa a tutti gli strumenti di Kira,
+visione multimodale, ragionamento esteso (`reasoning`) e prompt caching
+automatico per i modelli supportati. Con i modelli gratuiti (`:free`) applica un
+timeout anti-stallo quando l'upstream invia solo keep-alive senza token e passa
+in automatico a `openrouter/free` o a un modello gratuito alternativo per non
+lasciare il turno bloccato.
 
 **DeepSeek Account (sperimentale).** In **Modelli → DeepSeek Account** premi
 **Accedi con DeepSeek**: Kira apre il browser di sistema e conserva il grant nel
@@ -927,7 +958,11 @@ crediti, con la data della lettura e **Aggiorna**. Per **OpenAI diretto**:
 l'account della chat e i token registrati localmente; il collegamento non
 espone quote, quindi **Apri ChatGPT** porta alla pagina del piano e
 **Copia collegamento** ne copia l'indirizzo (verifica che il browser sia
-collegato allo stesso account). Per **Claude Code**: la finestra di sessione
+collegato allo stesso account). Per **Google Cloud** e **OpenRouter**: i token
+registrati per ingresso, uscita, cache e ragionamento con la stima di costo in
+USD (per OpenRouter ricavata anche dalle tariffe dinamiche del modello e dal
+riepilogo crediti/consumo restituito da `/api/v1/key` nel pannello di
+configurazione). Per **Claude Code**: la finestra di sessione
 (5 ore) e quella settimanale con percentuale disponibile, ora del ripristino e
 uso extra, come le comunica Claude Code durante le esecuzioni; senza un turno
 recente la misura resta quella dell'ultima esecuzione. Sotto la chat una riga
@@ -1036,8 +1071,8 @@ pagina cambia mentre il modello decide, l'azione sulla vecchia schermata viene
 rifiutata e il modello deve osservare di nuovo; le operazioni non confermate non
 vengono ripetute. Ogni richiesta dispone di al massimo 32 cicli visuali; le
 immagini originali restano negli artefatti privati e il modello mantiene le due
-più recenti. Con Ollama serve un modello che accetti immagini; con DeepSeek Web
-il Computer non è disponibile.
+più recenti. Con OpenRouter e Ollama serve un modello che accetti immagini; con
+DeepSeek Web il Computer non è disponibile.
 
 ## Team di agenti
 
@@ -1046,8 +1081,8 @@ assegna incarichi, i membri li eseguono e si scrivono tramite una casella di
 messaggi gestita da Kira. Le analisi indipendenti procedono in parallelo; le
 modifiche ai file le fa un membro alla volta. I ruoli indicano responsabilità,
 ma i permessi effettivi restano quelli del progetto e un lettore usa sempre la
-sola lettura. Funziona con Codex, OpenAI diretto, Ollama e DeepSeek Account; i
-dettagli sono in [Team](TEAM.md).
+sola lettura. Funziona con Codex, OpenAI diretto, Google Cloud, OpenRouter,
+Ollama e DeepSeek Account; i dettagli sono in [Team](TEAM.md).
 
 ### Dalla vista Team
 
@@ -1070,19 +1105,19 @@ senza esiti registrati dei membri è segnato **Conclusione da verificare**.
 
 ### Dalla chat
 
-Con Codex, OpenAI diretto, Ollama o DeepSeek Account e gli strumenti attivi puoi
-chiedere un Team direttamente nella chat (con Ollama il modello deve supportare
-gli strumenti), per esempio: «Organizza un team di tre membri: un coordinatore,
-un analista dei test e un revisore indipendente, in sola lettura». Claude Code
-e DeepSeek Web non eseguono Team, quindi le loro chat non possono richiederne
-uno. Il team eredita modello, ragionamento e permessi della chat e riceve
-obiettivo, consegna, decisioni e riferimenti alle prove, non l'intera
-cronologia. L'assistente registra la delega, il turno termina, il team parte e
-la chat mostra l'avanzamento con una scheda **TEAM**. Al termine, per i Team
-avviati o ripresi dalla chat, Kira risponde da sola nella conversazione
-distinguendo gli incarichi completati dalla verifica dell'obiettivo; non avvia
-altri Team e le richieste in coda hanno precedenza. **Pianifica**,
-**Revisione** e **Riepiloga** non avviano deleghe.
+Con Codex, OpenAI diretto, Google Cloud, OpenRouter, Ollama o DeepSeek Account e
+gli strumenti attivi puoi chiedere un Team direttamente nella chat (con
+OpenRouter e Ollama il modello deve supportare gli strumenti), per esempio:
+«Organizza un team di tre membri: un coordinatore, un analista dei test e un
+revisore indipendente, in sola lettura». Claude Code e DeepSeek Web non eseguono
+Team, quindi le loro chat non possono richiederne uno. Il team eredita modello,
+ragionamento e permessi della chat e riceve obiettivo, consegna, decisioni e
+riferimenti alle prove, non l'intera cronologia. L'assistente registra la
+delega, il turno termina, il team parte e la chat mostra l'avanzamento con una
+scheda **TEAM**. Al termine, per i Team avviati o ripresi dalla chat, Kira
+risponde da sola nella conversazione distinguendo gli incarichi completati dalla
+verifica dell'obiettivo; non avvia altri Team e le richieste in coda hanno
+precedenza. **Pianifica**, **Revisione** e **Riepiloga** non avviano deleghe.
 
 ### Conversare durante il Team
 
@@ -1276,11 +1311,13 @@ durante il lavoro. Dettagli in [Aspetto e lingua](ASPETTO_E_LINGUA.md).
 ### Connessioni
 
 **Account ChatGPT** (collegamento, selezione e disconnessione degli account),
-**Endpoint Ollama**, **Eseguibile Codex**, **Timeout strumenti (secondi)**,
-**Limite turni strumenti (0 = illimitati)** e **Output massimo per esecuzione
-(byte, fino a 16 MiB)**. Queste impostazioni si applicano solo con **Salva
-impostazioni** e, mentre c'è lavoro in corso, restano in sola lettura fino al
-termine. Le troncature dell'output vengono segnalate nelle ricevute.
+**Google Cloud · Vertex AI** (account OAuth o chiave API, progetto e regione),
+**OpenRouter** (chiave API `sk-or-v1-...`, modelli personalizzati e verifica
+crediti), **Endpoint Ollama**, **Eseguibile Codex**, **Timeout strumenti
+(secondi)**, **Limite turni strumenti (0 = illimitati)** e **Output massimo per
+esecuzione (byte, fino a 16 MiB)**. Queste impostazioni si applicano solo con
+**Salva impostazioni** e, mentre c'è lavoro in corso, restano in sola lettura
+fino al termine. Le troncature dell'output vengono segnalate nelle ricevute.
 
 Sotto le impostazioni dei provider trovi **Server MCP esterni**, dove puoi
 aggiungere server Model Context Protocol tramite **`stdio`** o **`HTTP / SSE`**,
@@ -1445,9 +1482,10 @@ prima di inviare.
 
 **Ho allegato un'immagine ma il modello non la vede.**
 Con Codex e Ollama le immagini arrivano come percorso testuale. Le immagini come
-contenuto visivo richiedono OpenAI diretto, DeepSeek Account (modelli con
-visione), DeepSeek Web o Claude Code, e un modello che le supporti: Kira avvisa
-se il modello selezionato non supporta immagini.
+contenuto visivo richiedono OpenAI diretto, Google Cloud · Vertex AI, OpenRouter
+(modelli con visione), DeepSeek Account (modelli con visione), DeepSeek Web o
+Claude Code, e un modello che le supporti: Kira avvisa se il modello selezionato
+non supporta immagini.
 
 **Il pulsante Invia è diventato «Invia indicazioni».**
 Nella chat c'è un turno attivo: il testo si aggiunge al lavoro in corso. Per
