@@ -3094,7 +3094,29 @@ ApplicationWindow {
         }
     }
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
-    ActionDialog { id: actionDialog; parent: Overlay.overlay; onProjectSelected: { window.page = 0; window.followOutput = true } }
+    ActionDialog {
+        id: actionDialog; parent: Overlay.overlay
+        onProjectSelected: { window.page = 0; window.followOutput = true }
+        onSoulRequested: function(soulId, viewMode) {
+            window.page = 0
+            souls.openSoulView(soulId, viewMode)
+            soulDialog.open()
+        }
+        onResearchRequested: function(projectId, recordId) {
+            window.page = 0
+            if (projectId && (!workspace.project || workspace.project.id !== projectId)) {
+                workspace.openProject(projectId)
+            }
+            researchDialog.open()
+        }
+        onCanvasRequested: function(projectId, artifactId) {
+            window.page = 0
+            if (projectId && (!workspace.project || workspace.project.id !== projectId)) {
+                workspace.openProject(projectId)
+            }
+            workspace.canvas.openArtifactById(artifactId)
+        }
+    }
     DiagnosticsDialog { id: diagnosticsDialog; parent: Overlay.overlay }
     ProviderSwitchDialog {
         id: providerSwitchDialog; parent: Overlay.overlay

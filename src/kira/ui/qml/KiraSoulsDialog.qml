@@ -212,6 +212,7 @@ KiraPanel {
                                     Flow {
                                         Layout.fillWidth: true; spacing: 5
                                         KButton { text: qsTr("Conserva"); visible: modelData.status === "pending"; enabled: souls.canEdit && !souls.selected.archived; onClicked: souls.decide(modelData.id, "accept") }
+                                        KButton { text: qsTr("Conserva in tutti i progetti"); visible: modelData.status === "pending" && modelData.kind === "lesson" && modelData.scope !== "profile"; enabled: souls.canEdit && !souls.selected.archived; onClicked: souls.decideWithScope(modelData.id, "accept", "profile") }
                                         KButton { text: qsTr("Scarta"); visible: modelData.status === "pending"; enabled: souls.canEdit && !souls.selected.archived; onClicked: souls.decide(modelData.id, "reject") }
                                         KButton { text: qsTr("Fonte"); visible: !!modelData.source_id; enabled: souls.canReadSource; onClicked: souls.readSource(modelData.source_id) }
                                     }
@@ -226,6 +227,7 @@ KiraPanel {
                                 delegate: ColumnLayout {
                                     required property var modelData
                                     Layout.fillWidth: true
+                                    ReadText { text: modelData.scope_label || ""; visible: text.length > 0; Layout.fillWidth: true; font.bold: true; color: appearance.colors.muted }
                                     ReadText { text: modelData.statement || ""; Layout.fillWidth: true }
                                     ReadText { text: modelData.applicability || ""; Layout.fillWidth: true; color: appearance.colors.muted }
                                     Flow {

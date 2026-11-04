@@ -218,7 +218,11 @@ class SoulController(QObject):
 
     @qt_property("QVariantList", notify=changed)
     def memories(self) -> list[Json]:
-        return self._collections["memories"]
+        return [{**row,
+                 "scope_label": tr("Esperienza del profilo in tutti i progetti") if row.get("scope") == "profile"
+                 else tr("Esperienza del progetto") if row.get("scope") == "project"
+                 else tr("Esperienza di questa chat")}
+                for row in self._collections["memories"]]
 
     @qt_property("QVariantList", notify=changed)
     def proposals(self) -> list[Json]:
@@ -226,6 +230,7 @@ class SoulController(QObject):
                   "superseded": tr("Superata"), "invalidated": tr("Non più applicabile")}
         return [{**row, "status_label": labels.get(str(row.get("status")), str(row.get("status", ""))),
                  "effect_label": tr("Preferenza per tutte le chat che usano questa Kira") if row.get("kind") == "preference"
+                 else tr("Esperienza del profilo in tutti i progetti") if row.get("scope") == "profile"
                  else tr("Esperienza del progetto") if row.get("scope") == "project" else tr("Esperienza di questa chat")}
                 for row in self._collections["proposals"]]
 
@@ -561,6 +566,29 @@ class SoulController(QObject):
     def decide(self, proposal_id: str, decision: str) -> None:
         if decision in {"accept", "reject"} and any(row.get("id") == proposal_id and row.get("status") == "pending" for row in self.proposals):
             self._revision_mutation("soul.decide", {"proposal_id": proposal_id, "decision": decision})
+
+    @Slot(str, str, str)
+    def decideWithScope(self, proposal_id: str, decision: str, scope: str) -> None:
+        if (decision in {"accept", "reject"} and scope in {"chat", "project", "profile"}
+                and any(row.get("id") == proposal_id and row.get("status") == "pending" for row in self.proposals)):
+            self._revision_mutation("soul.decide", {"proposal_id": proposal_id, "decision": decision, "scope": scope})
+
+    @Slot(str, str)
+    def openSoulView(self, soul_id: str, view: str = "identity") -> None:
+        self._visible = True
+        target_view = view if view in {"identity", "memories", "history"} else "identity"
+        self._view = target_view
+        self._source = {}
+
+        def received(result: Json) -> None:
+            self._items = rows(result.get("souls"))
+            self._pages["souls"] = result.get("next_offset") if result.get("has_more") else None
+            if soul_id:
+                self.select(soul_id)
+            else:
+                self.refreshSnapshot()
+
+        self._request("soul.list", {}, received)
 
     @Slot(str)
     def forget(self, memory_id: str) -> None:

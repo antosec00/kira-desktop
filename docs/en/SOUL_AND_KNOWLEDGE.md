@@ -104,12 +104,17 @@ language does not become a new personal rule.
 ### What it learned
 
 The tab has two parts. **Suggestions and decisions** lists the
-interpretations proposed by the model in the current context (chat or
-project). Every proposal reports the statement, what it applies to, the scope
-and a **Source**: your message or the tool result it was drawn from. Open the
-source, read it with **Continue reading** if it is long, then choose **Keep**
-or **Dismiss**. A proposal can ask to apply to the whole project: by accepting
-it, the lesson applies in all the project's chats with the same identity.
+interpretations proposed by the model in the current context (chat, project or
+identity profile). Every proposal reports the statement, what it applies to, the
+scope and a **Source**: your message or the tool result it was drawn from. Open
+the source, read it with **Continue reading** if it is long, then choose
+**Keep**, **Keep across all projects** (to make the lesson available wherever you
+use that same identity) or **Dismiss**. A proposal can ask to apply to the chat,
+the whole project or the identity profile (`profile`): by accepting it, the
+lesson applies respectively in the current chat, in all chats of the project or
+across all projects that use that same identity (never mixing with other Souls
+and with zero fixed prompt token overhead, since lessons are recalled on demand
+via `kira.help_search`).
 
 **Saved experience** lists the accepted lessons. For each one you can:
 
@@ -124,25 +129,39 @@ it, the lesson applies in all the project's chats with the same identity.
 Every identity keeps at most 512 active lessons and 512 pending proposals: at
 the limit the panel says so, without deleting data. Search is textual.
 
-### The `/anima preferenza` command
+### The `/anima preferenza` and `/anima crea` commands
 
-In any chat with a selected identity you can send a message made up **only**
-of this command:
+In any chat you can send two quick commands made up **only** of the command line:
 
 ```text
-/anima preferenza tono=naturale e diretto
+/anima preferenza tono=naturale e diretto dettaglio=sintetico collaborazione=proattiva lingua=italiano
 ```
 
-Rules of the command:
+or, to create and immediately bind a new identity to the current chat:
 
-- It must take up the whole message, with no extra lines. A command quoted
+```text
+/anima crea nome=Kira Architect nucleo=Technical rigor and modularity modalita=adattiva tono=diretto dettaglio=approfondito collaborazione=proattiva lingua=italiano
+```
+
+Rules of the commands:
+
+- They must take up the whole message on a single line. A command quoted
   inside a text, a tool result or a service message is not recognized.
-- The accepted keys are `tono`, `dettaglio`, `collaborazione` and `lingua`;
-  the English equivalents `tone`, `detail`, `collaboration` and `language`
-  work too.
-- In **Adaptive** the preference is applied immediately, from the turn in
-  which you send it. In **Suggestions** it generates a proposal to assess in
-  **What it learned**. In **Manual** it changes nothing.
+- The accepted preference keys are `tono`, `dettaglio`, `collaborazione` and
+  `lingua` (even multiple keys in the same command); the English equivalents
+  `tone`, `detail`, `collaboration` and `language` work too. For `/anima crea`,
+  `nome`/`name`, `nucleo`/`core` and optionally `modalita`/`mode`
+  (`manuale`/`manual`, `suggerimenti`/`suggest`, `adattiva`/`adaptive`) are
+  accepted.
+- With `/anima preferenza`, if the chat has no bound identity yet but an active
+  Soul exists in the profile, Kira automatically binds it to the chat and
+  applies the preferences; in **Adaptive** the preferences are applied
+  immediately, in **Suggestions** they generate proposals to assess in **What it
+  learned** and in **Manual** they change nothing.
+- When you ask Kira in natural language to design and create a new Soul for you,
+  the model can also call the `kira.soul_propose` tool with `kind="create"` to
+  create the new identity directly in the global catalog and bind it to the chat
+  if none is selected yet.
 - The message remains a normal provider turn: it is sent to the model and can
   consume your account's quota like any other request.
 
@@ -161,9 +180,11 @@ before saving.
 
 ### Scope of lessons and sources
 
-- A lesson belongs to the chat in which it was born. It extends to the project
-  only if you accept a proposal with that scope, and applies only to the same
-  identity. There is no automatic transfer of lessons between projects.
+- A lesson belongs to the chat in which it was born (`chat`), to the project
+  (`project`) if you accept a proposal with that scope, or to the identity
+  across all projects (`profile`) if you choose **Keep across all projects** (or
+  accept a proposal with `profile` scope). In every case it applies **only to
+  the same identity**: different Souls always stay completely isolated.
 - Every lesson is linked to its original source (a message of yours or a tool
   result in the chat): the link says where an interpretation comes from, it
   does not make it correct.

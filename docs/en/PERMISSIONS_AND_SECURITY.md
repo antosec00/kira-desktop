@@ -188,10 +188,11 @@ not increase the project permissions.
   Here you choose the project's Folder, Terminal and Editor and press **Open
   saved tools**: Kira opens the applications in the project folder without
   repeating the commands of old runs.
-- **Ctrl+K** searches projects and native actions: open the project's folder,
-  terminal or editor, open Firefox or start a Google search in it, capture a
-  screenshot, open the settings, the system monitor, the updates or the file
-  backup.
+- **Ctrl+K** searches locally across projects, chats, messages, Soul identities
+  and lessons, Research records, Canvas artifacts and native actions: open the
+  project's folder, terminal or editor, open Firefox or start a Google search in
+  it, capture a screenshot, open the settings, the system monitor, the updates
+  or the file backup.
 - **Screenshots** explicitly captures the full screen and keeps the file among
   the project results, recording it only after the PNG is complete.
 

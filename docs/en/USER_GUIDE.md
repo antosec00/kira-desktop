@@ -1157,17 +1157,22 @@ request always prevails over general preferences.
 
 Choose how it should evolve: **Manual** (you edit identity and preferences
 yourself), **Suggestions** (Kira proposes lessons that you read in **What it
-learned** and decide with **Keep** or **Dismiss**) or **Adaptive** (it applies
-explicit preferences on its own). In Adaptive mode a message made only of
+learned** and decide with **Keep**, **Keep across all projects** or **Dismiss**)
+or **Adaptive** (it applies explicit preferences on its own). In Adaptive mode a
+message made only of
 
 ```text
-/anima preferenza tono=naturale e diretto
+/anima preferenza tono=naturale e diretto dettaglio=sintetico
 ```
 
-updates the preference; the keys are `tono`, `dettaglio`, `collaborazione`
-and `lingua` (the English names `tone`, `detail`, `collaboration` and
-`language` also work). In Suggestions the command produces a
-proposal; in Manual it does nothing. Free text never becomes a rule on its own.
+updates one or more preferences at once (and automatically binds the active Soul
+if the chat does not have one yet); the keys are `tono`, `dettaglio`,
+`collaborazione` and `lingua` (the English names `tone`, `detail`,
+`collaboration` and `language` also work). You can also create and immediately
+bind a new identity from the chat with `/anima crea nome=... nucleo=...
+modalita=adattiva tono=...` or by asking the model to create one for you. In
+Suggestions `/anima preferenza` produces a proposal; in Manual it does nothing.
+Free text never becomes a rule on its own.
 **Helpful / Not helpful** influences the order of the memories; **Forget**
 excludes a lesson; **Evolution** shows the revisions and lets you restore one.
 **Copy profile**, **Import profile** and **Duplicate** transfer core and
@@ -1210,9 +1215,14 @@ folder and Kate opens a new session with the same working folder. This action
 opens applications without repeating the commands of old runs. Interrupted
 operations are never repeated automatically.
 
-### Ctrl+K
+### Ctrl+K (Universal Omnibox)
 
-**Ctrl+K** searches projects and native actions, which use fixed KDE Plasma
+**Ctrl+K** opens the Universal Omnibox with quick category filters (**All**,
+**Chats**, **Souls**, **Knowledge**, **Actions**): it searches instantaneously
+across all projects, saved chats and messages, Soul identities and accepted
+lessons, Research records, Canvas artifacts and native desktop actions, letting
+you jump straight to a chat, a Soul or an artifact even in another project with
+zero token overhead. Native actions use fixed KDE Plasma
 and Firefox applications: the project's folder, terminal and editor (Dolphin,
 Konsole, Kate), Firefox, Plasma settings, System Monitor, Discover for
 updates, Déjà Dup for backups, a screenshot with Spectacle and a Google search
@@ -1384,7 +1394,7 @@ beforehand. The complete procedure is in [Installation](INSTALLATION.md).
 | --- | --- |
 | **Ctrl+Enter** | Send the message, or send guidance to the active turn |
 | **Ctrl+B** | Change the sidebar state (Whole, Icons only, Hidden) |
-| **Ctrl+K** | Search projects and native actions |
+| **Ctrl+K** | Universal Omnibox: search projects, chats, messages, Souls, Research, Canvas and native actions |
 | **Ctrl+N** | New project |
 | **Ctrl+L** | Move the cursor to the composer |
 | **Ctrl+Shift+N** | New chat in the project |

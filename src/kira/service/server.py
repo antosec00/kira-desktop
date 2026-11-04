@@ -78,6 +78,7 @@ from kira.service.mcp_servers import METHODS as MCP_METHODS, McpServers
 from kira.service.checkpoints import METHODS as CHECKPOINT_METHODS, Checkpoints
 from kira.service.code_index import METHODS as CODE_INDEX_METHODS, CodeIndex
 from kira.service.canvas import METHODS as CANVAS_METHODS, CanvasService
+from kira.service.omnibox import METHODS as OMNIBOX_METHODS
 from kira.service.studio import METHODS as STUDIO_METHODS, Studio
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import CommandRunner
@@ -549,6 +550,8 @@ class Service:
             return await self.teams.dispatch(method, params, subscriber)
         if method in WORKSPACE_METHODS:
             return await self.workspaces.dispatch(method, params)
+        if method in OMNIBOX_METHODS:
+            return await self.workspaces.omnibox.dispatch(method, params)
         if method == "ambient.toggle":
             fields(params, {"app_name", "window_title", "selection"})
             payload = {
@@ -580,7 +583,7 @@ class Service:
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
                      "os_sandbox": True, "shadow_checkpoints": True, "semantic_code_index": True,
-                     "interactive_canvas": True,
+                     "interactive_canvas": True, "omnibox_search": True,
                      **({"studio_m1": True, "studio_agent_gateway": True}
                         if studio_domain.STUDIO_AVAILABLE else {})}}
         if method == "project.list":

@@ -59,7 +59,12 @@ always see what really happened.
 - **Research registry.** Attributed records, links to evidence, assessments and
   agent proposals you accept or reject: knowledge that outlives a single chat.
 - **Kira's Soul.** Identities you own, with a working philosophy, explicit
-  preferences and learned lessons you can review, keep or forget.
+  preferences, quick chat creation and configuration (`/anima crea`,
+  `/anima preferenza`) and learned lessons you can review, keep per chat, per
+  project or across all projects sharing the same Soul, or forget.
+- **Universal Omnibox (`Ctrl+K`).** Instant cross-project search across
+  projects, chats, messages, Soul identities and lessons, Research records,
+  Canvas artifacts and native desktop actions, with zero token overhead.
 - **Autonomous goals, persistent questions and guidance while working**, plus
   public reasoning summaries where the provider offers them.
 - **A quiet interface.** One top bar, an icon rail or hidden sidebar, chips in

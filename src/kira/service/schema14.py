@@ -33,7 +33,7 @@ CREATE TABLE soul_proposals (
  id TEXT PRIMARY KEY, soul_id TEXT NOT NULL REFERENCES souls(id), source_id TEXT NOT NULL REFERENCES soul_sources(id),
  project_id TEXT NOT NULL REFERENCES projects(id), session_id TEXT NOT NULL REFERENCES sessions(id),
  kind TEXT NOT NULL CHECK(kind IN ('lesson','preference')),
- scope TEXT NOT NULL CHECK(scope IN ('chat','project')),
+ scope TEXT NOT NULL CHECK(scope IN ('chat','project','profile')),
  statement TEXT NOT NULL, applicability TEXT NOT NULL, preference_key TEXT, preference_value TEXT,
  status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected','superseded')),
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE soul_memories (
  id TEXT PRIMARY KEY, soul_id TEXT NOT NULL REFERENCES souls(id),
  proposal_id TEXT NOT NULL UNIQUE REFERENCES soul_proposals(id), source_id TEXT NOT NULL REFERENCES soul_sources(id),
  project_id TEXT NOT NULL REFERENCES projects(id), session_id TEXT NOT NULL REFERENCES sessions(id),
- scope TEXT NOT NULL CHECK(scope IN ('chat','project')), kind TEXT NOT NULL,
+ scope TEXT NOT NULL CHECK(scope IN ('chat','project','profile')), kind TEXT NOT NULL,
  statement TEXT NOT NULL, applicability TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE soul_revision_memories (

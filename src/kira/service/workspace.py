@@ -12,6 +12,7 @@ from kira import __version__
 from kira.domain.contracts import EVENT_SCHEMA_VERSION, SCHEMA_VERSION, Json, KiraError
 from kira.domain.paths import Paths
 from kira.service.desktop import ACTION_IDS, Desktop, private_directory
+from kira.service.omnibox import OmniboxService
 from kira.service.redaction import Redactor
 from kira.service.storage import Store, encode, new_id, now
 from kira.tools.filesystem import FileTools
@@ -56,6 +57,7 @@ class Workspaces:
     def __init__(self, store: Store, paths: Paths, redactor: Redactor) -> None:
         self.store, self.paths, self.redactor = store, paths, redactor
         self.desktop = Desktop()
+        self.omnibox = OmniboxService(store, paths, redactor, self.desktop)
 
     def project(self, params: Json, required: bool = True) -> Json | None:
         if not required and "project_id" not in params:
@@ -133,7 +135,11 @@ class Workspaces:
             fields(params, {"project_id", "query"})
             project = self.project(params, required=False)
             query = text({"query": params.get("query", "")}, "query", 2000, empty=True)
-            return {"actions": self.desktop.catalog(project, query)}
+            active_pid = project["id"] if project else None
+            return {
+                "actions": self.desktop.catalog(project, query),
+                "omnibox": self.omnibox.catalog(active_project_id=active_pid, query=query),
+            }
         if method == "desktop.launch":
             fields(params, {"action_id", "project_id", "request_id", "query"})
             project = self.project(params, required=False)

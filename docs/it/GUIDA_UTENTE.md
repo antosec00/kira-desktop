@@ -1189,17 +1189,22 @@ richiesta specifica prevale sempre sulle preferenze generali.
 
 Scegli come deve evolvere: **Manuale** (modifichi tu identità e preferenze),
 **Suggerimenti** (Kira propone lezioni che leggi in **Cosa ha imparato** e
-decidi con **Conserva** o **Scarta**) o **Adattiva** (applica da sola le
-preferenze esplicite). In modalità Adattiva un messaggio composto solo da
+decidi con **Conserva**, **Conserva in tutti i progetti** o **Scarta**) o
+**Adattiva** (applica da sola le preferenze esplicite). In modalità Adattiva un
+messaggio composto solo da
 
 ```text
-/anima preferenza tono=naturale e diretto
+/anima preferenza tono=naturale e diretto dettaglio=sintetico
 ```
 
-aggiorna la preferenza; le chiavi sono `tono`, `dettaglio`, `collaborazione` e
-`lingua` (valgono anche i nomi inglesi `tone`, `detail`, `collaboration` e
-`language`). In Suggerimenti il comando produce una proposta; in Manuale non fa
-nulla. Il testo libero non diventa mai una regola da solo. **Utile / Non utile**
+aggiorna una o più preferenze contemporaneamente (e associa automaticamente
+l'Anima attiva se la chat non ne ha ancora una); le chiavi sono `tono`,
+`dettaglio`, `collaborazione` e `lingua` (valgono anche i nomi inglesi `tone`,
+`detail`, `collaboration` e `language`). Puoi anche creare e associare subito una
+nuova identità dalla chat con `/anima crea nome=... nucleo=... modalita=adattiva
+tono=...` oppure chiedendo al modello di crearla per te. In Suggerimenti
+`/anima preferenza` produce una proposta; in Manuale non fa nulla. Il testo
+libero non diventa mai una regola da solo. **Utile / Non utile**
 influenza l'ordine dei ricordi; **Dimentica** esclude una lezione; **Evoluzione**
 mostra le revisioni e permette di ripristinarne una. **Copia profilo**,
 **Importa profilo** e **Duplica** trasferiscono nucleo e preferenze senza
@@ -1244,9 +1249,15 @@ stessa cartella di lavoro. Questa azione apre applicazioni senza ripetere i
 comandi delle vecchie esecuzioni. Le operazioni interrotte non vengono mai
 ripetute automaticamente.
 
-### Ctrl+K
+### Ctrl+K (Omnibox universale)
 
-**Ctrl+K** cerca progetti e azioni native, che usano applicazioni fisse di KDE
+**Ctrl+K** apre l'Omnibox universale con filtri rapidi per categoria (**Tutto**,
+**Chat**, **Anime**, **Conoscenza**, **Azioni**): cerca istantaneamente tra tutti
+i progetti, le chat e i messaggi salvati, le identità e le lezioni accettate
+dell'Anima, le schede del Registro di Ricerca, gli artefatti del Canvas e le
+azioni native del desktop, permettendoti di saltare direttamente a una chat, a
+un'Anima o a un artefatto anche di un altro progetto senza alcun consumo di
+token. Le azioni native usano applicazioni fisse di KDE
 Plasma e Firefox: cartella, terminale ed editor del progetto (Dolphin, Konsole,
 Kate), Firefox, impostazioni di Plasma, Monitor di sistema, Discover per gli
 aggiornamenti, Déjà Dup per i backup, una schermata con Spectacle e una ricerca
@@ -1422,7 +1433,7 @@ indietro serve il backup fatto prima. La procedura completa è in
 | --- | --- |
 | **Ctrl+Invio** | Invia il messaggio, oppure invia indicazioni al turno attivo |
 | **Ctrl+B** | Cambia lo stato della barra laterale (Intera, Solo icone, Nascosta) |
-| **Ctrl+K** | Cerca progetti e azioni native |
+| **Ctrl+K** | Omnibox universale: cerca progetti, chat, messaggi, Anime, Ricerca, Canvas e azioni native |
 | **Ctrl+N** | Nuovo progetto |
 | **Ctrl+L** | Porta il cursore nel campo di scrittura |
 | **Ctrl+Shift+N** | Nuova chat nel progetto |
