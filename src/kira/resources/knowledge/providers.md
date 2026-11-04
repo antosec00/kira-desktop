@@ -43,17 +43,28 @@ reach it through an internal MCP server named `kira`, as
 `mcp__kira__<namespace>__<tool>` (for example `mcp__kira__browser__navigate`).
 Claude Code keeps its own session history.
 
-Managed Teams run only with Codex, OpenAI direct, Ollama or DeepSeek Account.
-The current capability response distinguishes registration, permission and
-observed transport. Loading this guide performs no provider call or capability
-probe. Private reasoning, opaque context and credential stores are excluded.
+Google Cloud (`google_cloud`) connects to Vertex AI or the Gemini API via
+`gcloud` ADC, a Gemini API key or a Service Account JSON. OpenRouter
+(`openrouter`) connects to OpenRouter's unified `/api/v1/chat/completions`
+gateway with the user's API key (`sk-or-v1-...`), adapting dynamically to each
+model's `/api/v1/models` catalog metadata (`context_length`,
+`max_completion_tokens`, tool calling, vision and reasoning). Both run Kira's
+tool loop with project permission checks and maintain a durable Kira-managed
+context with automatic compaction.
+
+Managed Teams run with Codex, OpenAI direct, Ollama, DeepSeek Account, Google
+Cloud or OpenRouter. The current capability response distinguishes registration,
+permission and observed transport. Loading this guide performs no provider call
+or capability probe. Private reasoning, opaque context and credential stores are
+excluded.
 
 ## Public reasoning summaries
 
-Kira displays public summaries supplied by OpenAI direct (Responses) and Codex
-when the selected model/connection provides them. Ollama, DeepSeek Account,
-DeepSeek Web and Claude Code supply none. The compact panel below the chat can
-be expanded or hidden in settings. It is optional presentation data, not private
+Kira displays public summaries supplied by OpenAI direct (Responses), Codex,
+Google Cloud and OpenRouter when the selected model/connection provides them.
+Ollama, DeepSeek Account and Claude Code supply none (DeepSeek Web shows the
+reasoning displayed on its site). The compact panel below the chat can be
+expanded or hidden in settings. It is optional presentation data, not private
 reasoning access, a final answer or execution evidence. Missing or unsupported
 summaries do not establish that the model stopped working. Ollama's raw
 thinking is not exposed through this public-summary feature. Do not invent a

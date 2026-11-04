@@ -23,7 +23,8 @@ limiti. È scritta in italiano; la traduzione inglese è in `docs/en/`.
 | --- | --- |
 | Usare Kira ogni giorno: progetti, chat, richieste, risultati, impostazioni, scorciatoie, domande frequenti | [Guida utente](GUIDA_UTENTE.md) |
 | Requisiti, pacchetti, avvio dal sorgente, percorsi dei dati, profili, backup, aggiornamenti, risoluzione dei problemi | [Installazione](INSTALLAZIONE.md) |
-| Ollama, Codex, OpenAI diretto · ChatGPT, DeepSeek, Claude Code; cambio di provider nella stessa chat; uso e risorse | [Provider](PROVIDER.md) |
+| Ollama, Codex, OpenAI · ChatGPT, Google Cloud · Vertex AI, OpenRouter, DeepSeek, Claude Code; abilitazione/disattivazione provider; cambio di provider nella stessa chat; uso e risorse | [Provider](PROVIDER.md) |
+
 | Permessi di progetto, modalità in sola lettura, accesso completo, azioni native, riga di comando, dati che restano locali | [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md) |
 | Ricerca web, browser isolato, Computer di Kira, consensi, login manuale, passkey | [Browser e Computer](BROWSER_E_COMPUTER.md) |
 | Tutto ciò che riguarda la conversazione: azioni rapide, bozze, coda, indicazioni, modalità, archivio, diramazione, esportazione, domande, allegati, ricevute, risposte formattate | [Chat e strumenti](CHAT_E_STRUMENTI.md) |

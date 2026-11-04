@@ -17,12 +17,13 @@ behind every answer.
 | **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **Google Cloud · Vertex AI** | **Models → Google Cloud → Add / Switch Google account** (isolated OAuth2 PKCE), read-only system `gcloud` ADC, or API Key | Kira | Yes | Yes (PNG/JPEG/WebP/GIF) | Yes | Yes | Yes | Yes |
-| **DeepSeek Account** (experimental) | **Models → DeepSeek Account → Sign in with DeepSeek**, or **Use DeeperSeeker** | Kira | Yes | Yes, vision models only | Yes | Yes | Yes | No |
+| **OpenRouter** | **Models → OpenRouter → OpenRouter API key** (`sk-or-v1-...` stored in your local `0600` profile) or `OPENROUTER_API_KEY` env var | Kira | Yes (Computer with vision for multimodal models) | Yes, with models declaring `image` input in `/api/v1/models` | Yes | Yes | Yes | Yes (for models with `reasoning` / `thinking`) |
+| **DeepSeek Account** (experimental) | **Models → DeepSeek API → Sign in with DeepSeek**, or **Use DeeperSeeker** | Kira | Yes | Yes, vision models only | Yes | Yes | Yes | No |
 | **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | Yes, with DeepSeek Reasoner (web) |
 | **Claude Code · personal use** (experimental) | `claude-code` extra from source; sign-in already done in Claude Code | The provider (Claude Code built-in tools) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | No | Yes | Yes | No |
 
 The "Who executes the tools" column is the most important difference between
-providers. With Ollama, Direct OpenAI, Google Cloud · Vertex AI and DeepSeek the model *asks* Kira to
+providers. With Ollama, Direct OpenAI, Google Cloud · Vertex AI, OpenRouter and DeepSeek the model *asks* Kira to
 read a file, run a command or open a page, and Kira performs the operation
 applying the project's permissions, modes and approvals. With Codex and Claude
 Code, file operations and commands are executed by the provider's runtime; Kira
@@ -31,11 +32,21 @@ project permissions through the provider's sandbox or filters.
 
 ## Principles shared by all providers
 
-**You choose the model, for every chat.** Open **Models** (also from the model
-chip below the composer, which opens **Provider, model and reasoning**).
-Providers are a row of buttons; each model is a card with its identifier,
-declared tools, size when known and available reasoning levels. **Use model**
-selects it for the current chat.
+**You choose the model, for every chat.** Open **Models** (*Provider and Model
+Hub*, also reachable from the model chip below the composer, which opens
+**Provider, model and reasoning**). Providers are a row of buttons; each model is
+a card with its identifier, declared tools, size or context window when known
+and available reasoning levels. **Use model** selects it for the current chat.
+
+**Enabling or disabling individual providers.** Each provider's status card in
+**Models** includes the **Disable provider** / **Enable provider** button. When
+you disable a provider you do not use:
+- its pill in **Models** displays the `· Off` indicator at reduced opacity and
+  hides the provider's configuration panel and model cards until re-enabled;
+- the provider is automatically removed from the quick selectors in the chat
+  composer and the Team editor, keeping the UI focused on the services you use;
+- the preference is persisted in `ui.json` (`disabled_backends`) and at least one
+  provider always remains enabled.
 
 **The provider status is a colored dot** below the row of buttons:
 
@@ -44,6 +55,7 @@ selects it for the current chat.
 | Green | Connected, catalog available |
 | Amber | To be connected, or connected but without models |
 | Red | Unavailable (server unreachable, executable missing, sign-in expired) |
+| Gray | Provider disabled by the user or initial check in progress |
 
 **A listed model is not a right to use it.** The catalog says what the provider
 exposes to your account or your server; only a completed response confirms that
@@ -54,14 +66,17 @@ special access programs, vision models and reasoning levels.
 rejected because of authentication, quota, account policy or an unavailable
 model, the error stays visible and the chat keeps the configuration you chose.
 No alternative model is selected, no paid API key is used, no billing tier is
-changed.
+changed (the only explicit exception applies to free `:free` OpenRouter models
+when the upstream free queue stalls or is saturated, described in the OpenRouter
+section).
 
 **Credentials stay within the provider's official flow.** Kira does not read
 browser cookies, does not import authentication files from other applications
 and does not copy tokens into the database, the events, the exports or the
-diagnostics. When Kira manages a sign-in (ChatGPT, DeepSeek Account, DeepSeek
-Web), the credentials live in private files of the Kira profile, separate from
-the conversation data.
+diagnostics. When Kira manages a sign-in (ChatGPT, Google Cloud, OpenRouter,
+DeepSeek Account, DeepSeek Web), the credentials live in private files of the
+Kira profile (`0600`), separate from the conversation data.
+
 
 **Provider data** shows the raw JSON returned by the catalog, collapsed until
 you open it. No value is invented: what the provider does not declare (size,
@@ -805,6 +820,75 @@ The built-in catalog exposes:
 - **Custom models**: in the **Custom models** field you can add any additional
   comma-separated Model Garden model ID.
 
+## OpenRouter
+
+The **OpenRouter** (`openrouter`) provider connects Kira to the unified
+[OpenRouter](https://openrouter.ai) API (`https://openrouter.ai/api/v1`),
+letting you run 300+ models (Anthropic Claude, OpenAI GPT and o-series, Google
+Gemini, DeepSeek V3/R1, Qwen, Meta Llama, Moonshot Kimi, Mistral, xAI Grok) with
+a single API key and all of Kira's native tools.
+
+### Configuration and API key
+
+In **Models → OpenRouter**, enter your OpenRouter API key (`sk-or-v1-...`) and
+press **Save OpenRouter configuration**:
+- The key is verified via `GET /api/v1/key` and saved in Kira's private local
+  profile (`$XDG_CONFIG_HOME/kira/openrouter/config.json`) with `0600`
+  permissions, redacted in logs and never exposed in plain text.
+- Alternatively, you can export `OPENROUTER_API_KEY` in your environment: Kira
+  detects it automatically without writing it to disk.
+- The panel shows the key's label, total and daily usage, remaining budget (if
+  configured on the key), and *Free tier* status in real time.
+- In **Pinned or custom OpenRouter models**, you can list comma-separated model
+  IDs (e.g. `anthropic/claude-sonnet-4.6, deepseek/deepseek-r1, openai/gpt-5.4`)
+  to always highlight at the top of the catalog.
+
+### Dynamic catalog and context-aware model adaptation
+
+Kira queries `GET /api/v1/models` and automatically adapts every
+`POST /api/v1/chat/completions` request to the actual capabilities declared by
+OpenRouter for the selected model:
+- **Context window and `max_tokens`**: reads `context_length` and
+  `top_provider.max_completion_tokens`, automatically sizing the portable
+  history budget and completion token limit.
+- **Kira native tools**: all project tools (`fs.*`, `shell.run`,
+  `kira_browser__*`, `kira_computer__*`, `kira.team_*`, `kira.research_*`,
+  `kira.help_*`, `kira_studio__*`, `canvas.*`) are exposed in OpenAI
+  function-calling format (`tools`) and executed locally by Kira under the
+  project's permissions. If a specific model or upstream endpoint rejects the
+  `tools` parameter, Kira automatically retries the turn without tools rather
+  than failing the conversation.
+- **Vision and isolated Computer**: for every model declaring `"image"` in
+  `architecture.input_modalities`, Kira enables attached image inputs and visual
+  screenshots from the isolated Browser and Computer (`data:image/png;base64,...`).
+- **Extended reasoning (`reasoning` / `thinking`)**: for models declaring
+  `reasoning` or `include_reasoning` in `supported_parameters`, Kira exposes
+  reasoning effort levels (`low`, `medium`, `high`), sends the unified
+  `reasoning: {"effort": ...}` parameter, and streams reasoning deltas
+  (`delta.reasoning` / `delta.reasoning_details`) into the **Reasoning summary**
+  panel.
+- **Automatic prompt caching**: when the selected model belongs to the Anthropic
+  Claude (`anthropic/*`) or Google Gemini (`google/*`) families, Kira
+  automatically attaches `cache_control: {"type": "ephemeral"}` breakpoints to
+  the system prompt and recent large user turns to lower latency and token cost.
+- **Cost telemetry and `:free` models**: per-token input, output, and cache
+  rates are populated dynamically from the OpenRouter catalog's `pricing` object
+  (including `$0` `:free` models).
+
+### Anti-stall protection and automatic fallback for `:free` models
+
+OpenRouter's free models (`...:free` and `openrouter/free`) share public queues
+on upstream providers that occasionally emit SSE keep-alive comments
+(`: OPENROUTER PROCESSING`) indefinitely without producing payload tokens:
+- Kira distinguishes SSE keep-alive comments from real `data:` chunks and
+  enforces a dedicated first-event timeout (28 seconds) on `:free` models so
+  stalled upstream queues never hang the turn indefinitely.
+- When a `:free` model stalls on keep-alive comments, hits a rate limit (`429`),
+  or returns a transient upstream error (`502`, `503`, `504`), Kira
+  automatically falls back across compatible tool-capable `:free` models (and
+  finally `openrouter/free`), reporting in the status bar which free fallback
+  model answered the turn.
+
 ## Switching provider or model within the same chat
 
 You can change model and reasoning level from the model chip without creating
@@ -823,7 +907,7 @@ you will be able to send it only to a model that supports vision.
 **What is not transferred:** the provider's internal state, private reasoning,
 encrypted native state and provider-specific capabilities. Kira passes the new
 provider a portable context within declared limits: with Codex, Ollama,
-Google Cloud, DeepSeek and Claude Code an excerpt of the conversation and of the tool
+Google Cloud, OpenRouter, DeepSeek and Claude Code an excerpt of the conversation and of the tool
 outcomes; with Direct OpenAI the whole paginated archive in its persistent
 context. Project instructions, important notes and goal are supplied
 separately. Previous tool calls are historical data: they are never re-run
@@ -876,6 +960,7 @@ it does not change the chat's provider.
 | Codex | Quota windows, percentages, reset, credits read from the Codex account (**Refresh**) | Tokens from the provider's last report |
 | Direct OpenAI | The chat's account and the **Plan usage ↗** link; no quota exposed | Tokens recorded in the last seven days for this profile |
 | Google Cloud · Vertex AI | Active account (isolated or WSL2 system), `project_id` and region (`global`) | Input/cached/output tokens and estimated API cost telemetry on Vertex AI rates |
+| OpenRouter | API key label, total/daily usage, remaining budget and *Free tier* status from `/api/v1/key` | Input/cached/output tokens and real or estimated cost from the OpenRouter catalog's dynamic pricing |
 | Ollama | No account | Tokens, durations and context loaded from the last response; model RAM/VRAM if Ollama reports them |
 | DeepSeek Account | No quota exposed | Tokens reported by the responses |
 | DeepSeek Web | No quota exposed | None: the site reports no token counts |
@@ -927,6 +1012,7 @@ an old run is never presented as the current one.
 | Codex | Yes |
 | Direct OpenAI · ChatGPT | Yes |
 | Google Cloud · Vertex AI | Yes (`includeThoughts` on Gemini 3.x / 4 Argon and `thinking` blocks on Vertex Claude) |
+| OpenRouter | Yes (`reasoning` / `reasoning_details` deltas on models with extended reasoning) |
 | Ollama | No (the raw internal reasoning stays excluded) |
 | DeepSeek Account | No |
 | DeepSeek Web | Yes, with DeepSeek Reasoner (web): the reasoning that the site shows |
@@ -955,6 +1041,7 @@ on; past runs are not repeated to generate one.
   [errors and recovery](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery),
   [image inputs](https://developers.openai.com/api/docs/guides/images-vision?api-mode=responses).
 - OpenAI, [Codex App Server](https://developers.openai.com/codex/app-server/).
+- OpenRouter: [API Reference](https://openrouter.ai/docs/api-reference/overview), [Models API](https://openrouter.ai/docs/api-reference/models/get-models), [Tool Calling](https://openrouter.ai/docs/features/tool-calling), [Reasoning Tokens](https://openrouter.ai/docs/use-cases/reasoning-tokens), [Prompt Caching](https://openrouter.ai/docs/features/prompt-caching).
 - Ollama: [chat](https://docs.ollama.com/api/chat), [tool calling](https://docs.ollama.com/capabilities/tool-calling), [loaded models](https://docs.ollama.com/api/ps).
 - DeepSeek Harness: [account sign-in](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/credentials/deepseek-account-platform), [account Messages provider](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/llm/llm-deepseek-account), [discussion on the managed key after logout](https://github.com/deepseek-ai/deepseek-harness/discussions/9472).
 - [Playwright](https://playwright.dev/python/), the engine of Kira's isolated browser.
@@ -965,3 +1052,4 @@ Related documents: [User guide](USER_GUIDE.md),
 [Permissions and security](PERMISSIONS_AND_SECURITY.md), [Teams](TEAMS.md),
 [Autonomous goals](AUTONOMOUS_GOALS.md), [Research](RESEARCH.md),
 [Installation](INSTALLATION.md).
+

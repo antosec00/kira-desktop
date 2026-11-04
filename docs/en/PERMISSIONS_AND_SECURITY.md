@@ -65,9 +65,10 @@ Some important clarifications:
   but they do not promise that only the project folder is readable. Codex
   treats **Trusted host** and **Full access** the same way; the difference
   between the two applies to the file tools managed by Kira.
-- With **Direct OpenAI · ChatGPT**, **Ollama**, **DeepSeek** and **Claude Code**
-  the model only receives the tools the permission allows: in read only it does
-  not even see the definition of the write tool.
+- With **Direct OpenAI · ChatGPT**, **Google Cloud · Vertex AI**,
+  **OpenRouter**, **Ollama**, **DeepSeek** and **Claude Code** the model only
+  receives the tools the permission allows: in read only it does not even see
+  the definition of the write tool.
 - Changing the permission does not change the model, account, reasoning level
   or project folder. A change requested while there is active work is refused:
   wait until the project is free.
@@ -287,6 +288,15 @@ Each provider handles its own credentials with the official flow:
   (`$HOME/.config/kira/` or `config/` inside `KIRA_HOME`), with 0600
   permissions. They are excluded from the database, events, context, exports
   and diagnostics.
+- **Google Cloud · Vertex AI** keeps OAuth credentials or the API key and
+  project/region settings in the private folder `google-cloud/` under Kira's
+  configuration, with 0600 permissions, excluded from the database, exports and
+  diagnostics.
+- **OpenRouter** keeps the API key (`sk-or-v1-...`) and configuration in the
+  private file `openrouter/config.json` under Kira's configuration, with 0600
+  permissions (or reads `OPENROUTER_API_KEY` from the environment without saving
+  it to disk); the key never appears in the database, events, exports or
+  diagnostics.
 - **DeepSeek Account** and **DeepSeek Web** keep their respective tokens in the
   private folders `deepseek-account/` (together with the DeeperSeeker key) and
   `deepseek-web/` under Kira's configuration; they appear neither in the state

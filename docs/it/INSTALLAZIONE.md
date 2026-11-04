@@ -222,7 +222,7 @@ Questi comandi funzionano da qualsiasi cartella. `kira` è il nome breve di
 | `kira-desktop` | Apre l'interfaccia e, se serve, avvia il servizio |
 | `kira-desktop --version` | Mostra la versione installata |
 | `kira-desktop diagnostics` | Stampa un rapporto locale sullo stato dell'installazione, con i dati privati filtrati; `--export` lo salva come file JSON in `diagnostics/` dentro la cartella dati |
-| `kira-desktop doctor` | Interroga il servizio e riporta lo stato reale delle risorse e di ciascun provider (Ollama, Codex, OpenAI diretto, DeepSeek Account, DeepSeek Web, Claude Code); un provider non disponibile non nasconde gli altri |
+| `kira-desktop doctor` | Interroga il servizio e riporta lo stato reale delle risorse e di ciascun provider (Ollama, Codex, OpenAI diretto, Google Cloud, OpenRouter, DeepSeek Account, DeepSeek Web, Claude Code); un provider non disponibile non nasconde gli altri |
 | `kira-desktop service` | Esegue il servizio in primo piano nel terminale, utile per vedere i log mentre provi qualcosa |
 | `kira-desktop stop-service` | Arresta il servizio in esecuzione, ma solo se è inattivo, anche se appartiene a un'altra versione di Kira; se nessun servizio è attivo non ne avvia uno e lo segnala |
 | `kira-desktop browser-install` | Scarica il motore Chromium del browser isolato per il profilo selezionato |
@@ -258,7 +258,7 @@ mancano, i percorsi standard sotto la tua cartella personale:
 | Database `kira.sqlite3`, allegati, artefatti, catture, browser | `$XDG_DATA_HOME/kira/` | `$HOME/.local/share/kira/` |
 | Preferenze dell'interfaccia | `$XDG_CONFIG_HOME/kira/ui.json` | `$HOME/.config/kira/ui.json` |
 | Bozze della chat e cronologia riutilizzabile | `$XDG_CONFIG_HOME/kira/composer.json` | `$HOME/.config/kira/composer.json` |
-| Accessi ai provider gestiti da Kira (OpenAI diretto, DeepSeek Account, DeepSeek Web) | `$XDG_CONFIG_HOME/kira/` (`openai-chatgpt/`, `deepseek-account/`, `deepseek-web/`) | `$HOME/.config/kira/` (stesse cartelle) |
+| Accessi ai provider gestiti da Kira (OpenAI diretto, Google Cloud, OpenRouter, DeepSeek Account, DeepSeek Web) | `$XDG_CONFIG_HOME/kira/` (`openai-chatgpt/`, `google-cloud/`, `openrouter/`, `deepseek-account/`, `deepseek-web/`) | `$HOME/.config/kira/` (stesse cartelle) |
 | Bozze e identità in sospeso di Anima, Ricerca e strumenti di progetto | `$XDG_STATE_HOME/kira/` (`souls-ui/`, `research-ui/`, `knowledge-ui/`, ognuna con `composer.json`) | `$HOME/.local/state/kira/` (stesse cartelle) |
 | Stato e log del servizio avviato in background | `$XDG_STATE_HOME/kira/` | `$HOME/.local/state/kira/` |
 | Socket di comunicazione fra interfaccia e servizio | `$XDG_RUNTIME_DIR/kira/service.sock` | `runtime/service.sock` dentro la cartella di stato |

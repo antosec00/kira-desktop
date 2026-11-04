@@ -32,12 +32,13 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
 - **Niente esce dal tuo computer senza di te.** Progetti, chat, eventi delle
   esecuzioni, screenshot e allegati stanno in un database SQLite e in cartelle
   private del tuo profilo. Kira non legge cookie né credenziali di altre
-  applicazioni; i token degli accessi che gestisce (ChatGPT, DeepSeek) restano in
-  file privati del profilo, fuori da database, esportazioni e diagnostica.
+  applicazioni; i token e le chiavi degli accessi che gestisce (ChatGPT, Google
+  Cloud, OpenRouter, DeepSeek) restano in file privati del profilo (`0600`), fuori da
+  database, esportazioni e diagnostica.
 - **Porta il tuo modello.** Ollama sul tuo computer, OpenAI Codex, il tuo piano
   ChatGPT, Google Cloud · Vertex AI (con i tuoi crediti o saldo GCP e multi-account
-  isolato), DeepSeek o il tuo Claude Code: scegli il provider per ogni chat e
-  puoi cambiarlo senza perdere la conversazione.
+  isolato), OpenRouter (oltre 300 modelli con adattamento automatico al contesto e
+  fallback per i modelli `:free`), DeepSeek o il tuo Claude Code: scegli il provider per ogni chat, abilita o disattiva i servizi che usi in **Modelli** e puoi cambiarlo senza perdere la conversazione.
 
 ## In evidenza
 
@@ -77,14 +78,16 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
 | --- | --- | --- |
 | **Ollama** | API HTTP locale (`http://127.0.0.1:11434` come predefinito) | Kira; strumenti verificati al primo uso, nessun download automatico di modelli |
 | **Codex** | OpenAI Codex App Server, con l'accesso ufficiale | Codex, con le sue sandbox; Kira osserva e registra ogni operazione |
-| **OpenAI diretto · ChatGPT** | Il tuo piano ChatGPT, con l'accesso ufficiale | Kira; immagini in ingresso, ricerca web ospitata, contesto gestito automaticamente |
+| **OpenAI · ChatGPT** | Il tuo piano ChatGPT, con l'accesso ufficiale | Kira; immagini in ingresso, ricerca web ospitata, contesto gestito automaticamente |
 | **Google Cloud · Vertex AI** | Multi-account OAuth2 PKCE isolato in Kira, `gcloud` ADC di sistema (in sola lettura) o API Key | Kira; modelli nativi Google (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) e modelli Partner Claude su Vertex AI, visione e riepiloghi del ragionamento |
-| **DeepSeek Account** (sperimentale) | Accesso account | Kira |
-| **DeepSeek Web** (sperimentale) | Token di sessione del sito | Kira, con un protocollo testuale per gli strumenti |
-| **Claude Code · uso personale** (sperimentale) | Il tuo Claude Code già autenticato (extra opzionale, non incluso nei pacchetti) | Claude Code, osservato da Kira; browser, Computer, domande e Ricerca tramite un server MCP interno |
+| **OpenRouter** | Chiave API OpenRouter (`sk-or-v1-...` nel profilo locale `0600` o variabile `OPENROUTER_API_KEY`) | Kira; catalogo dinamico (`/api/v1/models`), adattamento automatico a contesto, `max_tokens`, `reasoning`/`thinking`, prompt caching (Claude/Gemini), visione multimodale e fallback anti-stallo per modelli `:free` |
+| **DeepSeek API** | Accesso account DeepSeek o proxy DeeperSeeker | Kira |
+| **DeepSeek Web** | Token di sessione del sito | Kira, con un protocollo testuale per gli strumenti |
+| **Claude Code** | Il tuo Claude Code già autenticato (extra opzionale, non incluso nei pacchetti) | Claude Code, osservato da Kira; browser, Computer, domande e Ricerca tramite un server MCP interno |
 
-Il provider si sceglie per ogni chat in **Modelli**. [Provider](docs/it/PROVIDER.md)
+Il provider si sceglie per ogni chat in **Modelli** (*Hub Provider e Modelli*), dove puoi anche abilitare o disattivare ciascun servizio per snellire i selettori rapidi. [Provider](docs/it/PROVIDER.md)
 descrive ogni collegamento, le sue capacità e i limiti noti.
+
 
 ## Avvio rapido
 

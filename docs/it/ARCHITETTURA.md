@@ -19,9 +19,10 @@ flowchart LR
   Service --> Artifacts[Artefatti, allegati e catture private]
   Service --> Ollama[Ollama: API nativa] & OpenAI[OpenAI diretto: Responses HTTP/SSE]
   Service --> DSAccount[DeepSeek Account: accesso con l'account] & DSWeb[DeepSeek Web: sessione web]
+  Service --> GCloud[Google Cloud: Vertex AI / Gemini API] & OpenRouter[OpenRouter: gateway multi-provider]
   Service --> Codex[Codex App Server gestito] & Claude[Claude Code via Agent SDK]
   Service --> Browser[Worker browser: Chromium su display Xvfb privato]
-  Ollama & OpenAI & DSAccount & DSWeb -->|richieste validate| Tools[Strumenti di Kira: file, comandi, browser, Computer]
+  Ollama & OpenAI & DSAccount & DSWeb & GCloud & OpenRouter -->|richieste validate| Tools[Strumenti di Kira: file, comandi, browser, Computer]
   Codex -->|ponte MCP temporaneo| KiraMcp[Strumenti kira via MCP]
   Claude -->|server MCP interno| KiraMcp
   Codex --> NativeTools[Strumenti nativi di Codex]
@@ -37,15 +38,20 @@ non esiste alcun servizio di sistema né alcun "linger" attivo.
 
 I provider si dividono in due famiglie:
 
-- **Ollama, OpenAI diretto, DeepSeek Account e DeepSeek Web** fanno inferenza
-  mentre Kira gestisce un piccolo ciclo di strumenti proprio: il modello chiede
-  uno strumento, il servizio valida la richiesta, la esegue e restituisce il
-  risultato. OpenAI diretto usa un gestore OAuth del servizio e un trasporto
-  Responses HTTP/SSE senza passare da Codex App Server; DeepSeek Account usa
-  l'accesso con il tuo account DeepSeek (oppure un'istanza DeeperSeeker con
-  chiave API); DeepSeek Web riusa una sessione web e risolve la sfida
-  proof-of-work con un modulo WebAssembly eseguito in wasmtime. I file delle
-  credenziali sono configurazione privata e non entrano nelle esportazioni.
+- **Ollama, OpenAI diretto, DeepSeek Account, DeepSeek Web, Google Cloud e
+  OpenRouter** fanno inferenza mentre Kira gestisce un piccolo ciclo di
+  strumenti proprio: il modello chiede uno strumento, il servizio valida la
+  richiesta, la esegue e restituisce il risultato. OpenAI diretto usa un gestore
+  OAuth del servizio e un trasporto Responses HTTP/SSE senza passare da Codex
+  App Server; DeepSeek Account usa l'accesso con il tuo account DeepSeek
+  (oppure un'istanza DeeperSeeker con chiave API); DeepSeek Web riusa una
+  sessione web e risolve la sfida proof-of-work con un modulo WebAssembly
+  eseguito in wasmtime; Google Cloud usa `gcloud` ADC, una chiave Gemini API o
+  un Service Account JSON verso Vertex AI / Gemini API; OpenRouter usa la tua
+  chiave API (`sk-or-v1-...`) verso l'endpoint unificato
+  `/api/v1/chat/completions` con adattamento dinamico al catalogo
+  `/api/v1/models`. I file delle credenziali sono configurazione privata e non
+  entrano nelle esportazioni.
 - **Codex e Claude Code** possiedono i propri strumenti nativi. Kira osserva le
   loro notifiche (una sola volta: una notifica osservata non viene mai rieseguita
   da Kira) e offre in aggiunta i propri strumenti `kira` attraverso MCP.

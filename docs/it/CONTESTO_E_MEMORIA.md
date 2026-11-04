@@ -210,18 +210,33 @@ portabile di Kira. In **Uso e risorse** trovi, per ogni turno, i token del
 turno, quelli dell'ultima richiesta e l'**occupazione della finestra di
 contesto** riportata da Claude Code.
 
+### Google Cloud · Vertex AI e OpenRouter
+
+Con **Google Cloud · Vertex AI** e **OpenRouter** Kira mantiene un **contesto
+persistente gestito da Kira** in modalità **Automatico — compattazione Kira**,
+calibrato sulla finestra e sul limite di uscita dichiarati dal modello (per
+OpenRouter letti dinamicamente da `context_length` e
+`top_provider.max_completion_tokens` nel catalogo `/api/v1/models`). Quando la
+conversazione si avvicina alla soglia o se il provider restituisce un errore di
+contesto pieno (o un blocco preventivo `PROMPT_SAFETY` sulla cronologia lunga),
+Kira compatta le esecuzioni più vecchie in una sintesi strutturata con fonti e
+conserva verbatim i turni più recenti. Per i modelli Anthropic Claude e Google
+Gemini su OpenRouter, Kira inserisce inoltre marcatori `cache_control:
+{"type": "ephemeral"}` sul prompt di sistema e sull'ultimo messaggio stabile per
+sfruttare il prompt caching del provider.
+
 ## 6. Contesto e memoria: compattare
 
 Apri **Contesto e memoria** dal pulsante **Contesto** sotto la chat, da
-**Gestisci chat** o dal pannello **Uso**. Con OpenAI diretto e DeepSeek Account,
-**Compatta ora** avvia una compattazione esplicita: richiede una **chat
-inattiva** e una **coda vuota** (completa o rimuovi le richieste in attesa,
-anche se la coda è in pausa). Durante l'operazione il pulsante della chat mostra
-**Compattazione…** e il pannello aggiorna lo stato finché è aperto; chiuderlo
-non annulla nulla. La compattazione usa il modello selezionato, può consumare
-quota del piano e aggiungere attesa, e non modifica i file del progetto. Se la
-conferma manca, premi **Aggiorna**: Kira conserva l'identità della richiesta e
-non ripete un'inferenza da sola.
+**Gestisci chat** o dal pannello **Uso**. Con OpenAI diretto, DeepSeek Account,
+Google Cloud e OpenRouter, **Compatta ora** avvia una compattazione esplicita:
+richiede una **chat inattiva** e una **coda vuota** (completa o rimuovi le
+richieste in attesa, anche se la coda è in pausa). Durante l'operazione il
+pulsante della chat mostra **Compattazione…** e il pannello aggiorna lo stato
+finché è aperto; chiuderlo non annulla nulla. La compattazione usa il modello
+selezionato, può consumare quota del piano e aggiungere attesa, e non modifica i
+file del progetto. Se la conferma manca, premi **Aggiorna**: Kira conserva
+l'identità della richiesta e non ripete un'inferenza da sola.
 
 Se la risposta della compattazione nativa non è utilizzabile (indice o formato
 che il lettore locale non accetta), Kira mostra **Recupero del contesto**,

@@ -136,13 +136,15 @@ repeated command does not create a second goal or a duplicate cycle.
 | --- | --- |
 | **Codex** | Yes |
 | **Direct OpenAI · ChatGPT** | Yes |
+| **Google Cloud · Vertex AI** | Yes |
+| **OpenRouter** | Yes |
 | **Ollama** | Yes |
 | **DeepSeek Account** (experimental) | Yes (checkpoints use the tools managed by Kira) |
 | **Claude Code · personal use** (experimental) | Yes |
 | **DeepSeek Web** (experimental) | No |
 
 An old preference that disables Ollama's tools does not disable the tools
-managed by Kira that DeepSeek Account uses.
+managed by Kira that DeepSeek Account, Google Cloud or OpenRouter use.
 
 ## Tips for continuous research goals
 
