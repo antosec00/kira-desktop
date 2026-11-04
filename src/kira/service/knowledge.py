@@ -681,10 +681,20 @@ class Knowledge:
         kira["tools"].extend(tool for tool in knowledge_tool_specs() if tool["name"] not in existing)
         souls = getattr(self.service, "souls", None)
         if souls is not None:
-            selected = self.store.db.execute(
-                "SELECT snapshot FROM soul_run_snapshots WHERE run_id=? AND soul_id IS NOT NULL",
+            snap_row = self.store.db.execute(
+                "SELECT soul_id,selected,snapshot FROM soul_run_snapshots WHERE run_id=?",
                 (run_id,)).fetchone()
-            if selected and (json.loads(selected[0]).get("soul") or {}).get("mode") in {"suggest", "adaptive"}:
+            snap_data = json.loads(snap_row["snapshot"]) if snap_row else {}
+            bound_mode = (snap_data.get("soul") or {}).get("mode")
+            asked_soul = bool(
+                snap_row and not snap_data.get("disabled") and bound_mode != "manual"
+                and self.store.db.execute(
+                    "SELECT 1 FROM runs WHERE session_id=? AND ("
+                    "knowledge_casefold(prompt) LIKE '%anima%' OR knowledge_casefold(prompt) LIKE '%soul%') LIMIT 1",
+                    (session["id"],),
+                ).fetchone()
+            )
+            if bound_mode in {"suggest", "adaptive"} or asked_soul:
                 kira["tools"].extend(tool for tool in soul_tool_specs() if tool["name"] not in existing)
         previous = options.get("client_tool_call")
 

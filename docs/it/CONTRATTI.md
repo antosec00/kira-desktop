@@ -454,7 +454,7 @@ anche `expected_revision` (confronta-e-scambia).
 | `soul.bind` | `{request_id, project_id, session_id, soul_id}`; `null` toglie la selezione |
 | `soul.preference` | `{request_id, soul_id, expected_revision, key, value}`; `null` cancella |
 | `soul.proposals` | `{soul_id, project_id?, session_id?, offset?, limit?}` |
-| `soul.decide` | `{request_id, soul_id, expected_revision, proposal_id, decision}` |
+| `soul.decide` | `{request_id, soul_id, expected_revision, proposal_id, decision, scope?}` (`scope` ∈ `chat\|project\|profile` per le lezioni accettate) |
 | `soul.memories` | `{soul_id, project_id?, session_id?, query?, offset?, limit?}` |
 | `soul.forget` | `{request_id, soul_id, expected_revision, memory_id}` |
 | `soul.feedback` | `{request_id, soul_id, expected_revision, memory_id, helpful}` |
@@ -505,7 +505,8 @@ Formati: PNG, JPEG, WebP e GIF statica; i file animati sono rifiutati.
 | `workspace.get` | `{project_id}` → `{project_id, tools, next_step, resume:{last_run, active_count, interrupted_count}, watches, captures}` | `tools` ⊆ `folder, terminal, editor`; una watch ha `path, sha256, current_sha256, state` (`unchanged, changed, missing, unavailable`), `checked_at`. |
 | `workspace.update` | `{project_id, tools?, next_step?}` → workspace | Scelte per progetto; `next_step` è mantenuto dall'utente. |
 | `workspace.watch` / `.unwatch` | `{project_id, path}` → workspace | Solo file regolari contenuti nel progetto, senza symlink o FIFO; `watch` crea o sostituisce l'hash di riferimento. |
-| `desktop.actions` | `{project_id?, query?}` → `{actions:[{id, label, description, available, reason, requires_project}]}` | ID fissi: `project.folder, project.terminal, project.editor, browser.open, browser.search, screenshot.capture, system.settings, system.monitor, system.updates, system.backup`. |
+| `desktop.actions` | `{project_id?, query?}` → `{actions:[{id, label, description, available, reason, requires_project}], omnibox:{items, category, query}}` | ID fissi: `project.folder, project.terminal, project.editor, browser.open, browser.search, screenshot.capture, system.settings, system.monitor, system.updates, system.backup`. |
+| `omnibox.search` | `{query?, category?, project_id?, limit?}` → `{items, category, query}` | Ricerca cross-progetto locale in sola lettura (`category` ∈ `all, chats, souls, knowledge, actions`); testo sanificato da segreti. |
 | `desktop.launch` | `{action_id, project_id?, request_id, query?}` → `{request_id, action_id, status, message, artifact?}` | `status` ∈ `requested, unavailable, failed, completed, unknown`. `requested` non prova che una finestra sia apparsa; `completed` solo per una cattura PNG verificata con hash. |
 | `workspace.launch` | `{project_id, request_id}` → `{request_id, results:[...]}` | Apre gli strumenti salvati con le stesse regole di idempotenza. |
 | `system.diagnostics` | `{}` → rapporto ristretto | Versione, piattaforma e tipo di sessione, esecuzioni attive, disponibilità delle azioni native; mai contenuti di progetto, credenziali, ID account o dump dell'ambiente. |
@@ -751,7 +752,7 @@ nessun argomento può cambiare. Namespace riconosciuti: `team`, `kira`,
 | `kira.canvas` | `{action, payload}` | `action` ∈ `list\|get\|create\|update\|patch_lines\|diff`. Crea e aggiorna artefatti interattivi nel Canvas affiancato (`mermaid`, `html`, `svg`, `markdown`, `code`), applica patch chirurgiche su intervalli di righe (`patch_lines`) e calcola diff a blocchi. |
 | `kira.mcp_tools` | `{action, payload}` | `action` ∈ `list_servers\|list_tools\|describe\|call`. Collegato quando almeno un server MCP esterno è attivo; `stdio` richiede `trusted_host`/`full_access`, gli strumenti non `read_only` richiedono **Esegui**. |
 | `kira.research_list` / `research_read` / `research_propose` | elenco, `{record_id, source_index?, offset?, limit?}`, contenuto della scheda | Solo con condivisione della Ricerca attiva; solo schede accettate; una proposta non può accettarsi né valutare. |
-| `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?}` | Solo con un'Anima in modo `suggest` o `adaptive`; propone soltanto. |
+| `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?, name?, core?, mode?, preferences?}` | Con `kind="lesson"\|"preference"` richiede un'Anima in modo `suggest` o `adaptive` (`scope` ∈ `chat\|project\|profile`); con `kind="create"` crea una nuova Anima nel catalogo globale e la associa alla chat se non ne ha ancora una. |
 | `goal.status` | `{}` | Obiettivo autonomo, checkpoint e riferimenti recenti. |
 | `goal.checkpoint` | `{status:"continue"\|"completed"\|"blocked", summary, next_step, deliverable?}` e `evidence:[{run_id, seq}]` (obbligatorio) | Solo con corsia scrivibile; `summary` ≤ 6.000, `next_step` ≤ 3.000, `deliverable` ≤ 12.000 caratteri, al massimo 24 riferimenti a eventi registrati (presi da `goal.status`); il completamento si applica dopo il turno riuscito. |
 | `team.send_message` | `{recipient_id, content}` | Membri di un Team; ≤ 8.000 byte; non avvia nessuno. |

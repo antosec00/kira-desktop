@@ -59,8 +59,12 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
   valutazioni e proposte dell'agente che accetti o rifiuti: conoscenza che
   sopravvive alla singola chat.
 - **Anima di Kira.** Identità di tua proprietà, con una filosofia di lavoro,
-  preferenze esplicite e lezioni apprese che puoi rivedere, conservare o
-  dimenticare.
+  preferenze esplicite, creazione e configurazione rapida via chat (`/anima crea`,
+  `/anima preferenza`) e lezioni apprese che puoi rivedere, conservare per chat,
+  per progetto o in tutti i progetti con la stessa Anima, oppure dimenticare.
+- **Omnibox universale (`Ctrl+K`).** Ricerca istantanea tra tutti i progetti,
+  chat, messaggi, identità e lezioni dell'Anima, schede di Ricerca, artefatti
+  Canvas e azioni native del desktop, senza alcun consumo di token.
 - **Obiettivi autonomi, domande persistenti e indicazioni durante il lavoro**,
   più i riepiloghi pubblici del ragionamento dove il provider li offre.
 - **Un'interfaccia silenziosa.** Una sola barra in alto, barra laterale a icone

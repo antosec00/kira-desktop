@@ -948,6 +948,21 @@ class CanvasController(QObject):
         self.changed.emit()
         self.refresh()
 
+    @Slot(str)
+    def openArtifactById(self, artifact_id: str) -> None:
+        aid = artifact_id.strip()
+        if not aid:
+            return
+        with contextlib.suppress(Exception):
+            self.workspace.web.hideBrowser()
+            self.workspace.studio.hideStudio()
+        self._active_file_path = ""
+        self._current = {"id": aid}
+        self._pane_visible = True
+        self._error = ""
+        self.changed.emit()
+        self.refresh()
+
     @Slot()
     def hideCanvas(self) -> None:
         if self._pane_visible or self._expanded:

@@ -453,7 +453,7 @@ All mutations require `request_id`; those on an existing profile also
 | `soul.bind` | `{request_id, project_id, session_id, soul_id}`; `null` clears the selection |
 | `soul.preference` | `{request_id, soul_id, expected_revision, key, value}`; `null` deletes |
 | `soul.proposals` | `{soul_id, project_id?, session_id?, offset?, limit?}` |
-| `soul.decide` | `{request_id, soul_id, expected_revision, proposal_id, decision}` |
+| `soul.decide` | `{request_id, soul_id, expected_revision, proposal_id, decision, scope?}` (`scope` ∈ `chat\|project\|profile` for accepted lessons) |
 | `soul.memories` | `{soul_id, project_id?, session_id?, query?, offset?, limit?}` |
 | `soul.forget` | `{request_id, soul_id, expected_revision, memory_id}` |
 | `soul.feedback` | `{request_id, soul_id, expected_revision, memory_id, helpful}` |
@@ -504,7 +504,8 @@ rejected.
 | `workspace.get` | `{project_id}` → `{project_id, tools, next_step, resume:{last_run, active_count, interrupted_count}, watches, captures}` | `tools` ⊆ `folder, terminal, editor`; a watch has `path, sha256, current_sha256, state` (`unchanged, changed, missing, unavailable`), `checked_at`. |
 | `workspace.update` | `{project_id, tools?, next_step?}` → workspace | Per-project choices; `next_step` is maintained by the user. |
 | `workspace.watch` / `.unwatch` | `{project_id, path}` → workspace | Regular files contained in the project only, no symlinks or FIFOs; `watch` creates or replaces the reference hash. |
-| `desktop.actions` | `{project_id?, query?}` → `{actions:[{id, label, description, available, reason, requires_project}]}` | Fixed IDs: `project.folder, project.terminal, project.editor, browser.open, browser.search, screenshot.capture, system.settings, system.monitor, system.updates, system.backup`. |
+| `desktop.actions` | `{project_id?, query?}` → `{actions:[{id, label, description, available, reason, requires_project}], omnibox:{items, category, query}}` | Fixed IDs: `project.folder, project.terminal, project.editor, browser.open, browser.search, screenshot.capture, system.settings, system.monitor, system.updates, system.backup`. |
+| `omnibox.search` | `{query?, category?, project_id?, limit?}` → `{items, category, query}` | Local read-only cross-project search (`category` ∈ `all, chats, souls, knowledge, actions`); text sanitized against secrets. |
 | `desktop.launch` | `{action_id, project_id?, request_id, query?}` → `{request_id, action_id, status, message, artifact?}` | `status` ∈ `requested, unavailable, failed, completed, unknown`. `requested` does not prove that a window appeared; `completed` only for a PNG capture verified by hash. |
 | `workspace.launch` | `{project_id, request_id}` → `{request_id, results:[...]}` | Opens the saved tools with the same idempotency rules. |
 | `system.diagnostics` | `{}` → restricted report | Version, platform and session type, active runs, availability of native actions; never project contents, credentials, account IDs or environment dumps. |
@@ -749,7 +750,7 @@ which no argument can change. Recognized namespaces: `team`, `kira`,
 | `kira.canvas` | `{action, payload}` | `action` ∈ `list\|get\|create\|update\|patch_lines\|diff`. Creates and updates interactive artifacts in the side-by-side Canvas (`mermaid`, `html`, `svg`, `markdown`, `code`), applies surgical line-range patches (`patch_lines`) and computes hunk-level diffs. |
 | `kira.mcp_tools` | `{action, payload}` | `action` ∈ `list_servers\|list_tools\|describe\|call`. Attached when at least one external MCP server is enabled; `stdio` requires `trusted_host`/`full_access`, non-`read_only` tools require **Execute**. |
 | `kira.research_list` / `research_read` / `research_propose` | list, `{record_id, source_index?, offset?, limit?}`, record content | Only with Research sharing enabled; accepted records only; a proposal can neither accept nor assess itself. |
-| `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?}` | Only with a Soul in `suggest` or `adaptive` mode; it only proposes. |
+| `kira.soul_propose` | `{statement, applicability, source_run_id, source_seq, kind?, scope?, key?, value?, name?, core?, mode?, preferences?}` | With `kind="lesson"\|"preference"` requires a Soul in `suggest` or `adaptive` mode (`scope` ∈ `chat\|project\|profile`); with `kind="create"` creates a new Soul in the global catalog and binds it to the chat if none is selected yet. |
 | `goal.status` | `{}` | Autonomous goal, checkpoints and recent references. |
 | `goal.checkpoint` | `{status:"continue"\|"completed"\|"blocked", summary, next_step, deliverable?}` and `evidence:[{run_id, seq}]` (required) | Only with a writable lane; `summary` ≤ 6,000, `next_step` ≤ 3,000, `deliverable` ≤ 12,000 characters, at most 24 references to recorded events (taken from `goal.status`); completion applies after the successful turn. |
 | `team.send_message` | `{recipient_id, content}` | Team members; ≤ 8,000 bytes; starts nobody. |

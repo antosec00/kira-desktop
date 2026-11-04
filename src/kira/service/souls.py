@@ -28,7 +28,7 @@ _MUTATIONS = {
     "soul.rollback": ({"request_id", "soul_id", "expected_revision", "target_revision"},
                       {"request_id", "soul_id", "expected_revision", "target_revision"}),
     "soul.archive": ({"request_id", "soul_id", "expected_revision"}, {"request_id", "soul_id", "expected_revision"}),
-    "soul.decide": ({"request_id", "soul_id", "expected_revision", "proposal_id", "decision"},
+    "soul.decide": ({"request_id", "soul_id", "expected_revision", "proposal_id", "decision", "scope"},
                     {"request_id", "soul_id", "expected_revision", "proposal_id", "decision"}),
     "soul.forget": ({"request_id", "soul_id", "expected_revision", "memory_id"},
                     {"request_id", "soul_id", "expected_revision", "memory_id"}),
@@ -52,7 +52,13 @@ _READS = {
 }
 METHODS = frozenset({*_MUTATIONS, *_READS})
 _ALIASES = {"tono": "tone", "dettaglio": "detail", "collaborazione": "collaboration", "lingua": "language"}
+_CREATE_KEYS = {"nome": "name", "name": "name", "nucleo": "core", "core": "core",
+                "modalita": "mode", "modalità": "mode", "mode": "mode"}
+_MODE_ALIASES = {"manual": "manual", "manuale": "manual", "suggest": "suggest", "suggerimenti": "suggest",
+                 "adaptive": "adaptive", "adattiva": "adaptive", "adattivo": "adaptive"}
+_PAIR_KEY = re.compile(r"(?<!\S)([A-Za-z_àèéìòù]+)=")
 _COMMAND = re.compile(r"/anima preferenza (tone|detail|collaboration|language|tono|dettaglio|collaborazione|lingua)=([^\r\n]+)")
+
 
 
 class Souls:
@@ -150,10 +156,10 @@ class Souls:
         if method == "soul.proposals":
             clauses, values = ["soul_id=?"], [soul["id"]]
             if project_id is not None:
-                clauses.append("project_id=?")
+                clauses.append("(scope='profile' OR project_id=?)")
                 values.append(project_id)
             if session_id is not None:
-                clauses.append("(scope='project' OR session_id=?)")
+                clauses.append("(scope IN ('project','profile') OR session_id=?)")
                 values.append(session_id)
             offset = integer(params.get("offset", 0), "offset", 0, 1000000)
             limit = integer(params.get("limit", 20), "limit", 1, 50)
@@ -189,7 +195,8 @@ class Souls:
         if method == "soul.rollback":
             return {"soul": self.data.rollback(soul["id"], expected, params["target_revision"])}
         if method == "soul.decide":
-            return self.data.decide(soul["id"], expected, text(params["proposal_id"], "proposal_id"), params["decision"])
+            return self.data.decide(soul["id"], expected, text(params["proposal_id"], "proposal_id"),
+                                    params["decision"], scope=params.get("scope"))
         if method == "soul.preference":
             key, value = preference(params["key"], params["value"])
             source_id, timestamp = new_id(), now()
@@ -296,25 +303,134 @@ class Souls:
                  canonical(snapshot), preview["text"], preview["sha256"], now()))
             return str(preview["text"])
 
+    def _parse_explicit_command(self, prompt: Any) -> tuple[str, dict[str, str], list[tuple[str, str]]] | None:
+        if not isinstance(prompt, str):
+            return None
+        prompt = prompt.rstrip("\r\n")
+        if "\r" in prompt or "\n" in prompt:
+            return None
+        if prompt.startswith("/anima preferenza "):
+            kind, body = "preferenza", prompt[len("/anima preferenza "):]
+        elif prompt.startswith("/anima crea "):
+            kind, body = "crea", prompt[len("/anima crea "):]
+        else:
+            return None
+        matches = list(_PAIR_KEY.finditer(body))
+        if not matches or matches[0].start() != 0:
+            return None
+        meta: dict[str, str] = {}
+        prefs: dict[str, str] = {}
+        try:
+            for index, match in enumerate(matches):
+                raw_key = match.group(1).casefold()
+                end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
+                raw_val = body[match.end():end].strip()
+                if len(raw_val) >= 2 and raw_val[0] == raw_val[-1] and raw_val[0] in {'"', "'"}:
+                    raw_val = raw_val[1:-1].strip()
+                if not raw_val:
+                    return None
+                if raw_key in PREFERENCES or raw_key in _ALIASES:
+                    key, val = preference(_ALIASES.get(raw_key, raw_key), raw_val)
+                    if val is None:
+                        return None
+                    prefs[key] = val
+                elif kind == "crea" and raw_key in _CREATE_KEYS:
+                    meta[_CREATE_KEYS[raw_key]] = raw_val
+                else:
+                    return None
+            if kind == "preferenza":
+                if not prefs:
+                    return None
+            else:
+                name = meta.get("name", "")
+                core = meta.get("core", "")
+                mode = _MODE_ALIASES.get(meta.get("mode", "adaptive").casefold(), "")
+                if not name or not mode:
+                    return None
+                validate_profile(name, core, mode)
+                meta = {"name": name, "core": core, "mode": mode}
+        except KiraError:
+            return None
+        return kind, meta, list(prefs.items())
+
+    def _bind_session_soul(self, project_id: str, session: Json, soul_id: str) -> None:
+        previous = self.db.execute("SELECT soul_id,epoch FROM soul_bindings WHERE session_id=?",
+                                   (session["id"],)).fetchone()
+        changed = previous is None or previous["soul_id"] != soul_id
+        if changed:
+            self.service.provider_routing.reset_native(session)
+        epoch = (previous["epoch"] if previous else 0) + int(changed or previous is None)
+        self.db.execute(
+            "INSERT INTO soul_bindings VALUES (?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET "
+            "soul_id=excluded.soul_id,epoch=excluded.epoch,updated_at=excluded.updated_at",
+            (session["id"], project_id, soul_id, epoch, now()),
+        )
+
     def _explicit_preference(self, run: Json, project: Json, session: Json) -> None:
-        match = _COMMAND.fullmatch(run["prompt"])
-        if match is None:
+        parsed = self._parse_explicit_command(run["prompt"])
+        if parsed is None:
             return
-        snapshot = self.snapshot(project["id"], session["id"])
-        soul = snapshot["soul"]
-        if soul is None or soul["archived"] or soul["mode"] == "manual":
-            return
-        key, value = preference(_ALIASES.get(match[1], match[1]), match[2])
-        sources = self.db.execute("SELECT seq,payload FROM events WHERE run_id=? AND type='message.user' ORDER BY seq", (run["id"],)).fetchall()
-        source = next((row for row in sources if json.loads(row["payload"]).get("content") == run["prompt"]), None)
+        kind, meta, prefs = parsed
+        clean_prompt = str(run["prompt"]).rstrip("\r\n")
+        sources = self.db.execute(
+            "SELECT seq,payload FROM events WHERE run_id=? AND type='message.user' ORDER BY seq",
+            (run["id"],)).fetchall()
+        source = next((row for row in sources
+                       if str(json.loads(row["payload"]).get("content", "")).rstrip("\r\n") in {run["prompt"], clean_prompt}), None)
         if source is None:
             return
-        proposal = self.data.propose(soul["id"], project["id"], session["id"], {
-            "kind": "preference", "scope": "chat", "statement": run["prompt"],
-            "applicability": "Explicit user collaboration preference", "key": key, "value": value,
-            "source_run_id": run["id"], "source_seq": source["seq"]})
-        if soul["mode"] == "adaptive" and proposal["status"] == "pending":
-            self.data.decide(soul["id"], soul["revision"], proposal["id"], "accept")
+        if kind == "crea":
+            soul = self.data.create(meta["name"], meta["core"], meta["mode"])
+            self._bind_session_soul(project["id"], session, soul["id"])
+            if soul["mode"] == "manual" and prefs:
+                first_source = self.data.capture_source(
+                    soul["id"], project["id"], session["id"], run["id"], source["seq"])
+                for key, value in prefs:
+                    soul["preferences"][key] = {
+                        "value": value, "source_id": first_source["id"],
+                        "source_order": first_source["event_order"]}
+                self.data.save(soul, soul["revision"], "user_preference")
+                return
+        else:
+            snapshot = self.snapshot(project["id"], session["id"])
+            soul = snapshot["soul"]
+            if soul is None:
+                if snapshot["selected"]:
+                    return
+                row = self.db.execute(
+                    "SELECT s.id FROM souls s JOIN soul_revisions r ON r.soul_id=s.id AND r.revision=s.revision "
+                    "WHERE r.archived=0 ORDER BY s.updated_at DESC,s.id LIMIT 1").fetchone()
+                soul = self.data.get(row[0]) if row else self.data.create("Kira", "", "adaptive")
+                self._bind_session_soul(project["id"], session, soul["id"])
+        if soul is None or soul["archived"] or soul["mode"] == "manual" or not prefs:
+            return
+        for index, (key, value) in enumerate(prefs):
+            if index == 0:
+                proposal = self.data.propose(soul["id"], project["id"], session["id"], {
+                    "kind": "preference", "scope": "chat", "statement": clean_prompt,
+                    "applicability": "Explicit user collaboration preference", "key": key, "value": value,
+                    "source_run_id": run["id"], "source_seq": source["seq"]})
+            else:
+                first_source = self.data.capture_source(
+                    soul["id"], project["id"], session["id"], run["id"], source["seq"])
+                source_id, timestamp = new_id(), now()
+                self.db.execute(
+                    "INSERT INTO soul_sources VALUES (?,?,?,?,?,NULL,?,?,?,?,?)",
+                    (source_id, soul["id"], project["id"], session["id"], run["id"],
+                     first_source["event_order"], first_source["kind"],
+                     first_source["original"], first_source["digest"], timestamp),
+                )
+                proposal_id = new_id()
+                self.db.execute(
+                    "INSERT INTO soul_proposals VALUES (?,?,?,?,?,'preference','chat',?,?,?,?,'pending',?,?)",
+                    (proposal_id, soul["id"], source_id, project["id"], session["id"], clean_prompt,
+                     "Explicit user collaboration preference", key, value, timestamp, timestamp),
+                )
+                proposal = self.data.proposal(
+                    dict(self.db.execute("SELECT * FROM soul_proposals WHERE id=?", (proposal_id,)).fetchone()))
+            if soul["mode"] == "adaptive" and proposal["status"] == "pending":
+                soul = self.data.decide(soul["id"], soul["revision"], proposal["id"], "accept")["soul"]
+
 
     def _run_snapshot(self, run_id: str, *, active: bool = True) -> Json:
         run = self.store.one("runs", text(run_id, "run_id"))
@@ -332,6 +448,44 @@ class Souls:
             if name != "kira.soul_propose":
                 raise KiraError("UNSUPPORTED", "Unknown profile tool")
             text(call_id, "call_id", 256)
+            if isinstance(args, dict) and args.get("kind") == "create":
+                fields(args, {"kind", "name", "core", "mode", "preferences", "statement",
+                              "applicability", "source_run_id", "source_seq"}, {"kind", "name", "core"})
+                snapshot = self._run_snapshot(run_id)
+                if snapshot.get("disabled"):
+                    raise KiraError("PERMISSION_DENIED", "Kira profile is disabled for this chat")
+                mode = _MODE_ALIASES.get(str(args.get("mode", "adaptive")).casefold(), "")
+                if not mode:
+                    raise KiraError("INVALID_ARGUMENT", "Unknown profile learning mode")
+                validate_profile(args.get("name"), args.get("core"), mode)
+                prefs = self._profile_preferences(args.get("preferences") or {})
+                digest = self.data.fingerprint({"name": name, "args": args})
+                with self.data.atomic():
+                    row = self.db.execute("SELECT * FROM soul_tool_calls WHERE run_id=? AND call_id=?",
+                                          (run_id, call_id)).fetchone()
+                    if row:
+                        if row["fingerprint"] != digest:
+                            raise KiraError("CONFLICT", "Profile tool call_id already has different arguments")
+                        return dict(json.loads(row["result"]))
+                    soul = self.data.create(args["name"], args["core"], mode)
+                    if prefs:
+                        soul["preferences"] = prefs
+                        soul = self.data.save(soul, soul["revision"], "user_preference")
+                    session = self.store.one("sessions", snapshot["session_id"])
+                    self._bind_session_soul(snapshot["project_id"], session, soul["id"])
+                    updated_snap = self.snapshot(snapshot["project_id"], snapshot["session_id"])
+                    self.db.execute(
+                        "UPDATE soul_run_snapshots SET soul_id=?,revision=?,epoch=?,selected=?,snapshot=?,"
+                        "capsule=?,capsule_sha256=? WHERE run_id=?",
+                        (soul["id"], soul["revision"], updated_snap["epoch"], int(updated_snap["selected"]),
+                         canonical(updated_snap), updated_snap["preview"]["text"],
+                         updated_snap["preview"]["sha256"], run_id),
+                    )
+                    result = {"ok": True, "soul": soul, "created": True, "bound": True,
+                              "applied": True, "review_required": False}
+                    self.db.execute("INSERT INTO soul_tool_calls VALUES (?,?,?,?)",
+                                    (run_id, call_id, digest, canonical(result)))
+                    return result
             fields(args, {"kind", "scope", "statement", "applicability", "source_run_id", "source_seq", "key", "value"},
                    {"statement", "applicability", "source_run_id", "source_seq"})
             snapshot = self._run_snapshot(run_id)
@@ -426,10 +580,15 @@ class Souls:
         row = self.db.execute("SELECT * FROM soul_sources WHERE id=? AND soul_id=?", (source_id, soul_id)).fetchone()
         if row is None:
             raise KiraError("NOT_FOUND", "Profile evidence not found")
-        project_shared = self.db.execute("SELECT 1 FROM soul_memories WHERE source_id=? AND project_id=? AND scope='project'",
-                                         (source_id, project_id)).fetchone()
-        if row["project_id"] is not None and (row["project_id"] != project_id or
-                row["session_id"] != session_id and not project_shared):
+        shared = self.db.execute(
+            "SELECT 1 FROM soul_memories WHERE source_id=? AND ("
+            "(project_id=? AND scope='project') OR (soul_id=? AND scope='profile'))",
+            (source_id, project_id, soul_id),
+        ).fetchone()
+        if row["project_id"] is not None and (
+            (row["project_id"] != project_id or row["session_id"] != session_id)
+            and not shared
+        ):
             raise KiraError("NOT_FOUND", "Original evidence belongs to another chat")
         content = row["original"]
         chunk = content[offset:offset + limit]

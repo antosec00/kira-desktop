@@ -85,14 +85,62 @@ class SoulStore:
             raise KiraError("ARCHIVED", "Restore an earlier revision before editing this profile")
         return soul
 
+    def _ensure_profile_scope_schema(self) -> None:
+        row = self.db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='soul_proposals'"
+        ).fetchone()
+        if row and "'profile'" not in str(row[0]):
+            self.db.execute("ALTER TABLE soul_revision_memories RENAME TO _srm_old")
+            self.db.execute("ALTER TABLE soul_memories RENAME TO _sm_old")
+            self.db.execute("ALTER TABLE soul_proposals RENAME TO _sp_old")
+            self.db.execute("DROP INDEX IF EXISTS soul_proposals_profile")
+            self.db.execute("DROP INDEX IF EXISTS soul_memories_scope")
+            self.db.execute(
+                "CREATE TABLE soul_proposals ("
+                " id TEXT PRIMARY KEY, soul_id TEXT NOT NULL REFERENCES souls(id), source_id TEXT NOT NULL REFERENCES soul_sources(id),"
+                " project_id TEXT NOT NULL REFERENCES projects(id), session_id TEXT NOT NULL REFERENCES sessions(id),"
+                " kind TEXT NOT NULL CHECK(kind IN ('lesson','preference')),"
+                " scope TEXT NOT NULL CHECK(scope IN ('chat','project','profile')),"
+                " statement TEXT NOT NULL, applicability TEXT NOT NULL, preference_key TEXT, preference_value TEXT,"
+                " status TEXT NOT NULL CHECK(status IN ('pending','accepted','rejected','superseded')),"
+                " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+                " UNIQUE(soul_id,source_id,kind))"
+            )
+            self.db.execute("INSERT INTO soul_proposals SELECT * FROM _sp_old")
+            self.db.execute(
+                "CREATE TABLE soul_memories ("
+                " id TEXT PRIMARY KEY, soul_id TEXT NOT NULL REFERENCES souls(id),"
+                " proposal_id TEXT NOT NULL UNIQUE REFERENCES soul_proposals(id), source_id TEXT NOT NULL REFERENCES soul_sources(id),"
+                " project_id TEXT NOT NULL REFERENCES projects(id), session_id TEXT NOT NULL REFERENCES sessions(id),"
+                " scope TEXT NOT NULL CHECK(scope IN ('chat','project','profile')), kind TEXT NOT NULL,"
+                " statement TEXT NOT NULL, applicability TEXT NOT NULL, created_at TEXT NOT NULL)"
+            )
+            self.db.execute("INSERT INTO soul_memories SELECT * FROM _sm_old")
+            self.db.execute(
+                "CREATE TABLE soul_revision_memories ("
+                " soul_id TEXT NOT NULL, revision INTEGER NOT NULL, memory_id TEXT NOT NULL REFERENCES soul_memories(id),"
+                " score INTEGER NOT NULL DEFAULT 0 CHECK(score BETWEEN -2 AND 2),"
+                " PRIMARY KEY(soul_id,revision,memory_id),"
+                " FOREIGN KEY(soul_id,revision) REFERENCES soul_revisions(soul_id,revision))"
+            )
+            self.db.execute("INSERT INTO soul_revision_memories SELECT * FROM _srm_old")
+            self.db.execute("DROP TABLE _srm_old")
+            self.db.execute("DROP TABLE _sm_old")
+            self.db.execute("DROP TABLE _sp_old")
+            self.db.execute("CREATE INDEX soul_proposals_profile ON soul_proposals(soul_id,status,created_at)")
+            self.db.execute("CREATE INDEX soul_memories_scope ON soul_memories(soul_id,project_id,session_id)")
+
     def memories(self, soul_id: str, revision: int, project_id: str | None = None,
                  session_id: str | None = None) -> list[Json]:
         clauses, values = ["r.soul_id=?", "r.revision=?"], [soul_id, revision]
-        if project_id is not None:
-            clauses.append("m.project_id=?")
+        if project_id is not None and session_id is not None:
+            clauses.append("(m.scope='profile' OR (m.project_id=? AND (m.scope='project' OR m.session_id=?)))")
+            values.extend([project_id, session_id])
+        elif project_id is not None:
+            clauses.append("(m.scope='profile' OR m.project_id=?)")
             values.append(project_id)
-        if session_id is not None:
-            clauses.append("(m.scope='project' OR m.session_id=?)")
+        elif session_id is not None:
+            clauses.append("(m.scope IN ('profile','project') OR m.session_id=?)")
             values.append(session_id)
         rows = self.db.execute("SELECT m.*,r.score FROM soul_revision_memories r JOIN soul_memories m ON m.id=r.memory_id "
             "WHERE " + " AND ".join(clauses) + " ORDER BY m.created_at DESC,m.id", values).fetchall()
@@ -183,7 +231,7 @@ class SoulStore:
     def propose(self, soul_id: str, project_id: str, session_id: str, args: Json) -> Json:
         kind, scope = args.get("kind", "lesson"), args.get("scope", "chat")
         if (not isinstance(kind, str) or kind not in {"lesson", "preference"}
-                or not isinstance(scope, str) or scope not in {"chat", "project"}):
+                or not isinstance(scope, str) or scope not in {"chat", "project", "profile"}):
             raise KiraError("INVALID_ARGUMENT", "Invalid experience kind or scope")
         statement = text(args.get("statement"), "statement", 1600)
         applicability = text(args.get("applicability"), "applicability", 600)
@@ -207,6 +255,8 @@ class SoulStore:
         count = self.db.execute("SELECT COUNT(*) FROM soul_proposals WHERE soul_id=? AND status='pending'", (soul_id,)).fetchone()[0]
         if count >= 512:
             raise KiraError("LIMIT_REACHED", "Review pending profile suggestions before adding more")
+        if scope == "profile":
+            self._ensure_profile_scope_schema()
         identifier, timestamp = new_id(), now()
         self.db.execute("INSERT INTO soul_proposals VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (identifier, soul_id, source["id"], project_id, session_id, kind, scope, statement,
@@ -221,7 +271,8 @@ class SoulStore:
         result["effect_scope"] = "profile" if row["kind"] == "preference" else row["scope"]
         return result
 
-    def decide(self, soul_id: str, expected: int, proposal_id: str, decision: str) -> Json:
+    def decide(self, soul_id: str, expected: int, proposal_id: str, decision: str, *,
+               scope: str | None = None) -> Json:
         soul = self.check(soul_id, expected)
         row = self.db.execute("SELECT p.*,s.event_order FROM soul_proposals p JOIN soul_sources s ON s.id=p.source_id "
                               "WHERE p.id=? AND p.soul_id=?", (proposal_id, soul_id)).fetchone()
@@ -231,6 +282,11 @@ class SoulStore:
             raise KiraError("CONFLICT", "Profile suggestion was already reviewed or superseded")
         if not isinstance(decision, str) or decision not in {"accept", "reject"}:
             raise KiraError("INVALID_ARGUMENT", "Unknown profile suggestion decision")
+        effective_scope = str(row["scope"])
+        if scope is not None:
+            if not isinstance(scope, str) or scope not in {"chat", "project", "profile"} or row["kind"] != "lesson":
+                raise KiraError("INVALID_ARGUMENT", "Invalid lesson scope override")
+            effective_scope = scope
         status = "rejected"
         if decision == "accept":
             floor = self.db.execute("SELECT learning_floor FROM souls WHERE id=?", (soul_id,)).fetchone()[0]
@@ -247,12 +303,15 @@ class SoulStore:
                         "value": row["preference_value"], "source_id": row["source_id"], "source_order": row["event_order"]}
                     soul = self.save(soul, expected, "preference_accepted")
             else:
+                if effective_scope == "profile":
+                    self._ensure_profile_scope_schema()
                 memory_id = new_id()
                 self.db.execute("INSERT INTO soul_memories VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (memory_id, soul_id, proposal_id, row["source_id"], row["project_id"], row["session_id"],
-                     row["scope"], row["kind"], row["statement"], row["applicability"], now()))
+                     effective_scope, row["kind"], row["statement"], row["applicability"], now()))
                 memory_ids = [item["id"] for item in self.memories(soul_id, expected)] + [memory_id]
                 soul = self.save(soul, expected, "lesson_accepted", memory_ids=memory_ids)
-        self.db.execute("UPDATE soul_proposals SET status=?,updated_at=? WHERE id=?", (status, now(), proposal_id))
+        self.db.execute("UPDATE soul_proposals SET status=?,scope=?,updated_at=? WHERE id=?",
+                        (status, effective_scope, now(), proposal_id))
         proposal = self.proposal(dict(self.db.execute("SELECT * FROM soul_proposals WHERE id=?", (proposal_id,)).fetchone()))
         return {"soul": soul, "proposal": proposal}

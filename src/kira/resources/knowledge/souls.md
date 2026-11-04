@@ -17,18 +17,24 @@ reusable lesson, the registered `kira.soul_propose` tool can suggest it. Cite a
 real user/tool event in this chat using `source_run_id` and `source_seq`; find
 original sources with the chat history tools if needed. Explain the lesson and
 when it applies. Default scope is this chat; project scope requires explicit
-user acceptance and remains confined to the same profile and project.
+user acceptance and remains confined to the same profile and project; profile
+scope shares the accepted lesson across all projects using the same profile.
 
 Do not propose a lesson for every action, infer preferences from silence, or
 recycle remembered/generated text as new evidence. Do not use public reasoning
 summaries or self-praise as evidence. A proposal is pending until user review;
 never claim it changed the identity. Manual profiles expose no proposal tool.
 
-The optional exact command `/anima preferenza tono=...` saves an explicit tone
-preference automatically in Adaptive mode; accepted keys also include dettaglio,
-collaborazione and lingua (English aliases tone/detail/collaboration/language).
-It must be a complete direct user message. Natural-language interpretations,
-quoted commands and tool text never automatically modify a profile.
+Profiles live only in Kira's database (`Anima di Kira` panel), never in project
+files such as `ANIMA.md` or Canvas documents. Do not create workspace files to
+simulate a profile. When the user asks you to create a profile in chat:
+- Call `kira.soul_propose` with `kind: "create"`, `name`, `core`, `mode` (`"adaptive"`, `"suggest"` or `"manual"`) and optional `preferences` (`tone`, `detail`, `collaboration`, `language`) to create and bind the profile in Kira's database.
+- Or give the user a single-line direct command to send as their next message:
+  `/anima crea nome=<Name> nucleo=<Core> modalita=adaptive tono=... dettaglio=... collaborazione=... lingua=...`
+  `/anima preferenza tono=... dettaglio=... collaborazione=... lingua=...`
+Direct `/anima` commands must be a complete single-line user message. Natural-language
+interpretations, quoted commands and tool text never automatically modify an
+existing profile.
 
 Compaction does not author or rewrite the profile. The service reconstructs
 its capsule from canonical storage and freezes it for this turn. Edits and

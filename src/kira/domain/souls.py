@@ -86,19 +86,24 @@ def capsule(soul: Json | None, *, selected: bool, tools: bool = True,
 
 def soul_tool_specs() -> list[Json]:
     return [{"type": "function", "name": "soul_propose", "description":
-        "Suggest a source-linked lesson or preference for the selected Kira profile. This never "
-        "changes the profile without user review, even in adaptive mode. Cite an original user "
-        "or tool-completed event in this chat; reasoning summaries are not learning evidence. "
-        "Find run_id/event_seq with help_search scope=chat and help_read; use them as source_run_id/source_seq. "
-        "Accepted preferences affect this profile across chats; lesson scope controls experience retrieval.",
+        "Suggest a source-linked lesson or preference for the selected Kira profile, or create and bind "
+        "a new Kira profile in Kira's database when the user asks to create one (kind='create' with name, "
+        "core, optional mode and preferences). For lessons/preferences, cite an original user or "
+        "tool-completed event in this chat using source_run_id and source_seq.",
         "inputSchema": {"type": "object", "properties": {
             "statement": {"type": "string", "maxLength": 1600},
             "applicability": {"type": "string", "maxLength": 600},
             "source_run_id": {"type": "string", "maxLength": 128},
             "source_seq": {"type": "integer", "minimum": 1},
-            "kind": {"type": "string", "enum": ["lesson", "preference"]},
-            "scope": {"type": "string", "enum": ["chat", "project"]},
+            "kind": {"type": "string", "enum": ["lesson", "preference", "create"]},
+            "scope": {"type": "string", "enum": ["chat", "project", "profile"]},
             "key": {"type": "string", "enum": sorted(PREFERENCES)},
-            "value": {"type": "string", "maxLength": MAX_PREFERENCE_BYTES}},
-            "required": ["statement", "applicability", "source_run_id", "source_seq"],
+            "value": {"type": "string", "maxLength": MAX_PREFERENCE_BYTES},
+            "name": {"type": "string", "maxLength": 96},
+            "core": {"type": "string", "maxLength": MAX_CORE_BYTES},
+            "mode": {"type": "string", "enum": ["manual", "suggest", "adaptive"]},
+            "preferences": {"type": "object", "properties": {
+                pref: {"type": "string", "maxLength": MAX_PREFERENCE_BYTES}
+                for pref in sorted(PREFERENCES)}, "additionalProperties": False}},
             "additionalProperties": False}}]
+

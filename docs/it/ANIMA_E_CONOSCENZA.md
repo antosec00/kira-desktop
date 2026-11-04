@@ -103,13 +103,17 @@ linguaggio naturale ordinario non diventa una nuova regola personale.
 ### Cosa ha imparato
 
 La scheda ha due parti. **Proposte e decisioni** elenca le interpretazioni
-proposte dal modello nel contesto corrente (chat o progetto). Ogni proposta
+proposte dal modello nel contesto corrente (chat, progetto o profilo dell'identità). Ogni proposta
 riporta l'affermazione, a che cosa si applica, l'ambito e una **Fonte**: il tuo
 messaggio o il risultato di strumento da cui è stata tratta. Apri la fonte,
-leggila con **Continua a leggere** se è lunga, poi scegli **Conserva** o
-**Scarta**. Una proposta può chiedere di valere in tutto il progetto:
-accettandola, la lezione vale in tutte le chat del progetto con la stessa
-identità.
+leggila con **Continua a leggere** se è lunga, poi scegli **Conserva**,
+**Conserva in tutti i progetti** (per rendere la lezione disponibile ovunque usi
+quella stessa identità) oppure **Scarta**. Una proposta può chiedere di valere
+nella chat, in tutto il progetto o nel profilo dell'identità (`profile`):
+accettandola, la lezione vale rispettivamente nella chat corrente, in tutte le
+chat del progetto o in tutti i progetti che usano quella stessa identità (senza
+mai mescolarsi con altre Anime e senza consumare token fissi nel prompt, perché
+viene richiamata solo a richiesta tramite `kira.help_search`).
 
 **Esperienza conservata** elenca le lezioni accettate. Per ciascuna puoi:
 
@@ -123,26 +127,41 @@ identità.
 Ogni identità conserva al massimo 512 lezioni attive e 512 proposte in attesa:
 al limite il pannello lo dice, senza eliminare dati. La ricerca è testuale.
 
-### Il comando `/anima preferenza`
+### I comandi `/anima preferenza` e `/anima crea`
 
-In qualsiasi chat con un'identità selezionata puoi inviare un messaggio
-composto **soltanto** da questo comando:
+In qualsiasi chat puoi usare due comandi rapidi composti **soltanto** dalla riga
+del comando:
 
 ```text
-/anima preferenza tono=naturale e diretto
+/anima preferenza tono=naturale e diretto dettaglio=sintetico collaborazione=proattiva lingua=italiano
 ```
 
-Regole del comando:
+oppure, per creare e associare subito una nuova identità alla chat corrente:
 
-- Deve occupare tutto il messaggio, senza righe aggiuntive. Un comando citato
+```text
+/anima crea nome=Kira Architetto nucleo= Rigore tecnico e modularità modalita=adattiva tono=diretto dettaglio=approfondito collaborazione=proattiva lingua=italiano
+```
+
+Regole dei comandi:
+
+- Devono occupare tutto il messaggio, su una sola riga. Un comando citato
   dentro un testo, un risultato di strumento o un messaggio di servizio non
   viene riconosciuto.
-- Le chiavi accettate sono `tono`, `dettaglio`, `collaborazione` e `lingua`;
-  funzionano anche gli equivalenti in inglese `tone`, `detail`, `collaboration`
-  e `language`.
-- In **Adattiva** la preferenza viene applicata subito, dal turno in cui la
-  invii. In **Suggerimenti** genera una proposta da valutare in **Cosa ha
-  imparato**. In **Manuale** non modifica nulla.
+- Le chiavi di preferenza accettate sono `tono`, `dettaglio`, `collaborazione` e
+  `lingua` (anche più d'una nello stesso comando); funzionano anche gli
+  equivalenti in inglese `tone`, `detail`, `collaboration` e `language`. Per
+  `/anima crea` sono accettati `nome`/`name`, `nucleo`/`core` e opzionalmente
+  `modalita`/`mode` (`manuale`/`manual`, `suggerimenti`/`suggest`,
+  `adattiva`/`adaptive`).
+- Con `/anima preferenza`, se la chat non ha ancora un'identità associata ma nel
+  profilo esiste un'Anima attiva, Kira la associa automaticamente alla chat e
+  applica le preferenze; in **Adattiva** le preferenze vengono applicate subito,
+  in **Suggerimenti** generano proposte da valutare in **Cosa ha imparato** e in
+  **Manuale** non modificano nulla.
+- Quando chiedi a Kira in linguaggio naturale di progettare e creare una nuova
+  Anima per te, il modello può anche usare lo strumento `kira.soul_propose` con
+  `kind="create"` per creare direttamente la nuova identità nel catalogo globale
+  e associarla alla chat se non ne ha ancora una.
 - Il messaggio resta un normale turno del provider: viene inviato al modello e
   può consumare la quota del tuo account come qualsiasi altra richiesta.
 
@@ -161,9 +180,11 @@ chiede di confrontarla prima di salvare.
 
 ### Ambito delle lezioni e fonti
 
-- Una lezione appartiene alla chat in cui è nata. Si estende al progetto solo
-  se accetti una proposta con quell'ambito, e vale soltanto per la stessa
-  identità. Non esiste un passaggio automatico di lezioni fra progetti.
+- Una lezione appartiene alla chat in cui è nata (`chat`), al progetto
+  (`project`) se accetti una proposta con quell'ambito, oppure all'identità in
+  tutti i progetti (`profile`) se scegli **Conserva in tutti i progetti** (o
+  accetti una proposta con ambito `profile`). In ogni caso vale **soltanto per
+  la stessa identità**: due Anime diverse restano sempre completamente isolate.
 - Ogni lezione è collegata alla sua fonte originale (un tuo messaggio o il
   risultato di uno strumento nella chat): il collegamento dice da dove viene
   un'interpretazione, non la rende corretta.

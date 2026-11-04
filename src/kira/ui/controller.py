@@ -569,6 +569,8 @@ class Workspace(QObject):
         self._workspace_generation = 0
         self._workspace_error = ""
         self._actions: list[Json] = []
+        self._omnibox_items: list[Json] = []
+        self._omnibox_category = "all"
         self._action_query = ""
         self._action_generation = 0
         self._action_error = ""
@@ -876,19 +878,45 @@ class Workspace(QObject):
                             count=resume["interrupted_count"]))
         return "\n".join(parts)
 
+    @qt_property(str, notify=actionsChanged)
+    def omniboxCategory(self) -> str:
+        return self._omnibox_category
+
+    @Slot(str)
+    def setOmniboxCategory(self, category: str) -> None:
+        cat = category.strip().lower()
+        if cat not in {"all", "chats", "souls", "knowledge", "actions"}:
+            cat = "all"
+        if cat != self._omnibox_category:
+            self._omnibox_category = cat
+            self.actionsChanged.emit()
+
     @qt_property("QVariantList", notify=actionsChanged)
     def desktopActions(self) -> list[Json]:
         query = self._action_query.casefold()
-        projects = [{"id": p["id"], "kind": "project", "label": p["name"],
+        words = query.split()
+        projects = [{"id": p["id"], "kind": "project", "category": "actions", "label": p["name"],
                      "description": p.get("root", ""), "available": True, "reason": ""}
                     for p in self._projects
                     if not query or query in (p["name"] + " " + p.get("root", "")).casefold()]
-        actions = [{**action, "kind": "action", **{
+        actions = [{**action, "kind": "action", "category": "actions", **{
             key: native_text(str(action.get(key, ""))) for key in ("label", "description", "reason")}}
             for action in self._actions]
-        return projects + [action for action in actions if all(
+        matching_actions = [action for action in actions if all(
             word in " ".join(str(action.get(key, "")) for key in ("id", "label", "description")).casefold()
-            for word in query.split())]
+            for word in words)]
+        matching_omnibox = [
+            item for item in self._omnibox_items
+            if isinstance(item, dict) and all(
+                word in " ".join(str(item.get(key, "")) for key in ("id", "label", "description", "search_text")).casefold()
+                for word in words
+            )
+        ]
+        if self._omnibox_category == "actions":
+            return projects + matching_actions
+        if self._omnibox_category in {"chats", "souls", "knowledge"}:
+            return [item for item in matching_omnibox if item.get("category") == self._omnibox_category]
+        return projects + matching_actions + matching_omnibox
 
     @qt_property(str, notify=actionsChanged)
     def actionError(self) -> str:
@@ -975,6 +1003,7 @@ class Workspace(QObject):
         self._action_generation += 1
         generation = self._action_generation
         self._actions = []
+        self._omnibox_items = []
         self._action_error = "" if self.connected else tr("Attendi la connessione al servizio.")
         self.actionsChanged.emit()
         if not self.connected:
@@ -988,11 +1017,14 @@ class Workspace(QObject):
         def done(result: Json) -> None:
             if generation == self._action_generation:
                 self._actions = result.get("actions", [])
+                omnibox = result.get("omnibox", [])
+                self._omnibox_items = list(omnibox) if isinstance(omnibox, list) else []
                 self.actionsChanged.emit()
 
         def failed(error: Json) -> None:
             if generation == self._action_generation:
                 self._actions = []
+                self._omnibox_items = []
                 self._action_error = str(error.get("message", tr("Azioni non disponibili.")))
                 self.actionsChanged.emit()
 
@@ -2659,6 +2691,22 @@ class Workspace(QObject):
         self.newChat()
 
     @Slot(str, str)
+    def openProjectChat(self, project_id: str, session_id: str) -> None:
+        pid = project_id.strip()
+        sid = session_id.strip()
+        if not pid or not sid:
+            return
+        if self._project.get("id") == pid:
+            self.selectSession(sid)
+            return
+        remembered = self._preferences.get("selected_sessions", {})
+        selections = dict(remembered) if isinstance(remembered, dict) else {}
+        selections.pop(pid, None)
+        selections[pid] = sid
+        self._save_preferences({"selected_sessions": selections}, emit=False)
+        self.openProject(pid)
+
+    @Slot(str, str)
     def renameSession(self, session_id: str, title: str) -> None:
         project_id = self._project.get("id")
         if not project_id or not title.strip():
@@ -3288,6 +3336,11 @@ class Workspace(QObject):
             self.rememberPrompt(raw_prompt, submitted_project, submitted["session_id"])
             self.refreshSessions()
             self._subscribe(run["id"])
+            if raw_prompt.startswith("/anima ") and hasattr(self, "souls"):
+                if self.souls.visible:
+                    self.souls.refresh()
+                else:
+                    self.souls.refreshSnapshot()
             self.changed.emit()
 
         def failed(error: Json) -> None:
@@ -3528,6 +3581,11 @@ class Workspace(QObject):
                 raw = _append_raw(self.transcript.rows[row]["raw"], payload, deferred=batch)
                 self.transcript.update(row, body=body, status=status, command=command, raw=raw,
                                        toolResult=result)
+            if not batch and payload.get("name") == "kira.soul_propose" and hasattr(self, "souls"):
+                if self.souls.visible:
+                    self.souls.refresh()
+                else:
+                    self.souls.refreshSnapshot()
         elif kind == "run.state":
             prior_state = self._runs[run_id].get("state")
             prior_updated = self._runs[run_id].get("updated_at")

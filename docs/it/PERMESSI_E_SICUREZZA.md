@@ -193,10 +193,11 @@ aumentano i permessi del progetto.
   scegli Cartella, Terminale ed Editor del progetto e premi **Apri strumenti
   salvati**: Kira apre le applicazioni nella cartella del progetto senza
   ripetere i comandi delle vecchie esecuzioni.
-- **Ctrl+K** cerca progetti e azioni native: aprire la cartella, il terminale o
-  l'editor del progetto, aprire Firefox o avviarvi una ricerca Google, acquisire
-  una schermata, aprire le impostazioni, il monitor di sistema, gli
-  aggiornamenti o il backup dei file.
+- **Ctrl+K** cerca in locale tra progetti, chat, messaggi, identità e lezioni
+  dell'Anima, Ricerca, artefatti Canvas e azioni native: aprire la cartella, il
+  terminale o l'editor del progetto, aprire Firefox o avviarvi una ricerca
+  Google, acquisire una schermata, aprire le impostazioni, il monitor di
+  sistema, gli aggiornamenti o il backup dei file.
 - **Schermate** acquisisce esplicitamente lo schermo completo e conserva il file
   tra i risultati del progetto, registrandolo solo dopo che il PNG è completo.
 
