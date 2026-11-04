@@ -71,6 +71,17 @@ def valid_appearance(value: object) -> bool:
             return False
     return True
 
+KNOWN_BACKENDS: tuple[str, ...] = (
+    "ollama",
+    "codex",
+    "openai_chatgpt",
+    "deepseek_account",
+    "deepseek_web",
+    "claude_code",
+    "google_cloud",
+    "openrouter",
+)
+
 DEFAULTS = {
     "language": "it",
     "onboarding_complete": False,
@@ -90,6 +101,7 @@ DEFAULTS = {
     "check_updates": True,
     "skipped_update_version": "",
     "selected_sessions": {},
+    "disabled_backends": [],
     "appearance": deepcopy(APPEARANCE_DEFAULTS),
 }
 
@@ -109,6 +121,13 @@ def valid_preference(key: str, value: object) -> bool:
                 and all(isinstance(k, str) and isinstance(v, str)
                         and 1 <= len(k) <= 64 and 1 <= len(v) <= 64
                         for k, v in value.items()))
+    if key == "disabled_backends":
+        return (
+            isinstance(value, list)
+            and len(value) < len(KNOWN_BACKENDS)
+            and len(set(value)) == len(value)
+            and all(isinstance(item, str) and item in KNOWN_BACKENDS for item in value)
+        )
     if key == "chat_font_size":
         return type(value) is int and 12 <= value <= 20
     enums = {

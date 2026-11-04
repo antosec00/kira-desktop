@@ -1,32 +1,27 @@
-## Novità in Kira Desktop 0.25.0
+## Novità in Kira Desktop 0.26.0
 
-- **Google Cloud · Vertex AI (`google_cloud` / `gemini-4-argon`)**:
-  - **Recupero automatico da blocchi `PROMPT_SAFETY` e turni troncati senza loop**: quando il filtro di piattaforma Vertex AI interrompe uno stream su cronologie lunghe di ricerca di sicurezza, Kira compatta solo i turni più vecchi preservando integralmente l'ultima risposta dell'assistente, disattiva temporaneamente `thinkingConfig` per il retry e aggiorna la cronologia *in-place* per tutti i round di strumenti successivi.
-  - **Messaggi inviati durante l'esecuzione (*Mid-Run Steering*) compatibili con Gemini**: i messaggi inviati dall'utente mentre l'agente sta eseguendo strumenti vengono ora incorporati direttamente in `functionResponse` (`user_guidance` + allegati multimodali) rispettando il vincolo di adiacenza `functionCall → functionResponse` di Vertex AI senza errori `HTTP 400 INVALID_ARGUMENT`.
-- **Editor di Codice e File Integrato (*Canvas*)**:
-  - **Pulsante «A capo automatico» (*Word wrap*)**: nuovo pulsante nella barra superiore dell'editor per attivare o disattivare l'andata a capo automatica del testo, con preferenza salvata tra le sessioni.
-  - **Scorrimento e visibilità dell'ultima riga**: corretto il taglio dell'ultima riga quando è presente la barra di scorrimento orizzontale e migliorato il contrasto visivo dei cursori di scorrimento (`KScrollBar`).
-- **Isolamento dei File di Progetto**:
-  - Ogni progetto dispone ora di una directory workspace dedicata (`<data>/projects/<slug>-<id>`); i progetti che puntavano erroneamente alla cartella globale `~/.local/share/kira` vengono migrati automaticamente così che le viste *File* e *Dettagli* mostrino esclusivamente i file del progetto attivo.
-- **Apertura e Cambio Chat Istantanei & Ispettore «Dettagli dell'esecuzione»**:
-  - Cache in memoria delle sessioni per il cambio chat istantaneo, menu contestuali completi nella barra laterale e pannello *Dettagli dell'esecuzione* strutturato e leggibile.
+- **Nuovo Provider Integrato: OpenRouter (`openrouter`)**:
+  - **Accesso unificato al catalogo OpenRouter**: collega la tua chiave API OpenRouter (`sk-or-v1-...` o variabile `OPENROUTER_API_KEY`) per utilizzare oltre 300 modelli (Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, Qwen, Meta Llama, Moonshot Kimi, Mistral, xAI Grok) con tutti gli strumenti nativi di Kira (file, terminale, Browser e Computer isolato, Team multi-agente, Knowledge Base, Kira Studio e Canvas).
+  - **Adattamento automatico al contesto del modello**: Kira legge dinamicamente dal catalogo `/api/v1/models` la finestra di contesto reale (`context_length`), il limite di output (`max_completion_tokens`), il supporto multimodale/immagini, il ragionamento esteso (`reasoning.effort` / `thinking`), il *prompt caching* automatico per i modelli Anthropic e Gemini e i prezzi per milione di token (inclusi i modelli `:free`).
+  - **Protezione anti-stallo e fallback automatico per i modelli `:free`**: rilevazione immediata di code bloccate sui commenti SSE keep-alive (`: OPENROUTER PROCESSING`) con timeout dedicato sul primo evento utile e catena di fallback automatica verso altri modelli gratuiti compatibili o `openrouter/free` in caso di saturazione (`429`) o indisponibilità temporanea (`502/503/504`).
+- **Hub Provider e Modelli rinnovato**:
+  - **Pulsante Attiva / Disattiva per ogni provider**: nuovo controllo nella barra di stato di ciascun provider per disattivare i servizi non utilizzati e nasconderli automaticamente dai selettori rapidi del compositore chat e dell'editor Team, mantenendo lo stato salvato nelle preferenze (`disabled_backends`).
+  - **Interfaccia multi-provider più pulita**: intestazioni, descrizioni ed etichette dei provider ripulite e uniformate per riflettere l'architettura multi-provider di Kira Desktop.
 
 ---
 
-## What's New in Kira Desktop 0.25.0
+## What's New in Kira Desktop 0.26.0
 
-- **Google Cloud · Vertex AI (`google_cloud` / `gemini-4-argon`)**:
-  - **Loop-free `PROMPT_SAFETY` & thought-cutoff recovery**: when Vertex AI's platform filter blocks a long security-research history, Kira trims only older turns while keeping the previous assistant response intact, suppresses `thinkingConfig` on the safety retry, and updates the message list in-place across subsequent tool rounds.
-  - **Mid-run user steering on Gemini**: messages sent while the agent is executing tools are now embedded directly into `functionResponse` (`user_guidance` + multimodal parts), preserving Vertex AI's strict `functionCall → functionResponse` adjacency requirement without `HTTP 400 INVALID_ARGUMENT` errors.
-- **Built-in Code & File Editor (*Canvas*)**:
-  - **"Word wrap" (*A capo automatico*) toggle**: new header button to switch between wrapped lines and horizontal scrolling, persisted across sessions.
-  - **Bottom-line padding & scrollbar contrast**: fixed last-line clipping above the horizontal scrollbar and improved scrollbar thumb contrast (`KScrollBar`).
-- **Project Workspace Isolation**:
-  - Every project now receives its own isolated workspace directory (`<data>/projects/<slug>-<id>`), automatically migrating legacy projects that pointed to `~/.local/share/kira` so the *Files* and *Details* views only list files belonging to the active project.
-- **Instant Chat Switching & Human-Readable "Execution Details" Inspector**:
-  - In-memory session cache for zero-latency chat switching, full sidebar context menus, and structured *Execution Details* cards.
+- **New Native Provider: OpenRouter (`openrouter`)**:
+  - **Unified OpenRouter catalog integration**: connect your OpenRouter API key (`sk-or-v1-...` or `OPENROUTER_API_KEY`) to run 300+ models (Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, Qwen, Meta Llama, Moonshot Kimi, Mistral, xAI Grok) with all native Kira tools (files, terminal, isolated Browser & Computer, multi-agent Teams, Knowledge Base, Kira Studio, and Canvas).
+  - **Context-aware model adaptation**: Kira dynamically inspects `/api/v1/models` to configure each model's true `context_length`, `max_completion_tokens`, multimodal image input, reasoning/thinking parameters, automatic prompt caching for Anthropic and Gemini models, and live token pricing (including `$0` `:free` models).
+  - **Keep-alive stall protection & automatic fallback for `:free` models**: detects upstream queue stalls when OpenRouter emits only `: OPENROUTER PROCESSING` SSE comments without payload events, applying a dedicated first-event timeout and automatically falling back across compatible `:free` models or `openrouter/free` on upstream saturation (`429` / `502/503/504`).
+- **Redesigned Provider & Model Hub**:
+  - **Per-provider Enable / Disable toggle**: new action button on every provider status card to disable unused providers and hide them from the chat composer and Team editor quick selectors, persisted in user preferences (`disabled_backends`).
+  - **Refined multi-provider copy & labels**: cleaner provider pills, status messages, and hub headings tailored for Kira's multi-provider workflow.
 
 ---
+
 
 ## Installazione
 

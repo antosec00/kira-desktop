@@ -59,6 +59,10 @@ Dialog {
                 visible: providerSwitch.backend === "google_cloud"
                 Layout.fillWidth: true
             }
+            OpenRouterPane {
+                visible: providerSwitch.backend === "openrouter"
+                Layout.fillWidth: true
+            }
             Text { text: qsTr("Modello"); font: appearance.uiFont; color: appearance.colors.text; textFormat: Text.PlainText }
             KComboBox {
                 objectName: "switchProviderModel"

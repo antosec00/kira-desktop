@@ -220,6 +220,8 @@ class Teams:
                 await self.service.deepseek_accounts.prepare()
             elif config["backend"] == "google_cloud":
                 await self.service.google_accounts.prepare()
+            elif config["backend"] == "openrouter":
+                await self.service.openrouter_accounts.prepare()
             previous = self.store.db.execute("SELECT id,fingerprint FROM team_runs WHERE request_id=?", (request,)).fetchone()
             if previous:
                 if previous["fingerprint"] != digest:
@@ -328,6 +330,8 @@ class Teams:
                 await self.service.deepseek_accounts.prepare()
             elif config["backend"] == "google_cloud":
                 await self.service.google_accounts.prepare()
+            elif config["backend"] == "openrouter":
+                await self.service.openrouter_accounts.prepare()
             # Cleanup/account preparation yielded: revalidate idempotency and admission at
             # the final synchronous boundary before creating a new reserved execution.
             previous = self.store.db.execute("SELECT id,fingerprint FROM team_runs WHERE request_id=?",

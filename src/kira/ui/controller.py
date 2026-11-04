@@ -30,6 +30,7 @@ from kira.ui.drafts import DraftStore, MAX_HISTORY
 from kira.ui.direct_account import DirectAccountController
 from kira.ui.deepseek_account import DeepSeekAccountController
 from kira.ui.google_account import GoogleAccountController
+from kira.ui.openrouter_account import OpenRouterAccountController
 from kira.ui.external_links import BrowserLauncher, BrowserOpenResult
 from kira.ui.account_usage import AccountUsageController
 from kira.ui.workbench_controller import WorkbenchController, guidance_label
@@ -38,7 +39,7 @@ from kira.ui.markdown import safe_href
 from kira.ui.models import DeferredRaw, TranscriptModel
 from kira.ui.reasoning_controller import ReasoningController, SUMMARY_EVENTS
 from kira.ui.native_labels import native_text
-from kira.ui.preferences import read_preferences, valid_preference, write_preferences
+from kira.ui.preferences import KNOWN_BACKENDS, read_preferences, valid_preference, write_preferences
 from kira.ui.qt_properties import qt_property
 from kira.ui.run_errors import run_error_presentation
 from kira.ui.service_errors import UNCERTAIN_ERRORS, service_error_text
@@ -632,7 +633,9 @@ class Workspace(QObject):
         self._direct_catalogs: dict[str, Json] = {}
         self._catalog_pending: set[tuple[str, str]] = set()
         self._catalog_generation = 0
-        self._backend = "ollama"
+        raw_disabled = self._preferences.get("disabled_backends")
+        disabled_set = set(raw_disabled) if isinstance(raw_disabled, list) else set()
+        self._backend = next((b for b in KNOWN_BACKENDS if b not in disabled_set), "ollama")
         self._model = ""
         self._effort = ""
         self._tools = False
@@ -682,6 +685,8 @@ class Workspace(QObject):
         self.deepseekAccount.changed.connect(self.accountChanged.emit)
         self.googleAccount = GoogleAccountController(self)
         self.googleAccount.changed.connect(self.accountChanged.emit)
+        self.openrouterAccount = OpenRouterAccountController(self)
+        self.openrouterAccount.changed.connect(self.accountChanged.emit)
         self.providerSwitch = ProviderSwitchController(self)
         self.accountUsage = AccountUsageController(self)
         self._web = WebController(self)
@@ -740,6 +745,7 @@ class Workspace(QObject):
         self.directAccount.changed.emit()
         self.deepseekAccount.changed.emit()
         self.googleAccount.changed.emit()
+        self.openrouterAccount.changed.emit()
         # A language notification must not trigger project discovery through a
         # child controller's ordinary workspace-change connection.
         self.teams._retranslating = True
@@ -1375,21 +1381,90 @@ class Workspace(QObject):
     def backend(self) -> str:
         return self._backend
 
-    @qt_property(str, notify=changed)
-    def backendLabel(self) -> str:
+    def _backend_label_for(self, backend: str) -> str:
         return {"codex": "Codex", "ollama": "Ollama",
                 "openai_chatgpt": tr("OpenAI diretto · ChatGPT"),
                 "deepseek_account": tr("DeepSeek Account"),
                 "deepseek_web": tr("DeepSeek Web · sperimentale"),
                 "claude_code": tr("Claude Code · uso personale"),
-                "google_cloud": tr("Google Cloud · Vertex AI")}.get(self._backend, self._backend)
+                "google_cloud": tr("Google Cloud · Vertex AI"),
+                "openrouter": tr("OpenRouter")}.get(backend, backend)
+
+    @qt_property(str, notify=changed)
+    def backendLabel(self) -> str:
+        return self._backend_label_for(self._backend)
 
     @qt_property(str, notify=changed)
     def backendShortLabel(self) -> str:
         """The composer chip has little room: the provider name without its qualifier."""
         return {"codex": "Codex", "ollama": "Ollama", "openai_chatgpt": tr("OpenAI diretto"),
                 "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
-                "claude_code": tr("Claude Code"), "google_cloud": tr("Google Cloud")}.get(self._backend, self._backend)
+                "claude_code": tr("Claude Code"), "google_cloud": tr("Google Cloud"),
+                "openrouter": tr("OpenRouter")}.get(self._backend, self._backend)
+
+    @qt_property("QVariantList", notify=preferencesChanged)
+    def disabledBackends(self) -> list[str]:
+        raw = self._preferences.get("disabled_backends", [])
+        if not isinstance(raw, list):
+            return []
+        return [str(item) for item in raw if isinstance(item, str) and item in KNOWN_BACKENDS]
+
+    @qt_property("QVariantList", notify=preferencesChanged)
+    def enabledBackends(self) -> list[str]:
+        disabled = set(self.disabledBackends)
+        return [b for b in KNOWN_BACKENDS if b not in disabled]
+
+    @Slot(str, result=bool)
+    def isProviderEnabled(self, backend: str) -> bool:
+        return backend in KNOWN_BACKENDS and backend not in set(self.disabledBackends)
+
+    @Slot(str, bool, result=bool)
+    def setProviderEnabled(self, backend: str, enabled: bool) -> bool:
+        if backend not in KNOWN_BACKENDS or type(enabled) is not bool:
+            return False
+        disabled = list(self.disabledBackends)
+        if enabled:
+            updated = [b for b in disabled if b != backend]
+        else:
+            if self.busy and self._backend == backend:
+                self._problem(tr("Non puoi disattivare il provider mentre un'esecuzione è in corso."))
+                return False
+            updated = [b for b in KNOWN_BACKENDS if b in disabled or b == backend]
+            if len(updated) >= len(KNOWN_BACKENDS):
+                self._problem(tr("Almeno un provider deve rimanere attivo."))
+                return False
+        if updated != disabled:
+            self.setUiPreference("disabled_backends", updated)
+            if self.disabledBackends != updated:
+                return False
+        label = self._backend_label_for(backend)
+        if not enabled:
+            if self._backend == backend and not self._session:
+                fallback = next((b for b in KNOWN_BACKENDS if b not in updated), "ollama")
+                self._backend, self._model, self._effort = fallback, "", ""
+                self._tools = fallback in {
+                    "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
+                    "claude_code", "google_cloud", "openrouter",
+                }
+                if self.connected:
+                    self.discover(fallback)
+            if hasattr(self, "teams") and self.teams._draft.get("backend") == backend:
+                team_choices = ("codex", "ollama", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter")
+                self.teams._draft["backend"] = next((b for b in team_choices if b not in updated), "codex")
+                self.teams.changed.emit()
+            self._notice = tr("Provider {provider} disattivato.", provider=label)
+        else:
+            self._notice = tr("Provider {provider} attivato.", provider=label)
+            if self.connected:
+                self.discover(backend)
+        self.changed.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def toggleProviderEnabled(self, backend: str) -> bool:
+        if backend not in KNOWN_BACKENDS:
+            return False
+        return self.setProviderEnabled(backend, not self.isProviderEnabled(backend))
 
     @qt_property(str, notify=accountChanged)
     def accountLabel(self) -> str:
@@ -1431,7 +1506,7 @@ class Workspace(QObject):
             return True
         model = next((item for item in self.models if item.get("id") == self._model), {})
         capabilities = model.get("capabilities", {})
-        return (self._backend in {"deepseek_account", "deepseek_web"}
+        return (self._backend in {"deepseek_account", "deepseek_web", "openrouter"}
                 and isinstance(capabilities, dict) and capabilities.get("images") is True)
 
     def direct_account_id(self) -> str:
@@ -1458,7 +1533,7 @@ class Workspace(QObject):
 
     def ensure_direct_catalog(self) -> None:
         # Providers not probed at connection time are discovered once a chat selects them.
-        if (self.connected and self._backend in {"openai_chatgpt", "claude_code", "google_cloud"}
+        if (self.connected and self._backend in {"openai_chatgpt", "claude_code", "google_cloud", "openrouter"}
                 and self.provider_catalog() is None):
             self.discover(self._backend)
 
@@ -1494,6 +1569,8 @@ class Workspace(QObject):
             return tr("Claude Code non risulta collegato. Accedi da un terminale con claude e /login, poi aggiorna.")
         if self._backend == "google_cloud" and not self.googleAccount.connected:
             return tr("Google Cloud non collegato. Configura gcloud ADC o una chiave API in Modelli.")
+        if self._backend == "openrouter" and not self.openrouterAccount.connected:
+            return tr("OpenRouter non collegato. Configura la tua chiave API OpenRouter in Modelli.")
         if not self.models:
             if self._backend == "claude_code":
                 return tr("Nessun modello Claude Code disponibile. Aggiorna dopo l'accesso a Claude Code.")
@@ -1503,6 +1580,8 @@ class Workspace(QObject):
                 return tr("Nessun modello DeepSeek Web disponibile; aggiorna il catalogo dopo il collegamento.")
             if self._backend == "google_cloud":
                 return tr("Nessun modello Google Cloud disponibile; verifica Project ID o chiave API.")
+            if self._backend == "openrouter":
+                return tr("Nessun modello OpenRouter disponibile; verifica la chiave API e aggiorna.")
             return tr("Nessun modello disponibile. Installa un modello tramite Ollama, poi aggiorna.")
         if self._backend == "openai_chatgpt":
             return tr("{count} modelli disponibili · account: {account}", count=len(self.models), account=self.accountLabel)
@@ -1514,6 +1593,8 @@ class Workspace(QObject):
             return tr("{count} modelli · login di Claude Code · solo per uso personale", count=len(self.models))
         if self._backend == "google_cloud":
             return tr("{count} modelli Google Cloud / Vertex AI disponibili", count=len(self.models))
+        if self._backend == "openrouter":
+            return tr("{count} modelli OpenRouter disponibili", count=len(self.models))
         return tr("{count} modelli disponibili · nessun download automatico", count=len(self.models))
 
     @qt_property(bool, notify=changed)
@@ -1538,6 +1619,8 @@ class Workspace(QObject):
             disconnected = not self.deepseekAccount.webConnected
         elif self._backend == "google_cloud":
             disconnected = not self.googleAccount.connected
+        elif self._backend == "openrouter":
+            disconnected = not self.openrouterAccount.connected
         else:
             disconnected = False
         return "warning" if disconnected or not self.models else "ok"
@@ -1571,7 +1654,7 @@ class Workspace(QObject):
 
     @qt_property(bool, notify=changed)
     def canUseTools(self) -> bool:
-        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code", "google_cloud"}:
+        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code", "google_cloud", "openrouter"}:
             return True
         model: Json = next((m for m in self.models if m.get("id") == self._model), {})
         caps = model.get("capabilities", {})
@@ -1900,7 +1983,7 @@ class Workspace(QObject):
             with contextlib.suppress(Exception):
                 root_path = Path(root_str).resolve(strict=False)
                 target_path = (candidate if candidate.is_absolute() else root_path / candidate).resolve(strict=False)
-                if not target_path.is_relative_to(root_path) or target_path == root_path:
+                if root_path.exists() and (not target_path.is_relative_to(root_path) or target_path == root_path):
                     return False
         return True
 
@@ -2874,7 +2957,11 @@ class Workspace(QObject):
         if self.busy:
             return
         if backend not in {"ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                           "claude_code", "google_cloud"}:
+                           "claude_code", "google_cloud", "openrouter"}:
+            return
+        if not self.isProviderEnabled(backend):
+            self._problem(tr("Il provider {provider} è disattivato. Riattivalo nel pannello Modelli.",
+                             provider=self._backend_label_for(backend)))
             return
         if backend == self._backend and (backend != "openai_chatgpt" or not self._session):
             return
@@ -2884,7 +2971,7 @@ class Workspace(QObject):
             return
         self._backend, self._model, self._effort = backend, "", ""
         self._tools = backend in {"codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                                  "claude_code", "google_cloud"}
+                                  "claude_code", "google_cloud", "openrouter"}
         self._num_ctx = 0
         self._think = None
         self._session = {}
@@ -2892,6 +2979,8 @@ class Workspace(QObject):
         self.ensure_direct_catalog()
         if backend == "google_cloud":
             self.googleAccount.refresh()
+        elif backend == "openrouter":
+            self.openrouterAccount.refresh()
         self.discover(backend)
         self.changed.emit()
 
@@ -3848,6 +3937,8 @@ class Workspace(QObject):
         self.accountUsage.close()
         self.directAccount.close()
         self.deepseekAccount.close()
+        self.googleAccount.close()
+        self.openrouterAccount.close()
         self.browser.close()
         self.flushDrafts()
         self.assistant.close()
