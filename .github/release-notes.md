@@ -1,26 +1,27 @@
-## Novità in Kira Desktop 0.26.0
+## Novità in Kira Desktop 0.27.1
 
-- **Nuovo Provider Integrato: OpenRouter (`openrouter`)**:
-  - **Accesso unificato al catalogo OpenRouter**: collega la tua chiave API OpenRouter (`sk-or-v1-...` o variabile `OPENROUTER_API_KEY`) per utilizzare oltre 300 modelli (Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, Qwen, Meta Llama, Moonshot Kimi, Mistral, xAI Grok) con tutti gli strumenti nativi di Kira (file, terminale, Browser e Computer isolato, Team multi-agente, Knowledge Base, Kira Studio e Canvas).
-  - **Adattamento automatico al contesto del modello**: Kira legge dinamicamente dal catalogo `/api/v1/models` la finestra di contesto reale (`context_length`), il limite di output (`max_completion_tokens`), il supporto multimodale/immagini, il ragionamento esteso (`reasoning.effort` / `thinking`), il *prompt caching* automatico per i modelli Anthropic e Gemini e i prezzi per milione di token (inclusi i modelli `:free`).
-  - **Protezione anti-stallo e fallback automatico per i modelli `:free`**: rilevazione immediata di code bloccate sui commenti SSE keep-alive (`: OPENROUTER PROCESSING`) con timeout dedicato sul primo evento utile e catena di fallback automatica verso altri modelli gratuiti compatibili o `openrouter/free` in caso di saturazione (`429`) o indisponibilità temporanea (`502/503/504`).
-- **Hub Provider e Modelli rinnovato**:
-  - **Pulsante Attiva / Disattiva per ogni provider**: nuovo controllo nella barra di stato di ciascun provider per disattivare i servizi non utilizzati e nasconderli automaticamente dai selettori rapidi del compositore chat e dell'editor Team, mantenendo lo stato salvato nelle preferenze (`disabled_backends`).
-  - **Interfaccia multi-provider più pulita**: intestazioni, descrizioni ed etichette dei provider ripulite e uniformate per riflettere l'architettura multi-provider di Kira Desktop.
+- **DeepSeek Web & OpenRouter — Esecuzione Batch Multi-Tool e Resilienza Stream**:
+  - **Batch fino a 16 tool per turno con auto-riparazione**: i modelli (`deepseek-reasoner`, `deepseek-chat`) possono ora eseguire fino a 16 chiamate di strumenti in un singolo turno (es. esplorazione multi-file di un intero progetto); eventuali batch oltre il limite vengono auto-riparati chiedendo al modello di suddividerli, senza mai interrompere la richiesta.
+  - **Budget cumulativo di 64 KiB sui risultati batch (`BATCH_BUDGET_REACHED`)**: se una lettura multi-file supera complessivamente 64 KiB, Kira mantiene tutti i risultati già raccolti nel turno corrente e rinvia automaticamente solo i file residui al round successivo.
+  - **Recupero automatico su disconnessioni di rete (`RemoteProtocolError` / `TransportError`)**: gestione trasparente delle chiusure premature dello stream HTTP con retry automatico o interruzione pulita che preserva la sessione remota.
+- **Segnalazione Errori con Anteprima di Conferma e Blocco Post-Invio**:
+  - **Anteprima trasparente e conferma esplicita**: premendo *Invia report* viene mostrato un dialogo di conferma con l'esatto testo anonimizzato (privo di prompt privati, chiavi API o percorsi locali) e l'`installation_id` dell'installazione.
+  - **Invio singolo garantito per errore**: una volta inviata la segnalazione, quello specifico errore viene marcato come **`Inviato (KIRA-XXXXXX)`** e il pulsante diventa non inviabile, evitando invii duplicati.
+
+---
+
+## What's New in Kira Desktop 0.27.1
+
+- **DeepSeek Web & OpenRouter — Multi-Tool Batch Execution & Stream Resilience**:
+  - **Up to 16 tool calls per turn with automatic self-repair**: models (`deepseek-reasoner`, `deepseek-chat`) can now execute up to 16 tool calls in a single turn for multi-file project exploration; oversized batches automatically trigger a split/repair prompt instead of failing the run.
+  - **64 KiB cumulative batch result budget (`BATCH_BUDGET_REACHED`)**: when a multi-file batch exceeds 64 KiB of combined output, Kira preserves all earlier tool results that fit within the budget and cleanly defers trailing calls to the next round.
+  - **Automatic stream disconnect recovery (`RemoteProtocolError` / `TransportError`)**: handles premature upstream stream disconnects with automatic pre-token retry or clean session-preserving interruption.
+- **Error Reporting Confirmation Preview & Per-Error Lock**:
+  - **Transparent preview & explicit confirmation**: clicking *Send report* opens a confirmation dialog displaying the exact redacted payload (free of private prompts, API keys, or local paths) alongside the anonymous `installation_id`.
+  - **Single-send lock per error**: once submitted, that specific error displays **`Sent (KIRA-XXXXXX)`** and locks the button to prevent duplicate submissions.
 
 ---
 
-## What's New in Kira Desktop 0.26.0
-
-- **New Native Provider: OpenRouter (`openrouter`)**:
-  - **Unified OpenRouter catalog integration**: connect your OpenRouter API key (`sk-or-v1-...` or `OPENROUTER_API_KEY`) to run 300+ models (Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, Qwen, Meta Llama, Moonshot Kimi, Mistral, xAI Grok) with all native Kira tools (files, terminal, isolated Browser & Computer, multi-agent Teams, Knowledge Base, Kira Studio, and Canvas).
-  - **Context-aware model adaptation**: Kira dynamically inspects `/api/v1/models` to configure each model's true `context_length`, `max_completion_tokens`, multimodal image input, reasoning/thinking parameters, automatic prompt caching for Anthropic and Gemini models, and live token pricing (including `$0` `:free` models).
-  - **Keep-alive stall protection & automatic fallback for `:free` models**: detects upstream queue stalls when OpenRouter emits only `: OPENROUTER PROCESSING` SSE comments without payload events, applying a dedicated first-event timeout and automatically falling back across compatible `:free` models or `openrouter/free` on upstream saturation (`429` / `502/503/504`).
-- **Redesigned Provider & Model Hub**:
-  - **Per-provider Enable / Disable toggle**: new action button on every provider status card to disable unused providers and hide them from the chat composer and Team editor quick selectors, persisted in user preferences (`disabled_backends`).
-  - **Refined multi-provider copy & labels**: cleaner provider pills, status messages, and hub headings tailored for Kira's multi-provider workflow.
-
----
 
 
 ## Installazione
