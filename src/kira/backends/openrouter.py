@@ -1679,7 +1679,7 @@ class OpenRouterBackend(OllamaBackend):
                                         if isinstance(fn_delta.get("arguments"), str) and fn_delta["arguments"]:
                                             entry["function"]["arguments"] += fn_delta["arguments"]
                     break
-            except (_OpenRouterUpstreamStallError, httpx.TimeoutException) as stall_exc:
+            except (_OpenRouterUpstreamStallError, httpx.TimeoutException, httpx.TransportError) as stall_exc:
                 if not received_meaningful_chunk:
                     if free_fallback_queue:
                         prev_model = current_model_id

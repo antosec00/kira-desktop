@@ -219,3 +219,95 @@ def test_run_state_details_preserve_raw_outcome_and_both_request_identifiers():
     assert details["request_id"] == "client-request"
     assert details["outcome"] == event["payload"]["outcome"]
     assert (value, event) == original
+
+
+def test_run_error_report_requires_preview_confirmation_and_locks_per_error(workspace, qtbot, monkeypatch):
+    import kira.ui.controller as controller_module
+
+    view, _ = workspace
+    submitted = []
+
+    def fake_submit(**kwargs):
+        submitted.append(kwargs)
+        return "KIRA-ABC123"
+
+    class InlineThread:
+        def __init__(self, target, name=None, daemon=None):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(controller_module, "submit_diagnostic_report", fake_submit)
+    monkeypatch.setattr(controller_module.threading, "Thread", InlineThread)
+
+    engine = create_engine(view)
+    window = engine.rootObjects()[0]
+    try:
+        view._runs = {"run": run(prompt="Messaggio privato segreto dell'utente")}
+        view._event(failure_event())
+        qtbot.wait(30)
+
+        report_btn = window.findChild(QObject, "chatRunErrorReport")
+        report_dialog = window.findChild(QObject, "runErrorReportDialog")
+        preview_box = window.findChild(QObject, "runErrorReportPreviewText")
+        confirm_btn = window.findChild(QObject, "confirmRunErrorReportButton")
+
+        assert report_btn.property("enabled") is True
+        assert report_btn.property("text") == "Invia report"
+        assert not report_dialog.property("visible")
+
+        # 1. Clicking "Invia report" opens the confirmation dialog without sending yet
+        evaluate(report_btn, "clicked()")
+        qtbot.wait(20)
+        assert report_dialog.property("visible") is True
+        assert submitted == []
+
+        # 2. The exact preview text excludes the user's private prompt and includes technical metadata & installation_id
+        preview_text = preview_box.property("text")
+        install_id = view._installation_id()
+        assert install_id and len(install_id) == 36
+        assert "Messaggio privato segreto dell'utente" not in preview_text
+        assert install_id in preview_text
+        assert f"Installazione: {install_id}" in preview_text
+        assert "codex" in preview_text
+        assert "chosen-model" in preview_text
+        assert "HTTP_503" in preview_text
+
+        # 3. Confirming sends the exact preview text and closes the dialog
+        evaluate(confirm_btn, "clicked()")
+        qtbot.wait(30)
+        assert not report_dialog.property("visible")
+        assert len(submitted) == 1
+        assert submitted[0]["payload_text"] == preview_text
+        assert submitted[0]["installation_id_value"] == install_id
+        assert submitted[0]["error_code"] == "HTTP_503"
+        assert submitted[0]["provider"] == "codex"
+
+        # 4. That specific error now shows as already sent and the button is disabled (non-sendable)
+        assert view.runFailure["alreadyReported"] is True
+        assert view.runFailure["reportedCode"] == "KIRA-ABC123"
+        assert report_btn.property("enabled") is False
+        assert "KIRA-ABC123" in report_btn.property("text")
+
+        # Attempting to call sendRunErrorReport again on the same error is blocked
+        view.sendRunErrorReport()
+        assert len(submitted) == 1
+
+        # 5. A new, distinct error in a subsequent run re-enables reporting for that new error
+        view._runs["run-2"] = run(
+            id="run-2",
+            state="failed",
+            error="Second distinct error (RemoteProtocolError)",
+            created_at="2026-10-16T11:00:00Z",
+            updated_at="2026-10-16T11:00:01Z",
+        )
+        view.changed.emit()
+        qtbot.wait(20)
+        assert view.runFailure["runId"] == "run-2"
+        assert view.runFailure["alreadyReported"] is False
+        assert report_btn.property("enabled") is True
+        assert report_btn.property("text") == "Invia report"
+    finally:
+        close_engine(engine, window)
+

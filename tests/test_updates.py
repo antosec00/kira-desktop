@@ -263,11 +263,13 @@ def test_anonymous_ping_and_redacted_diagnostic_report(tmp_path):
             provider="openai_chatgpt",
             source_kind="run_error_panel",
             kind="package",
+            data_dir=tmp_path,
             client=client,
         )
     assert code == "KIRA-TEST01"
     assert len(seen_pings) == 1 and seen_pings[0]["id"] == first_id and seen_pings[0]["kind"] == "package"
     assert len(seen_reports) == 1
+    assert seen_reports[0]["installation_id"] == first_id
     assert "secret1234567890abcdef" not in seen_reports[0]["redacted_payload"]
     assert "secret1234567890abcdef" not in seen_reports[0]["summary"]
 

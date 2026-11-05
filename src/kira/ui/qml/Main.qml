@@ -1538,6 +1538,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24; Layout.bottomMargin: 8
                                 Layout.maximumWidth: appearance.fullWidth ? Infinity : 900
                                 Layout.alignment: Qt.AlignHCenter
+                                onReportRequested: runErrorReportDialog.open()
                                 onDetailsRequested: function(details) {
                                     window.eventDetails = details
                                     window.eventDetailsIsRun = true
@@ -3606,6 +3607,82 @@ ApplicationWindow {
                             font.italic: appearance.codeFont.italic
                             font.pixelSize: appearance.codeFont.pixelSize
                         }
+                    }
+                }
+            }
+        }
+    }
+    Dialog {
+        font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
+        id: runErrorReportDialog
+        objectName: "runErrorReportDialog"
+        title: qsTr("Conferma invio segnalazione errore")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(720, window.width - 50)
+        height: Math.min(580, window.height - 60)
+        background: Rectangle { color: appearance.colors.surface; radius: 12; border.color: appearance.colors.border }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+            Text {
+                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic
+                textFormat: Text.PlainText
+                text: qsTr("Verifica l’esatto testo che stai per inviare. Il testo della tua richiesta, i file del progetto e le credenziali personali sono esclusi.")
+                color: appearance.colors.muted
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1)
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 10
+                color: appearance.colors.codeBackground
+                border.color: appearance.colors.border
+                ScrollView {
+                    id: runErrorReportScroll
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    clip: true
+                    contentWidth: availableWidth
+                    ReadText {
+                        id: runErrorReportPreviewText
+                        objectName: "runErrorReportPreviewText"
+                        color: appearance.colors.codeText
+                        text: workspace.runErrorReportPreview
+                        width: runErrorReportScroll.availableWidth
+                        font.family: appearance.codeFont.family
+                        font.styleName: appearance.codeFont.styleName
+                        font.weight: appearance.codeFont.weight
+                        font.italic: appearance.codeFont.italic
+                        font.pixelSize: appearance.codeFont.pixelSize
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                KButton {
+                    text: qsTr("Copia")
+                    subtle: true
+                    enabled: workspace.runErrorReportPreview.length > 0
+                    onClicked: workspace.copy(workspace.runErrorReportPreview)
+                }
+                Item { Layout.fillWidth: true }
+                KButton {
+                    objectName: "cancelRunErrorReportButton"
+                    text: qsTr("Annulla")
+                    onClicked: runErrorReportDialog.close()
+                }
+                KButton {
+                    objectName: "confirmRunErrorReportButton"
+                    text: qsTr("Conferma e invia")
+                    primary: true
+                    enabled: !workspace.diagnosticsSending && !Boolean(workspace.runFailure.alreadyReported) && workspace.runErrorReportPreview.length > 0
+                    onClicked: {
+                        workspace.sendRunErrorReport()
+                        runErrorReportDialog.close()
                     }
                 }
             }

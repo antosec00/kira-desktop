@@ -35,7 +35,7 @@ WEB = "https://chat.deepseek.com"
 POW_ALGORITHM = "DeepSeekHashV1"
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_TOOL_ROUNDS = 64
-MAX_TOOL_CALLS_PER_RESPONSE = 4
+MAX_TOOL_CALLS_PER_RESPONSE = 16
 MAX_TOOL_RESULT_BYTES = 65_536
 MAX_DEEPSEEK_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_DEEPSEEK_IMAGES_PER_RUN = 20
@@ -920,6 +920,11 @@ class DeepSeekWebBackend(Backend):
                                      for alias, operation in question_aliases.items()})
                 try:
                     calls = self._parse_tool_calls(text, bool(schemas), name_aliases)
+                    if calls is not None and len(calls) > MAX_TOOL_CALLS_PER_RESPONSE:
+                        raise DeepSeekWebError(
+                            f"DeepSeek requested more than {MAX_TOOL_CALLS_PER_RESPONSE} tools in one response "
+                            f"({len(calls)} requested); no tool was executed"
+                        )
                     # Unregistered names and non-object arguments are envelope
                     # errors too: nothing ran, so they take the correction path.
                     checked = [(call, self._validate_tool_call(call["name"], call["arguments"], schemas))
@@ -934,9 +939,10 @@ class DeepSeekWebBackend(Backend):
                         messages.append({"role": "assistant", "content": text})
                         current_prompt = (
                             "Your previous response looked like a Kira tool call, but Kira rejected it "
-                            "and no tool was executed. Reason: " + str(exc)[:300] + ". Retry with exactly "
-                            "one standalone JSON object shaped like {\"kira_tool_call\":{\"name\":"
-                            "\"EXACT_TOOL_NAME\",\"arguments\":{}}}, using only the registered tool names "
+                            "and no tool was executed. Reason: " + str(exc)[:300] + ". Retry with at most "
+                            f"{MAX_TOOL_CALLS_PER_RESPONSE} tool calls (preferably one standalone JSON object "
+                            "shaped like {\"kira_tool_call\":{\"name\":"
+                            "\"EXACT_TOOL_NAME\",\"arguments\":{}}}), using only the registered tool names "
                             "and schemas already in this chat. Escape quotes, backslashes and newlines "
                             "inside JSON strings. Do not use DSML, Markdown fences or surrounding prose. "
                             "If the request needs no tool, answer normally."
@@ -965,9 +971,6 @@ class DeepSeekWebBackend(Backend):
                     raise DeepSeekWebError("DeepSeek emitted a tool envelope while Kira tools are disabled")
                 if tool_rounds >= max_rounds:
                     raise DeepSeekWebError(f"DeepSeek Web tool round limit ({max_rounds}) reached")
-                if len(calls) > MAX_TOOL_CALLS_PER_RESPONSE:
-                    raise DeepSeekWebError(
-                        f"DeepSeek requested more than {MAX_TOOL_CALLS_PER_RESPONSE} tools in one response; none were executed")
 
                 invalid = any(problem is not None for _, problem in checked)
                 results: list[Json] = []
@@ -978,9 +981,24 @@ class DeepSeekWebBackend(Backend):
                             "message": "No call in this batch was executed because another call failed schema validation."}}
                         for _, problem in checked]
                 else:
+                    deferred_result: Json = {
+                        "ok": False,
+                        "executed": False,
+                        "error": {
+                            "code": "BATCH_BUDGET_REACHED",
+                            "message": (
+                                "Deferred because earlier tool results in this batch filled the 64 KiB "
+                                "turn budget; request this tool in the next round if still needed."
+                            ),
+                        },
+                    }
+                    batch_budget_exhausted = False
                     for position, (call, _) in enumerate(checked):
                         if ctx.cancel.is_set():
                             raise asyncio.CancelledError
+                        if batch_budget_exhausted:
+                            results.append(deferred_result)
+                            continue
                         name, arguments = call["name"], call["arguments"]
                         if name in client_aliases:
                             if bridge is None:
@@ -1021,6 +1039,19 @@ class DeepSeekWebBackend(Backend):
                             result = {"ok": False, "error": {
                                 "code": "RESULT_TOO_LARGE",
                                 "message": "Tool result exceeded the 64 KiB model-context limit."}}
+                        if position > 0:
+                            candidate_batch = (
+                                [{"name": c["name"], "result": r} for (c, _), r in zip(checked[:position], results)]
+                                + [{"name": call["name"], "result": result}]
+                                + [{"name": c["name"], "result": deferred_result} for (c, _) in checked[position + 1 :]]
+                            )
+                            candidate_encoded = json.dumps(
+                                candidate_batch, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+                            )
+                            if len(candidate_encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
+                                batch_budget_exhausted = True
+                                results.append(deferred_result)
+                                continue
                         results.append(result)
 
                 encoded_results = json.dumps(
@@ -1622,48 +1653,53 @@ class DeepSeekWebBackend(Backend):
                    "Content-Type": "application/json"}
         if hif_leim:
             headers["x-hif-leim"] = hif_leim
-        async with self.client.stream(
-            "POST", target_path, json=body,
-            headers=headers, timeout=180,
-        ) as response:
-            if stream_trace:
-                message_id_header_names = [name.lower() for name in response.headers.keys()
-                    if "message" in name.lower() and "id" in name.lower()
-                    and not any(secret in name.lower() for secret in ("token", "auth", "cookie"))][:16]
-            if response.status_code == 401:
-                await self.accounts.expire(token)
-                raise DeepSeekWebAuthError("Web token rejected during completion")
-            if response.status_code >= 400:
-                status = f"HTTP {response.status_code}" + await _error_code_suffix(response)
-                if response.status_code in TRANSIENT_HTTP_STATUSES:
-                    raise DeepSeekWebIncompleteStreamError(
-                        f"DeepSeek web completion returned {status}", empty=True, signal=status)
-                raise DeepSeekWebError(f"DeepSeek web completion returned {status}")
-            signals: list[str] = []
-            async for line in _bounded_lines(response, MAX_STREAM_BYTES):
-                if line.startswith("data:"):
-                    payload = line[5:].strip()
-                elif line.startswith("{"):
-                    # A plain JSON body instead of a stream, such as an error envelope.
-                    payload = line.strip()
-                else:
-                    continue
-                if not payload or payload == "[DONE]":
-                    continue
-                try:
-                    event = json.loads(payload)
-                except ValueError:
-                    continue
-                signal = _provider_signal(event)
-                if signal:
-                    if signal not in signals and len(signals) < 4:
-                        signals.append(signal)
-                    continue
-                text = stream_state.apply(event)
-                if len(text.encode("utf-8")) > limit:
-                    raise DeepSeekWebError("Web response exceeded configured output limit")
-                if relay is not None:
-                    await relay.feed(stream_state.thinking)
+        signals: list[str] = []
+        try:
+            async with self.client.stream(
+                "POST", target_path, json=body,
+                headers=headers, timeout=180,
+            ) as response:
+                if stream_trace:
+                    message_id_header_names = [name.lower() for name in response.headers.keys()
+                        if "message" in name.lower() and "id" in name.lower()
+                        and not any(secret in name.lower() for secret in ("token", "auth", "cookie"))][:16]
+                if response.status_code == 401:
+                    await self.accounts.expire(token)
+                    raise DeepSeekWebAuthError("Web token rejected during completion")
+                if response.status_code >= 400:
+                    status = f"HTTP {response.status_code}" + await _error_code_suffix(response)
+                    if response.status_code in TRANSIENT_HTTP_STATUSES:
+                        raise DeepSeekWebIncompleteStreamError(
+                            f"DeepSeek web completion returned {status}", empty=True, signal=status)
+                    raise DeepSeekWebError(f"DeepSeek web completion returned {status}")
+                async for line in _bounded_lines(response, MAX_STREAM_BYTES):
+                    if line.startswith("data:"):
+                        payload = line[5:].strip()
+                    elif line.startswith("{"):
+                        # A plain JSON body instead of a stream, such as an error envelope.
+                        payload = line.strip()
+                    else:
+                        continue
+                    if not payload or payload == "[DONE]":
+                        continue
+                    try:
+                        event = json.loads(payload)
+                    except ValueError:
+                        continue
+                    signal = _provider_signal(event)
+                    if signal:
+                        if signal not in signals and len(signals) < 4:
+                            signals.append(signal)
+                        continue
+                    text = stream_state.apply(event)
+                    if len(text.encode("utf-8")) > limit:
+                        raise DeepSeekWebError("Web response exceeded configured output limit")
+                    if relay is not None:
+                        await relay.feed(stream_state.thinking)
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            exc_name = type(exc).__name__
+            if exc_name not in signals and len(signals) < 4:
+                signals.append(exc_name)
         if stream_trace:
             print("[deepseek_web_stream_trace] " + json.dumps(
                 {"round": round_index, "message_id_header_names": message_id_header_names,

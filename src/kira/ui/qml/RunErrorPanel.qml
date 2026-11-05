@@ -7,6 +7,7 @@ Rectangle {
     objectName: "chatRunError"
     property var failure: ({visible: false})
     signal detailsRequested(string details)
+    signal reportRequested()
     visible: failure.visible === true
     implicitHeight: errorColumn.implicitHeight + 18
     color: appearance.colors.surfaceAlt
@@ -32,11 +33,17 @@ Rectangle {
             }
             KButton {
                 objectName: "chatRunErrorReport"
-                text: workspace.diagnosticsSending ? qsTr("Invio…") : qsTr("Invia report"); subtle: true
-                enabled: !workspace.diagnosticsSending
+                text: panel.failure.alreadyReported
+                    ? (panel.failure.reportedCode ? qsTr("Report inviato · %1").arg(panel.failure.reportedCode) : qsTr("Report inviato"))
+                    : (workspace.diagnosticsSending ? qsTr("Invio…") : qsTr("Invia report"))
+                subtle: true
+                enabled: !workspace.diagnosticsSending && !Boolean(panel.failure.alreadyReported)
                 implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
-                Accessible.name: qsTr("Invia report errore anonimizzato")
-                onClicked: workspace.sendRunErrorReport()
+                Accessible.name: panel.failure.alreadyReported ? text : qsTr("Invia report errore anonimizzato")
+                toolTipText: panel.failure.alreadyReported
+                    ? qsTr("Segnalazione già inviata per questo errore")
+                    : qsTr("Controlla il testo e invia la segnalazione di questo errore")
+                onClicked: panel.reportRequested()
             }
             KButton {
                 objectName: "chatRunErrorDetails"

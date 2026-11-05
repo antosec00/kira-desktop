@@ -49,7 +49,7 @@ from kira.ui.provider_switch import ProviderSwitchController
 from kira.ui.team_controller import TeamController
 from kira.ui.web_controller import WebController, browser_approval_description
 from kira.ui.studio_controller import StudioController
-from kira.ui.updates import submit_diagnostic_report
+from kira.ui.updates import installation_id, submit_diagnostic_report
 from kira.ui.canvas_controller import CanvasController
 from kira.ui.mcp_controller import McpController
 from kira.ui.ambient_controller import AmbientController
@@ -586,7 +586,9 @@ class Workspace(QObject):
         self._diagnostics_loading = False
         self._diagnostics_export_path = ""
         self._diagnostics_report_status = ""
+        self._diagnostics_reported_code = ""
         self._diagnostics_sending = False
+        self._reported_run_errors: dict[str, str] = self._load_reported_run_errors()
         self._service_recovery_pending = False
         # An update stops the service on purpose: it must not be restarted meanwhile.
         self._service_hold = False
@@ -947,6 +949,28 @@ class Workspace(QObject):
         return self._diagnostics_error or (formatted(self._diagnostics) if self._diagnostics
                                           else tr("Premi Aggiorna per leggere lo stato locale."))
 
+    def _load_reported_run_errors(self) -> dict[str, str]:
+        path = self.paths.state / "reported_errors.json"
+        try:
+            if path.is_file() and not path.is_symlink():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return {str(k): str(v) for k, v in list(data.items())[-200:] if k and v}
+        except (OSError, ValueError, TypeError):
+            pass
+        return {}
+
+    def _save_reported_run_errors(self) -> None:
+        path = self.paths.state / "reported_errors.json"
+        try:
+            self.paths.state.mkdir(parents=True, exist_ok=True, mode=0o700)
+            trimmed = dict(list(self._reported_run_errors.items())[-200:])
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(trimmed, handle, ensure_ascii=False)
+        except OSError:
+            pass
+
     @qt_property(str, notify=diagnosticsChanged)
     def diagnosticsExportPath(self) -> str:
         return self._diagnostics_export_path
@@ -954,6 +978,14 @@ class Workspace(QObject):
     @qt_property(str, notify=diagnosticsChanged)
     def diagnosticsReportStatus(self) -> str:
         return self._diagnostics_report_status
+
+    @qt_property(str, notify=diagnosticsChanged)
+    def diagnosticsReportedCode(self) -> str:
+        return self._diagnostics_reported_code
+
+    @qt_property(bool, notify=diagnosticsChanged)
+    def diagnosticsAlreadyReported(self) -> bool:
+        return bool(self._diagnostics_reported_code)
 
     @qt_property(bool, notify=diagnosticsChanged)
     def diagnosticsSending(self) -> bool:
@@ -963,6 +995,10 @@ class Workspace(QObject):
     def diagnosticsReady(self) -> bool:
         return bool(self._diagnostics and not self._diagnostics_loading
                     and not self._diagnostics_error)
+
+    @qt_property(str, notify=changed)
+    def runErrorReportPreview(self) -> str:
+        return str(self.runFailure.get("reportPreview") or "")
 
     @Slot()
     def refreshWorkspace(self) -> None:
@@ -1103,6 +1139,13 @@ class Workspace(QObject):
 
         self.client.request(pending["method"], pending["params"], done, failed)
 
+    def _installation_id(self) -> str:
+        cached = getattr(self, "_cached_installation_id", "")
+        if not cached:
+            cached = installation_id(self.paths.data)
+            self._cached_installation_id = cached
+        return cached
+
     @Slot()
     def refreshDiagnostics(self) -> None:
         if not self.connected:
@@ -1111,10 +1154,12 @@ class Workspace(QObject):
             return
         self._diagnostics_loading = True
         self._diagnostics_error = ""
+        self._diagnostics_reported_code = ""
+        self._diagnostics_report_status = ""
         self.diagnosticsChanged.emit()
 
         def done(result: Json) -> None:
-            self._diagnostics = result
+            self._diagnostics = {"installation_id": self._installation_id(), **result}
             self._diagnostics_loading = False
             self.diagnosticsChanged.emit()
 
@@ -1139,15 +1184,23 @@ class Workspace(QObject):
             self.client.request("diagnostics.export", {}, done, failed)
 
     @Slot(object)
-    def _on_report_finished(self, payload: tuple[str, bool, str]) -> None:
-        source_kind, ok, text = payload
+    def _on_report_finished(self, payload: tuple[Any, ...]) -> None:
+        source_kind = str(payload[0])
+        ok = bool(payload[1])
+        text = str(payload[2])
+        target_id = str(payload[3]) if len(payload) > 3 else ""
         self._diagnostics_sending = False
         if ok:
             status_msg = tr("Segnalazione inviata · Codice: {code}", code=text)
             self._diagnostics_report_status = status_msg
             if source_kind == "run_error_panel":
+                if target_id:
+                    self._reported_run_errors[target_id] = text
+                    self._save_reported_run_errors()
                 self._notice = status_msg
                 self.changed.emit()
+            elif source_kind == "diagnostics_dialog":
+                self._diagnostics_reported_code = text
         else:
             self._diagnostics_report_status = text
             if source_kind == "run_error_panel":
@@ -1156,9 +1209,10 @@ class Workspace(QObject):
 
     @Slot()
     def sendDiagnosticsReport(self) -> None:
-        if not self.diagnosticsReady or self._diagnostics_sending:
+        if not self.diagnosticsReady or self._diagnostics_sending or self.diagnosticsAlreadyReported:
             return
         payload_text = self.diagnosticsText
+        install_id = self._installation_id()
         self._diagnostics_sending = True
         self._diagnostics_report_status = tr("Invio del rapporto anonimo…")
         self.diagnosticsChanged.emit()
@@ -1170,6 +1224,7 @@ class Workspace(QObject):
                     summary="Rapporto diagnostica locale",
                     error_code="DIAGNOSTICS_REPORT",
                     source_kind="diagnostics_dialog",
+                    installation_id_value=install_id,
                 )
                 outcome = ("diagnostics_dialog", True, report_id)
             except Exception as error:
@@ -1182,31 +1237,37 @@ class Workspace(QObject):
     @Slot()
     def sendRunErrorReport(self) -> None:
         failure = self.runFailure
-        if not failure.get("visible") or self._diagnostics_sending:
+        if not failure.get("visible") or failure.get("alreadyReported") or self._diagnostics_sending:
             return
+        run_id = str(failure.get("runId") or "")
         title = str(failure.get("title") or "Errore esecuzione")
-        summary = str(failure.get("summary") or title)
-        cause = str(failure.get("errorPreview") or "")
-        details = str(failure.get("details") or "")
+        summary = str(failure.get("summary") or failure.get("errorPreview") or title)
         error_code = str(failure.get("code") or "RUN_ERROR")
-        provider = str(failure.get("backend") or "")
-        payload_text = f"{title}\n{summary}\n{cause}\n\n{details}".strip()
+        provider = str(failure.get("backend") or self._backend or "")
+        install_id = str(failure.get("installationId") or self._installation_id())
+        payload_text = str(failure.get("reportPreview") or "").strip()
+        if not payload_text:
+            cause = str(failure.get("errorPreview") or "")
+            details = str(failure.get("details") or "")
+            payload_text = f"{title}\n{summary}\n{cause}\n\n{details}".strip()
         self._diagnostics_sending = True
         self._diagnostics_report_status = tr("Invio del rapporto anonimo…")
         self.diagnosticsChanged.emit()
+        self.changed.emit()
 
         def work() -> None:
             try:
                 report_id = submit_diagnostic_report(
                     payload_text=payload_text,
-                    summary=f"{title}: {summary}"[:280],
+                    summary=(f"{title}: {summary}" if summary != title else title)[:280],
                     error_code=error_code,
                     provider=provider,
                     source_kind="run_error_panel",
+                    installation_id_value=install_id,
                 )
-                outcome = ("run_error_panel", True, report_id)
+                outcome = ("run_error_panel", True, report_id, run_id)
             except Exception as error:
-                outcome = ("run_error_panel", False, str(error))
+                outcome = ("run_error_panel", False, str(error), run_id)
             with contextlib.suppress(RuntimeError):
                 self._report_finished.emit(outcome)
 
@@ -2058,9 +2119,17 @@ class Workspace(QObject):
                   key=lambda row: (str(row.get("created_at", "")), str(row.get("id", ""))), default={})
         if run.get("state") not in {"failed", "interrupted"}:
             return {"visible": False}
-        event = {"run_id": run["id"], "timestamp": run.get("updated_at"),
+        run_id = str(run.get("id", ""))
+        event = {"run_id": run_id, "timestamp": run.get("updated_at"),
                  "payload": {"state": run.get("state"), "error": run.get("error"), "outcome": run.get("outcome")}}
-        return run_error_presentation(run, run_state_presentation(run, event)["raw"])
+        return run_error_presentation(
+            run,
+            run_state_presentation(run, event)["raw"],
+            fallback_backend=str(run.get("backend") or self._session.get("backend") or self._backend or ""),
+            fallback_model=str(run.get("model") or self._session.get("model") or self._model or ""),
+            reported_code=self._reported_run_errors.get(run_id, ""),
+            installation_id=self._installation_id(),
+        )
 
     @qt_property("QVariantList", notify=changed)
     def activity(self) -> list[Json]:

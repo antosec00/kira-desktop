@@ -69,5 +69,12 @@
   "Risposta non valida dal server diagnostico.": "Invalid response from the diagnostic server.",
   "Segnalazione inviata · Codice: {code}": "Report sent · Code: {code}",
   "Statistiche anonime di versione": "Anonymous version statistics",
-  "Statistiche anonime di versione (ID casuale, versione e sistema operativo)": "Anonymous version statistics (random ID, version and operating system)"
+  "Statistiche anonime di versione (ID casuale, versione e sistema operativo)": "Anonymous version statistics (random ID, version and operating system)",
+  "Conferma e invia": "Confirm and send",
+  "Conferma invio segnalazione errore": "Confirm error report submission",
+  "Controlla il testo e invia la segnalazione di questo errore": "Review the text and send the report for this error",
+  "Report inviato": "Report sent",
+  "Report inviato · %1": "Report sent · %1",
+  "Segnalazione già inviata per questo errore": "Report already sent for this error",
+  "Verifica l’esatto testo che stai per inviare. Il testo della tua richiesta, i file del progetto e le credenziali personali sono esclusi.": "Review the exact text you are about to send. Your request text, project files, and personal credentials are excluded."
 }

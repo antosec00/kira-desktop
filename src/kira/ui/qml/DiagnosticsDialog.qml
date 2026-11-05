@@ -21,7 +21,7 @@ Dialog {
             KButton { text: qsTr("Aggiorna"); enabled: workspace.connected; onClicked: workspace.refreshDiagnostics() }
             KButton { text: qsTr("Copia"); enabled: workspace.diagnosticsReady; onClicked: workspace.copy(workspace.diagnosticsText) }
             KButton { objectName: "exportDiagnosticsButton"; text: qsTr("Salva rapporto"); enabled: workspace.diagnosticsReady && workspace.connected; onClicked: workspace.exportDiagnostics() }
-            KButton { objectName: "sendDiagnosticsReportButton"; text: workspace.diagnosticsSending ? qsTr("Invio in corso…") : qsTr("Invia report anonimo"); primary: true; enabled: workspace.diagnosticsReady && !workspace.diagnosticsSending; onClicked: workspace.sendDiagnosticsReport() }
+            KButton { objectName: "sendDiagnosticsReportButton"; text: workspace.diagnosticsAlreadyReported ? qsTr("Report inviato · %1").arg(workspace.diagnosticsReportedCode) : (workspace.diagnosticsSending ? qsTr("Invio in corso…") : qsTr("Invia report anonimo")); primary: !workspace.diagnosticsAlreadyReported; enabled: workspace.diagnosticsReady && !workspace.diagnosticsSending && !workspace.diagnosticsAlreadyReported; onClicked: workspace.sendDiagnosticsReport() }
             Item { Layout.fillWidth: true }
             KButton { text: qsTr("Chiudi"); onClicked: dialog.close() }
         }

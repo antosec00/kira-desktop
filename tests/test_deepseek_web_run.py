@@ -468,3 +468,96 @@ async def test_rate_limited_pow_challenge_is_retried_and_succeeds():
     assert result["state"] == "completed"
     assert pow_calls == 2
 
+
+async def test_ten_tool_calls_in_one_round_execute_without_failing():
+    # Regression test for KIRA-A23F13: DeepSeek Reasoner reads 10 project docs in one batch.
+    batch_text = "\n".join(
+        json.dumps({"kira_tool_call": {"name": "read_file", "arguments": {"path": f"docs/{i:02d}.md"}}})
+        for i in range(1, 11)
+    )
+    site = Site(answer(batch_text, message_id=2), answer("Read all 10 documentation files.", message_id=3))
+    events = []
+    result = await run(site, events)
+    assert result["state"] == "completed"
+    assert result["outcome"]["tool_rounds"] == 1
+    assert site.prompts[1].count('"name":"read_file"') == 10
+
+
+async def test_oversized_tool_batch_above_limit_triggers_repair_instead_of_failing():
+    oversized_text = "\n".join(
+        json.dumps({"kira_tool_call": {"name": "list_files", "arguments": {"path": "."}}})
+        for _ in range(17)
+    )
+    single_call = json.dumps({"kira_tool_call": {"name": "list_files", "arguments": {"path": "."}}})
+    site = Site(
+        answer(oversized_text, message_id=2),
+        answer(single_call, message_id=3),
+        answer("Recovered after splitting tool batch.", message_id=4),
+    )
+    events = []
+    result = await run(site, events)
+    assert result["state"] == "completed"
+    assert result["outcome"]["content"] == "Recovered after splitting tool batch."
+    assert len(site.prompts) == 3
+    assert "more than 16 tools" in site.prompts[1]
+
+
+async def test_batch_result_budget_preserves_early_results_and_defers_trailing_calls():
+    batch_text = "\n".join(
+        json.dumps({"kira_tool_call": {"name": "read_file", "arguments": {"path": f"doc_{i}.md"}}})
+        for i in range(4)
+    )
+    site = Site(answer(batch_text, message_id=2), answer("Processed partial batch.", message_id=3))
+    events = []
+    executed_paths = []
+    instance = backend(site)
+    ctx = context(events)
+
+    async def large_execute_tool(name, arguments):
+        executed_paths.append(arguments["path"])
+        return {"ok": True, "path": arguments["path"], "content": "A" * 24_000}
+
+    ctx.execute_tool = large_execute_tool
+    try:
+        result = await asyncio.wait_for(instance.run(ctx), 5)
+    finally:
+        await instance.close()
+
+    assert result["state"] == "completed"
+    # First 2 calls (~48 KiB) fit in the 64 KiB batch budget; 3rd call exceeds 64 KiB and triggers deferral.
+    assert "doc_0.md" in site.prompts[1] and "AAAAAAAA" in site.prompts[1]
+    assert "BATCH_BUDGET_REACHED" in site.prompts[1]
+    assert executed_paths == ["doc_0.md", "doc_1.md", "doc_2.md"]
+
+
+async def test_transport_disconnect_before_any_events_retries_and_succeeds():
+    class DisconnectedEmptyStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            if False:
+                yield b""
+            raise httpx.RemoteProtocolError("peer closed connection without sending complete message body")
+
+    site = Site(DisconnectedEmptyStream(), answer("Recovered after early disconnect.", message_id=2))
+    events = []
+    result = await run(site, events)
+    assert result["state"] == "completed"
+    assert result["outcome"]["content"] == "Recovered after early disconnect."
+    assert len(site.prompts) == 2
+
+
+async def test_transport_disconnect_mid_stream_interrupts_cleanly_and_keeps_session():
+    class DisconnectedMidStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'data: {"response_message_id": 2}\n\n'
+            yield b'data: {"v": {"response": {"fragments": [{"type": "RESPONSE", "content": "Partial "}]}}}\n\n'
+            raise httpx.RemoteProtocolError("peer closed connection without sending complete message body")
+
+    site = Site(DisconnectedMidStream())
+    events = []
+    result = await run(site, events)
+    assert result["state"] == "interrupted"
+    assert "ended the response before it was complete" in result["error"]
+    reference = kinds(events, "session.updated")[-1]["backend_ref"]
+    state = json.loads(reference.split(":", 2)[-1])
+    assert state["chat_session_id"] == "remote-chat" and state["interrupted"] is True
+

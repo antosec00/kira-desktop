@@ -223,6 +223,8 @@ def submit_diagnostic_report(
     provider: str = "",
     source_kind: str = "diagnostics_dialog",
     kind: str | None = None,
+    installation_id_value: str = "",
+    data_dir: Path | None = None,
     client: httpx.Client | None = None,
 ) -> str:
     """Redact and submit a 1-click diagnostic/error report, returning the receipt code (e.g. KIRA-A1B2C3)."""
@@ -231,7 +233,14 @@ def submit_diagnostic_report(
         raise UpdateError(tr("Il rapporto diagnostico è vuoto."))
     redacted_summary = redact_report_text(summary or "Segnalazione diagnostica").strip()[:280]
     resolved_kind = kind or install_kind()[0]
+    resolved_install_id = str(installation_id_value or "").strip().lower()
+    if not resolved_install_id and data_dir is not None:
+        resolved_install_id = installation_id(data_dir)
+    if not resolved_install_id:
+        with contextlib.suppress(Exception):
+            resolved_install_id = installation_id(Paths.from_env().data)
     body = {
+        "installation_id": resolved_install_id,
         "version": __version__,
         "os": detect_os_platform(),
         "install_kind": resolved_kind,
@@ -242,12 +251,13 @@ def submit_diagnostic_report(
         "redacted_payload": redacted_payload,
     }
     url = f"{telemetry_base_url()}/v1/diagnostics"
+    extra_headers = {"X-Kira-Install-Id": resolved_install_id} if resolved_install_id else {}
     try:
         if client is not None:
-            response = client.post(url, json=body, timeout=15.0)
+            response = client.post(url, json=body, headers=extra_headers, timeout=15.0)
         else:
             with http_client() as temp_client:
-                response = temp_client.post(url, json=body, timeout=15.0)
+                response = temp_client.post(url, json=body, headers=extra_headers, timeout=15.0)
     except httpx.HTTPError as error:
         raise UpdateError(tr("Invio del report non riuscito: verifica la connessione.")) from error
     if response.status_code == 429:
