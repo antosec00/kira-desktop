@@ -7,6 +7,7 @@ import math
 import os
 import shlex
 import shutil
+import threading
 import uuid
 from collections.abc import Callable
 from copy import deepcopy
@@ -48,6 +49,7 @@ from kira.ui.provider_switch import ProviderSwitchController
 from kira.ui.team_controller import TeamController
 from kira.ui.web_controller import WebController, browser_approval_description
 from kira.ui.studio_controller import StudioController
+from kira.ui.updates import submit_diagnostic_report
 from kira.ui.canvas_controller import CanvasController
 from kira.ui.mcp_controller import McpController
 from kira.ui.ambient_controller import AmbientController
@@ -547,6 +549,7 @@ class Workspace(QObject):
     actionsChanged = Signal()
     preferencesChanged = Signal()
     diagnosticsChanged = Signal()
+    _report_finished = Signal(object)
     accountChanged = Signal()
     draftImagesChanged = Signal()
 
@@ -559,6 +562,7 @@ class Workspace(QObject):
         self.client.disconnected.connect(self._disconnected)
         self.client.problem.connect(self._problem)
         self.client.eventReceived.connect(self._event)
+        self._report_finished.connect(self._on_report_finished)
         self.transcript = TranscriptModel(self)
         self._connected_value = False
         self._status = tr("Avvio del servizio locale…")
@@ -581,6 +585,8 @@ class Workspace(QObject):
         self._diagnostics_error = ""
         self._diagnostics_loading = False
         self._diagnostics_export_path = ""
+        self._diagnostics_report_status = ""
+        self._diagnostics_sending = False
         self._service_recovery_pending = False
         # An update stops the service on purpose: it must not be restarted meanwhile.
         self._service_hold = False
@@ -945,6 +951,14 @@ class Workspace(QObject):
     def diagnosticsExportPath(self) -> str:
         return self._diagnostics_export_path
 
+    @qt_property(str, notify=diagnosticsChanged)
+    def diagnosticsReportStatus(self) -> str:
+        return self._diagnostics_report_status
+
+    @qt_property(bool, notify=diagnosticsChanged)
+    def diagnosticsSending(self) -> bool:
+        return self._diagnostics_sending
+
     @qt_property(bool, notify=diagnosticsChanged)
     def diagnosticsReady(self) -> bool:
         return bool(self._diagnostics and not self._diagnostics_loading
@@ -1123,6 +1137,80 @@ class Workspace(QObject):
                 self.diagnosticsChanged.emit()
 
             self.client.request("diagnostics.export", {}, done, failed)
+
+    @Slot(object)
+    def _on_report_finished(self, payload: tuple[str, bool, str]) -> None:
+        source_kind, ok, text = payload
+        self._diagnostics_sending = False
+        if ok:
+            status_msg = tr("Segnalazione inviata · Codice: {code}", code=text)
+            self._diagnostics_report_status = status_msg
+            if source_kind == "run_error_panel":
+                self._notice = status_msg
+                self.changed.emit()
+        else:
+            self._diagnostics_report_status = text
+            if source_kind == "run_error_panel":
+                self._problem(text)
+        self.diagnosticsChanged.emit()
+
+    @Slot()
+    def sendDiagnosticsReport(self) -> None:
+        if not self.diagnosticsReady or self._diagnostics_sending:
+            return
+        payload_text = self.diagnosticsText
+        self._diagnostics_sending = True
+        self._diagnostics_report_status = tr("Invio del rapporto anonimo…")
+        self.diagnosticsChanged.emit()
+
+        def work() -> None:
+            try:
+                report_id = submit_diagnostic_report(
+                    payload_text=payload_text,
+                    summary="Rapporto diagnostica locale",
+                    error_code="DIAGNOSTICS_REPORT",
+                    source_kind="diagnostics_dialog",
+                )
+                outcome = ("diagnostics_dialog", True, report_id)
+            except Exception as error:
+                outcome = ("diagnostics_dialog", False, str(error))
+            with contextlib.suppress(RuntimeError):
+                self._report_finished.emit(outcome)
+
+        threading.Thread(target=work, name="kira-diagnostics-report", daemon=True).start()
+
+    @Slot()
+    def sendRunErrorReport(self) -> None:
+        failure = self.runFailure
+        if not failure.get("visible") or self._diagnostics_sending:
+            return
+        title = str(failure.get("title") or "Errore esecuzione")
+        summary = str(failure.get("summary") or title)
+        cause = str(failure.get("errorPreview") or "")
+        details = str(failure.get("details") or "")
+        error_code = str(failure.get("code") or "RUN_ERROR")
+        provider = str(failure.get("backend") or "")
+        payload_text = f"{title}\n{summary}\n{cause}\n\n{details}".strip()
+        self._diagnostics_sending = True
+        self._diagnostics_report_status = tr("Invio del rapporto anonimo…")
+        self.diagnosticsChanged.emit()
+
+        def work() -> None:
+            try:
+                report_id = submit_diagnostic_report(
+                    payload_text=payload_text,
+                    summary=f"{title}: {summary}"[:280],
+                    error_code=error_code,
+                    provider=provider,
+                    source_kind="run_error_panel",
+                )
+                outcome = ("run_error_panel", True, report_id)
+            except Exception as error:
+                outcome = ("run_error_panel", False, str(error))
+            with contextlib.suppress(RuntimeError):
+                self._report_finished.emit(outcome)
+
+        threading.Thread(target=work, name="kira-run-error-report", daemon=True).start()
 
     @qt_property(bool, notify=changed)
     def connected(self) -> bool:

@@ -231,8 +231,45 @@ def test_local_changes_block_a_source_update(checkout):
 
 def test_update_preferences_are_validated():
     assert valid_preference("check_updates", False) and not valid_preference("check_updates", "no")
+    assert valid_preference("anonymous_telemetry", False) and not valid_preference("anonymous_telemetry", "no")
     assert valid_preference("skipped_update_version", "0.20.0") and valid_preference("skipped_update_version", "")
     assert not valid_preference("skipped_update_version", "latest")
+
+
+def test_anonymous_ping_and_redacted_diagnostic_report(tmp_path):
+    first_id = updates_module.installation_id(tmp_path)
+    assert updates_module.installation_id(tmp_path) == first_id
+    assert (tmp_path / "installation_id").stat().st_mode & 0o777 == 0o600
+
+    seen_pings = []
+    seen_reports = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/releases/latest":
+            seen_pings.append(dict(request.url.params))
+            return httpx.Response(200, json={"tag_name": f"v{__version__}"})
+        if request.url.path == "/v1/diagnostics":
+            import json as _json
+            seen_reports.append(_json.loads(request.content.decode("utf-8")))
+            return httpx.Response(200, json={"ok": True, "report_id": "KIRA-TEST01"})
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert updates_module.ping_telemetry(tmp_path, "package", client=client)
+        code = updates_module.submit_diagnostic_report(
+            payload_text="Errore con token Bearer secret1234567890abcdef",
+            summary="Fallimento test Bearer secret1234567890abcdef",
+            error_code="PROVIDER_ERROR",
+            provider="openai_chatgpt",
+            source_kind="run_error_panel",
+            kind="package",
+            client=client,
+        )
+    assert code == "KIRA-TEST01"
+    assert len(seen_pings) == 1 and seen_pings[0]["id"] == first_id and seen_pings[0]["kind"] == "package"
+    assert len(seen_reports) == 1
+    assert "secret1234567890abcdef" not in seen_reports[0]["redacted_payload"]
+    assert "secret1234567890abcdef" not in seen_reports[0]["summary"]
 
 
 class Inline:

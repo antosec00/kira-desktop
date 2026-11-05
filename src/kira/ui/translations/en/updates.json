@@ -56,5 +56,18 @@
   "Versione installata %1 · pacchetto firmato dalla release ufficiale": "Installed version %1 · signed package from the official release",
   "git non è disponibile.": "git is not available.",
   "uv non è disponibile.": "uv is not available.",
-  "È disponibile Kira %1.": "Kira %1 is available."
+  "È disponibile Kira %1.": "Kira %1 is available.",
+  "Il rapporto diagnostico è vuoto.": "The diagnostic report is empty.",
+  "Il server diagnostico ha risposto con HTTP {status}.": "The diagnostic server answered with HTTP {status}.",
+  "Invia report": "Send report",
+  "Invia report anonimo": "Send anonymous report",
+  "Invia report errore anonimizzato": "Send anonymized error report",
+  "Invio del rapporto anonimo…": "Sending anonymous report…",
+  "Invio del report non riuscito: verifica la connessione.": "Sending the report failed: check your connection.",
+  "Invio in corso…": "Sending…",
+  "Limite orario di segnalazioni raggiunto. Riprova più tardi.": "Hourly report limit reached. Please try again later.",
+  "Risposta non valida dal server diagnostico.": "Invalid response from the diagnostic server.",
+  "Segnalazione inviata · Codice: {code}": "Report sent · Code: {code}",
+  "Statistiche anonime di versione": "Anonymous version statistics",
+  "Statistiche anonime di versione (ID casuale, versione e sistema operativo)": "Anonymous version statistics (random ID, version and operating system)"
 }
