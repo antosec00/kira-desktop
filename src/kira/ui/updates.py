@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -32,6 +33,7 @@ from PySide6.QtGui import QGuiApplication
 
 import kira
 from kira import __version__
+from kira.service.redaction import Redactor
 from kira.ui.presentation import tr
 from kira.ui.qt_properties import qt_property
 
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
 Json = dict[str, Any]
 REPOSITORY = "antosec00/kira-desktop"
 RELEASES_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+TELEMETRY_BASE_URL = "https://kira-desktop-telemetry.kiradesktop.workers.dev"
 # The public half of the release signing key; the private half signs SHA256SUMS
 # in the release workflow. packaging/release-signing-key.pub.pem holds the same key.
 RELEASE_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
@@ -142,6 +145,120 @@ def http_client() -> httpx.Client:
 def releases_url() -> str:
     """GitHub, or a test or mirror release endpoint; the built-in key still decides what installs."""
     return os.environ.get("KIRA_UPDATE_RELEASE_URL") or RELEASES_API
+
+
+def telemetry_base_url() -> str:
+    """Privacy-first Cloudflare Worker endpoint for anonymous version ping and 1-click crash reports."""
+    return (os.environ.get("KIRA_TELEMETRY_URL") or TELEMETRY_BASE_URL).rstrip("/")
+
+
+def detect_os_platform(osrelease: Path = Path("/proc/sys/kernel/osrelease")) -> str:
+    if sys.platform == "win32":
+        return "windows"
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return "wsl2"
+    try:
+        if "microsoft" in osrelease.read_text(encoding="utf-8", errors="ignore").lower():
+            return "wsl2"
+    except OSError:
+        pass
+    return "linux"
+
+
+def installation_id(data_dir: Path) -> str:
+    """A random local UUIDv4 stored privately (0600) in data_dir/installation_id."""
+    path = data_dir / "installation_id"
+    try:
+        if path.is_file() and not path.is_symlink():
+            existing = path.read_text(encoding="utf-8").strip().lower()
+            parsed = uuid.UUID(existing, version=4)
+            if str(parsed) == existing:
+                return existing
+    except (OSError, ValueError):
+        pass
+    generated = str(uuid.uuid4())
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(generated + "\n")
+    except OSError:
+        pass
+    return generated
+
+
+def ping_telemetry(data_dir: Path, kind: str, *, client: httpx.Client | None = None) -> bool:
+    """Send an anonymous daily installation ping (UUIDv4, version, OS, install kind)."""
+    url = f"{telemetry_base_url()}/v1/releases/latest"
+    params = {
+        "id": installation_id(data_dir),
+        "v": __version__,
+        "os": detect_os_platform(),
+        "kind": kind if kind in {"package", "source"} else "other",
+    }
+    try:
+        if client is not None:
+            resp = client.get(url, params=params, timeout=6.0)
+            return resp.status_code < 400
+        with http_client() as temp_client:
+            resp = temp_client.get(url, params=params, timeout=6.0)
+            return resp.status_code < 400
+    except Exception:
+        return False
+
+
+def redact_report_text(text: str) -> str:
+    redacted = Redactor().text(str(text or ""))
+    redacted = re.sub(r"/home/[a-zA-Z0-9._\-]+", "/home/[USER]", redacted)
+    redacted = re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._\-]{8,}", r"\1[REDACTED]", redacted)
+    redacted = re.sub(r"\bsk-[A-Za-z0-9_\-]{12,}", "[REDACTED]", redacted)
+    return redacted
+
+
+def submit_diagnostic_report(
+    *,
+    payload_text: str,
+    summary: str = "",
+    error_code: str = "MANUAL_REPORT",
+    provider: str = "",
+    source_kind: str = "diagnostics_dialog",
+    kind: str | None = None,
+    client: httpx.Client | None = None,
+) -> str:
+    """Redact and submit a 1-click diagnostic/error report, returning the receipt code (e.g. KIRA-A1B2C3)."""
+    redacted_payload = redact_report_text(payload_text).strip()
+    if not redacted_payload:
+        raise UpdateError(tr("Il rapporto diagnostico è vuoto."))
+    redacted_summary = redact_report_text(summary or "Segnalazione diagnostica").strip()[:280]
+    resolved_kind = kind or install_kind()[0]
+    body = {
+        "version": __version__,
+        "os": detect_os_platform(),
+        "install_kind": resolved_kind,
+        "source_kind": source_kind,
+        "error_code": error_code or "MANUAL_REPORT",
+        "provider": provider or "",
+        "summary": redacted_summary,
+        "redacted_payload": redacted_payload,
+    }
+    url = f"{telemetry_base_url()}/v1/diagnostics"
+    try:
+        if client is not None:
+            response = client.post(url, json=body, timeout=15.0)
+        else:
+            with http_client() as temp_client:
+                response = temp_client.post(url, json=body, timeout=15.0)
+    except httpx.HTTPError as error:
+        raise UpdateError(tr("Invio del report non riuscito: verifica la connessione.")) from error
+    if response.status_code == 429:
+        raise UpdateError(tr("Limite orario di segnalazioni raggiunto. Riprova più tardi."))
+    if response.status_code >= 400:
+        raise UpdateError(tr("Il server diagnostico ha risposto con HTTP {status}.", status=response.status_code))
+    data = response.json()
+    report_id = str(data.get("report_id") or "").strip()
+    if not data.get("ok") or not report_id:
+        raise UpdateError(tr("Risposta non valida dal server diagnostico."))
+    return report_id
 
 
 def latest_release(client: httpx.Client) -> Json:
@@ -356,6 +473,10 @@ class Updates(QObject):
     def enabled(self) -> bool:
         return bool(self._workspace.uiPreferences.get("check_updates", True))
 
+    @qt_property(bool, notify=changed)
+    def telemetryEnabled(self) -> bool:
+        return bool(self._workspace.uiPreferences.get("anonymous_telemetry", True))
+
     @qt_property(str, notify=changed)
     def currentVersion(self) -> str:
         return __version__
@@ -421,11 +542,24 @@ class Updates(QObject):
     def _check(self, *, automatic: bool) -> None:
         self._generation += 1
         self._set(state="checking", message="")
+        ping_enabled = self.telemetryEnabled and (
+            bool(os.environ.get("KIRA_TELEMETRY_URL")) or not os.environ.get("PYTEST_CURRENT_TEST")
+        )
+        data_dir = self._workspace.paths.data
+        kind = self._kind
         if self._kind == "source" and self._root is not None:
             root = self._root
-            self._run("auto" if automatic else "check", lambda: source_status(root))
+
+            def source_work() -> Json:
+                if ping_enabled:
+                    ping_telemetry(data_dir, kind)
+                return source_status(root)
+
+            self._run("auto" if automatic else "check", source_work)
         else:
             def work() -> Json:
+                if ping_enabled:
+                    ping_telemetry(data_dir, kind)
                 with http_client() as client:
                     return latest_release(client)
             self._run("auto" if automatic else "check", work)
@@ -465,6 +599,10 @@ class Updates(QObject):
     @Slot(bool)
     def setEnabled(self, enabled: bool) -> None:
         self._workspace.setUiPreference("check_updates", bool(enabled))
+
+    @Slot(bool)
+    def setTelemetryEnabled(self, enabled: bool) -> None:
+        self._workspace.setUiPreference("anonymous_telemetry", bool(enabled))
 
     @Slot()
     def copyCommand(self) -> None:

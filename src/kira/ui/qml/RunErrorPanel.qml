@@ -31,6 +31,14 @@ Rectangle {
                 font.weight: Math.max(Font.DemiBold, appearance.uiFont.weight)
             }
             KButton {
+                objectName: "chatRunErrorReport"
+                text: workspace.diagnosticsSending ? qsTr("Invio…") : qsTr("Invia report"); subtle: true
+                enabled: !workspace.diagnosticsSending
+                implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                Accessible.name: qsTr("Invia report errore anonimizzato")
+                onClicked: workspace.sendRunErrorReport()
+            }
+            KButton {
                 objectName: "chatRunErrorDetails"
                 text: qsTr("Dettagli"); subtle: true
                 implicitHeight: 28 + Math.max(0, appearance.uiFont.pixelSize - 13)

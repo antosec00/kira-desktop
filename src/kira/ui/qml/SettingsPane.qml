@@ -360,12 +360,20 @@ Item {
                         Layout.fillWidth: true
                         columns: 2
                         columnSpacing: 20
+                        rowSpacing: 10
                         Label { text: qsTr("Cerca aggiornamenti all’avvio e ogni giorno") }
                         Toggle {
                             objectName: "checkUpdatesChoice"
                             checked: updates.enabled
                             onToggled: updates.setEnabled(checked)
                             Accessible.name: qsTr("Cerca aggiornamenti all’avvio e ogni giorno")
+                        }
+                        Label { text: qsTr("Statistiche anonime di versione (ID casuale, versione e sistema operativo)") }
+                        Toggle {
+                            objectName: "anonymousTelemetryChoice"
+                            checked: updates.telemetryEnabled
+                            onToggled: updates.setTelemetryEnabled(checked)
+                            Accessible.name: qsTr("Statistiche anonime di versione")
                         }
                     }
                     Note {

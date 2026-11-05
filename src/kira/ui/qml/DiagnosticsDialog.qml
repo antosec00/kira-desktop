@@ -16,10 +16,12 @@ Dialog {
         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Versioni, sessione desktop, lavoro attivo e disponibilità delle azioni. Il rapporto esclude account, credenziali, contenuti dei progetti e log grezzi. Puoi leggerlo prima di salvarlo o copiarlo."); color: appearance.colors.muted; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1) }
         ScrollView { id: reportScroll; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth; ReadText { color: appearance.colors.codeText; objectName: "diagnosticsReport"; text: workspace.diagnosticsText; width: reportScroll.availableWidth; font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic; font.pixelSize: appearance.codeFont.pixelSize } }
         ReadText { text: qsTr("Salvato: %1").arg(workspace.diagnosticsExportPath); visible: workspace.diagnosticsExportPath.length > 0; color: appearance.colors.accent; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
+        ReadText { objectName: "diagnosticsReportStatus"; text: workspace.diagnosticsReportStatus; visible: workspace.diagnosticsReportStatus.length > 0; color: appearance.colors.accent; Layout.fillWidth: true; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2) }
         RowLayout {
             KButton { text: qsTr("Aggiorna"); enabled: workspace.connected; onClicked: workspace.refreshDiagnostics() }
             KButton { text: qsTr("Copia"); enabled: workspace.diagnosticsReady; onClicked: workspace.copy(workspace.diagnosticsText) }
             KButton { objectName: "exportDiagnosticsButton"; text: qsTr("Salva rapporto"); enabled: workspace.diagnosticsReady && workspace.connected; onClicked: workspace.exportDiagnostics() }
+            KButton { objectName: "sendDiagnosticsReportButton"; text: workspace.diagnosticsSending ? qsTr("Invio in corso…") : qsTr("Invia report anonimo"); primary: true; enabled: workspace.diagnosticsReady && !workspace.diagnosticsSending; onClicked: workspace.sendDiagnosticsReport() }
             Item { Layout.fillWidth: true }
             KButton { text: qsTr("Chiudi"); onClicked: dialog.close() }
         }
