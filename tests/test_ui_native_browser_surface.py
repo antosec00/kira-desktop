@@ -274,6 +274,7 @@ def test_real_qml_native_badge_wait_message_keys_and_ime(browser, qtbot, qtlog):
         workspace._apply_event({"run_id": "run", "type": "tool.progress", "payload": {
             "tool_id": "call", "name": "browser.tabs", "phase": "waiting_for_browser_control", "reason": "manual_control"}})
         qtbot.wait(70)
+        controller._resize_timer.stop()
         badge = window.findChild(QObject, "browserNativeBadge")
         wait = window.findChild(QObject, "browserControlWait")
         handoff = window.findChild(QObject, "browserTakeControl")
@@ -292,14 +293,15 @@ def test_real_qml_native_badge_wait_message_keys_and_ime(browser, qtbot, qtlog):
         assert evaluate(keyboard, "Boolean(forwardedKeys.Tab)")
         publish(controller, "surface-b", seq=4)
         assert not evaluate(keyboard, "Boolean(forwardedKeys.Tab)")
-        before = len(input_requests(requests)), len(controller._command_queue)
+        queued_inputs = lambda: [item for item in controller._command_queue if item[0] != "viewer"]
+        before = len(input_requests(requests)), len(queued_inputs())
         QTest.keyRelease(window, Qt.Key.Key_Tab)
-        assert (len(input_requests(requests)), len(controller._command_queue)) == before
+        assert (len(input_requests(requests)), len(queued_inputs())) == before
 
         # A composition is sent only when committed; ordinary pixel refreshes
         # preserve it and bind the commit to the same visible native surface.
         QGuiApplication.sendEvent(keyboard, QInputMethodEvent("ni", []))
-        assert (len(input_requests(requests)), len(controller._command_queue)) == before
+        assert (len(input_requests(requests)), len(queued_inputs())) == before
         publish(controller, "surface-b", seq=5)
         commit = QInputMethodEvent()
         commit.setCommitString("日本語")

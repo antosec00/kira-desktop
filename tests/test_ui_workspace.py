@@ -203,7 +203,10 @@ def test_diagnostics_preview_required_and_export_feedback(workspace, monkeypatch
     report = {"app_version": __version__, "database_schema": 2, "platform": {"session": "wayland"},
               "service": {"active_run_count": 0}, "actions": []}
     requests[-1][2](report)
-    assert workspace.diagnosticsReady and json.loads(workspace.diagnosticsText) == report
+    assert workspace.diagnosticsReady and json.loads(workspace.diagnosticsText) == {
+        **report,
+        "installation_id": workspace._installation_id(),
+    }
     workspace.exportDiagnostics()
     assert requests[-1][:2] == ("diagnostics.export", {})
     requests[-1][2]({"path": "/private/fixture-diagnostics.json"})

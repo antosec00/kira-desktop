@@ -36,6 +36,11 @@ def group_ui(qapp, qtbot, qtlog, tmp_path, monkeypatch):
                 received({"snapshot": {**params, "soul": None, "epoch": 0,
                                        "selected": False, "disabled": False}})
             return True
+        if method == "research.list" and isinstance(params, dict) and params.get("view") == "proposals":
+            # Passive 300ms proposal badge refresh triggered by workspace.changed.
+            if received:
+                received({"records": [], "has_more": False})
+            return True
         calls.append((method, params, received, failed))
         return True
 
