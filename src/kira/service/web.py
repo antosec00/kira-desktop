@@ -138,7 +138,7 @@ class Web:
 
     @staticmethod
     def headed() -> bool:
-        return True
+        return sys.platform != "win32"
 
     def _current(self, actor: BrowserActor) -> bool:
         session = self.store.one("sessions", actor.session["id"])
@@ -160,7 +160,7 @@ class Web:
                 "provider_generation": self.service.provider_routing.current_generation(session["id"]),
                 "settings": {key: session["settings"].get(key, value) for key, value in WEB_DEFAULTS.items()},
                 "browser": {"available": bool(actor) or sys.platform == "win32" or engine_available(self.engine_path), "active": bool(actor and self._current(actor)),
-                            "headed": True, "mode": "embedded", "browser_id": actor.id if actor else "",
+                            "headed": self.headed(), "mode": "embedded", "browser_id": actor.id if actor else "",
                             "generation": actor.generation if actor else self.service.provider_routing.current_generation(session["id"]),
                             "manual": False, "tabs": [], "tab_id": "", "loading": False,
                             "can_back": False, "can_forward": False,
@@ -658,7 +658,7 @@ class Web:
                 async def event(message: Json) -> None:
                     assert actor is not None
                     await self._event(actor, message)
-                engine = BrowserSession(profile, artifacts, headed=True, embedded=True, persistent=persistent,
+                engine = BrowserSession(profile, artifacts, headed=self.headed(), embedded=True, persistent=persistent,
                     started=lambda pid: self.processes.register(browser_id, pid), browser_path=self.engine_path, on_event=event)
                 actor = BrowserActor(browser_id, dict(session), generation, engine, profile, persistent,
                                      last_run_id=run_id)

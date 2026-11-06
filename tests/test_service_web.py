@@ -304,3 +304,17 @@ async def test_new_page_removes_previous_screenshot_preview(fixture):
     await finish(service, run)
     assert service.contexts.data._assets(session["id"])
     assert service.web.snapshot(session)["browser"]["preview_url"] == ""
+
+
+async def test_windows_browser_uses_headless_page_surface_for_manual_control(fixture, monkeypatch):
+    from types import SimpleNamespace
+
+    service, _, _, session = fixture
+    monkeypatch.setattr("kira.service.web.sys", SimpleNamespace(platform="win32"))
+    assert service.web.headed() is False
+    assert service.web.snapshot(session)["browser"]["headed"] is False
+    run = await start(fixture)
+    await finish(service, run)
+    assert Engine.instances[0].options["headed"] is False
+
+

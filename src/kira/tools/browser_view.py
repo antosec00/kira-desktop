@@ -55,6 +55,7 @@ class BrowserView:
         self.surface_id = ""
         self.surface_mode = "page"
         self._surface_scope: tuple[str, int, int, str] | None = None
+        self._paused: bool | None = None
         self._surface_error = ""
         self._surface_error_code = ""
         self.seq = 0
@@ -139,11 +140,11 @@ class BrowserView:
         if resize:
             await self.engine.computer.invalidate()
             await self._stop_stream()
-        await self.sync()
+        await self.sync(republish=True)
         return {"ok": True, "visible": True, "manual": self.engine.paused,
                 "width": self.width, "height": self.height}
 
-    async def sync(self) -> None:
+    async def sync(self, *, republish: bool = False) -> None:
         if not self.enabled or self._closed:
             return
         async with self._lock:
@@ -177,7 +178,7 @@ class BrowserView:
                     else:
                         self.tab_id, self.surface_mode = scope[0], mode
                         self.surface_id = uuid.uuid4().hex
-                        self._surface_scope, self.cdp = scope, cdp
+                        self._surface_scope, self.cdp, self._paused = scope, cdp, self.engine.paused
                         surface_id = self.surface_id
                         if mode == "native":
                             assert desktop is not None
@@ -204,6 +205,13 @@ class BrowserView:
                     if not isinstance(exc, asyncio.CancelledError):
                         await self.report_error()
                     raise
+            elif (republish or self._paused != self.engine.paused) and mode == "page":
+                self._paused = self.engine.paused
+                capture = await self.cdp.send("Page.captureScreenshot", {
+                    "format": "jpeg", "quality": 55, "fromSurface": True,
+                    "captureBeyondViewport": False,
+                })
+                self._received(capture, self.cdp, self.surface_id)
             if self._metadata is None:
                 self._metadata = asyncio.create_task(self._update_state())
 
@@ -536,6 +544,7 @@ class BrowserView:
         cdp, self.cdp = self.cdp, None
         self.tab_id = ""
         self._surface_scope = None
+        self._paused = None
         self.surface_id = ""
         self.surface_mode = "page"
         self._latest = None
