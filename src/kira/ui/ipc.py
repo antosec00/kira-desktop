@@ -222,8 +222,9 @@ class LocalClient(QObject):
         if not self.incompatible:
             self._retry.start()
 
-    @Slot(object)
-    def _error(self, _error: object) -> None:
+    @Slot(QLocalSocket.LocalSocketError)
+    @Slot(QAbstractSocket.SocketError)
+    def _error(self, _error: QLocalSocket.LocalSocketError | QAbstractSocket.SocketError) -> None:
         if not self.compatible and not self.incompatible:
             self.problem.emit(tr("In attesa del servizio locale…"))
 
