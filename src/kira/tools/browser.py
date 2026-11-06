@@ -199,11 +199,13 @@ class BrowserSession:
         package_root = str(Path(__file__).resolve().parents[2])
         bootstrap = ("import runpy,sys;sys.path.insert(0," + repr(package_root)
                      + ");runpy.run_module('kira.tools.browser_worker',run_name='__main__')")
+        extra: dict[str, object] = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
         self._process = await asyncio.create_subprocess_exec(
             sys.executable, "-I", "-c", bootstrap, start_new_session=True,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL, env=browser_environment(self.browser_path),
             limit=MAX_BROWSER_FRAME,
+            **extra,  # type: ignore[arg-type]
         )
         try:
             # The worker reads stdin before importing Playwright or creating any

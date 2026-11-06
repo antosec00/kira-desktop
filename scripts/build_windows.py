@@ -486,6 +486,22 @@ def compile_translations() -> None:
         pass
 
 
+def ensure_browser_engine() -> None:
+    src_dir = str(INSTALL_DIR / "app" / "src")
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    try:
+        from kira.domain.paths import Paths
+        from kira.tools.browser import engine_available
+        from kira.tools.browser_install import install_browser
+
+        paths = Paths.from_env()
+        if not engine_available(paths.data / "browser-engine"):
+            install_browser(paths)
+    except Exception:
+        pass
+
+
 def create_shortcuts() -> None:
     appdata = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
     desktop = Path.home() / "Desktop"
@@ -521,6 +537,7 @@ def create_shortcuts() -> None:
 if __name__ == "__main__":
     patch_kira_executable()
     compile_translations()
+    ensure_browser_engine()
     if "--no-shortcuts" not in sys.argv:
         create_shortcuts()
 ''',
@@ -758,7 +775,7 @@ def main() -> int:
     wsl_repo_win = _to_windows_path(REPO_ROOT)
     _write_launchers(install_dir, wsl_repo_win)
 
-    print("[3/4] Compilazione traduzioni Qt (.qm) sull'ambiente Windows ...")
+    print("[3/4] Compilazione traduzioni Qt (.qm) e verifica motore browser su Windows ...")
     win_python = install_dir / "venv" / "Scripts" / "python.exe"
     if win_python.is_file():
         subprocess.run(
@@ -768,7 +785,15 @@ def main() -> int:
                 "import kira; from kira.ui.language_catalog import load_catalog, native_labels; "
                 "from kira.ui.translation_compiler import compiled_catalog; "
                 "p = compiled_catalog('en', load_catalog('en'), native_labels('en')); "
-                "print('      Traduzione compilata:', p)",
+                "print('      Traduzione compilata:', p); "
+                "from kira.domain.paths import Paths; "
+                "from kira.tools.browser import engine_available; "
+                "from kira.tools.browser_install import install_browser; "
+                "paths = Paths.from_env(); "
+                "avail = engine_available(paths.data / 'browser-engine'); "
+                "print('      Motore browser isolato già presente:', avail); "
+                "rc = 0 if avail else install_browser(paths); "
+                "print('      Stato installazione browser:', rc, 'disponibile:', engine_available(paths.data / 'browser-engine'))",
             ],
             check=True,
         )

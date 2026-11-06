@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import stat
+import sys
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -158,7 +159,7 @@ class Web:
                 "account_id": session["settings"].get("openai_account_id", ""),
                 "provider_generation": self.service.provider_routing.current_generation(session["id"]),
                 "settings": {key: session["settings"].get(key, value) for key, value in WEB_DEFAULTS.items()},
-                "browser": {"available": bool(actor) or engine_available(self.engine_path), "active": bool(actor and self._current(actor)),
+                "browser": {"available": bool(actor) or sys.platform == "win32" or engine_available(self.engine_path), "active": bool(actor and self._current(actor)),
                             "headed": True, "mode": "embedded", "browser_id": actor.id if actor else "",
                             "generation": actor.generation if actor else self.service.provider_routing.current_generation(session["id"]),
                             "manual": False, "tabs": [], "tab_id": "", "loading": False,
@@ -642,6 +643,10 @@ class Web:
                     raise KiraError("BROWSER_BUSY", "Close an existing browser before opening another chat browser")
                 from kira.tools.browser import BrowserSession, BrowserStartError, engine_available
 
+                if not engine_available(self.engine_path) and sys.platform == "win32":
+                    from kira.tools.browser_install import install_browser
+
+                    await asyncio.to_thread(install_browser, self.service.paths)
                 if not engine_available(self.engine_path):
                     raise KiraError("BROWSER_UNAVAILABLE", "Install Kira's browser with kira-desktop browser-install for the selected profile")
                 persistent = session["settings"].get("browser_persistent", False)

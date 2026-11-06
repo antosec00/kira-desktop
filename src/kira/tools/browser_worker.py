@@ -243,7 +243,7 @@ class BrowserEngine:
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             directory.chmod(0o700)
         self.embedded = args.get("embedded") is True
-        self.headed = args.get("headed") is True or (self.embedded and sys.platform != "win32")
+        self.headed = False if (self.embedded and sys.platform == "win32") else (args.get("headed") is True or self.embedded)
         if self.embedded:
             async def discard(event: Json) -> None:
                 pass
@@ -917,15 +917,37 @@ class BrowserEngine:
 
 
 async def serve() -> None:
-    reader = asyncio.StreamReader(limit=MAX_BROWSER_FRAME)
-    transport, _ = await asyncio.get_running_loop().connect_read_pipe(
-        lambda: asyncio.StreamReaderProtocol(reader), sys.stdin.buffer,
-    )
     loop = asyncio.get_running_loop()
-    output_transport, output_protocol = await loop.connect_write_pipe(
-        lambda: asyncio.streams.FlowControlMixin(loop=loop), sys.stdout.buffer,
-    )
-    writer = asyncio.StreamWriter(output_transport, output_protocol, None, loop)
+    reader = asyncio.StreamReader(limit=MAX_BROWSER_FRAME)
+    transport: asyncio.BaseTransport | None = None
+    writer: asyncio.StreamWriter | None = None
+    if sys.platform == "win32":
+        import threading
+
+        def _pump_stdin() -> None:
+            try:
+                while True:
+                    chunk = sys.stdin.buffer.readline(MAX_BROWSER_FRAME + 1)
+                    if not chunk:
+                        break
+                    loop.call_soon_threadsafe(reader.feed_data, chunk)
+            except BaseException:
+                pass
+            finally:
+                try:
+                    loop.call_soon_threadsafe(reader.feed_eof)
+                except RuntimeError:
+                    pass
+
+        threading.Thread(target=_pump_stdin, daemon=True).start()
+    else:
+        transport, _ = await loop.connect_read_pipe(
+            lambda: asyncio.StreamReaderProtocol(reader), sys.stdin.buffer,
+        )
+        output_transport, output_protocol = await loop.connect_write_pipe(
+            lambda: asyncio.streams.FlowControlMixin(loop=loop), sys.stdout.buffer,
+        )
+        writer = asyncio.StreamWriter(output_transport, output_protocol, None, loop)
     output_lock = asyncio.Lock()
 
     async def send(message: Json) -> None:
@@ -933,8 +955,12 @@ async def serve() -> None:
         if len(frame) > MAX_BROWSER_FRAME:
             raise ValueError("Browser output exceeds its frame limit")
         async with output_lock:
-            writer.write(frame)
-            await writer.drain()
+            if writer is not None:
+                writer.write(frame)
+                await writer.drain()
+            else:
+                sys.stdout.buffer.write(frame)
+                sys.stdout.buffer.flush()
 
     engine = BrowserEngine(emit=send)
     initialized = False
@@ -971,12 +997,14 @@ async def serve() -> None:
             if fatal:
                 break
     finally:
-        transport.close()
+        if transport is not None:
+            transport.close()
         try:
             await asyncio.wait_for(engine.close(), 3)
         except Exception:
             pass
-        writer.close()
+        if writer is not None:
+            writer.close()
 
 
 if __name__ == "__main__":

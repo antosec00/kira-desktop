@@ -313,9 +313,29 @@ async def _frame(reader: asyncio.StreamReader) -> bytes | None:
 
 async def _stdio(config: Json) -> None:
     """Small MCP JSON-RPC surface; no resources, prompts or arbitrary methods."""
+    loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=MCP_FRAME_BYTES)
-    protocol = asyncio.StreamReaderProtocol(reader)
-    transport, _ = await asyncio.get_running_loop().connect_read_pipe(lambda: protocol, sys.stdin)
+    transport: asyncio.BaseTransport | None = None
+    if sys.platform == "win32":
+        import threading
+
+        def _pump_stdin() -> None:
+            try:
+                while True:
+                    chunk = sys.stdin.buffer.readline(MCP_FRAME_BYTES + 1)
+                    if not chunk:
+                        break
+                    loop.call_soon_threadsafe(reader.feed_data, chunk)
+            except BaseException:
+                pass
+            finally:
+                with contextlib.suppress(RuntimeError):
+                    loop.call_soon_threadsafe(reader.feed_eof)
+
+        threading.Thread(target=_pump_stdin, daemon=True).start()
+    else:
+        protocol = asyncio.StreamReaderProtocol(reader)
+        transport, _ = await loop.connect_read_pipe(lambda: protocol, sys.stdin)
     pending: dict[str, asyncio.Task[None]] = {}
     initialized = False
     registered = {mcp_tool_name(name): name for name in config["tools"]}
@@ -411,7 +431,8 @@ async def _stdio(config: Json) -> None:
             else:
                 pending[identity] = asyncio.create_task(dispatch(request, identity))
     finally:
-        transport.close()
+        if transport is not None:
+            transport.close()
         for task in tuple(pending.values()):
             task.cancel()
         await asyncio.gather(*pending.values(), return_exceptions=True)
