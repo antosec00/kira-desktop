@@ -293,7 +293,10 @@ def test_real_qml_native_badge_wait_message_keys_and_ime(browser, qtbot, qtlog):
         assert evaluate(keyboard, "Boolean(forwardedKeys.Tab)")
         publish(controller, "surface-b", seq=4)
         assert not evaluate(keyboard, "Boolean(forwardedKeys.Tab)")
-        queued_inputs = lambda: [item for item in controller._command_queue if item[0] != "viewer"]
+
+        def queued_inputs():
+            return [item for item in controller._command_queue if item[0] != "viewer"]
+
         before = len(input_requests(requests)), len(queued_inputs())
         QTest.keyRelease(window, Qt.Key.Key_Tab)
         assert (len(input_requests(requests)), len(queued_inputs())) == before

@@ -10,6 +10,7 @@ service must stop cleanly before anything is replaced.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib.util
 import os
@@ -33,6 +34,7 @@ from PySide6.QtGui import QGuiApplication
 
 import kira
 from kira import __version__
+from kira.domain.paths import Paths
 from kira.service.redaction import Redactor
 from kira.ui.presentation import tr
 from kira.ui.qt_properties import qt_property
