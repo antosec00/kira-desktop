@@ -53,7 +53,11 @@ MCowBQYDK2VwAyEA+ZJge2G6enp6/wEHzfYJFwB3tW6aeHHpBvdt3Sh3PxY=
 -----END PUBLIC KEY-----
 """
 PACKAGE_ROOT = Path("/opt/kira-desktop")
-PACKAGE_ASSETS = {"24.04": "kira-desktop_ubuntu24.04_amd64.deb", "26.04": "kira-desktop_ubuntu26.04_amd64.deb"}
+PACKAGE_ASSETS = {
+    "24.04": "kira-desktop_ubuntu24.04_amd64.deb",
+    "26.04": "kira-desktop_ubuntu26.04_amd64.deb",
+    "windows": "kira-desktop_windows_amd64_setup.exe",
+}
 FIRST_CHECK_DELAY_MS = 8000
 CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
@@ -72,10 +76,19 @@ def parse_version(text: Any) -> tuple[int, int, int] | None:
 
 
 def install_kind(module_file: Path | None = None) -> tuple[str, Path | None]:
-    """'package' under /opt/kira-desktop, 'source' in a git checkout, otherwise 'other'."""
+    """'package' under /opt/kira-desktop (or Windows packaged app), 'source' in a git checkout, otherwise 'other'."""
+    if module_file is None and getattr(sys, "frozen", False):
+        return "package", Path(sys.executable).resolve().parent
     package_dir = Path(module_file or kira.__file__).resolve().parent
     if package_dir.is_relative_to(PACKAGE_ROOT):
         return "package", PACKAGE_ROOT
+    if sys.platform == "win32":
+        for win_pkg_dir in (
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Kira Desktop",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Kira Desktop",
+        ):
+            if str(win_pkg_dir) and package_dir.is_relative_to(win_pkg_dir):
+                return "package", win_pkg_dir
     for root in package_dir.parents:
         pyproject = root / "pyproject.toml"
         if pyproject.is_file() and (root / ".git").exists():
@@ -89,6 +102,8 @@ def install_kind(module_file: Path | None = None) -> tuple[str, Path | None]:
 
 
 def ubuntu_version(os_release: Path = Path("/etc/os-release")) -> str:
+    if sys.platform == "win32":
+        return "windows"
     fields: dict[str, str] = {}
     try:
         for line in os_release.read_text(encoding="utf-8").splitlines():
@@ -212,6 +227,7 @@ def ping_telemetry(data_dir: Path, kind: str, *, client: httpx.Client | None = N
 def redact_report_text(text: str) -> str:
     redacted = Redactor().text(str(text or ""))
     redacted = re.sub(r"/home/[a-zA-Z0-9._\-]+", "/home/[USER]", redacted)
+    redacted = re.sub(r"(?i)([A-Za-z]:\\Users\\)[a-zA-Z0-9._\-]+", r"\1[USER]", redacted)
     redacted = re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._\-]{8,}", r"\1[REDACTED]", redacted)
     redacted = re.sub(r"\bsk-[A-Za-z0-9_\-]{12,}", "[REDACTED]", redacted)
     return redacted
@@ -333,7 +349,10 @@ def prepare_package(client: httpx.Client, release: Json, version_id: str, cache:
     expected = verified_checksums(sums, signature).get(name)
     if expected is None:
         raise UpdateError(tr("Le impronte firmate non comprendono il pacchetto per questo sistema."))
-    target = cache / f"kira-desktop_{release['version']}_ubuntu{version_id}_amd64.deb"
+    if version_id == "windows":
+        target = cache / f"kira-desktop_{release['version']}_windows_amd64_setup.exe"
+    else:
+        target = cache / f"kira-desktop_{release['version']}_ubuntu{version_id}_amd64.deb"
     download(client, assets[name]["url"], MAX_PACKAGE_BYTES, target)
     if file_sha256(target) != expected:
         target.unlink(missing_ok=True)
@@ -691,6 +710,13 @@ class Updates(QObject):
             assert package is not None
 
             def work() -> str:
+                if sys.platform == "win32":
+                    completed = subprocess.run([str(package), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                                               capture_output=True, text=True, timeout=1800, check=False)
+                    if completed.returncode != 0:
+                        detail = (completed.stderr or completed.stdout).strip().splitlines()[-1:] or [""]
+                        raise UpdateError(tr("L'installazione non è riuscita: {error}", error=detail[0][:200]))
+                    return "installed"
                 if shutil.which("pkexec") is None:
                     return "manual"
                 completed = subprocess.run(["pkexec", "apt-get", "install", "-y", "--no-remove", str(package)],
@@ -750,6 +776,16 @@ class Updates(QObject):
         """Start the installed Kira again and leave; the new interface starts the service."""
         if self._kind == "source" and self._root is not None:
             program, arguments, directory = sys.executable, ["-I", "-m", "kira"], str(self._root)
+        elif sys.platform == "win32":
+            if getattr(sys, "frozen", False):
+                program, arguments, directory = sys.executable, [], str(Path.home())
+            else:
+                win_root = self._root or Path(sys.executable).resolve().parents[2]
+                launcher = win_root / "launch_kira.pyw"
+                if launcher.is_file():
+                    program, arguments, directory = sys.executable, ["-I", str(launcher)], str(win_root)
+                else:
+                    program, arguments, directory = sys.executable, ["-I", "-m", "kira"], str(Path.home())
         else:
             program = "/usr/bin/kira-desktop"
             arguments, directory = [], str(Path.home())

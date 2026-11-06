@@ -2,7 +2,9 @@
 
 import asyncio
 import os
+import shutil
 import signal
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -19,8 +21,32 @@ STREAM_LIMIT = 64 * 1024
 
 def command_environment() -> dict[str, str]:
     allowed = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR", "USER", "LOGNAME"}
-    result = {key: value for key, value in os.environ.items() if key in allowed}
-    result.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
+    if sys.platform == "win32":
+        win_allowed = allowed | {
+            "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP",
+            "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
+            "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA", "COMMONPROGRAMFILES",
+            "COMMONPROGRAMFILES(X86)", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+        }
+        result = {key: value for key, value in os.environ.items() if key.upper() in win_allowed}
+        extra_paths: list[str] = []
+        py_dir = str(Path(sys.executable).resolve().parent)
+        if py_dir:
+            extra_paths.append(py_dir)
+            scripts_dir = str(Path(py_dir) / "Scripts")
+            if Path(scripts_dir).is_dir():
+                extra_paths.append(scripts_dir)
+        prog_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        for rel in (r"Git\cmd", r"Git\bin", r"Git\usr\bin"):
+            candidate = Path(prog_files) / rel
+            if candidate.is_dir():
+                extra_paths.append(str(candidate))
+        current_path = result.get("PATH") or result.get("Path") or ""
+        result["PATH"] = os.pathsep.join([*extra_paths, current_path]) if current_path else os.pathsep.join(extra_paths)
+        result.setdefault("HOME", os.environ.get("USERPROFILE", str(Path.home())))
+    else:
+        result = {key: value for key, value in os.environ.items() if key in allowed}
+        result.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
     result["PYTHONUNBUFFERED"] = "1"
     return result
 
@@ -50,10 +76,19 @@ class CommandRunner:
         started = time.monotonic()
         loop = asyncio.get_running_loop()
         preexec = sandbox_preexec(root, sandbox_mode)
-        exec_argv = wrap_bwrap_argv(argv, root, sandbox_mode) if (preexec is None and bwrap_usable()) else argv
+        exec_argv = list(wrap_bwrap_argv(argv, root, sandbox_mode) if (preexec is None and bwrap_usable()) else argv)
         env = command_environment()
         if sandbox_mode != "unrestricted" and preexec is not None:
             env["TMPDIR"] = str(sandbox_tmpdir(root))
+        if sys.platform == "win32" and exec_argv:
+            cmd0 = exec_argv[0]
+            if cmd0 in {"python3", "python"}:
+                resolved_py = shutil.which("python", path=env.get("PATH"))
+                exec_argv[0] = resolved_py if (resolved_py and "WindowsApps" not in resolved_py) else sys.executable
+            else:
+                resolved_cmd = shutil.which(cmd0, path=env.get("PATH"))
+                if resolved_cmd:
+                    exec_argv[0] = resolved_cmd
         # The transport is kept so the pipes can be closed even when a process
         # outside the owned group still holds their write ends.
         transport, protocol = await loop.subprocess_exec(

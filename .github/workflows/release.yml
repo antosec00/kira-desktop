@@ -49,6 +49,15 @@ jobs:
         run: python3 scripts/build_deb.py --target resolute
       - name: Validate the Ubuntu 26.04 package
         run: python3 scripts/check_deb.py --target resolute
+      - name: Build the Windows 10/11 x64 installer
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y \
+            mono-mcs \
+            libmono-system-io-compression4.0-cil \
+            libmono-system-io-compression-filesystem4.0-cil \
+            libmono-system-windows-forms4.0-cil \
+            libmono-system-drawing4.0-cil
+          python3 scripts/build_windows.py --package
       - name: Show validation logs
         if: failure()
         run: tail -n 200 build/releases/*/*/package/package-validation.log || true
@@ -61,7 +70,8 @@ jobs:
           # Stable names keep the releases/latest/download links valid across versions.
           cp "dist/kira-desktop_${VERSION}_amd64.deb" build/release-assets/kira-desktop_ubuntu24.04_amd64.deb
           cp "dist/resolute/kira-desktop_${VERSION}_amd64.deb" build/release-assets/kira-desktop_ubuntu26.04_amd64.deb
-          (cd build/release-assets && sha256sum -- *.deb > SHA256SUMS && cat SHA256SUMS)
+          cp "dist/kira-desktop_${VERSION}_windows_amd64_setup.exe" build/release-assets/kira-desktop_windows_amd64_setup.exe
+          (cd build/release-assets && sha256sum -- *.deb *.exe > SHA256SUMS && cat SHA256SUMS)
           # Documentation links name the built commit: the tag exists only once the
           # draft is published, so tag links would fail while the draft is reviewed.
           sed -e "s|__TAG__|$TAG|g" -e "s|__COMMIT__|$GITHUB_SHA|g" \

@@ -95,11 +95,22 @@ descrive ogni collegamento, le sue capacità e i limiti noti.
 
 ## Avvio rapido
 
-Kira funziona su Ubuntu 24.04 (Python 3.12) e Ubuntu 26.04 (Python 3.14), in
-modo nativo o su Windows in WSL2 con WSLg. Il desktop di riferimento è KDE
-Plasma/Wayland.
+Kira è disponibile in modo **nativo su Linux** (Ubuntu 24.04 LTS con Python 3.12 e
+Ubuntu 26.04 LTS con Python 3.14) e **nativo su Windows 10 e 11 (64 bit)**, oltre
+che in WSL2 con WSLg.
 
-**Dal pacchetto (Ubuntu 24.04):**
+**Su Windows 10 / 11 (nativo):**
+
+Scarica ed esegui l'installer [`kira-desktop_windows_amd64_setup.exe`](https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe) dalla pagina [Releases](https://github.com/antosec00/kira-desktop/releases), oppure da PowerShell:
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe" -OutFile "$env:TEMP\kira-desktop_setup.exe"
+Start-Process -FilePath "$env:TEMP\kira-desktop_setup.exe" -Wait
+```
+
+L'installer configura Kira in `%LOCALAPPDATA%\Programs\Kira Desktop` senza richiedere privilegi di amministratore e crea i collegamenti **Kira Desktop** sul Desktop e nel Menu Start ([Installazione → Installazione nativa su Windows 10 e 11](docs/it/INSTALLAZIONE.md#installazione-nativa-su-windows-10-e-11)).
+
+**Dal pacchetto su Linux (Ubuntu 24.04):**
 
 ```sh
 cd "$(mktemp -d)"
@@ -114,11 +125,11 @@ file, sono nella pagina
 [Releases](https://github.com/antosec00/kira-desktop/releases). Una volta
 installata, Kira cerca da sola le nuove versioni e le installa quando glielo
 chiedi, dopo averne verificato la firma
-([Installazione → Aggiornare da Kira](docs/it/INSTALLAZIONE.md#aggiornare-da-kira)). Su Windows
-installa prima Ubuntu in WSL: i passi sono in
+([Installazione → Aggiornare da Kira](docs/it/INSTALLAZIONE.md#aggiornare-da-kira)). Se preferisci
+usare WSL2 su Windows, i passi sono in
 [Installazione → Su Windows con WSL](docs/it/INSTALLAZIONE.md#su-windows-con-wsl).
 
-**Dal sorgente:**
+**Dal sorgente (Linux o Windows):**
 
 ```sh
 # 1. Installa uv (https://docs.astral.sh/uv/) e clona il repository
@@ -132,7 +143,7 @@ uv sync --frozen                     # oppure: uv sync --frozen --extra claude-c
 uv run kira
 ```
 
-Dal sorgente servono anche le librerie di sistema elencate in
+Su Linux dal sorgente servono anche le librerie di sistema elencate in
 [Installazione → Avvio dal sorgente con `uv`](docs/it/INSTALLAZIONE.md#avvio-dal-sorgente-con-uv);
 il pacchetto `.deb` le installa da solo.
 
@@ -142,7 +153,9 @@ e modello in **Modelli** e scrivi la prima richiesta. La
 [guida utente](docs/it/GUIDA_UTENTE.md) spiega ogni pannello.
 
 **Costruire i pacchetti.** `python3 scripts/build_deb.py` costruisce il
-pacchetto `.deb` per Ubuntu 24.04 (`--target resolute` per la 26.04).
+pacchetto `.deb` per Ubuntu 24.04 (`--target resolute` per la 26.04);
+`python3 scripts/build_windows.py --package` costruisce l'installer nativo per
+Windows (`dist/kira-desktop_<versione>_windows_amd64_setup.exe`).
 [Installazione](docs/it/INSTALLAZIONE.md) copre requisiti, controllo delle
 impronte, percorsi dei dati, profili separati, backup e aggiornamenti.
 
@@ -157,8 +170,9 @@ impronte, percorsi dei dati, profili separati, backup e aggiornamenti.
 - **Browser isolato.** Le pagine pubbliche sono dati non fidati, mai istruzioni.
   Accessi e consensi richiedono te; ogni chat ha il proprio profilo, temporaneo
   salvo che tu scelga di conservarlo. [Browser e Computer](docs/it/BROWSER_E_COMPUTER.md).
-- **Privato per impostazione.** Percorsi XDG o un `KIRA_HOME` esplicito, file
-  0600, socket Unix privato fra interfaccia e servizio, nessuna telemetria.
+- **Privato per impostazione.** Percorsi XDG su Linux, `%LOCALAPPDATA%\Kira` su
+  Windows o un `KIRA_HOME` esplicito, file riservati al tuo utente, canale IPC
+  locale privato fra interfaccia e servizio.
 
 [SECURITY.md](SECURITY.md) spiega come segnalare un problema di sicurezza.
 

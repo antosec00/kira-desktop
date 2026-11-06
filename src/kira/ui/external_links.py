@@ -12,6 +12,7 @@ import base64
 import os
 import platform
 import shutil
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,6 +60,8 @@ def _browser_url(value: str, *, allow_http: bool, allow_loopback: bool) -> QUrl 
 
 
 def _is_wsl() -> bool:
+    if sys.platform == "win32":
+        return False
     return bool(os.environ.get("WSL_INTEROP") or os.environ.get("WSL_DISTRO_NAME")
                 or "microsoft" in platform.release().lower())
 

@@ -32,8 +32,16 @@ def install_browser(paths: Paths | None = None) -> int:
                             "profile; wait for it to finish") from None
         # Keep previously installed revisions for running browsers and rollback.
         # The child gets no provider credentials or inherited HTTP proxy settings.
-        environment = {key: value for key, value in os.environ.items()
-                       if key in {"HOME", "PATH", "LANG", "LC_ALL", "LD_LIBRARY_PATH", "SSL_CERT_FILE", "SSL_CERT_DIR"}}
+        allowed = {"HOME", "PATH", "LANG", "LC_ALL", "LD_LIBRARY_PATH", "SSL_CERT_FILE", "SSL_CERT_DIR"}
+        if sys.platform == "win32":
+            allowed |= {
+                "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP",
+                "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
+                "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA",
+            }
+            environment = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+        else:
+            environment = {key: value for key, value in os.environ.items() if key in allowed}
         environment.update({"PLAYWRIGHT_BROWSERS_PATH": str(destination), "PLAYWRIGHT_SKIP_BROWSER_GC": "1"})
         bootstrap = "import sys;sys.path.insert(0,sys.argv.pop(1));from playwright.__main__ import main;main()"
         return subprocess.run([sys.executable, "-I", "-c", bootstrap, package_root,

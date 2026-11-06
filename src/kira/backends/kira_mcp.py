@@ -76,6 +76,11 @@ def _same_user(writer: asyncio.StreamWriter) -> bool:
     peer = writer.get_extra_info("socket")
     if peer is None:
         return False
+    if sys.platform == "win32":
+        try:
+            return bool(peer.getsockname()[0] == "127.0.0.1")
+        except Exception:
+            return False
     try:
         _, uid, _ = struct.unpack("3i", peer.getsockopt(
             socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
@@ -107,11 +112,19 @@ class KiraMcpRelay:
         self.ready = False
 
     async def start(self) -> Json:
-        self.directory = Path(tempfile.mkdtemp(prefix="kira-tool-", dir="/tmp"))
+        tmp_dir = None if sys.platform == "win32" else "/tmp"
+        self.directory = Path(tempfile.mkdtemp(prefix="kira-tool-", dir=tmp_dir))
         try:
             path = self.directory / "relay.sock"
-            self.server = await asyncio.start_unix_server(
-                self._accept, path=str(path), limit=MCP_FRAME_BYTES)
+            if sys.platform == "win32":
+                self.server = await asyncio.start_server(
+                    self._accept, host="127.0.0.1", port=0, limit=MCP_FRAME_BYTES
+                )
+                bound_port = self.server.sockets[0].getsockname()[1]
+                path.write_text(f"127.0.0.1:{bound_port}\n", encoding="utf-8")
+            else:
+                self.server = await asyncio.start_unix_server(
+                    self._accept, path=str(path), limit=MCP_FRAME_BYTES)
             path.chmod(0o600)
             descriptor = self.directory / "bridge.json"
             fd = os.open(descriptor, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -242,7 +255,8 @@ def _descriptor(path: Path) -> Json:
                        for name in value["tools"]):
         raise ValueError("Invalid descriptor")
     info = Path(value["socket"]).lstat()
-    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid() \
+    valid_sock = stat.S_ISREG(info.st_mode) if sys.platform == "win32" else stat.S_ISSOCK(info.st_mode)
+    if not valid_sock or info.st_uid != os.getuid() \
             or stat.S_IMODE(info.st_mode) != 0o600:
         raise ValueError("Relay socket is not private")
     return value
@@ -253,8 +267,15 @@ async def _relay_call(config: Json, request: Json) -> Json:
     try:
         async with asyncio.timeout(PROJECT_TOOL_CALL_TIMEOUT
                                    if request.get("name") in PROJECT_TOOL_NAMES else MCP_TIMEOUT):
-            reader, writer = await asyncio.open_unix_connection(
-                config["socket"], limit=MCP_FRAME_BYTES)
+            if sys.platform == "win32":
+                ep_text = Path(config["socket"]).read_text(encoding="utf-8").strip()
+                host, port_str = ep_text.rsplit(":", 1)
+                reader, writer = await asyncio.open_connection(
+                    host, int(port_str), limit=MCP_FRAME_BYTES
+                )
+            else:
+                reader, writer = await asyncio.open_unix_connection(
+                    config["socket"], limit=MCP_FRAME_BYTES)
             if not _same_user(writer):
                 raise ValueError("Unexpected relay owner")
             writer.write(encoded({**request, "capability": config["capability"]}) + b"\n")

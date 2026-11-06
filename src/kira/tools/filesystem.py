@@ -6,6 +6,7 @@ import hashlib
 import itertools
 import os
 import stat
+import sys
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -74,14 +75,17 @@ class FileTools:
             # Normalize lexically, never with resolve(): an explicit host path
             # still must pass every descriptor-relative O_NOFOLLOW check below.
             # Relative/default paths continue to start in the current project.
-            if value == "~" or value.startswith("~/"):
+            if value == "~" or value.startswith(("~/", "~\\")):
                 try:
                     candidate = candidate.expanduser()
                 except RuntimeError as exc:
                     raise KiraError("INVALID_ARGUMENT", "Home directory is unavailable") from exc
             if not candidate.is_absolute():
                 candidate = self.root / candidate
-            return Path(os.path.normpath(candidate)).parts[1:]
+            normed = Path(os.path.normpath(candidate))
+            if sys.platform == "win32" and normed.anchor.upper() != (self.root.anchor or "").upper():
+                return normed.parts
+            return normed.parts[1:]
         if candidate.is_absolute():
             try:
                 candidate = candidate.relative_to(self.root)
@@ -91,8 +95,16 @@ class FileTools:
             raise KiraError("PATH_DENIED", "Parent traversal is not allowed")
         return tuple(part for part in candidate.parts if part not in {"", "."})
 
+    def _root_anchor(self, parts: tuple[str, ...] = ()) -> str:
+        if sys.platform == "win32" and parts and len(parts[0]) >= 2 and parts[0][1] == ":":
+            return parts[0]
+        return self.root.anchor or "/"
+
     def _absolute_path(self, parts: tuple[str, ...]) -> Path:
-        return (Path("/") if self.allow_external else self.root).joinpath(*parts)
+        if self.allow_external:
+            rel = parts[1:] if (sys.platform == "win32" and parts and len(parts[0]) >= 2 and parts[0][1] == ":") else parts
+            return Path(self._root_anchor(parts)).joinpath(*rel)
+        return self.root.joinpath(*parts)
 
     def _reported_path(self, parts: tuple[str, ...]) -> str:
         return str(self._absolute_path(parts)) if self.allow_external else "/".join(parts)
@@ -130,9 +142,11 @@ class FileTools:
         With ``created``, missing directories below the project root (any
         missing directory with full access) are created and recorded there.
         """
+        anchor = self._root_anchor(parts)
+        rel_parts = parts[1:] if (sys.platform == "win32" and parts and len(parts[0]) >= 2 and parts[0][1] == ":") else parts
         prefix = () if self.allow_external else self.root.parts[1:]
-        components = (*prefix, *parts)
-        descriptor = os.open("/", os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW)
+        components = (*prefix, *rel_parts)
+        descriptor = os.open(anchor, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             for index, part in enumerate(components):
                 final = index == len(components) - 1

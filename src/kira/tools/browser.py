@@ -131,7 +131,8 @@ def engine_available(browser_path: Path | None = None) -> bool:
             str(Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "ms-playwright"),
         ))
         return any(os.access(root / f"chromium-{revision}" / relative, os.X_OK)
-                   for relative in ("chrome-linux/chrome", "chrome-linux64/chrome"))
+                   for relative in ("chrome-linux/chrome", "chrome-linux64/chrome",
+                                    "chrome-win/chrome.exe", "chrome-win64/chrome.exe"))
     except (OSError, ValueError, KeyError, StopIteration, TypeError):
         return False
 
@@ -142,7 +143,16 @@ def browser_environment(browser_path: Path | None = None) -> dict[str, str]:
                "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "LD_LIBRARY_PATH",
                "WSL_INTEROP", "WSL_DISTRO_NAME",
                "PLAYWRIGHT_BROWSERS_PATH"}
-    result = {key: value for key, value in os.environ.items() if key in allowed}
+    if sys.platform == "win32":
+        win_allowed = allowed | {
+            "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP",
+            "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
+            "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA", "COMMONPROGRAMFILES",
+            "COMMONPROGRAMFILES(X86)", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+        }
+        result = {key: value for key, value in os.environ.items() if key.upper() in win_allowed}
+    else:
+        result = {key: value for key, value in os.environ.items() if key in allowed}
     result["PYTHONUNBUFFERED"] = "1"
     if browser_path is not None:
         result["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_path)

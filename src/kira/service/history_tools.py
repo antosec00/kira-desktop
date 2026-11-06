@@ -193,7 +193,7 @@ class HistoryTools:
             return fallback
         directory_fd = file_fd = -1
         try:
-            directory_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            directory_fd = os.open(path.anchor or "/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
             for component in path.parent.parts[1:]:
                 next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
                                   dir_fd=directory_fd)

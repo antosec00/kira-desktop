@@ -10,6 +10,7 @@ import os
 import platform
 import signal
 import stat
+import sys
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
@@ -234,18 +235,36 @@ class Service:
                         _ = accounts.auth
             if self.paths.socket.exists() or self.paths.socket.is_symlink():
                 info = self.paths.socket.lstat()
-                if info.st_uid != os.getuid() or not stat.S_ISSOCK(info.st_mode):
-                    raise KiraError("UNSAFE_PATH", "Refusing to replace an unsafe socket path")
-                try:
-                    _, existing = await asyncio.wait_for(asyncio.open_unix_connection(self.paths.socket), 1)
-                except (ConnectionRefusedError, FileNotFoundError):
-                    pass
-                except TimeoutError as exc:
-                    raise KiraError("ALREADY_RUNNING", "Existing socket did not confirm it is stale") from exc
+                if sys.platform == "win32":
+                    if not stat.S_ISREG(info.st_mode):
+                        raise KiraError("UNSAFE_PATH", "Refusing to replace an unsafe socket path")
+                    try:
+                        ep_text = self.paths.socket.read_text(encoding="utf-8").strip()
+                        ep_host, ep_port_str = ep_text.rsplit(":", 1)
+                        _, existing = await asyncio.wait_for(
+                            asyncio.open_connection(ep_host, int(ep_port_str)), 1
+                        )
+                    except (OSError, ValueError):
+                        pass
+                    except TimeoutError as exc:
+                        raise KiraError("ALREADY_RUNNING", "Existing socket did not confirm it is stale") from exc
+                    else:
+                        existing.close()
+                        await existing.wait_closed()
+                        raise KiraError("ALREADY_RUNNING", "Another Kira service owns this runtime socket")
                 else:
-                    existing.close()
-                    await existing.wait_closed()
-                    raise KiraError("ALREADY_RUNNING", "Another Kira service owns this runtime socket")
+                    if info.st_uid != os.getuid() or not stat.S_ISSOCK(info.st_mode):
+                        raise KiraError("UNSAFE_PATH", "Refusing to replace an unsafe socket path")
+                    try:
+                        _, existing = await asyncio.wait_for(asyncio.open_unix_connection(self.paths.socket), 1)
+                    except (ConnectionRefusedError, FileNotFoundError):
+                        pass
+                    except TimeoutError as exc:
+                        raise KiraError("ALREADY_RUNNING", "Existing socket did not confirm it is stale") from exc
+                    else:
+                        existing.close()
+                        await existing.wait_closed()
+                        raise KiraError("ALREADY_RUNNING", "Another Kira service owns this runtime socket")
                 self.paths.socket.unlink()
             self.store = Store(self.paths.db)
             self.store.recover()
@@ -305,9 +324,16 @@ class Service:
             self.goals = AutonomousGoals(self)
             self.goals.recover()
             self.triggers = TriggerService(self)
-            self.server = await asyncio.start_unix_server(self._client, path=self.paths.socket,
-                                                          limit=MAX_FRAME_BYTES)
-            os.chmod(self.paths.socket, 0o600)
+            if sys.platform == "win32":
+                self.server = await asyncio.start_server(
+                    self._client, host="127.0.0.1", port=0, limit=MAX_FRAME_BYTES
+                )
+                bound_port = self.server.sockets[0].getsockname()[1]
+                self.paths.socket.write_text(f"127.0.0.1:{bound_port}\n", encoding="utf-8")
+            else:
+                self.server = await asyncio.start_unix_server(self._client, path=self.paths.socket,
+                                                              limit=MAX_FRAME_BYTES)
+                os.chmod(self.paths.socket, 0o600)
             self.store.db.execute("INSERT INTO runtime_metadata VALUES ('service_boot_id',?) "
                                   "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (boot_id(),))
             self._started = True
@@ -2003,14 +2029,42 @@ class Service:
     @staticmethod
     def _resources() -> Json:
         memory: Json = {"total_bytes": None, "available_bytes": None, "source": "/proc/meminfo"}
-        try:
-            values = {}
-            for line in Path("/proc/meminfo").read_text().splitlines():
-                key, value = line.split(":", 1)
-                values[key] = int(value.strip().split()[0]) * 1024
-            memory.update(total_bytes=values.get("MemTotal"), available_bytes=values.get("MemAvailable"))
-        except (OSError, ValueError):
-            pass
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                stat_ex = MEMORYSTATUSEX()
+                stat_ex.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat_ex)):  # type: ignore[attr-defined]
+                    memory.update(
+                        total_bytes=int(stat_ex.ullTotalPhys),
+                        available_bytes=int(stat_ex.ullAvailPhys),
+                        source="GlobalMemoryStatusEx",
+                    )
+            except Exception:
+                pass
+        else:
+            try:
+                values = {}
+                for line in Path("/proc/meminfo").read_text().splitlines():
+                    key, value = line.split(":", 1)
+                    values[key] = int(value.strip().split()[0]) * 1024
+                memory.update(total_bytes=values.get("MemTotal"), available_bytes=values.get("MemAvailable"))
+            except (OSError, ValueError):
+                pass
         gpus: list[Json] = []
         import shutil
         import subprocess
@@ -2038,7 +2092,8 @@ async def serve() -> None:
     await service.start()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, service.stopping.set)
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, service.stopping.set)
     try:
         await service.stopping.wait()
     finally:

@@ -42,9 +42,20 @@ class Client:
         ``same_version=False`` is only for stopping a service of another
         version, which still enforces its own idle checks.
         """
-        self.reader, self.writer = await asyncio.open_unix_connection(
-            str(self.paths.socket), limit=MAX_FRAME_BYTES
-        )
+        if sys.platform == "win32":
+            try:
+                ep_text = self.paths.socket.read_text(encoding="utf-8").strip()
+                host, port_str = ep_text.rsplit(":", 1)
+                port = int(port_str)
+            except (OSError, ValueError) as exc:
+                raise FileNotFoundError(str(self.paths.socket)) from exc
+            self.reader, self.writer = await asyncio.open_connection(
+                host, port, limit=MAX_FRAME_BYTES
+            )
+        else:
+            self.reader, self.writer = await asyncio.open_unix_connection(
+                str(self.paths.socket), limit=MAX_FRAME_BYTES
+            )
         self._reader_task = asyncio.create_task(self._read())
         try:
             hello = await self.request("hello")
@@ -172,8 +183,16 @@ async def ensure_service(paths: Paths | None = None) -> None:
             command = (["/usr/bin/python3", "-I", str(INSTALLED_LAUNCHER), "service"]
                        if INSTALLED_LAUNCHER.exists() and running_installed_package()
                        else [sys.executable, "-m", "kira.service.server"])
-            subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log_fd, stderr=log_fd,
-                             start_new_session=True, close_fds=True)
+            popen_kwargs: dict[str, Any] = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": log_fd,
+                "stderr": log_fd,
+                "start_new_session": True,
+                "close_fds": sys.platform != "win32",
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            subprocess.Popen(command, **popen_kwargs)
         finally:
             os.close(log_fd)
     for _ in range(START_POLLS):

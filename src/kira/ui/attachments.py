@@ -93,6 +93,8 @@ def _local_path(value: str, distro: str | None, wsl: bool) -> Path | None:
     value = value.strip('"') if value.startswith('"') and value.endswith('"') else value
     windows = re.match(r"^/?([A-Za-z]):[\\/](.*)$", value, re.DOTALL)
     if windows:
+        if os.name == "nt":
+            return Path(f"{windows[1].upper()}:\\{windows[2]}")
         if not wsl:
             raise ValueError(tr("Il percorso Windows richiede una sessione WSL con il disco montato."))
         return Path("/mnt") / windows[1].lower() / windows[2].replace("\\", "/")

@@ -2,6 +2,7 @@
 
 import os
 import platform
+import sys
 from collections.abc import MutableMapping
 
 
@@ -10,6 +11,8 @@ def configure_graphics(
     *,
     kernel_release: str | None = None,
 ) -> None:
+    if sys.platform == "win32" and environment is None and kernel_release is None:
+        return
     env = os.environ if environment is None else environment
     if env.get("WAYLAND_DISPLAY"):
         env.setdefault("QT_QPA_PLATFORM", "wayland;xcb")

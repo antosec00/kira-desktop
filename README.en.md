@@ -94,10 +94,22 @@ describes every connection, its capabilities and known limits.
 
 ## Quick start
 
-Kira runs on Ubuntu 24.04 (Python 3.12) and Ubuntu 26.04 (Python 3.14), natively
-or on Windows in WSL2 with WSLg. The reference desktop is KDE Plasma/Wayland.
+Kira runs **natively on Linux** (Ubuntu 24.04 LTS with Python 3.12 and Ubuntu
+26.04 LTS with Python 3.14) and **natively on 64-bit Windows 10 and 11**, as
+well as in WSL2 with WSLg.
 
-**From the package (Ubuntu 24.04):**
+**On Windows 10 / 11 (native):**
+
+Download and run [`kira-desktop_windows_amd64_setup.exe`](https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe) from the [Releases](https://github.com/antosec00/kira-desktop/releases) page, or from PowerShell:
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe" -OutFile "$env:TEMP\kira-desktop_setup.exe"
+Start-Process -FilePath "$env:TEMP\kira-desktop_setup.exe" -Wait
+```
+
+The installer sets up Kira in `%LOCALAPPDATA%\Programs\Kira Desktop` without administrator privileges and creates **Kira Desktop** shortcuts on your Desktop and in the Start Menu ([Installation → Native installation on Windows 10 and 11](docs/en/INSTALLATION.md#native-installation-on-windows-10-and-11)).
+
+**From the package on Linux (Ubuntu 24.04):**
 
 ```sh
 cd "$(mktemp -d)"
@@ -111,11 +123,11 @@ the `SHA256SUMS` checksums and their `SHA256SUMS.sig` signature to verify the
 files, is on the [Releases](https://github.com/antosec00/kira-desktop/releases)
 page. Once installed, Kira looks for new versions on its own and installs them
 when you ask, after verifying their signature
-([Installation → Updating from Kira](docs/en/INSTALLATION.md#updating-from-kira)). On
-Windows install Ubuntu in WSL first: the steps are in
+([Installation → Updating from Kira](docs/en/INSTALLATION.md#updating-from-kira)). If you prefer
+to run Kira inside WSL2 on Windows, see
 [Installation → On Windows with WSL](docs/en/INSTALLATION.md#on-windows-with-wsl).
 
-**From source:**
+**From source (Linux or Windows):**
 
 ```sh
 # 1. Install uv (https://docs.astral.sh/uv/) and clone the repository
@@ -129,7 +141,7 @@ uv sync --frozen                     # or: uv sync --frozen --extra claude-code
 uv run kira
 ```
 
-From source you also need the system libraries listed in
+On Linux from source you also need the system libraries listed in
 [Installation → Running from source with `uv`](docs/en/INSTALLATION.md#running-from-source-with-uv);
 the `.deb` package installs them on its own.
 
@@ -139,7 +151,9 @@ provider and model in **Models** and write your first request. The
 [user guide](docs/en/USER_GUIDE.md) explains every panel.
 
 **Building the packages.** `python3 scripts/build_deb.py` builds the `.deb`
-package for Ubuntu 24.04 (`--target resolute` for 26.04).
+package for Ubuntu 24.04 (`--target resolute` for 26.04);
+`python3 scripts/build_windows.py --package` builds the native Windows
+installer (`dist/kira-desktop_<version>_windows_amd64_setup.exe`).
 [Installation](docs/en/INSTALLATION.md) covers requirements, checksum
 verification, data paths, separate profiles, backups and upgrades.
 
@@ -153,8 +167,9 @@ verification, data paths, separate profiles, backups and upgrades.
 - **Isolated browser.** Public pages are untrusted data, never instructions.
   Logins and consents require you; each chat has its own profile, temporary
   unless you choose to keep it. [Browser and Computer](docs/en/BROWSER_AND_COMPUTER.md).
-- **Private by default.** XDG paths or an explicit `KIRA_HOME`, 0600 files, a
-  private Unix socket between interface and service, no telemetry.
+- **Private by default.** XDG paths on Linux, `%LOCALAPPDATA%\Kira` on Windows,
+  or an explicit `KIRA_HOME`, user-private files, and a private local IPC channel
+  between interface and service.
 
 [SECURITY.en.md](SECURITY.en.md) explains how to report a security issue.
 

@@ -34,7 +34,7 @@ def _read_registered(plan: Json) -> tuple[bytes, str]:
     path = Path(plan["path"])
     descriptor = parent = -1
     try:
-        parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        parent = os.open(path.anchor or "/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
         for component in path.parent.parts[1:]:
             child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
                             dir_fd=parent)

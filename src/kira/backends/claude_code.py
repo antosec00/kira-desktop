@@ -349,9 +349,12 @@ class ClaudeCodeBackend:
             if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
                 raise ClaudeCodeUnavailable("The configured Claude Code path is not an executable file")
             return str(path)
-        bundled = Path(module.__file__).parent / "_bundled" / "claude"
-        if bundled.is_file() and os.access(bundled, os.X_OK):
-            return str(bundled)
+        bundled_dir = Path(module.__file__).parent / "_bundled"
+        candidates = ("claude.exe", "claude") if sys.platform == "win32" else ("claude",)
+        for name in candidates:
+            bundled = bundled_dir / name
+            if bundled.is_file() and os.access(bundled, os.X_OK):
+                return str(bundled)
         found = shutil.which("claude")
         if found is None:
             raise ClaudeCodeUnavailable("No Claude Code executable is bundled or on PATH")
@@ -389,9 +392,11 @@ class ClaudeCodeBackend:
         # stopped silently and its stale notification would open the next turn.
         # Kira supplies and manages memory; Claude Code's own per-directory notes
         # would be an invisible second store shared with terminal sessions.
+        target = self._target(module)
+        cli_path = target if sys.platform == "win32" else str(self._launcher_path())
         return {"cwd": cwd, "tools": tools, "setting_sources": [], "strict_mcp_config": True,
-                "permission_mode": "dontAsk", "cli_path": str(self._launcher_path()),
-                "env": {TARGET_ENV: self._target(module),
+                "permission_mode": "dontAsk", "cli_path": cli_path,
+                "env": {TARGET_ENV: target,
                         "CLAUDE_AGENT_SDK_CLIENT_APP": f"kira-desktop/{__version__}",
                         "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
                         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},

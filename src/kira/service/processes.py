@@ -13,23 +13,31 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 from typing import Literal
 
+from kira.domain.compat import windows_boot_id, windows_process_identity
 from kira.domain.contracts import Json, KiraError
 from kira.service.storage import Store, encode, now
 
 
 @lru_cache(maxsize=1)
 def boot_id() -> str:
+    if sys.platform == "win32":
+        return windows_boot_id()
     return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
 
 
 def pid_namespace(pid: int) -> Json:
+    if sys.platform == "win32":
+        return {"device": 1, "inode": 1}
     info = (Path("/proc") / str(pid) / "ns/pid").stat()
     return {"device": info.st_dev, "inode": info.st_ino}
 
 
 def identity(pid: int) -> Json | None:
+    if sys.platform == "win32":
+        return windows_process_identity(pid)
     try:
         directory = Path("/proc") / str(pid)
         owner = directory.stat().st_uid
@@ -52,6 +60,8 @@ def observed(pid: int) -> Json | None:
     Another user's process has an unreadable PID namespace but a readable start
     time; that partial identity never matches a recorded one.
     """
+    if sys.platform == "win32":
+        return windows_process_identity(pid)
     try:
         return identity(pid)
     except PermissionError:
@@ -90,6 +100,9 @@ def complete_identity(value: object) -> bool:
 
 
 def processes() -> list[Json]:
+    if sys.platform == "win32":
+        self_info = windows_process_identity(os.getpid())
+        return [self_info] if self_info is not None else []
     result = []
     for entry in Path("/proc").iterdir():
         if entry.name.isdecimal():

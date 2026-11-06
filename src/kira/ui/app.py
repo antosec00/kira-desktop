@@ -27,6 +27,57 @@ from kira.ui.research_controller import ResearchController
 from kira.ui.updates import Updates
 
 
+def _app_icon() -> QIcon:
+    assets = Path(__file__).parent / "assets"
+    ico_path = assets / "kira.ico"
+    png_path = assets / "kira-mascot.png"
+    if sys.platform == "win32" and ico_path.is_file():
+        icon = QIcon(str(ico_path))
+        if png_path.is_file():
+            icon.addFile(str(png_path))
+        return icon
+    return QIcon(str(png_path))
+
+
+def _apply_window_icon(window: QQuickWindow) -> None:
+    app = QGuiApplication.instance()
+    if isinstance(app, QGuiApplication):
+        window.setIcon(app.windowIcon())
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        assets = Path(__file__).parent / "assets"
+        ico_candidates = [
+            assets / "kira.ico",
+            Path(sys.executable).resolve().parents[2] / "kira.ico",
+        ]
+        ico_file = next((p for p in ico_candidates if p.is_file()), None)
+        if ico_file is None:
+            return
+        hwnd = int(window.winId())
+        if not hwnd:
+            return
+        user32 = ctypes.windll.user32
+        IMAGE_ICON = 1
+        LR_LOADFROMFILE = 0x00000010
+        WM_SETICON = 0x0080
+        h_small = user32.LoadImageW(None, str(ico_file), IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+        h_big = user32.LoadImageW(None, str(ico_file), IMAGE_ICON, 256, 256, LR_LOADFROMFILE)
+        if not h_big:
+            h_big = user32.LoadImageW(None, str(ico_file), IMAGE_ICON, 48, 48, LR_LOADFROMFILE)
+        if h_small:
+            user32.SendMessageW(wintypes.HWND(hwnd), WM_SETICON, 0, h_small)
+            user32.SetClassLongPtrW(wintypes.HWND(hwnd), -34, h_small)
+        if h_big:
+            user32.SendMessageW(wintypes.HWND(hwnd), WM_SETICON, 1, h_big)
+            user32.SetClassLongPtrW(wintypes.HWND(hwnd), -14, h_big)
+    except Exception:
+        pass
+
+
 def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
     # QtQuick.Text uses the application's default font, rather than inheriting
     # ApplicationWindow.font as Controls do. Set both to the intended family.
@@ -35,7 +86,7 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         font = QFont("Noto Sans", 10)
         font.setStyleHint(QFont.StyleHint.SansSerif)
         app.setFont(font)
-        app.setWindowIcon(QIcon(str(Path(__file__).parent / "assets" / "kira-mascot.png")))
+        app.setWindowIcon(_app_icon())
     directory = Path(__file__).parent / "qml"
     with qml_disk_cache(directory, "Kira Desktop"):
         engine = QQmlApplicationEngine()
@@ -90,6 +141,9 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         engine.rootContext().setContextProperty("teamApprovalsModel", workspace.teams.approvalModel)
         engine.rootContext().setContextProperty("teamRecipientModel", workspace.teams.recipientModel)
         engine.load(QUrl.fromLocalFile(str(directory / "Main.qml")))
+        for root in engine.rootObjects():
+            if isinstance(root, QQuickWindow):
+                _apply_window_icon(root)
     return engine
 
 
@@ -105,6 +159,8 @@ def show_launch_splash(workspace: Workspace) -> QQmlApplicationEngine | None:
     if not roots:
         engine.deleteLater()
         return None
+    if isinstance(roots[0], QQuickWindow):
+        _apply_window_icon(roots[0])
     roots[0].setProperty("version", __version__)
     for _ in range(3):
         QCoreApplication.processEvents()
@@ -136,6 +192,12 @@ def close_launch_splash(splash: QQmlApplicationEngine | None, main_engine: QQmlA
 
 
 def main(*, spotlight: bool = False) -> int:
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Kira.Desktop")
+        except Exception:
+            pass
     configure_graphics()
     QQuickStyle.setStyle("Basic")
     app = QGuiApplication(sys.argv)
@@ -143,6 +205,7 @@ def main(*, spotlight: bool = False) -> int:
     app.setOrganizationName("Kira")
     app.setApplicationVersion(__version__)
     app.setDesktopFileName("kira-desktop")
+    app.setWindowIcon(_app_icon())
     workspace = Workspace()
     if spotlight:
         workspace.ambient.openSpotlight()

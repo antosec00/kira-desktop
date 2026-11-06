@@ -424,7 +424,7 @@ class FileBrowser(QObject):
             return []
         path = Path(self._path)
         parts = [*reversed(path.parents), path]
-        return [{"label": part.name or "/", "path": str(part)} for part in parts]
+        return [{"label": part.name or str(part), "path": str(part)} for part in parts]
 
     @qt_property("QVariantList", notify=placesChanged)
     def places(self) -> list[Json]:
@@ -441,9 +441,14 @@ class FileBrowser(QObject):
 
         def add(group: str, label: str, path: Path, icon: str) -> None:
             key = str(path)
-            if key not in seen and path.is_dir():
-                seen.add(key)
-                result.append({"group": group, "label": label, "path": key, "icon": icon})
+            if key in seen:
+                return
+            try:
+                if path.is_dir():
+                    seen.add(key)
+                    result.append({"group": group, "label": label, "path": key, "icon": icon})
+            except OSError:
+                pass
 
         favourites = tr("Preferiti")
         add(favourites, tr("Home"), home, "home")
@@ -458,10 +463,14 @@ class FileBrowser(QObject):
                 add(tr("Progetti di Kira"), str(project.get("name") or Path(root).name), Path(root), "projects")
         for recent in self._recent:
             add(tr("Recenti"), Path(recent).name or recent, Path(recent), "resume")
-        if self._wsl:
-            for place in self._windows():
-                add(tr("Windows"), place["label"], Path(place["path"]), place["icon"])
-        add(tr("Sistema"), tr("Radice"), Path("/"), "drive")
+        if os.name == "nt":
+            for letter in "CDEFGHIJ":
+                add(tr("Sistema"), tr("Disco {letter}:", letter=letter), Path(f"{letter}:\\"), "drive")
+        else:
+            if self._wsl:
+                for place in self._windows():
+                    add(tr("Windows"), place["label"], Path(place["path"]), place["icon"])
+            add(tr("Sistema"), tr("Radice"), Path("/"), "drive")
         return result
 
     def _windows(self) -> list[Json]:
@@ -496,7 +505,7 @@ class FileBrowser(QObject):
         for candidate in candidates:
             if candidate and not self.navigate(candidate):
                 return
-        self._load("/", record=True)
+        self._load(str(Path.home().anchor or "/"), record=True)
 
     @Slot(str, result=str)
     def navigate(self, text: str) -> str:

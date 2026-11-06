@@ -1,32 +1,37 @@
 # Installazione, dati, backup e aggiornamento
 
-Questa guida spiega come installare Kira Desktop su Ubuntu, da pacchetto o dal
-sorgente, dove finiscono i tuoi dati, come farne un backup completo e come
-aggiornare o tornare a una versione precedente senza perdere nulla. È pensata per
-chi usa Kira e per chi amministra l'installazione; l'uso quotidiano dell'app è
-descritto nella [Guida utente](GUIDA_UTENTE.md).
+Questa guida spiega come installare Kira Desktop su Ubuntu e su Windows 10/11,
+da pacchetto o dal sorgente, dove finiscono i tuoi dati, come farne un backup
+completo e come aggiornare o tornare a una versione precedente senza perdere
+nulla. È pensata per chi usa Kira e per chi amministra l'installazione; l'uso
+quotidiano dell'app è descritto nella [Guida utente](GUIDA_UTENTE.md).
 
 ## Requisiti e piattaforme supportate
 
-Kira Desktop è un'applicazione Linux a 64 bit (amd64) distribuita in due pacchetti
-`.deb`, uno per ciascuna versione di Ubuntu supportata:
+Kira Desktop è un'applicazione desktop a 64 bit (amd64 / x64) disponibile
+nativamente sia per **Ubuntu Linux** (pacchetti `.deb`) sia per **Windows 10 e
+11** (programma di installazione `.exe`):
 
-| Sistema | Python di sistema | File nella pagina Releases | Costruito dal checkout |
+| Sistema | Python | File nella pagina Releases | Costruito dal checkout |
 | --- | --- | --- | --- |
-| Ubuntu 24.04 LTS (noble) | 3.12 | `kira-desktop_ubuntu24.04_amd64.deb` | `dist/kira-desktop_<versione>_amd64.deb` |
-| Ubuntu 26.04 LTS (resolute) | 3.14 | `kira-desktop_ubuntu26.04_amd64.deb` | `dist/resolute/kira-desktop_<versione>_amd64.deb` |
+| Ubuntu 24.04 LTS (noble) | 3.12 (di sistema) | `kira-desktop_ubuntu24.04_amd64.deb` | `dist/kira-desktop_<versione>_amd64.deb` |
+| Ubuntu 26.04 LTS (resolute) | 3.14 (di sistema) | `kira-desktop_ubuntu26.04_amd64.deb` | `dist/resolute/kira-desktop_<versione>_amd64.deb` |
+| Windows 10 / 11 (64 bit, nativo) | 3.12 (isolato con `uv`) | `kira-desktop_windows_amd64_setup.exe` | `dist/kira-desktop_<versione>_windows_amd64_setup.exe` |
 
-I due pacchetti contengono lo stesso codice dell'applicazione e le stesse librerie
-Qt/PySide6 6.11.2, ma ognuno è legato all'interprete Python del proprio sistema:
-**non sono intercambiabili**. Il pacchetto per Ubuntu 26.04 richiede Python 3.14 e
-non si installa su Ubuntu 24.04; quello per Ubuntu 24.04 richiede Python 3.12.
+I due pacchetti `.deb` contengono lo stesso codice dell'applicazione e le stesse
+librerie Qt/PySide6 6.11.2, ma ognuno è legato all'interprete Python del proprio
+sistema: **non sono intercambiabili**. Il pacchetto per Ubuntu 26.04 richiede
+Python 3.14 e non si installa su Ubuntu 24.04; quello per Ubuntu 24.04 richiede
+Python 3.12. Su Windows 10 e 11 il programma di installazione `.exe` configura un
+ambiente Python 3.12 nativo e isolato sotto `%LOCALAPPDATA%\Programs\KiraDesktop`
+senza richiedere WSL e senza modificare eventuali installazioni Python già
+presenti nel sistema.
 
-Kira funziona sia su Ubuntu nativo sia dentro WSL2 su Windows, a patto che sia
-disponibile una sessione grafica: in WSL2 serve WSLg (o un altro display
-configurato); i passi per Windows sono in [Su Windows con WSL](#su-windows-con-wsl).
-Il desktop di riferimento è KDE Plasma su Wayland; altri ambienti desktop
-funzionano, ma è su Plasma/Wayland che l'interfaccia viene controllata con più
-attenzione.
+Su Windows puoi scegliere tra l'[installazione nativa](#installazione-nativa-su-windows-10-e-11)
+e l'esecuzione della versione Linux dentro [WSL2 con WSLg](#su-windows-con-wsl).
+Su Linux il desktop di riferimento è KDE Plasma su Wayland; altri ambienti
+desktop funzionano, ma è su Plasma/Wayland che l'interfaccia viene controllata
+con più attenzione.
 
 I provider di intelligenza artificiale si configurano dopo l'installazione,
 dentro l'app, come descritto in [Provider](PROVIDER.md).
@@ -111,6 +116,38 @@ solo dopo aver fermato il servizio come nella
 [procedura di aggiornamento](#aggiornamento): un servizio lasciato in esecuzione
 resta sul codice precedente e la nuova interfaccia lo segnala come versione
 diversa.
+
+## Installazione nativa su Windows 10 e 11
+
+Su Windows 10 e Windows 11 a 64 bit puoi installare ed eseguire Kira Desktop
+direttamente sul sistema, senza bisogno di WSL:
+
+1. Scarica `kira-desktop_windows_amd64_setup.exe` e `SHA256SUMS` dalla pagina
+   [Releases](https://github.com/antosec00/kira-desktop/releases) e verifica
+   l'impronta SHA-256 in PowerShell:
+
+   ```powershell
+   (Get-FileHash .\kira-desktop_windows_amd64_setup.exe -Algorithm SHA256).Hash.ToLower()
+   Get-Content .\SHA256SUMS
+   ```
+
+2. Avvia `kira-desktop_windows_amd64_setup.exe`: il programma di installazione
+   estrae il sorgente, configura un ambiente Python 3.12 isolato in
+   `%LOCALAPPDATA%\Programs\KiraDesktop` tramite `uv`, compila l'eseguibile
+   dedicato `KiraDesktop.exe` con l'icona di Kira e crea i collegamenti
+   **Kira Desktop** sul Desktop e nel Menu Start.
+3. Avvia **Kira Desktop** dal collegamento sul Desktop o dal Menu Start.
+
+Se lavori dal sorgente (su Windows oppure da WSL2 su Windows), puoi anche
+costruire o aggiornare direttamente l'installazione locale di Windows con:
+
+```sh
+python3 scripts/build_windows.py
+```
+
+Su Windows nativo il servizio in background e tutti i sottoprocessi (controlli
+di stato, Git, ripgrep, Codex e Claude Code) girano senza aprire finestre di
+terminale (`CREATE_NO_WINDOW`).
 
 ## Su Windows con WSL
 
@@ -272,6 +309,13 @@ dall'aggiornamento da Kira) e le tre cartelle del browser isolato
 `browser-engine/`, `browser-profiles/` e `browser-temporary/`. Le variabili XDG,
 se le imposti, devono contenere percorsi assoluti; una variabile impostata a un
 valore vuoto vale come non impostata.
+
+Su **Windows 10 e 11 nativo**, quando `KIRA_HOME` e le variabili XDG non sono
+impostate, Kira raccoglie tutti i dati del profilo sotto `%LOCALAPPDATA%\Kira`:
+`%LOCALAPPDATA%\Kira\data` (database e file), `%LOCALAPPDATA%\Kira\config`
+(preferenze e accessi ai provider), `%LOCALAPPDATA%\Kira\state` (stato e log
+del servizio) e `%LOCALAPPDATA%\Kira\runtime` (endpoint locale loopback TCP
+`service.tcp` autenticato con token segreto per utente).
 
 ### Profili separati con `KIRA_HOME`
 
@@ -639,6 +683,18 @@ rinominare un pacchetto per installarlo sull'altro sistema. I pacchetti della
 pagina Releases sono costruiti e controllati con questi stessi script, e
 pubblicati con i nomi stabili della tabella iniziale insieme al loro
 `SHA256SUMS` (vedi [Sviluppo](SVILUPPO.md#pubblicare-una-versione)).
+
+### Programma di installazione per Windows 10 e 11
+
+Il programma di installazione autonomo per Windows 10 e 11 a 64 bit si
+costruisce da Windows, da WSL2 o da Ubuntu Linux (con `mono-mcs` installato):
+
+```sh
+python3 scripts/build_windows.py --package
+```
+
+Il risultato è `dist/kira-desktop_<versione>_windows_amd64_setup.exe`, pubblicato
+nella pagina Releases con il nome stabile `kira-desktop_windows_amd64_setup.exe`.
 
 ### Controllare un pacchetto
 

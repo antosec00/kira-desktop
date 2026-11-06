@@ -7,6 +7,7 @@ import math
 import os
 import shlex
 import shutil
+import sys
 import threading
 import uuid
 from collections.abc import Callable
@@ -80,10 +81,14 @@ MOUNTINFO = Path("/proc/self/mountinfo")
 
 def filesystem_type(path: Path) -> str:
     """Type of the mount holding path, matched by device number; empty when unknown."""
+    if sys.platform == "win32" and not MOUNTINFO.exists():
+        return "ntfs"
     try:
         device = os.stat(path).st_dev
         lines = MOUNTINFO.read_bytes().splitlines()
     except OSError:
+        return ""
+    if not hasattr(os, "major") or not hasattr(os, "minor"):
         return ""
     identity = f"{os.major(device)}:{os.minor(device)}".encode()
     for line in lines:

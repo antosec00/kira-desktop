@@ -243,7 +243,7 @@ class BrowserEngine:
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             directory.chmod(0o700)
         self.embedded = args.get("embedded") is True
-        self.headed = args.get("headed") is True or self.embedded
+        self.headed = args.get("headed") is True or (self.embedded and sys.platform != "win32")
         if self.embedded:
             async def discard(event: Json) -> None:
                 pass
@@ -261,7 +261,7 @@ class BrowserEngine:
                            "--proxy-bypass-list=<-loopback>",
                            "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"]
             ignored_args: list[str] = []
-            if self.embedded:
+            if self.embedded and sys.platform != "win32":
                 from kira.tools.browser_auth import BrowserAuthBridge
                 from kira.tools.browser_desktop import BrowserDesktop
 

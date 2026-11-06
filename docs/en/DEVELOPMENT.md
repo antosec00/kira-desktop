@@ -237,15 +237,17 @@ python3 scripts/build_deb.py                      # Ubuntu 24.04 (noble), host P
 python3 scripts/check_deb.py --target noble
 python3 scripts/build_deb.py --target resolute    # Ubuntu 26.04, Python 3.14 in a container
 python3 scripts/check_deb.py --target resolute
+python3 scripts/build_windows.py --package        # Windows 10/11 (64-bit), .exe installer
 ```
 
 The noble build requires `/usr/bin/python3` 3.12 and `dpkg-deb` on the host;
 resolute uses the separate recipe in `packaging/resolute/` (Dockerfile, build
-requirements lock). The `check_deb.py` checks run in throwaway containers,
+requirements lock); the Windows installer uses `csc.exe` (on Windows/WSL2) or
+`mcs` (`mono-mcs` on Ubuntu). The `check_deb.py` checks run in throwaway containers,
 launch the application from outside the checkout and exercise the package
 lifecycle and data preservation. Docker is needed for these checks and for the
 resolute build, not for using Kira. Outputs go to `dist/`
-(`kira-desktop_<version>_amd64.deb` and `SHA256SUMS`) and `dist/resolute/`.
+(`kira-desktop_<version>_amd64.deb`, `kira-desktop_<version>_windows_amd64_setup.exe` and `SHA256SUMS`) and `dist/resolute/`.
 
 What the package contains:
 
@@ -288,12 +290,13 @@ first load. An upgrade is not fixed by clearing unrelated caches or data.
    changed, build and check both packages as described above, then move `main`
    to the same commit.
 3. In **Actions → Release packages → Run workflow**, choose `main`. The
-   `.github/workflows/release.yml` workflow builds the two packages with the
+   `.github/workflows/release.yml` workflow builds the packages with the
    same scripts and checks them with `check_deb.py` in containers; you can also
    run it from `dev/<version>` to try the build and checks without publishing
    anything. Only on `main` does a second job, the only one with write access,
    attach them to a **draft** release `v<version>` under stable names
-   (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`)
+   (`kira-desktop_ubuntu24.04_amd64.deb`, `kira-desktop_ubuntu26.04_amd64.deb`,
+   `kira-desktop_windows_amd64_setup.exe`)
    together with `SHA256SUMS` and its signature `SHA256SUMS.sig` (see
    [Release signing](#release-signing)). The draft's notes start from
    `.github/release-notes.md` and link the documentation of the built commit,

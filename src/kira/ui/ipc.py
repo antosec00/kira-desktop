@@ -2,12 +2,14 @@
 
 import json
 import logging
+import sys
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
-from PySide6.QtNetwork import QLocalSocket
+from PySide6.QtNetwork import QAbstractSocket, QLocalSocket, QTcpSocket
 
 from kira.ui.presentation import tr
 from kira.ui.service_errors import service_error_text
@@ -53,7 +55,9 @@ class LocalClient(QObject):
     def __init__(self, socket_path: str, parent: QObject | None = None):
         super().__init__(parent)
         self.socket_path = socket_path
-        self.socket = QLocalSocket(self)
+        self.socket: QLocalSocket | QTcpSocket = (
+            QTcpSocket(self) if sys.platform == "win32" else QLocalSocket(self)
+        )
         self.socket.setReadBufferSize(MAX_FRAME_BYTES + 1)
         self.socket.connected.connect(self._hello)
         self.socket.readyRead.connect(self._read)
@@ -72,6 +76,19 @@ class LocalClient(QObject):
     @Slot()
     def connect_service(self) -> None:
         if self.incompatible:
+            return
+        if isinstance(self.socket, QTcpSocket):
+            if self.socket.state() != QAbstractSocket.SocketState.UnconnectedState:
+                return
+            self._buffer.clear()
+            try:
+                ep_text = Path(self.socket_path).read_text(encoding="utf-8").strip()
+                host, port_str = ep_text.rsplit(":", 1)
+                self.socket.connectToHost(host, int(port_str))
+            except (OSError, ValueError):
+                if not self.compatible and not self.incompatible:
+                    self.problem.emit(tr("In attesa del servizio locale…"))
+            self._retry.start()
             return
         if self.socket.state() != QLocalSocket.LocalSocketState.UnconnectedState:
             return
@@ -205,8 +222,8 @@ class LocalClient(QObject):
         if not self.incompatible:
             self._retry.start()
 
-    @Slot(QLocalSocket.LocalSocketError)
-    def _error(self, _error: QLocalSocket.LocalSocketError) -> None:
+    @Slot(object)
+    def _error(self, _error: object) -> None:
         if not self.compatible and not self.incompatible:
             self.problem.emit(tr("In attesa del servizio locale…"))
 

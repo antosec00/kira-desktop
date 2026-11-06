@@ -8,7 +8,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +51,33 @@ class RpcError(ProtocolError):
     pass
 
 
+def _resolve_codex_binary(binary: str = "codex") -> str:
+    if sys.platform != "win32":
+        return binary
+    cand = Path(binary)
+    if cand.is_absolute() and cand.is_file() and cand.suffix.lower() == ".exe":
+        return str(cand)
+    if binary == "codex" or not cand.is_absolute():
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        localappdata = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        npm_vendor = Path(appdata) / "npm" / "node_modules" / "@openai" / "codex"
+        if npm_vendor.is_dir():
+            for exe in sorted(npm_vendor.rglob("codex.exe"), reverse=True):
+                if exe.is_file():
+                    return str(exe)
+        openai_bin = Path(localappdata) / "OpenAI" / "Codex" / "bin"
+        if openai_bin.is_dir():
+            sub_exes = [p for p in openai_bin.glob("*/codex.exe") if p.is_file()]
+            if sub_exes:
+                sub_exes.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                return str(sub_exes[0])
+            direct_exe = openai_bin / "codex.exe"
+            if direct_exe.is_file():
+                return str(direct_exe)
+    found = shutil.which(binary)
+    return found or binary
+
+
 def child_environment(binary: str = "codex") -> dict[str, str]:
     """Keep provider auth with Codex; avoid unrelated host app credentials."""
     allowed = {"HOME", "PATH", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM",
@@ -57,7 +86,17 @@ def child_environment(binary: str = "codex") -> dict[str, str]:
                "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR",
                "OPENAI_API_KEY", "CODEX_API_KEY", "DISPLAY", "WAYLAND_DISPLAY",
                "DBUS_SESSION_BUS_ADDRESS"}
-    environment = {key: value for key, value in os.environ.items() if key in allowed}
+    if sys.platform == "win32":
+        win_allowed = {k.upper() for k in allowed} | {
+            "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "USERPROFILE",
+            "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "HOMEDRIVE", "HOMEPATH",
+            "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
+            "USERNAME", "COMPUTERNAME", "OS", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+        }
+        environment = {key: value for key, value in os.environ.items() if key.upper() in win_allowed}
+        environment.setdefault("HOME", os.environ.get("USERPROFILE", str(Path.home())))
+    else:
+        environment = {key: value for key, value in os.environ.items() if key in allowed}
     if Path(binary).is_absolute():
         # npm/nvm's Codex wrapper uses /usr/bin/env node. Desktop and systemd
         # environments may omit nvm, even when the configured wrapper is absolute.
@@ -86,11 +125,12 @@ class AppServer:
         self._summary_filter = CodexSummaryFilter()
 
     async def start(self, *, experimental_api: bool = True) -> None:
+        executable = _resolve_codex_binary(self.binary)
         self.process = await asyncio.create_subprocess_exec(
-            self.binary, "app-server", "--listen", "stdio://",
+            executable, "app-server", "--listen", "stdio://",
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, limit=MAX_RPC_FRAME,
-            start_new_session=True, env=child_environment(self.binary))
+            start_new_session=True, env=child_environment(executable))
         self.tasks = [asyncio.create_task(self._read()), asyncio.create_task(self._drain_stderr())]
         self.initialize_result = await self.request("initialize", {
             "clientInfo": {"name": "kira_desktop", "title": "Kira Desktop", "version": __version__},
@@ -247,7 +287,18 @@ class CodexBackend:
                 request: Json = {"limit": 100}
                 if cursor:
                     request["cursor"] = cursor
-                catalog = await rpc.request("model/list", request)
+                try:
+                    catalog = await rpc.request("model/list", request)
+                except RpcError as exc:
+                    msg = str(exc).lower()
+                    if cursor is None and ("refresh token" in msg or "log out and sign in" in msg):
+                        with contextlib.suppress(OSError, ProtocolError, TimeoutError):
+                            await rpc.request("account/logout", {})
+                        public_account = {"connected": False, "type": None, "plan_type": None,
+                                          "requires_openai_auth": True}
+                        catalog = await rpc.request("model/list", request)
+                    else:
+                        raise
                 for item in catalog.get("data", []):
                     models.append({"id": item["model"], "name": item["displayName"],
                                    "capabilities": capabilities,

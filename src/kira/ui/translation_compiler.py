@@ -201,11 +201,14 @@ context_messages).
     xml = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     if len(xml) > MAX_BYTES:
         raise CatalogCompilationError("Compiled translation source exceeds its size limit")
-    binary = Path(PySide6.__file__).parent / "lrelease"
+    binary = Path(PySide6.__file__).parent / ("lrelease.exe" if os.name == "nt" else "lrelease")
+    if not binary.is_file():
+        binary = Path(PySide6.__file__).parent / "lrelease"
     if not binary.is_file():
         raise CatalogCompilationError("The installed Qt translation compiler is unavailable")
+    allowed_env = {"PATH", "LANG", "LC_ALL", "LD_LIBRARY_PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR"}
     environment = {key: value for key, value in os.environ.items()
-                   if key in {"PATH", "LANG", "LC_ALL", "LD_LIBRARY_PATH", "SYSTEMROOT", "TMPDIR"}}
+                   if key.upper() in allowed_env}
     with tempfile.TemporaryDirectory(prefix=".compile-", dir=directory) as temporary:
         scratch = Path(temporary)
         source_file, output_file = scratch / "catalog.ts", scratch / "catalog.qm"

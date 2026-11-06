@@ -2,6 +2,7 @@
 
 import os
 import stat
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,11 @@ class Paths:
             base = Path(override).expanduser().absolute()
             return cls(*(base / part for part in ("config", "data", "state", "runtime")))
         home = Path.home()
+        if sys.platform == "win32" and not any(
+            os.environ.get(k) for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR")
+        ):
+            local_app = Path(os.environ.get("LOCALAPPDATA") or (home / "AppData" / "Local")).absolute() / "Kira"
+            return cls(*(local_app / part for part in ("config", "data", "state", "runtime")))
 
         def xdg(name: str, default: Path) -> Path:
             # The XDG specification treats a variable set to an empty value as unset.
@@ -57,6 +63,7 @@ class Paths:
             if info.st_uid != os.getuid() or not stat.S_ISDIR(info.st_mode):
                 raise PermissionError(f"Kira directory must be owned by this user: {path}")
             path.chmod(0o700)
-        if len(os.fsencode(self.socket)) >= 104:
+        if sys.platform != "win32" and len(os.fsencode(self.socket)) >= 104:
             raise ValueError("Kira runtime path is too long for a Unix socket; use a shorter "
                              "KIRA_HOME or, without KIRA_HOME, a shorter XDG_RUNTIME_DIR")
+
