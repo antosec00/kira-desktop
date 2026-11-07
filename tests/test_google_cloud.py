@@ -716,11 +716,11 @@ async def test_google_cloud_context_compaction_and_quota_pool_fallback_on_persis
 ) -> None:
     from kira.backends.google_cloud import _compact_messages_for_vertex
 
-    # Verify Antigravity-aligned max_output_tokens (16384) for Gemini 4 Argon
+    # Verify full 65536 max_output_tokens for Gemini 4 Argon so high thinking does not truncate turns at 16384
     argon_entries = [m for m in BUILTIN_MODEL_CATALOG if m["id"] in {"gemini-4-argon", "argon"}]
     assert len(argon_entries) == 2
     for entry in argon_entries:
-        assert entry["max_output_tokens"] == 16_384
+        assert entry["max_output_tokens"] == 65_536
 
     # Verify historical tool output compaction keeps payload within threshold while preserving latest tool outputs
     huge_messages: list[dict[str, Any]] = [

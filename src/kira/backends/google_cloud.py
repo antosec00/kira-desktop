@@ -78,7 +78,7 @@ BUILTIN_MODEL_CATALOG: tuple[Json, ...] = (
         "name": "Google Gemini 4 Argon",
         "family": "gemini",
         "context_window": 1_048_576,
-        "max_output_tokens": 16_384,
+        "max_output_tokens": 65_536,
         "input_modalities": ["text", "image"],
         "effort": {
             "supported_levels": ["off", "low", "medium", "high", "max"],
@@ -150,7 +150,7 @@ BUILTIN_MODEL_CATALOG: tuple[Json, ...] = (
         "name": "Google Argon",
         "family": "gemini",
         "context_window": 1_048_576,
-        "max_output_tokens": 16_384,
+        "max_output_tokens": 65_536,
         "input_modalities": ["text", "image"],
         "effort": {
             "supported_levels": ["off", "low", "medium", "high", "max"],
