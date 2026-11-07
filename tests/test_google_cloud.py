@@ -1424,3 +1424,119 @@ async def test_google_cloud_recovers_from_prompt_feedback_safety_block_by_trimmi
         await account.close()
 
 
+async def test_google_cloud_timeout_on_tool_turn_injects_chunking_recovery_hint_and_lowers_effort(
+    tmp_path: Path,
+) -> None:
+    seen_payloads: list[dict[str, Any]] = []
+
+    class _TimeoutStreamingStream(httpx.AsyncByteStream):
+        def __init__(self, attempt: int) -> None:
+            self._attempt = attempt
+
+        async def __aiter__(self):
+            if self._attempt == 1:
+                chunk1 = (
+                    'data: {"candidates":[{"content":{"role":"model","parts":['
+                    '{"text":"**Aggiornamento completo di app.js**\\nRiscrivo app.js con I18N completo."}'
+                    ']}}]}\n\n'
+                )
+                yield chunk1.encode("utf-8")
+                raise httpx.ReadTimeout("SSE read timed out while buffering oversized functionCall")
+            chunk2 = (
+                'data: {"candidates":[{"content":{"role":"model","parts":['
+                '{"text":"**Step 1: Aggiornamento dizionario I18N in app.js**\\nProcedo per sezioni."},'
+                '{"functionCall":{"name":"run_command","args":{"argv":["python3","-c","print(1)"]}},'
+                '"thoughtSignature":"sig-step-1"}'
+                ']},"finishReason":"STOP"}],'
+                '"usageMetadata":{"promptTokenCount":1200,"candidatesTokenCount":85,"totalTokenCount":1285}}\n\n'
+            )
+            yield chunk2.encode("utf-8")
+
+        async def aclose(self) -> None:
+            pass
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "oauth2.googleapis.com/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "ya29.tok1", "expires_in": 3600})
+        payload = json.loads(request.content.decode("utf-8"))
+        seen_payloads.append(payload)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=_TimeoutStreamingStream(len(seen_payloads)),
+        )
+
+    paths = _paths(tmp_path)
+    transport = httpx.MockTransport(handler)
+    account = GoogleCloudAccount(
+        paths.config / "google-cloud",
+        client=httpx.AsyncClient(transport=transport),
+    )
+    account.accounts = {
+        "acc-1": {
+            "id": "acc-1",
+            "email": "dev1@example.com",
+            "client_id": "cid",
+            "client_secret": "csec",
+            "refresh_token": "rtok1",
+            "project_id": "proj-1",
+            "enabled": True,
+        },
+    }
+    account.active_account_id = "acc-1"
+    account.set_strict_model(True)
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": "System prompt."},
+        {"role": "user", "content": "Aggiorna app.js con le traduzioni."},
+        {
+            "role": "assistant",
+            "content": "**Lettura app.js**\nControllo il file.",
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {"name": "run_command", "arguments": {"argv": ["ls"]}},
+                    "thought_signature": "sig-0",
+                }
+            ],
+        },
+        {"role": "tool", "tool_name": "run_command", "content": '{"ok": true, "stdout": "app.js"}'},
+    ]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "description": "Run a command",
+                "parameters": {"type": "object", "properties": {"argv": {"type": "array"}}},
+            },
+        }
+    ]
+
+    backend = GoogleCloudBackend(account, client=httpx.AsyncClient(transport=transport))
+    try:
+        msg, term = await backend._stream(
+            {"model": "gemini-4-argon", "messages": messages, "tools": tools, "reasoning_effort": "high"},
+            ctx=None,
+            item_id="timeout-chunk-test",
+        )
+        assert len(seen_payloads) == 2
+        # Attempt 1 used HIGH thinking level
+        assert seen_payloads[0]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "HIGH"
+        # Attempt 2 automatically stepped down to MEDIUM and injected the SSE timeout chunking recovery hint
+        assert seen_payloads[1]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "MEDIUM"
+        sys_text_2 = seen_payloads[1]["systemInstruction"]["parts"][0]["text"]
+        assert "Vertex AI SSE Timeout Recovery Directive" in sys_text_2
+        last_parts_2 = seen_payloads[1]["contents"][-1]["parts"]
+        fn_resp_2 = last_parts_2[0]["functionResponse"]["response"]
+        assert "timeout_recovery_hint" in fn_resp_2
+        assert "Aggiornamento completo di app.js" in fn_resp_2["timeout_recovery_hint"]
+        assert len(msg["tool_calls"]) == 1
+        assert term["done_reason"] == "tool_use"
+    finally:
+        await backend.close()
+        await account.close()
+
+
+

@@ -1737,8 +1737,57 @@ VERTEX_TOOL_REASONING_INSTRUCTION = (
     "(1-3 sentences in the user's language, starting with a bolded **Step Title**) "
     "in the same turn before the tool call to explain your current hypothesis, what you "
     "just verified, and what the next tool call is checking. Never emit a tool call "
-    "with an empty text message."
+    "with an empty text message.\n"
+    "Incremental File Modification Rule (Vertex AI SSE):\n"
+    "Vertex AI buffers the entire `functionCall` JSON payload on the server before streaming it. "
+    "Therefore, NEVER rewrite or inline an entire large file (>250 lines or >12 KB) inside a single "
+    "tool call (such as a monolithic `python3 -c` string or full-file rewrite). "
+    "Always modify large files using targeted surgical replacements/patches on specific sections, "
+    "or split large file creation/updates across 2-4 smaller sequential tool calls (<10 KB each)."
 )
+
+VERTEX_TIMEOUT_RECOVERY_HINT = (
+    "\n\n[Vertex AI SSE Timeout Recovery Directive]:\n"
+    "The previous generation timed out while buffering an oversized `functionCall` payload. "
+    "Do NOT attempt to write or inline an entire large file in a single tool call. "
+    "Split the file update into 2-4 smaller sequential tool calls (<8 KB per call) or apply "
+    "targeted section-by-section replacements."
+)
+
+
+def _inject_timeout_recovery_hint(contents: list[Json], partial_text: str) -> None:
+    """Attach a recovery note to the active turn in `contents` after an SSE read timeout on a tool turn."""
+    if not contents or not isinstance(contents[-1], dict):
+        return
+    snippet = " ".join(partial_text.strip().split())[:180]
+    prefix = f"Your previous attempt ({snippet!r}) " if snippet else "Your previous attempt "
+    hint = (
+        prefix
+        + "timed out while Vertex AI buffered an oversized functionCall payload. "
+        "Do NOT inline or rewrite the entire file in one tool call: split the file update "
+        "into smaller sequential steps (<8 KB per tool call) or apply targeted section replacements."
+    )
+    last_turn = contents[-1]
+    parts = last_turn.get("parts")
+    if not isinstance(parts, list) or not parts:
+        return
+    last_fn_resp = next(
+        (p["functionResponse"] for p in reversed(parts) if isinstance(p, dict) and isinstance(p.get("functionResponse"), dict)),
+        None,
+    )
+    if last_fn_resp is not None:
+        resp_dict = dict(last_fn_resp.get("response") or {})
+        resp_dict["timeout_recovery_hint"] = hint
+        last_fn_resp["response"] = resp_dict
+        return
+    for part in reversed(parts):
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            if "[Timeout Recovery]" not in part["text"]:
+                part["text"] = part["text"] + f"\n\n[Timeout Recovery]: {hint}"
+            else:
+                part["text"] = part["text"].split("\n\n[Timeout Recovery]:")[0] + f"\n\n[Timeout Recovery]: {hint}"
+            return
+
 
 _CANNED_REFUSAL_PREFIXES: tuple[str, ...] = (
     "mi dispiace, non posso soddisfare questa richiesta",
@@ -2736,6 +2785,14 @@ class GoogleCloudBackend(OllamaBackend):
             except (httpx.TimeoutException, httpx.TransportError):
                 if rate_limit_fallbacks or timeout_retries < max_timeout_retries:
                     timeout_retries += 1
+                    if declarations:
+                        if VERTEX_TIMEOUT_RECOVERY_HINT not in system_text:
+                            system_text += VERTEX_TIMEOUT_RECOVERY_HINT
+                        _inject_timeout_recovery_hint(contents, text)
+                        if timeout_retries == 1 and effort_str in {"high", "max", None}:
+                            effort_str = "medium"
+                        elif timeout_retries >= 2:
+                            effort_str = "low"
                     if rate_limit_fallbacks:
                         next_fb = rate_limit_fallbacks.pop(0)
                         target_loc = "global" if project else cur_loc
@@ -2750,6 +2807,8 @@ class GoogleCloudBackend(OllamaBackend):
                             if len(candidates) > 1 and active_acc_id in candidates:
                                 next_idx = (candidates.index(active_acc_id) + 1) % len(candidates)
                                 active_acc_id = candidates[next_idx]
+                    if deltas_flushed and ctx is not None and text.strip():
+                        await ctx.emit("message.delta", {"content": "\n\n", "item_id": item_id})
                     text = ""
                     tool_calls = []
                     finish_reason = ""
@@ -2760,6 +2819,10 @@ class GoogleCloudBackend(OllamaBackend):
                             {
                                 "message": (
                                     f"Timeout di lettura su {cur_model}; "
+                                    f"proseguo automaticamente il turno tramite {target_model_label} "
+                                    "suddividendo le modifiche in passaggi più piccoli."
+                                    if declarations
+                                    else f"Timeout di lettura su {cur_model}; "
                                     f"proseguo automaticamente il turno tramite {target_model_label}."
                                 ),
                                 "model": target_model_label,
