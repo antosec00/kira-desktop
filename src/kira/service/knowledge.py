@@ -89,7 +89,7 @@ class Knowledge:
         _text(session_id, "session_id")
         row = self.store.db.execute(
             "SELECT p.id,p.name,p.permission FROM projects p JOIN sessions s ON s.project_id=p.id "
-            "WHERE p.id=? AND s.id=? AND NOT EXISTS "
+            "WHERE p.id=? AND s.id=? AND COALESCE(json_extract(p.memory, '$.project_deleted'), 0)=0 AND NOT EXISTS "
             "(SELECT 1 FROM team_members m WHERE m.session_id=s.id)",
             (project_id, session_id)).fetchone()
         if row is None:

@@ -135,6 +135,13 @@ follow symbolic links. In **Settings → Work → New project permissions** you
 choose the preselection for future projects; existing ones do not change. All
 the details are in [Permissions and security](PERMISSIONS_AND_SECURITY.md).
 
+To remove a project from Kira's list without touching the folder or any of your
+files on disk, open the project's context menu in the sidebar (right-click or
+the **⋮** button), **File → Delete project…**, or **Project memory and
+instructions → Delete project…** and confirm in the summary dialog. Deletion
+requires that no runs, Teams or manually controlled browsers are active in the
+project.
+
 ### Connecting a provider
 
 Open **Models** in the sidebar. The providers are a row of buttons: **Ollama**,

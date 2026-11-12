@@ -1008,6 +1008,11 @@
   "Disattiva %1 e nascondilo dai selettori rapidi di chat e team": "Disable %1 and hide it from the chat and team quick selectors",
   "Disattiva provider": "Disable provider",
   "OpenAI · ChatGPT": "OpenAI · ChatGPT",
-  "Riattiva %1 per utilizzarlo nelle chat e nei team": "Re-enable %1 to use it in chats and teams"
+  "Riattiva %1 per utilizzarlo nelle chat e nei team": "Re-enable %1 to use it in chats and teams",
+  "Elimina progetto": "Delete project",
+  "Elimina progetto da Kira": "Remove project from Kira",
+  "Elimina progetto…": "Delete project…",
+  "Rimuovere «%1» da Kira?": "Remove “%1” from Kira?",
+  "Verranno rimosse le chat, la memoria e le impostazioni del progetto salvate in Kira. La cartella e tutti i tuoi file su disco non verranno toccati.": "Chats, memory, and project settings saved in Kira will be removed. The folder and all your files on disk will not be touched."
 }
 

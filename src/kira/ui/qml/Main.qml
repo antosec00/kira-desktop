@@ -278,8 +278,19 @@ ApplicationWindow {
     property string projectMenuId: ""
     property string projectMenuName: ""
     property string projectMenuRoot: ""
+    property string deleteProjectId: ""
+    property string deleteProjectName: ""
+    property string deleteProjectRoot: ""
     property string exportChatSessionId: ""
     property string activeTopMenu: ""
+
+    function promptDeleteProject(projData) {
+        if (!projData || !projData.id) return
+        deleteProjectId = String(projData.id)
+        deleteProjectName = String(projData.name || "")
+        deleteProjectRoot = String(projData.root || "")
+        deleteProjectDialog.open()
+    }
 
     function openRenameChat(sessionId, title) {
         if (!sessionId) return
@@ -345,6 +356,7 @@ ApplicationWindow {
                 { id: "menuFileExportChat", label: qsTr("Esporta chat in Markdown…"), shortcut: "", icon: "export", enabled: hasChat, action: function() { window.exportChatSessionId = workspace.sessionId; chatMarkdownExport.open() } },
                 { id: "menuFileExportMemory", label: qsTr("Esporta memoria del progetto…"), shortcut: "", icon: "memory", enabled: hasProject, action: function() { window.memoryExport = true; exportDialog.open() } },
                 { id: "menuFileBackup", label: qsTr("Backup database locale"), shortcut: "", icon: "drive", enabled: workspace.connected, action: function() { workspace.backup() } },
+                { id: "menuFileDeleteProject", label: qsTr("Elimina progetto…"), shortcut: "", icon: "trash", enabled: hasProject, action: function() { window.promptDeleteProject(workspace.project) } },
                 { separator: true },
                 { id: "menuFileSettings", label: qsTr("Impostazioni"), shortcut: "", icon: "settings", enabled: true, action: function() { window.page = 3 } },
                 { id: "menuFileQuit", label: qsTr("Esci"), shortcut: "", icon: "close", enabled: true, action: function() { window.close() } }
@@ -664,6 +676,10 @@ ApplicationWindow {
                                 font.weight: workspace.project.id === projectEntry.modelData.id ? Font.DemiBold : Font.Normal
                                 toolTipText: projectEntry.modelData.root
                                 onClicked: { if (workspace.project.id === projectEntry.modelData.id) projectEntry.expanded = !projectEntry.expanded; else { projectEntry.expanded = true; workspace.openProject(projectEntry.modelData.id) } window.page = 0; window.followOutput = true }
+                            }
+                            TapHandler {
+                                acceptedButtons: Qt.RightButton
+                                onTapped: window.openProjectContextMenu(projectEntry.modelData, projectMenuButton)
                             }
                             Row {
                                 id: projectActionsRow
@@ -2777,6 +2793,20 @@ ApplicationWindow {
                     workspace.copy(rootPath)
                 }
             }
+            Rectangle { Layout.fillWidth: true; Layout.leftMargin: 8; Layout.rightMargin: 8; height: 1; color: appearance.colors.border }
+            KButton {
+                objectName: "projectMenuDelete"
+                Layout.fillWidth: true
+                implicitHeight: 30 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                text: qsTr("Elimina progetto…")
+                iconName: "trash"; subtle: true; leftAligned: true; destructive: true
+                Accessible.name: text
+                onClicked: {
+                    const proj = { id: window.projectMenuId, name: window.projectMenuName, root: window.projectMenuRoot }
+                    projectContextMenu.close()
+                    window.promptDeleteProject(proj)
+                }
+            }
         }
     }
 
@@ -3189,9 +3219,70 @@ ApplicationWindow {
             RowLayout {
                 KButton { text: qsTr("Esporta JSON"); onClicked: { window.memoryExport = true; exportDialog.open() } }
                 KButton { text: qsTr("Contesto inviato"); onClicked: contextDialog.open() }
+                KButton {
+                    objectName: "projectPermissionDelete"
+                    text: qsTr("Elimina progetto…")
+                    iconName: "trash"; subtle: true; destructive: true
+                    enabled: workspace.connected && !workspace.busy && !assistant.active && !teams.busy && !!(workspace.project && workspace.project.id)
+                    onClicked: {
+                        const proj = workspace.project
+                        memoryDialog.close()
+                        window.promptDeleteProject(proj)
+                    }
+                }
                 Item { Layout.fillWidth: true }
                 KButton { text: qsTr("Chiudi"); subtle: true; onClicked: memoryDialog.close() }
                 KButton { objectName: "projectPermissionSave"; text: qsTr("Salva"); primary: true; enabled: workspace.connected; onClicked: workspace.updateProject(editInstructions.text, ["read_only", "project_write", "trusted_host", "full_access"][editPermission.currentIndex], memoryInput.text) }
+            }
+        }
+    }
+    Dialog {
+        font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
+        id: deleteProjectDialog; objectName: "deleteProjectDialog"; title: qsTr("Elimina progetto da Kira"); modal: true
+        anchors.centerIn: parent; width: Math.min(540, window.width - 60)
+        standardButtons: Dialog.NoButton
+        background: Rectangle { color: appearance.colors.surfaceAlt; radius: 12; border.color: appearance.colors.border }
+        ColumnLayout {
+            width: parent.width; spacing: 12
+            Text {
+                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: Font.DemiBold; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
+                textFormat: Text.PlainText
+                text: qsTr("Rimuovere «%1» da Kira?").arg(window.deleteProjectName)
+                color: appearance.colors.text; wrapMode: Text.WordWrap; Layout.fillWidth: true
+            }
+            Text {
+                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize
+                textFormat: Text.PlainText
+                text: qsTr("Verranno rimosse le chat, la memoria e le impostazioni del progetto salvate in Kira. La cartella e tutti i tuoi file su disco non verranno toccati.")
+                color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true
+            }
+            Rectangle {
+                visible: window.deleteProjectRoot.length > 0
+                Layout.fillWidth: true; radius: 8
+                color: appearance.colors.surface; border.color: appearance.colors.border; border.width: 1
+                implicitHeight: deleteRootLabel.implicitHeight + 16
+                Text {
+                    id: deleteRootLabel
+                    anchors.fill: parent; anchors.margins: 8
+                    font.family: appearance.codeFont.family; font.pixelSize: Math.max(9, appearance.codeFont.pixelSize - 1)
+                    textFormat: Text.PlainText; text: window.deleteProjectRoot
+                    color: appearance.colors.muted; wrapMode: Text.WrapAnywhere
+                }
+            }
+            RowLayout {
+                Layout.topMargin: 6; Item { Layout.fillWidth: true }
+                KButton { objectName: "cancelDeleteProjectButton"; text: qsTr("Annulla"); subtle: true; onClicked: deleteProjectDialog.close() }
+                KButton {
+                    objectName: "confirmDeleteProjectButton"
+                    text: qsTr("Elimina progetto")
+                    iconName: "trash"; destructive: true
+                    enabled: workspace.connected && window.deleteProjectId.length > 0
+                    onClicked: {
+                        const pid = window.deleteProjectId
+                        deleteProjectDialog.close()
+                        workspace.deleteProject(pid)
+                    }
+                }
             }
         }
     }

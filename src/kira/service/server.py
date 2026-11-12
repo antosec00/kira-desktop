@@ -8,6 +8,7 @@ import json
 import math
 import os
 import platform
+import shutil
 import signal
 import stat
 import sys
@@ -509,7 +510,10 @@ class Service:
                         "SELECT DISTINCT project_id FROM assistant_followups WHERE state='pending'")]
                     if method == "settings.update" else [])
                 for identifier in projects:
-                    if self.store.db.execute("SELECT 1 FROM projects WHERE id=?", (identifier,)).fetchone():
+                    if self.store.db.execute(
+                        "SELECT 1 FROM projects WHERE id=? AND COALESCE(json_extract(memory, '$.project_deleted'), 0)=0",
+                        (identifier,),
+                    ).fetchone():
                         await self.chat_lanes.after_project(identifier)
 
     async def _dispatch(self, method: str, params: Json, subscriber: Client | None = None) -> Json:
@@ -519,7 +523,7 @@ class Service:
                 "session.compact", "session.switch", "session.configure", "assistant.resume", "settings.update", "backend.discover", "backend.login", "backend.account", "backend.usage"}:
             raise KiraError("BUSY", "Provider settings are being updated; try again after they finish")
         if (self._closing or self.stopping.is_set()) and (method in {"run.start", "team.start", "team.resume",
-                "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume",
+                "backend.discover", "backend.login", "backend.account", "backend.usage", "settings.update", "project.delete", "session.create", "session.rename", "session.switch", "attachment.import", "session.configure", "assistant.resume",
                 "desktop.launch", "workspace.launch"}
                 or method in SOUL_METHODS | GOAL_METHODS | TRIGGER_METHODS | QUEUE_METHODS | CONTROL_METHODS | WORKBENCH_METHODS | CHECKPOINT_METHODS | CODE_INDEX_METHODS | CANVAS_METHODS | CONTEXT_METHODS | WEB_METHODS | RESEARCH_METHODS | KNOWLEDGE_METHODS | PROJECT_TOOL_METHODS | MCP_METHODS | STUDIO_METHODS):
             raise KiraError("SHUTTING_DOWN", "Service is draining; new work is not accepted")
@@ -614,7 +618,34 @@ class Service:
                         if studio_domain.STUDIO_AVAILABLE else {})}}
         if method == "project.list":
             fields(params, set())
-            return {"projects": self.store.all("SELECT * FROM projects ORDER BY updated_at DESC")}
+            return {"projects": self.store.all(
+                "SELECT * FROM projects WHERE COALESCE(json_extract(memory, '$.project_deleted'), 0) = 0 "
+                "ORDER BY updated_at DESC"
+            )}
+        if method == "project.delete":
+            fields(params, {"project_id"})
+            project = self.store.one("projects", string(params, "project_id", maximum=128))
+            project_id = str(project["id"])
+            active_teams = self.store.db.execute(
+                "SELECT 1 FROM team_runs WHERE project_id=? AND state IN ('planning','running') LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            active_tools = self.store.db.execute(
+                "SELECT 1 FROM project_tool_operations WHERE project_id=? AND state='running' LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            if (self.store.project_active(project_id)
+                    or active_teams is not None
+                    or active_tools is not None
+                    or any(r.get("project_id") == project_id for r in self.store.reserved(project["root"]))):
+                raise KiraError("BUSY", "Stop active work in this project before deleting it")
+            await self.web.close_project(project_id)
+            hard_deleted = self.store.delete_project(project_id)
+            for subdir in ("canvas", "code_index", "checkpoints", "studio"):
+                owned = self.paths.data / subdir / project_id
+                if owned.is_dir() and not owned.is_symlink():
+                    shutil.rmtree(owned, ignore_errors=True)
+            return {"deleted": True, "project_id": project_id, "purged": hard_deleted}
         if method == "project.create":
             fields(params, {"name", "root", "instructions", "permission"})
             name = string(params, "name", maximum=200)

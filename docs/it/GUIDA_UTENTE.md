@@ -138,6 +138,13 @@ Lavoro → Permessi dei nuovi progetti** scegli la preselezione per i progetti
 futuri; quelli esistenti non cambiano. Tutti i dettagli sono in
 [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md).
 
+Per rimuovere un progetto dall'elenco di Kira senza toccare la cartella né i
+tuoi file su disco, apri il menu contestuale del progetto nella barra laterale
+(clic destro o pulsante **⋮**), oppure **File → Elimina progetto…**, oppure
+**Memoria e istruzioni del progetto → Elimina progetto…** e conferma nella
+finestra di riepilogo. L'eliminazione richiede che nel progetto non ci siano
+esecuzioni, Team o browser manuali attivi.
+
 ### Collegare un provider
 
 Apri **Modelli** nella barra laterale. I provider sono una fila di pulsanti:

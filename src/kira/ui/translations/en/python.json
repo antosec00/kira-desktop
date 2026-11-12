@@ -661,6 +661,9 @@
   "Lettura dell’immagine": "Read image",
   "Strumento MCP": "MCP tool",
   "Strumento di Kira": "Kira tool",
-  "Codex · {tool}": "Codex · {tool}"
+  "Codex · {tool}": "Codex · {tool}",
+  "Attendi la conferma di avvio prima di eliminare un progetto.": "Wait for startup confirmation before deleting a project.",
+  "Impossibile eliminare il progetto.": "Unable to delete the project.",
+  "Progetto rimosso da Kira. I file nella cartella su disco non sono stati toccati.": "Project removed from Kira. Files in the folder on disk were not touched."
 }
 

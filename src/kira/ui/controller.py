@@ -2462,6 +2462,59 @@ class Workspace(QObject):
         self.client.request("project.create", {"name": name.strip(), "root": root,
                             "instructions": instructions, "permission": permission}, done)
 
+    @Slot(str)
+    def deleteProject(self, project_id: str) -> None:
+        if not project_id:
+            return
+        if self._pending_start or self._creating_session:
+            self._problem(tr("Attendi la conferma di avvio prima di eliminare un progetto."))
+            return
+
+        def done(_result: Json) -> None:
+            self._projects = [p for p in self._projects if p.get("id") != project_id]
+            stale_drafts = [key for key in self._drafts if key[0] == project_id]
+            stale_images = [key for key in self._draft_images if key[0] == project_id]
+            for key in stale_drafts:
+                self._drafts.pop(key, None)
+            for key in stale_images:
+                self._draft_images.pop(key, None)
+            if stale_drafts or stale_images:
+                self._draft_dirty = True
+                self.flushDrafts()
+            remembered = self._preferences.get("selected_sessions", {})
+            if isinstance(remembered, dict) and project_id in remembered:
+                selections = {k: v for k, v in remembered.items() if k != project_id}
+                self._save_preferences({"selected_sessions": selections}, emit=False)
+            if self._project.get("id") == project_id:
+                self._session_cache.clear()
+                self._scanned_project_root = ""
+                self._scanned_project_files = []
+                if self._projects:
+                    self.openProject(str(self._projects[0]["id"]))
+                else:
+                    self._requested_project_id = ""
+                    self._message_link_generation += 1
+                    self._project = {}
+                    self._sessions = []
+                    self._session = {}
+                    self._runs = {}
+                    self._artifacts = []
+                    self._artifact_paths = set()
+                    self._workspace = {}
+                    self._workspace_error = ""
+                    self._workspace_loading = False
+                    self._reset_chat(emit_signals=False)
+                    self.workspaceChanged.emit()
+            self._problem(tr("Progetto rimosso da Kira. I file nella cartella su disco non sono stati toccati."))
+            self.actionsChanged.emit()
+            self.refreshProjects()
+
+        def failed(error: Json) -> None:
+            self._problem(service_error_text(error, tr("Impossibile eliminare il progetto.")))
+            self.refreshProjects()
+
+        self.client.request("project.delete", {"project_id": project_id}, done, failed)
+
     def _is_selected_run(self, run: Json) -> bool:
         return str(run.get("session_id", "")) == self.sessionId
 

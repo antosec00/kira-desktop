@@ -1221,6 +1221,13 @@ class Web:
         if self.store.db.execute(query, args).fetchone():
             raise KiraError("BROWSER_CLEANUP", "Browser cleanup must finish before changing its account")
 
+    async def close_project(self, project_id: str) -> None:
+        selected = [actor for actor in self.actors.values() if actor.session.get("project_id") == project_id]
+        if any(actor.state.get("manual") for actor in selected):
+            raise KiraError("BUSY", "Close manually controlled browsers before deleting the project")
+        for actor in selected:
+            await self._close_actor(actor, user_closed=True)
+
     def shutdown_busy(self) -> bool:
         """A browser under manual control is live user work. An unconfirmed
         cleanup record is durable and checked again at the next start."""

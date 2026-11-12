@@ -158,7 +158,10 @@ class Store:
         row = self.db.execute(f"SELECT * FROM {table} WHERE id=?", (identifier,)).fetchone()
         if row is None:
             raise KiraError("NOT_FOUND", f"{table.rstrip('s')} not found")
-        return self.record(row)
+        record = self.record(row)
+        if table == "projects" and isinstance(record.get("memory"), dict) and record["memory"].get("project_deleted") is True:
+            raise KiraError("NOT_FOUND", "project not found")
+        return record
 
     def all(self, sql: str, args: tuple[Any, ...] = ()) -> list[Json]:
         return [self.record(row) for row in self.db.execute(sql, args)]
@@ -516,6 +519,145 @@ class Store:
             destination.unlink(missing_ok=True)
             raise
         return destination
+
+    def delete_project(self, project_id: str) -> bool:
+        """Delete a project's Kira metadata without touching its folder on disk.
+
+        Returns True when all SQLite rows for the project were removed, or False
+        when a tombstone was kept to preserve profile-scoped Soul memories.
+        """
+        project = self.one("projects", project_id)
+        timestamp = now()
+        has_profile_soul = False
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='soul_memories'").fetchone():
+            has_profile_soul = self.db.execute(
+                "SELECT 1 FROM soul_memories WHERE project_id=? AND scope='profile' LIMIT 1",
+                (project_id,),
+            ).fetchone() is not None
+        has_triggers = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_triggers'"
+        ).fetchone() is not None
+
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            if has_profile_soul:
+                for s_row in self.all("SELECT id, settings FROM sessions WHERE project_id=?", (project_id,)):
+                    sid = str(s_row["id"])
+                    settings = dict(s_row.get("settings") or {})
+                    settings["chat_deleted"] = True
+                    settings.pop("chat_pinned", None)
+                    settings.pop("chat_unread", None)
+                    self.db.execute("UPDATE sessions SET settings=? WHERE id=? AND project_id=?",
+                                    (encode(settings), sid, project_id))
+                    self.db.execute(
+                        "INSERT INTO session_workbench(session_id,archived,created_at,updated_at) VALUES (?,1,?,?) "
+                        "ON CONFLICT(session_id) DO UPDATE SET archived=1,updated_at=excluded.updated_at",
+                        (sid, timestamp, timestamp),
+                    )
+                    self.db.execute(
+                        "UPDATE prompt_queue SET status='removed',updated_at=? WHERE session_id=? AND status IN ('pending','starting')",
+                        (timestamp, sid),
+                    )
+                    self.db.execute(
+                        "UPDATE session_goals SET status='paused',updated_at=? WHERE session_id=? AND status='active'",
+                        (timestamp, sid),
+                    )
+                    self.db.execute(
+                        "UPDATE autonomous_goals SET status='paused',updated_at=? WHERE session_id=? AND status IN ('active','blocked')",
+                        (timestamp, sid),
+                    )
+                if has_triggers:
+                    self.db.execute(
+                        "UPDATE automation_triggers SET enabled=0,status='paused',updated_at=? WHERE project_id=?",
+                        (timestamp, project_id),
+                    )
+                self.db.execute(
+                    "UPDATE studio_grants SET enabled=0,generation=generation+1,updated_at=? WHERE project_id=? AND enabled=1",
+                    (timestamp, project_id),
+                )
+                memory = dict(project.get("memory") or {})
+                memory["project_deleted"] = True
+                self.db.execute(
+                    "UPDATE projects SET memory=?,updated_at=? WHERE id=?",
+                    (encode(memory), timestamp, project_id),
+                )
+                self.db.execute("COMMIT")
+                return False
+
+            tables = [
+                str(r[0]) for r in self.db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                ).fetchall()
+            ]
+            pk_col_by_table: dict[str, str | None] = {}
+            for t in tables:
+                info = self.db.execute(f"PRAGMA table_info({t})").fetchall()
+                pks = [str(c["name"]) for c in info if int(c["pk"]) > 0]
+                pk_col_by_table[t] = pks[0] if len(pks) == 1 else None
+
+            children_by_parent: dict[str, list[tuple[str, list[tuple[str, str]]]]] = {t: [] for t in tables}
+            for t in tables:
+                fk_groups: dict[int, list[sqlite3.Row]] = {}
+                for fk in self.db.execute(f"PRAGMA foreign_key_list({t})").fetchall():
+                    fk_groups.setdefault(int(fk["id"]), []).append(fk)
+                for group in fk_groups.values():
+                    ordered = sorted(group, key=lambda r: int(r["seq"]))
+                    parent = str(ordered[0]["table"])
+                    if parent == t or parent not in children_by_parent:
+                        continue
+                    pairs: list[tuple[str, str]] = []
+                    for fk in ordered:
+                        from_col = str(fk["from"])
+                        to_col = str(fk["to"] or pk_col_by_table.get(parent) or "id")
+                        pairs.append((from_col, to_col))
+                    children_by_parent[parent].append((t, pairs))
+
+            # Clear nullable self-referential / cross-row FKs inside the project first
+            self.db.execute("UPDATE project_tool_operations SET parent_id=NULL WHERE project_id=?", (project_id,))
+            self.db.execute("UPDATE team_runs SET parent_team_id=NULL WHERE project_id=?", (project_id,))
+            self.db.execute(
+                "UPDATE session_workbench SET parent_session_id=NULL "
+                "WHERE parent_session_id IN (SELECT id FROM sessions WHERE project_id=?)",
+                (project_id,),
+            )
+            if has_triggers:
+                self.db.execute("DELETE FROM automation_triggers WHERE project_id=?", (project_id,))
+
+            def where_clause(cols: list[str], batch: list[tuple[Any, ...]]) -> tuple[str, tuple[Any, ...]]:
+                if len(cols) == 1:
+                    placeholders = ",".join("?" for _ in batch)
+                    return f"{cols[0]} IN ({placeholders})", tuple(item[0] for item in batch)
+                conj = "(" + " AND ".join(f"{col}=?" for col in cols) + ")"
+                return "(" + " OR ".join(conj for _ in batch) + ")", tuple(v for item in batch for v in item)
+
+            def cascade_delete(table: str, cols: list[str], tuples: list[tuple[Any, ...]]) -> None:
+                if not tuples:
+                    return
+                for start in range(0, len(tuples), 250):
+                    batch = tuples[start:start + 250]
+                    cond, params = where_clause(cols, batch)
+                    for child_table, pairs in children_by_parent.get(table, []):
+                        child_cols = [p[0] for p in pairs]
+                        parent_cols = [p[1] for p in pairs]
+                        not_null = " AND ".join(f"{pc} IS NOT NULL" for pc in parent_cols)
+                        select_cols = ", ".join(parent_cols)
+                        parent_tuples = [
+                            tuple(r) for r in self.db.execute(
+                                f"SELECT DISTINCT {select_cols} FROM {table} WHERE {cond} AND {not_null}",
+                                params,
+                            ).fetchall()
+                        ]
+                        if parent_tuples:
+                            cascade_delete(child_table, child_cols, parent_tuples)
+                    self.db.execute(f"DELETE FROM {table} WHERE {cond}", params)
+
+            cascade_delete("projects", ["id"], [(project_id,)])
+            self.db.execute("COMMIT")
+            return True
+        except BaseException:
+            if self.db.in_transaction:
+                self.db.execute("ROLLBACK")
+            raise
 
     def close(self) -> None:
         self.db.close()

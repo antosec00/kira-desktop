@@ -52,7 +52,8 @@ class OmniboxService:
                 "(SELECT MAX(COALESCE(r.updated_at, r.created_at)) FROM runs r WHERE r.session_id = s.id) AS last_activity "
                 "FROM sessions s "
                 "JOIN projects p ON p.id = s.project_id "
-                "WHERE NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id = s.id) "
+                "WHERE COALESCE(json_extract(p.memory, '$.project_deleted'), 0) = 0 "
+                "AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.session_id = s.id) "
                 "AND COALESCE(json_extract(s.settings, '$.chat_deleted'), 0) = 0 "
                 "AND NOT EXISTS (SELECT 1 FROM session_workbench w WHERE w.session_id = s.id AND w.archived = 1) "
                 "ORDER BY CASE WHEN s.project_id = ? THEN 1 ELSE 0 END DESC, "
@@ -222,7 +223,7 @@ class OmniboxService:
             res_rows = self.store.db.execute(
                 "SELECT r.id, r.project_id, r.kind, r.title, r.body, p.name AS project_name "
                 "FROM research_records r JOIN projects p ON p.id = r.project_id "
-                "WHERE r.accepted = 1 "
+                "WHERE r.accepted = 1 AND COALESCE(json_extract(p.memory, '$.project_deleted'), 0) = 0 "
                 "ORDER BY CASE WHEN r.project_id = ? THEN 1 ELSE 0 END DESC, r.updated_at DESC LIMIT 30",
                 (active_project_id or "",),
             ).fetchall()
@@ -262,7 +263,8 @@ class OmniboxService:
 
         try:
             proj_rows = self.store.db.execute(
-                "SELECT id, name FROM projects ORDER BY CASE WHEN id = ? THEN 1 ELSE 0 END DESC, updated_at DESC LIMIT 20",
+                "SELECT id, name FROM projects WHERE COALESCE(json_extract(memory, '$.project_deleted'), 0) = 0 "
+                "ORDER BY CASE WHEN id = ? THEN 1 ELSE 0 END DESC, updated_at DESC LIMIT 20",
                 (active_project_id or "",),
             ).fetchall()
         except sqlite3.Error:
@@ -339,14 +341,20 @@ class OmniboxService:
     ) -> Json:
         active_project = None
         if project_id:
-            row = self.store.db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            row = self.store.db.execute(
+                "SELECT * FROM projects WHERE id = ? AND COALESCE(json_extract(memory, '$.project_deleted'), 0) = 0",
+                (project_id,),
+            ).fetchone()
             if row:
                 active_project = self.store.record(row)
 
         items: list[Json] = []
         if category in {"all", "actions"}:
             try:
-                proj_rows = self.store.all("SELECT * FROM projects ORDER BY updated_at DESC")
+                proj_rows = self.store.all(
+                    "SELECT * FROM projects WHERE COALESCE(json_extract(memory, '$.project_deleted'), 0) = 0 "
+                    "ORDER BY updated_at DESC"
+                )
             except sqlite3.Error:
                 proj_rows = []
             for p in proj_rows:
