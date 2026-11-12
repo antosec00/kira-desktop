@@ -1,53 +1,51 @@
-# Politica di sicurezza
+# Security policy
 
-*[Read in English](SECURITY.en.md)*
+*[🇮🇹 Leggi in italiano](SECURITY.it.md)*
 
-Kira Desktop esegue agenti che leggono file, lanciano comandi e navigano sul web
-per conto tuo. Prendere sul serio la sicurezza è il senso stesso del progetto:
-le segnalazioni sono benvenute e trattate con cura.
+Kira Desktop runs agents that read files, run commands and browse the web on
+your behalf. Taking that seriously is the whole point of the project, so
+reports are welcome and handled with care.
 
-## Segnalare una vulnerabilità
+## Reporting a vulnerability
 
-**Non aprire una issue pubblica** per un problema di sicurezza. Usa la
-segnalazione privata delle vulnerabilità di GitHub: nella scheda **Security** del
-repository premi **Report a vulnerability**, oppure apri direttamente
-<https://github.com/antosec00/kira-desktop/security/advisories/new>. La
-segnalazione resta visibile solo a te e ai manutentori del repository finché non
-viene pubblicato un avviso.
+Please do **not** open a public issue for security problems. Use GitHub's
+private vulnerability reporting: in the repository's **Security** tab press
+**Report a vulnerability**, or open
+<https://github.com/antosec00/kira-desktop/security/advisories/new> directly.
+The report stays visible only to you and to the repository's maintainers until
+an advisory is published.
 
-Includi la versione (`kira-desktop --version`), il provider coinvolto, il
-permesso del progetto in uso e una riproduzione che non contenga le tue
-credenziali o dati privati. Riceverai una conferma di ricezione; la correzione
-sarà pubblicata con una nota nella versione successiva.
+Include the version (`kira-desktop --version`), the provider involved, the
+project permission in use and a reproduction that does not contain your own
+credentials or private data. You will receive an acknowledgement, and the fix
+will be published with a note in the next release.
 
-## Versioni supportate
+## Supported versions
 
-| Versione | Supporto |
+| Version | Supported |
 | --- | --- |
-| Ultima versione pubblicata (pagina Releases, ramo `main`) | Sì |
-| Versioni precedenti | No |
+| Latest published release (Releases page, `main` branch) | Yes |
+| Older releases | No |
 
-## Che cosa protegge Kira, in breve
+## What Kira protects, in short
 
-- **Confine di esecuzione.** L'interfaccia non esegue mai strumenti. Lo fa il
-  servizio locale, con il permesso del progetto (sola lettura, scrittura nel
-  progetto, host fidato, accesso completo) e con accesso ai file relativo al
-  descrittore della cartella, che rifiuta i percorsi fuori dal progetto a meno
-  che l'accesso completo non sia stato concesso esplicitamente.
-- **Credenziali.** L'accesso ai provider usa i loro flussi ufficiali. Kira
-  conserva i propri token (dove un provider li prevede) in file 0600 sotto il
-  profilo dell'utente e non legge mai le credenziali di un'altra applicazione,
-  comprese quelle di Claude Code.
-- **IPC privato.** Interfaccia e servizio comunicano su un socket Unix in una
-  cartella runtime 0700; il servizio è l'unico a scrivere nel database SQLite.
-- **Browser.** Le pagine girano in un profilo isolato attraverso un proxy del
-  servizio; il contenuto delle pagine è un dato non fidato, consensi e accessi
-  sono tuoi.
-- **Allegati e dati degli strumenti.** Dimensioni limitate, artefatti con hash,
-  nessuna ripetizione automatica degli effetti registrati.
-- **Igiene di pubblicazione.** `scripts/check_public_tree.py` rifiuta percorsi
-  personali e binari non revisionati nell'albero versionato.
+- **Execution boundary.** The GUI never executes tools. The local service does,
+  with the project's permission (read-only, project write, trusted host, full
+  access) and descriptor-relative file access that refuses paths outside the
+  project unless full access was granted explicitly.
+- **Credentials.** Provider sign-ins use the providers' official flows. Kira
+  stores its own tokens (where a provider has them) in 0600 files under the
+  user's profile and never reads another application's credentials, including
+  Claude Code's.
+- **Private IPC.** GUI and service talk over a Unix socket in a 0700 runtime
+  directory; the service is the only SQLite writer.
+- **Browser.** Pages run in an isolated profile through a service-owned proxy;
+  page content is untrusted data, consents and logins are yours.
+- **Attachments and tool data.** Bounded sizes, hashed artifacts, no replay of
+  recorded tool effects.
+- **Publication hygiene.** `scripts/check_public_tree.py` rejects personal paths
+  and unreviewed binaries in the tracked tree.
 
-I confini dell'automazione e i limiti noti sono descritti in
-[Permessi e sicurezza](docs/it/PERMESSI_E_SICUREZZA.md) e
-[Browser e Computer](docs/it/BROWSER_E_COMPUTER.md).
+The automation boundary and known limits are described in
+[Permissions and security](docs/en/PERMISSIONS_AND_SECURITY.md) and
+[Browser and Computer](docs/en/BROWSER_AND_COMPUTER.md).

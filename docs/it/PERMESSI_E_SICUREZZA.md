@@ -374,4 +374,4 @@ Se trovi una vulnerabilità, non aprire una issue pubblica. Le modalità di
 segnalazione privata, le informazioni da includere (versione da
 `kira-desktop --version`, provider, permesso del progetto, riproduzione senza
 credenziali) e le versioni supportate sono nella
-[politica di sicurezza](../../SECURITY.md) del repository.
+[politica di sicurezza](../../SECURITY.it.md) del repository.

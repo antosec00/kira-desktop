@@ -11,7 +11,7 @@ are. It is written in Italian; the English translation is in `docs/en/`.
 
 | If you want to… | Start from |
 | --- | --- |
-| Start using Kira | The [README](../../README.en.md), then the [User guide](USER_GUIDE.md) |
+| Start using Kira | The [README](../../README.md), then the [User guide](USER_GUIDE.md) |
 | Install or administer it | [Installation](INSTALLATION.md) |
 | Connect a model | [Providers](PROVIDERS.md) |
 | Understand what Kira can do on the computer | [Permissions and security](PERMISSIONS_AND_SECURITY.md) |
@@ -43,6 +43,6 @@ are. It is written in Italian; the English translation is in `docs/en/`.
 | Reference of IPC, events, permissions, provider interface and limits | [Contracts](CONTRACTS.md) |
 | Code map, environment, checks, tests, packages, how to add providers, languages and preferences | [Development](DEVELOPMENT.md) |
 | Dependency licenses | [Third-party licenses](THIRD_PARTY_LICENSES.md) |
-| Contribution rules, security reports, code of conduct | [CONTRIBUTING](../../CONTRIBUTING.en.md), [SECURITY](../../SECURITY.en.md), [CODE_OF_CONDUCT](../../CODE_OF_CONDUCT.en.md) |
+| Contribution rules, security reports, code of conduct | [CONTRIBUTING](../../CONTRIBUTING.md), [SECURITY](../../SECURITY.md), [CODE_OF_CONDUCT](../../CODE_OF_CONDUCT.md) |
 
 The images used by the documentation are in [`../images/`](../images/).

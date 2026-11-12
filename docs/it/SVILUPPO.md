@@ -423,6 +423,6 @@ i commit sono in inglese; la documentazione d'origine è in `docs/it/`.
 5. Le voci di catalogo per ogni nuova stringa dell'interfaccia e, se hai aggiunto
    una `ComboBox`, i contatori aggiornati nei test.
 
-Per i problemi di sicurezza segui [SECURITY.md](../../SECURITY.md) invece di
+Per i problemi di sicurezza segui [SECURITY.it.md](../../SECURITY.it.md) invece di
 aprire una issue pubblica; le regole di convivenza sono nel
-[Codice di condotta](../../CODE_OF_CONDUCT.md).
+[Codice di condotta](../../CODE_OF_CONDUCT.it.md).

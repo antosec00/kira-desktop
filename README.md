@@ -1,116 +1,115 @@
 <p align="center">
-  <img src="src/kira/ui/assets/kira-mascot.png" alt="Kira, la mascotte" width="140">
+  <img src="src/kira/ui/assets/kira-mascot.png" alt="Kira, the mascot" width="140">
 </p>
 
 <h1 align="center">Kira Desktop</h1>
 
 <p align="center">
-  L'applicazione desktop che amplifica i modelli di IA che già usi.<br>
-  Progetti, chat, strumenti, un browser isolato e team di agenti — con i tuoi permessi, i tuoi dati, sul tuo computer.
+  The desktop application that amplifies the AI models you already use.<br>
+  Projects, chats, tools, an isolated browser and agent teams — with your permissions, your data, on your computer.
 </p>
 
 <p align="center">
-  <a href="README.en.md">🇬🇧 Read in English</a> ·
-  <a href="docs/it/GUIDA_UTENTE.md">Guida utente</a> ·
-  <a href="docs/it/README.md">Documentazione</a> ·
-  <a href="docs/it/INSTALLAZIONE.md">Installazione</a>
+  <a href="README.it.md">🇮🇹 Leggi in italiano</a> ·
+  <a href="docs/en/USER_GUIDE.md">User guide</a> ·
+  <a href="docs/en/README.md">Documentation</a> ·
+  <a href="docs/en/INSTALLATION.md">Installation</a>
 </p>
 
-![Kira Desktop: una chat di progetto con le ricevute degli strumenti e il campo di scrittura](docs/images/chat-dark.png)
+![Kira Desktop: a project chat with tool receipts and the composer](docs/images/chat-dark.png)
 
-## Che cos'è Kira
+## What Kira is
 
-Kira non è un'altra finestra di chat. È uno **spazio di lavoro durevole** che dà
-al modello un progetto, una memoria, strumenti ispezionabili e confini chiari,
-perché il modello che scegli — locale o in cloud — possa fare di più, in modo
-più sicuro, e tu possa sempre vedere che cosa è successo davvero.
+Kira is not another chat window. It is a **durable workspace** that gives the
+model a project, a memory, inspectable tools and clear boundaries, so that the
+model you choose — local or in the cloud — can do more, more safely, and you can
+always see what really happened.
 
-- **Il modello ragiona, Kira esegue.** Letture, scritture, comandi, pagine web e
-  azioni nel browser passano da un servizio locale indipendente, con il permesso
-  che hai scelto per il progetto. Ogni operazione lascia una ricevuta nella chat:
-  ciò che il modello racconta non vale mai come prova.
-- **Niente esce dal tuo computer senza di te.** Progetti, chat, eventi delle
-  esecuzioni, screenshot e allegati stanno in un database SQLite e in cartelle
-  private del tuo profilo. Kira non legge cookie né credenziali di altre
-  applicazioni; i token e le chiavi degli accessi che gestisce (ChatGPT, Google
-  Cloud, OpenRouter, DeepSeek) restano in file privati del profilo (`0600`), fuori da
-  database, esportazioni e diagnostica.
-- **Porta il tuo modello.** Ollama sul tuo computer, OpenAI Codex, il tuo piano
-  ChatGPT, Google Cloud · Vertex AI (con i tuoi crediti o saldo GCP e multi-account
-  isolato), OpenRouter (oltre 300 modelli con adattamento automatico al contesto e
-  fallback per i modelli `:free`), DeepSeek o il tuo Claude Code: scegli il provider per ogni chat, abilita o disattiva i servizi che usi in **Modelli** e puoi cambiarlo senza perdere la conversazione.
+- **The model reasons, Kira executes.** Reads, writes, commands, web pages and
+  browser actions go through an independent local service with the permission
+  you chose for the project. Every operation leaves a receipt in the chat: what
+  the model narrates never counts as evidence.
+- **Nothing leaves your computer without you.** Projects, chats, run events,
+  screenshots and attachments live in a SQLite database and in private folders
+  of your profile. Kira never reads cookies or other applications' credentials;
+  the tokens and API keys of the sign-ins it manages (ChatGPT, Google Cloud,
+  OpenRouter, DeepSeek) stay in private files of your profile (`0600`), outside the
+  database, exports and diagnostics.
+- **Bring your own model.** Ollama on your computer, OpenAI Codex, your ChatGPT
+  plan, Google Cloud · Vertex AI (with your GCP credits or balance and isolated
+  multi-account switching), OpenRouter (300+ models with automatic context
+  adaptation and `:free` model fallback), DeepSeek or your Claude Code: pick the
+  provider per chat, enable or disable the services you use in **Models**, and
+  switch providers without losing the conversation.
 
-## In evidenza
+## Highlights
 
-- **Progetti e chat con nome**, con istruzioni, memoria condivisa, provider e
-  livello di ragionamento per chat, bozze che sopravvivono ai riavvii, immagini
-  allegate con anteprima, `@Mentions` universali (`@file`, `@folder`, `@git`,
-  `@terminal`, `@web`, `@soul`, `@team`) e `/Slash Commands` contestuali nel
-  campo di scrittura.
-- **Strumenti con ricevuta.** Lettura, ricerca, scrittura, comandi, ricerca web,
-  navigazione: ogni chiamata mostra il riferimento letterale e l'esito
-  registrato, espandibile fino ai dati originali.
-- **Un browser isolato e il Computer di Kira.** L'agente naviga in un profilo
-  separato accanto alla chat, legge le pagine, scatta screenshot che vede davvero
-  e ti restituisce il controllo per accessi e consensi.
-- **Team di agenti** organizzati da te o da un coordinatore, con messaggi
-  durevoli, pausa e ripresa, e risultati consegnati nella chat di origine.
-- **Registro di Ricerca.** Schede attribuite, collegamenti alle prove,
-  valutazioni e proposte dell'agente che accetti o rifiuti: conoscenza che
-  sopravvive alla singola chat.
-- **Anima di Kira.** Identità di tua proprietà, con una filosofia di lavoro,
-  preferenze esplicite, creazione e configurazione rapida via chat (`/anima crea`,
-  `/anima preferenza`) e lezioni apprese che puoi rivedere, conservare per chat,
-  per progetto o in tutti i progetti con la stessa Anima, oppure dimenticare.
-- **Omnibox universale (`Ctrl+K`).** Ricerca istantanea tra tutti i progetti,
-  chat, messaggi, identità e lezioni dell'Anima, schede di Ricerca, artefatti
-  Canvas e azioni native del desktop, senza alcun consumo di token.
-- **Obiettivi autonomi, domande persistenti e indicazioni durante il lavoro**,
-  più i riepiloghi pubblici del ragionamento dove il provider li offre.
-- **Un'interfaccia silenziosa.** Una sola barra in alto, barra laterale a icone
-  o nascosta, chip nel campo di scrittura, pannelli con schede, tema chiaro e
-  scuro, italiano e inglese.
+- **Named projects and chats**, with instructions, shared memory, provider and
+  reasoning effort per chat, drafts that survive restarts, attached images with
+  previews, universal `@Mentions` (`@file`, `@folder`, `@git`, `@terminal`,
+  `@web`, `@soul`, `@team`) and contextual `/Slash Commands` in the composer.
+- **Tools with receipts.** Read, search, write, commands, web search,
+  navigation: every call shows the literal reference and the recorded outcome,
+  expandable down to the original data.
+- **An isolated browser and Kira's Computer.** The agent browses in a separate
+  profile beside the chat, reads pages, takes screenshots it actually sees and
+  hands control back to you for logins and consents.
+- **Agent teams** organized by you or by a coordinator, with durable messages,
+  pause and resume, and results delivered to the originating chat.
+- **Research registry.** Attributed records, links to evidence, assessments and
+  agent proposals you accept or reject: knowledge that outlives a single chat.
+- **Kira's Soul.** Identities you own, with a working philosophy, explicit
+  preferences, quick chat creation and configuration (`/anima crea`,
+  `/anima preferenza`) and learned lessons you can review, keep per chat, per
+  project or across all projects sharing the same Soul, or forget.
+- **Universal Omnibox (`Ctrl+K`).** Instant cross-project search across
+  projects, chats, messages, Soul identities and lessons, Research records,
+  Canvas artifacts and native desktop actions, with zero token overhead.
+- **Autonomous goals, persistent questions and guidance while working**, plus
+  public reasoning summaries where the provider offers them.
+- **A quiet interface.** One top bar, an icon rail or hidden sidebar, chips in
+  the composer, tabbed side panels, light and dark themes, Italian and English.
 
 <p align="center">
-  <img src="docs/images/model-popover.png" alt="Finestra provider, modello e ragionamento con la barra laterale a icone" width="48%">
-  <img src="docs/images/models.png" alt="Pagina Modelli con i provider a segmenti e le schede dei modelli" width="48%">
+  <img src="docs/images/model-popover.png" alt="Provider, model and reasoning popover with the icon rail" width="48%">
+  <img src="docs/images/models.png" alt="Models page with segmented providers and model cards" width="48%">
 </p>
 
-## Provider
+## Providers
 
-| Provider | Come si collega | Chi esegue gli strumenti |
+| Provider | How it connects | Who runs the tools |
 | --- | --- | --- |
-| **Ollama** | API HTTP locale (`http://127.0.0.1:11434` come predefinito) | Kira; strumenti verificati al primo uso, nessun download automatico di modelli |
-| **Codex** | OpenAI Codex App Server, con l'accesso ufficiale | Codex, con le sue sandbox; Kira osserva e registra ogni operazione |
-| **OpenAI · ChatGPT** | Il tuo piano ChatGPT, con l'accesso ufficiale | Kira; immagini in ingresso, ricerca web ospitata, contesto gestito automaticamente |
-| **Google Cloud · Vertex AI** | Multi-account OAuth2 PKCE isolato in Kira, `gcloud` ADC di sistema (in sola lettura) o API Key | Kira; modelli nativi Google (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) e modelli Partner Claude su Vertex AI, visione e riepiloghi del ragionamento |
-| **OpenRouter** | Chiave API OpenRouter (`sk-or-v1-...` nel profilo locale `0600` o variabile `OPENROUTER_API_KEY`) | Kira; catalogo dinamico (`/api/v1/models`), adattamento automatico a contesto, `max_tokens`, `reasoning`/`thinking`, prompt caching (Claude/Gemini), visione multimodale e fallback anti-stallo per modelli `:free` |
-| **DeepSeek API** | Accesso account DeepSeek o proxy DeeperSeeker | Kira |
-| **DeepSeek Web** | Token di sessione del sito | Kira, con un protocollo testuale per gli strumenti |
-| **Claude Code** | Il tuo Claude Code già autenticato (extra opzionale, non incluso nei pacchetti) | Claude Code, osservato da Kira; browser, Computer, domande e Ricerca tramite un server MCP interno |
+| **Ollama** | Local HTTP API (`http://127.0.0.1:11434` by default) | Kira; tools verified on first use, no automatic model downloads |
+| **Codex** | OpenAI Codex App Server, with the official sign-in | Codex, with its sandboxes; Kira observes every operation and exposes its isolated browser, Computer and project tools via MCP |
+| **OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
+| **Google Cloud · Vertex AI** | Isolated multi-account OAuth2 PKCE in Kira, read-only system `gcloud` ADC, or API Key | Kira; native Google models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) and Vertex AI Partner Claude models, vision, and public reasoning summaries |
+| **OpenRouter** | OpenRouter API key (`sk-or-v1-...` stored in your local `0600` profile or `OPENROUTER_API_KEY` env var) | Kira; dynamic catalog (`/api/v1/models`), automatic adaptation to context window, `max_tokens`, `reasoning`/`thinking`, prompt caching (Claude/Gemini), multimodal vision, and anti-stall fallback for `:free` models |
+| **DeepSeek API** | DeepSeek account sign-in or DeeperSeeker proxy | Kira |
+| **DeepSeek Web** | Session token from the website | Kira, with a text protocol for the tools |
+| **Claude Code** | Your already signed-in Claude Code (optional extra, not in the packages) | Claude Code, observed by Kira; browser, Computer, questions and Research through an internal MCP server |
 
-Il provider si sceglie per ogni chat in **Modelli** (*Hub Provider e Modelli*), dove puoi anche abilitare o disattivare ciascun servizio per snellire i selettori rapidi. [Provider](docs/it/PROVIDER.md)
-descrive ogni collegamento, le sue capacità e i limiti noti.
+The provider is chosen per chat in **Models** (*Provider and Model Hub*), where you can also enable or disable each service to keep quick selectors clean. [Providers](docs/en/PROVIDERS.md)
+describes every connection, its capabilities and known limits.
 
 
-## Avvio rapido
+## Quick start
 
-Kira è disponibile in modo **nativo su Linux** (Ubuntu 24.04 LTS con Python 3.12 e
-Ubuntu 26.04 LTS con Python 3.14) e **nativo su Windows 10 e 11 (64 bit)**, oltre
-che in WSL2 con WSLg.
+Kira runs **natively on Linux** (Ubuntu 24.04 LTS with Python 3.12 and Ubuntu
+26.04 LTS with Python 3.14) and **natively on 64-bit Windows 10 and 11**, as
+well as in WSL2 with WSLg.
 
-**Su Windows 10 / 11 (nativo):**
+**On Windows 10 / 11 (native):**
 
-Scarica ed esegui l'installer [`kira-desktop_windows_amd64_setup.exe`](https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe) dalla pagina [Releases](https://github.com/antosec00/kira-desktop/releases), oppure da PowerShell:
+Download and run [`kira-desktop_windows_amd64_setup.exe`](https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe) from the [Releases](https://github.com/antosec00/kira-desktop/releases) page, or from PowerShell:
 
 ```powershell
 Invoke-WebRequest -Uri "https://github.com/antosec00/kira-desktop/releases/latest/download/kira-desktop_windows_amd64_setup.exe" -OutFile "$env:TEMP\kira-desktop_setup.exe"
 Start-Process -FilePath "$env:TEMP\kira-desktop_setup.exe" -Wait
 ```
 
-L'installer configura Kira in `%LOCALAPPDATA%\Programs\Kira Desktop` senza richiedere privilegi di amministratore e crea i collegamenti **Kira Desktop** sul Desktop e nel Menu Start ([Installazione → Installazione nativa su Windows 10 e 11](docs/it/INSTALLAZIONE.md#installazione-nativa-su-windows-10-e-11)).
+The installer sets up Kira in `%LOCALAPPDATA%\Programs\Kira Desktop` without administrator privileges and creates **Kira Desktop** shortcuts on your Desktop and in the Start Menu ([Installation → Native installation on Windows 10 and 11](docs/en/INSTALLATION.md#native-installation-on-windows-10-and-11)).
 
-**Dal pacchetto su Linux (Ubuntu 24.04):**
+**From the package on Linux (Ubuntu 24.04):**
 
 ```sh
 cd "$(mktemp -d)"
@@ -119,93 +118,91 @@ sudo apt install --no-remove ./kira-desktop_ubuntu24.04_amd64.deb
 kira
 ```
 
-Per Ubuntu 26.04 usa `kira-desktop_ubuntu26.04_amd64.deb`. Tutte le versioni,
-con le impronte `SHA256SUMS` e la loro firma `SHA256SUMS.sig` per controllare i
-file, sono nella pagina
-[Releases](https://github.com/antosec00/kira-desktop/releases). Una volta
-installata, Kira cerca da sola le nuove versioni e le installa quando glielo
-chiedi, dopo averne verificato la firma
-([Installazione → Aggiornare da Kira](docs/it/INSTALLAZIONE.md#aggiornare-da-kira)). Se preferisci
-usare WSL2 su Windows, i passi sono in
-[Installazione → Su Windows con WSL](docs/it/INSTALLAZIONE.md#su-windows-con-wsl).
+For Ubuntu 26.04 use `kira-desktop_ubuntu26.04_amd64.deb`. Every version, with
+the `SHA256SUMS` checksums and their `SHA256SUMS.sig` signature to verify the
+files, is on the [Releases](https://github.com/antosec00/kira-desktop/releases)
+page. Once installed, Kira looks for new versions on its own and installs them
+when you ask, after verifying their signature
+([Installation → Updating from Kira](docs/en/INSTALLATION.md#updating-from-kira)). If you prefer
+to run Kira inside WSL2 on Windows, see
+[Installation → On Windows with WSL](docs/en/INSTALLATION.md#on-windows-with-wsl).
 
-**Dal sorgente (Linux o Windows):**
+**From source (Linux or Windows):**
 
 ```sh
-# 1. Installa uv (https://docs.astral.sh/uv/) e clona il repository
+# 1. Install uv (https://docs.astral.sh/uv/) and clone the repository
 git clone https://github.com/antosec00/kira-desktop.git
 cd kira-desktop
 
-# 2. Installa le dipendenze bloccate (aggiungi l'extra Claude Code se lo vuoi)
-uv sync --frozen                     # oppure: uv sync --frozen --extra claude-code
+# 2. Install the locked dependencies (add the Claude Code extra if you want it)
+uv sync --frozen                     # or: uv sync --frozen --extra claude-code
 
-# 3. Avvia
+# 3. Start
 uv run kira
 ```
 
-Su Linux dal sorgente servono anche le librerie di sistema elencate in
-[Installazione → Avvio dal sorgente con `uv`](docs/it/INSTALLAZIONE.md#avvio-dal-sorgente-con-uv);
-il pacchetto `.deb` le installa da solo.
+On Linux from source you also need the system libraries listed in
+[Installation → Running from source with `uv`](docs/en/INSTALLATION.md#running-from-source-with-uv);
+the `.deb` package installs them on its own.
 
-Al primo avvio la schermata iniziale offre **Come funziona Kira**, che apre la
-**Guida iniziale**. Crea un progetto scegliendo una cartella, seleziona provider
-e modello in **Modelli** e scrivi la prima richiesta. La
-[guida utente](docs/it/GUIDA_UTENTE.md) spiega ogni pannello.
+On first start the start screen offers **How Kira works**, which opens the
+**Getting started** guide. Create a project by choosing a folder, select
+provider and model in **Models** and write your first request. The
+[user guide](docs/en/USER_GUIDE.md) explains every panel.
 
-**Costruire i pacchetti.** `python3 scripts/build_deb.py` costruisce il
-pacchetto `.deb` per Ubuntu 24.04 (`--target resolute` per la 26.04);
-`python3 scripts/build_windows.py --package` costruisce l'installer nativo per
-Windows (`dist/kira-desktop_<versione>_windows_amd64_setup.exe`).
-[Installazione](docs/it/INSTALLAZIONE.md) copre requisiti, controllo delle
-impronte, percorsi dei dati, profili separati, backup e aggiornamenti.
+**Building the packages.** `python3 scripts/build_deb.py` builds the `.deb`
+package for Ubuntu 24.04 (`--target resolute` for 26.04);
+`python3 scripts/build_windows.py --package` builds the native Windows
+installer (`dist/kira-desktop_<version>_windows_amd64_setup.exe`).
+[Installation](docs/en/INSTALLATION.md) covers requirements, checksum
+verification, data paths, separate profiles, backups and upgrades.
 
-## Sicurezza e dati
+## Security and data
 
-- **I permessi sono per progetto:** sola lettura, scrittura nel progetto, host
-  fidato (comandi come il tuo utente) o accesso completo. Nulla sale di livello
-  in silenzio. [Permessi e sicurezza](docs/it/PERMESSI_E_SICUREZZA.md) definisce
-  il confine.
-- **L'esecuzione è registrata.** Gli eventi durevoli stabiliscono che cosa è
-  successo; strumenti falliti o non confermati restano visibili.
-- **Browser isolato.** Le pagine pubbliche sono dati non fidati, mai istruzioni.
-  Accessi e consensi richiedono te; ogni chat ha il proprio profilo, temporaneo
-  salvo che tu scelga di conservarlo. [Browser e Computer](docs/it/BROWSER_E_COMPUTER.md).
-- **Privato per impostazione.** Percorsi XDG su Linux, `%LOCALAPPDATA%\Kira` su
-  Windows o un `KIRA_HOME` esplicito, file riservati al tuo utente, canale IPC
-  locale privato fra interfaccia e servizio.
+- **Permissions are per project:** read-only, project write, trusted host
+  (commands as your user) or full access. Nothing is escalated silently.
+  [Permissions and security](docs/en/PERMISSIONS_AND_SECURITY.md) defines the boundary.
+- **Execution is recorded.** Durable events establish what happened; failed or
+  unconfirmed tools stay visible.
+- **Isolated browser.** Public pages are untrusted data, never instructions.
+  Logins and consents require you; each chat has its own profile, temporary
+  unless you choose to keep it. [Browser and Computer](docs/en/BROWSER_AND_COMPUTER.md).
+- **Private by default.** XDG paths on Linux, `%LOCALAPPDATA%\Kira` on Windows,
+  or an explicit `KIRA_HOME`, user-private files, and a private local IPC channel
+  between interface and service.
 
-[SECURITY.md](SECURITY.md) spiega come segnalare un problema di sicurezza.
+[SECURITY.md](SECURITY.md) explains how to report a security issue.
 
-## Documentazione
+## Documentation
 
-| Se vuoi… | Leggi |
+| If you want to… | Read |
 | --- | --- |
-| Usare Kira ogni giorno | [Guida utente](docs/it/GUIDA_UTENTE.md) |
-| Installare, salvare, aggiornare, scegliere un profilo | [Installazione](docs/it/INSTALLAZIONE.md) |
-| Collegare un provider | [Provider](docs/it/PROVIDER.md) |
-| Capire permessi e confini | [Permessi e sicurezza](docs/it/PERMESSI_E_SICUREZZA.md) |
-| Usare browser, Team, Ricerca, Anima | [Browser e Computer](docs/it/BROWSER_E_COMPUTER.md), [Team](docs/it/TEAM.md), [Ricerca](docs/it/RICERCA.md), [Anima e Conoscenza](docs/it/ANIMA_E_CONOSCENZA.md) |
-| Lavorare sul codice | [Sviluppo](docs/it/SVILUPPO.md), [Architettura](docs/it/ARCHITETTURA.md), [Contratti](docs/it/CONTRATTI.md) |
-| Sfogliare tutto | [Indice della documentazione](docs/it/README.md) · [Documentation in English](docs/en/README.md) |
+| Use Kira every day | [User guide](docs/en/USER_GUIDE.md) |
+| Install, back up, upgrade, choose a profile | [Installation](docs/en/INSTALLATION.md) |
+| Connect a provider | [Providers](docs/en/PROVIDERS.md) |
+| Understand permissions and boundaries | [Permissions and security](docs/en/PERMISSIONS_AND_SECURITY.md) |
+| Use the browser, Teams, Research, Soul | [Browser and Computer](docs/en/BROWSER_AND_COMPUTER.md), [Teams](docs/en/TEAMS.md), [Research](docs/en/RESEARCH.md), [Soul and Knowledge](docs/en/SOUL_AND_KNOWLEDGE.md) |
+| Work on the code | [Development](docs/en/DEVELOPMENT.md), [Architecture](docs/en/ARCHITECTURE.md), [Contracts](docs/en/CONTRACTS.md) |
+| Browse everything | [Documentation index](docs/en/README.md) · [Documentazione in italiano](docs/it/README.md) |
 
-La documentazione è scritta in italiano e tradotta in inglese in `docs/en/`.
+The documentation is written in Italian and translated into English in `docs/en/`.
 
-## Sviluppo
+## Development
 
 ```sh
 uv sync --frozen --extra claude-code
-QT_QPA_PLATFORM=offscreen uv run pytest tests      # suite sintetica completa
+QT_QPA_PLATFORM=offscreen uv run pytest tests      # complete synthetic suite
 uv run ruff check src tests scripts packaging
 uv run mypy src
 python3 scripts/check_translations.py
 python3 scripts/check_public_tree.py
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) descrive rami, commit, lingue della
-documentazione e la lista di controllo per una pull request.
+[CONTRIBUTING.md](CONTRIBUTING.md) describes branches, commits,
+documentation languages and the pull request checklist.
 
-## Licenza
+## License
 
-Kira Desktop è rilasciato con [licenza MIT](LICENSE). I componenti di terze
-parti inclusi o collegati mantengono le proprie licenze; vedi
-[Licenze di terze parti](docs/it/LICENZE_TERZE_PARTI.md).
+Kira Desktop is released under the [MIT license](LICENSE). Bundled or linked
+third-party components keep their own licenses; see
+[Third-party licenses](docs/en/THIRD_PARTY_LICENSES.md).

@@ -11,7 +11,7 @@ limiti. È scritta in italiano; la traduzione inglese è in `docs/en/`.
 
 | Se vuoi… | Comincia da |
 | --- | --- |
-| Iniziare a usare Kira | Il [README](../../README.md), poi la [Guida utente](GUIDA_UTENTE.md) |
+| Iniziare a usare Kira | Il [README](../../README.it.md), poi la [Guida utente](GUIDA_UTENTE.md) |
 | Installarla o amministrarla | [Installazione](INSTALLAZIONE.md) |
 | Collegare un modello | [Provider](PROVIDER.md) |
 | Capire che cosa Kira può fare sul computer | [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md) |
@@ -43,6 +43,6 @@ limiti. È scritta in italiano; la traduzione inglese è in `docs/en/`.
 | Riferimento di IPC, eventi, permessi, interfaccia dei provider e limiti | [Contratti](CONTRATTI.md) |
 | Mappa del codice, ambiente, controlli, test, pacchetti, come aggiungere provider, lingue e preferenze | [Sviluppo](SVILUPPO.md) |
 | Licenze delle dipendenze | [Licenze di terze parti](LICENZE_TERZE_PARTI.md) |
-| Regole per contribuire, segnalazioni di sicurezza, codice di condotta | [CONTRIBUTING](../../CONTRIBUTING.md), [SECURITY](../../SECURITY.md), [CODE_OF_CONDUCT](../../CODE_OF_CONDUCT.md) |
+| Regole per contribuire, segnalazioni di sicurezza, codice di condotta | [CONTRIBUTING](../../CONTRIBUTING.it.md), [SECURITY](../../SECURITY.it.md), [CODE_OF_CONDUCT](../../CODE_OF_CONDUCT.it.md) |
 
 Le immagini usate dalla documentazione sono in [`../images/`](../images/).

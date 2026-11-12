@@ -424,6 +424,6 @@ commits are in English; the source documentation is in `docs/it/`.
 5. The catalog entries for every new interface string and, if you added a
    `ComboBox`, the updated counters in the tests.
 
-For security issues follow [SECURITY.md](../../SECURITY.en.md) instead of
+For security issues follow [SECURITY.md](../../SECURITY.md) instead of
 opening a public issue; the community rules are in the
-[Code of conduct](../../CODE_OF_CONDUCT.en.md).
+[Code of conduct](../../CODE_OF_CONDUCT.md).

@@ -57,8 +57,8 @@ def remove_local_install_provenance(library: Path) -> None:
 
 def documentation_placements() -> dict[str, str]:
     """Ship the documentation with its repository layout so relative links keep working."""
-    sources = ["README.md", "README.en.md", "CONTRIBUTING.md", "CONTRIBUTING.en.md",
-               "SECURITY.md", "SECURITY.en.md", "CODE_OF_CONDUCT.md", "CODE_OF_CONDUCT.en.md",
+    sources = ["README.md", "README.it.md", "CONTRIBUTING.md", "CONTRIBUTING.it.md",
+               "SECURITY.md", "SECURITY.it.md", "CODE_OF_CONDUCT.md", "CODE_OF_CONDUCT.it.md",
                "LICENSE", "docs/README.md"]
     for folder, pattern in (("docs/it", "*.md"), ("docs/en", "*.md"), ("docs/images", "*.png")):
         sources += sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / folder).glob(pattern))

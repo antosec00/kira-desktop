@@ -365,4 +365,4 @@ If you find a vulnerability, do not open a public issue. The private reporting
 channels, the information to include (version from `kira-desktop --version`,
 provider, project permission, reproduction without credentials) and the
 supported versions are in the repository's
-[security policy](../../SECURITY.en.md).
+[security policy](../../SECURITY.md).
