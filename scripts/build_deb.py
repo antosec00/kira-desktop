@@ -60,7 +60,8 @@ def documentation_placements() -> dict[str, str]:
     sources = ["README.md", "README.it.md", "CONTRIBUTING.md", "CONTRIBUTING.it.md",
                "SECURITY.md", "SECURITY.it.md", "CODE_OF_CONDUCT.md", "CODE_OF_CONDUCT.it.md",
                "LICENSE", "docs/README.md"]
-    for folder, pattern in (("docs/it", "*.md"), ("docs/en", "*.md"), ("docs/images", "*.png")):
+    for folder, pattern in (("docs/it", "*.md"), ("docs/en", "*.md"),
+                            ("docs/images", "*.png"), ("docs/images", "*.gif")):
         sources += sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / folder).glob(pattern))
     missing = [name for name in sources if not (ROOT / name).is_file()]
     if missing:

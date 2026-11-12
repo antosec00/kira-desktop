@@ -16,7 +16,15 @@
   <a href="docs/it/INSTALLAZIONE.md">Installazione</a>
 </p>
 
-![Kira Desktop: una chat di progetto con le ricevute degli strumenti e il campo di scrittura](docs/images/chat-dark.png)
+<p align="center">
+  <a href="https://github.com/antosec00/kira-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/antosec00/kira-desktop?label=release&color=E09F67" alt="Ultima release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licenza-MIT-2ea043" alt="Licenza MIT"></a>
+  <a href="docs/it/INSTALLAZIONE.md"><img src="https://img.shields.io/badge/Linux-Ubuntu%2024.04%20%7C%2026.04%20(.deb)-3b82f6" alt="Pacchetti Ubuntu 24.04 e 26.04"></a>
+  <a href="docs/it/INSTALLAZIONE.md#installazione-nativa-su-windows-10-e-11"><img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20(x64)-0ea5e9" alt="Installer Windows 10 e 11"></a>
+  <a href="#provider"><img src="https://img.shields.io/badge/provider-8%20locali%20e%20cloud-8b5cf6" alt="8 provider locali e cloud"></a>
+</p>
+
+![Kira Desktop: una chat di progetto con le ricevute degli strumenti, tabelle e il campo di scrittura](docs/images/chat-dark.png)
 
 ## Che cos'è Kira
 
@@ -72,8 +80,11 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
   scuro, italiano e inglese.
 
 <p align="center">
-  <img src="docs/images/model-popover.png" alt="Finestra provider, modello e ragionamento con la barra laterale a icone" width="48%">
-  <img src="docs/images/models.png" alt="Pagina Modelli con i provider a segmenti e le schede dei modelli" width="48%">
+  <img src="docs/images/kira-showcase.gif" alt="Panoramica animata di Kira Desktop: ricevute verificate, browser isolato affiancato, hub a 8 provider e Omnibox" width="100%">
+</p>
+<p align="center">
+  <img src="docs/images/model-popover.png" alt="Finestra provider, modello e ragionamento con la barra laterale a icone" width="49%">
+  <img src="docs/images/models.png" alt="Hub Provider e Modelli con tutti gli 8 servizi locali e cloud" width="49%">
 </p>
 
 ## Provider

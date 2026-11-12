@@ -58,14 +58,15 @@ TOOLS = [("read_file", {"path": "capitoli/dolomiti.md"}),
          ("read_file", {"path": "fonti/rifugi-e-sentieri.md"})]
 ANSWER = """\
 Ho letto il capitolo e confrontato i riferimenti con le schede delle fonti. \
-Tre passaggi meritano una verifica:
+Ecco i passaggi verificati:
 
-1. **Altitudine del rifugio** – il testo dice 2.120 m, la fonte citata riporta 2.045 m.
-2. **Orari della funivia** – mancano nel capitolo; propongo di aggiungerli dalla scheda \
-*Trasporti*.
-3. **Nome del sentiero** – compare in due grafie diverse.
+| Passaggio | Nel capitolo | Fonte registrata | Azione proposta |
+| :--- | :--- | :--- | :--- |
+| **Altitudine del rifugio** | `2.120 m` | `2.045 m` (*rifugi-e-sentieri.md*) | Correggere la quota |
+| **Orari della funivia** | Assenti | `08:30–17:15` (*Trasporti*) | Aggiungere nota oraria |
+| **Nome del sentiero** | Due grafie | `Alta Via n. 2` | Uniformare il testo |
 
-Vuoi che corregga direttamente il capitolo o preferisci un elenco delle modifiche?"""
+Vuoi che applichi direttamente queste tre correzioni nel capitolo?"""
 
 # One file per composition: theme, page (0 chat, 1 Models, 3 Settings) and extras.
 SHOTS = {

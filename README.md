@@ -16,7 +16,17 @@
   <a href="docs/en/INSTALLATION.md">Installation</a>
 </p>
 
-![Kira Desktop: a project chat with tool receipts and the composer](docs/images/chat-dark.png)
+<p align="center">
+  <a href="https://github.com/antosec00/kira-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/antosec00/kira-desktop?label=release&color=E09F67" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea043" alt="MIT License"></a>
+  <a href="docs/en/INSTALLATION.md"><img src="https://img.shields.io/badge/Linux-Ubuntu%2024.04%20%7C%2026.04%20(.deb)-3b82f6" alt="Ubuntu 24.04 and 26.04 packages"></a>
+  <a href="docs/en/INSTALLATION.md#native-installation-on-windows-10-and-11"><img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20(x64)-0ea5e9" alt="Windows 10 and 11 installer"></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-8%20local%20%26%20cloud-8b5cf6" alt="8 local and cloud providers"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/kira-showcase.gif" alt="Kira Desktop showcase: verified tool receipts, isolated side-by-side browser, 8-provider hub, and universal Omnibox" width="100%">
+</p>
 
 ## What Kira is
 
@@ -71,8 +81,12 @@ always see what really happened.
   the composer, tabbed side panels, light and dark themes, Italian and English.
 
 <p align="center">
-  <img src="docs/images/model-popover.png" alt="Provider, model and reasoning popover with the icon rail" width="48%">
-  <img src="docs/images/models.png" alt="Models page with segmented providers and model cards" width="48%">
+  <img src="docs/images/chat-dark-en.png" alt="Project chat with verified tool receipts, syntax-highlighted code and Markdown tables" width="49%">
+  <img src="docs/images/chat-browser-en.png" alt="Isolated side-by-side browser controlled by Kira with one-click takeover" width="49%">
+</p>
+<p align="center">
+  <img src="docs/images/model-popover-en.png" alt="Per-chat provider, model and reasoning popover with the compact icon rail" width="49%">
+  <img src="docs/images/models-en.png" alt="Provider and Model Hub with all 8 local and cloud providers" width="49%">
 </p>
 
 ## Providers

@@ -17,22 +17,40 @@ ROOT = Path(__file__).resolve().parents[1]
 REVIEWED_BINARY = {
     "src/kira/ui/assets/kira-mascot.png":
         "dea48d04e0e98f719ebaf425d90ebfc8a0373ba5f5d9a2d1d0b54bd099c8f134",
-    # Documentation screenshots rendered by scripts/render_doc_screenshots.py from synthetic data.
+    # Documentation and showcase media rendered by scripts/render_doc_screenshots.py
+    # and scripts/render_showcase_media.py from synthetic fixture data.
     "docs/images/chat-dark.png":
-        "04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23",
+        "e250593fac75694d09957f6c1e1ad0e659b4f19943d7bff5084e9d747acd9c6e",
     "docs/images/chat-light.png":
-        "bb094e3addbf7e306d945f54e294ba55a4bce111a5661e3ef28ebb19bac1a6b7",
+        "240e2f371e600b55e0a39017a096a52d056aa16082cd248765400cd8401be40c",
     "docs/images/model-popover.png":
-        "f8d0e29924051e13e02e2d3ae753441a50c5636dcb7e33ce03b30e8819d4fd09",
+        "e6bf5b48f7be6f1dcd4e4b685613fc15f28081febc77021b1d9bf59e6379c79b",
     "docs/images/models.png":
-        "fad14491b799abe415824a674166bbec04ba733837215e5d00daa5085b3acafd",
+        "95460fada5d95a6d2a2b6e0c9651f3d6fae68b4520c363367320c618f83c175d",
     "docs/images/settings.png":
-        "d921946b0ac3fde61699a148411e2c09e763d30fb6ea6f83659dd8ad028effb1",
+        "b125f1aad891d9cd51404fb8e00caad585422bc61ceb78ee050cac3a36e3e3fe",
+    "docs/images/chat-dark-en.png":
+        "0e52d967085c03715b860095e0dff5c4b711efe6a6460676b3c3224ea3dd5fee",
+    "docs/images/chat-browser-en.png":
+        "543125b22a8c17b6a2dd85d48e31b3009bc863a7470a327fdf41b408557e8b75",
+    "docs/images/models-en.png":
+        "2adca707b2c6ba5df1333aa7c0540050b3a9acdefc728ed9cc71edee47d815aa",
+    "docs/images/model-popover-en.png":
+        "6700fa06fd33ec6bc62c7f782015637f6aa789fc0b520dccc3f40f04f573b1e6",
+    "docs/images/kira-showcase.gif":
+        "7cb23ae5845f51ab22cb2f70ccffc0428c5cd07fd5b2bec70262f70bd5f4f824",
     # Proof-of-work helper for the DeepSeek Web endpoint: the unmodified v1.0.0
     # release of AmanCode22/deepseek_pow_solver (MIT), a Rust-built module with no
     # imports (pure computation inside wasmtime). See docs/en/THIRD_PARTY_LICENSES.md.
     "src/kira/backends/deepseek_pow_solver.wasm":
         "fde55b7e43b00ce12ae8c08a272fc2e22a96c057e2f120fd7f4056506c10f144",
+}
+HISTORICAL_REVIEWED_BINARY = {
+    "docs/images/chat-dark.png": {"04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23"},
+    "docs/images/chat-light.png": {"bb094e3addbf7e306d945f54e294ba55a4bce111a5661e3ef28ebb19bac1a6b7"},
+    "docs/images/model-popover.png": {"f8d0e29924051e13e02e2d3ae753441a50c5636dcb7e33ce03b30e8819d4fd09"},
+    "docs/images/models.png": {"fad14491b799abe415824a674166bbec04ba733837215e5d00daa5085b3acafd"},
+    "docs/images/settings.png": {"d921946b0ac3fde61699a148411e2c09e763d30fb6ea6f83659dd8ad028effb1"},
 }
 HOME = re.compile(rb"/(?:home|Users)/[A-Za-z0-9_.-]+|[A-Za-z]:\\Users\\[A-Za-z0-9_.-]+")
 FIXTURE_HOMES = {
@@ -64,7 +82,7 @@ def public_key_file(path: Path, data: bytes) -> bool:
     return path.name.endswith(".pub.pem") and PUBLIC_KEY_PEM.fullmatch(data) is not None
 
 
-def inspect_content(name: str, data: bytes) -> set[str]:
+def inspect_content(name: str, data: bytes, *, historical: bool = False) -> set[str]:
     problems = set()
     path = Path(name)
     if (name.startswith(("build/", "dist/", ".venv/"))
@@ -79,7 +97,11 @@ def inspect_content(name: str, data: bytes) -> set[str]:
     try:
         data.decode("utf-8")
     except UnicodeDecodeError:
-        if hashlib.sha256(data).hexdigest() != REVIEWED_BINARY.get(name):
+        digest = hashlib.sha256(data).hexdigest()
+        allowed = {REVIEWED_BINARY[name]} if name in REVIEWED_BINARY else set()
+        if historical:
+            allowed |= HISTORICAL_REVIEWED_BINARY.get(name, set())
+        if digest not in allowed:
             problems.add("unreviewed-binary")
     normalized = data.replace(b"\\\\", b"\\")
     if set(HOME.findall(normalized)) - FIXTURE_HOMES.get(name, set()):
@@ -98,20 +120,20 @@ def inspect_repository(root: Path, ref: str | None = None, history: bool = False
     findings = set()
     seen = set()
 
-    def inspect_tree(revision: str) -> None:
+    def inspect_tree(revision: str, *, historical: bool = False) -> None:
         for record in git(root, "ls-tree", "-rz", revision).split(b"\0"):
             if not record:
                 continue
             metadata, raw_name = record.split(b"\t", 1)
             mode, kind, oid = metadata.decode().split()
             name = raw_name.decode()
-            if (name, oid) in seen:
+            if (name, oid, historical) in seen:
                 continue
-            seen.add((name, oid))
+            seen.add((name, oid, historical))
             if mode in {"120000", "160000"} or kind != "blob":
                 findings.add(f"{name}: unreviewed-symlink-or-submodule")
                 continue
-            for rule in inspect_content(name, git(root, "cat-file", "blob", oid)):
+            for rule in inspect_content(name, git(root, "cat-file", "blob", oid), historical=historical):
                 findings.add(f"{name}: {rule}")
 
     if ref:
@@ -126,8 +148,9 @@ def inspect_repository(root: Path, ref: str | None = None, history: bool = False
                 for rule in inspect_content(name, path.read_bytes()):
                     findings.add(f"{name}: {rule}")
     if history:
+        tip_oid = git(root, "rev-parse", ref).decode().strip() if ref else None
         for revision in git(root, "rev-list", ref or "--all").decode().splitlines():
-            inspect_tree(revision)
+            inspect_tree(revision, historical=(revision != tip_oid))
             metadata = git(root, "show", "-s", "--format=%ae%n%ce%n%B", revision)
             author, committer, message = metadata.split(b"\n", 2)
             for email in (author, committer):
