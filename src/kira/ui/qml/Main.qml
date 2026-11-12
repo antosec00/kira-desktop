@@ -2252,8 +2252,8 @@ ApplicationWindow {
                                         color: teamStatusButton.paused ? Qt.rgba(appearance.colors.warning.r, appearance.colors.warning.g, appearance.colors.warning.b, 0.10)
                                             : teamStatusButton.down ? appearance.colors.pressed
                                             : teamStatusButton.hovered || teamStatusButton.checked ? appearance.colors.hover : "transparent"
-                                        border.width: teamStatusButton.activeFocus ? 2 : teamStatusButton.paused ? 1 : 0
-                                        border.color: teamStatusButton.activeFocus ? appearance.colors.accent
+                                        border.width: teamStatusButton.visualFocus ? 2 : teamStatusButton.paused ? 1 : 0
+                                        border.color: teamStatusButton.visualFocus ? appearance.colors.accent
                                             : Qt.rgba(appearance.colors.warning.r, appearance.colors.warning.g, appearance.colors.warning.b, 0.25)
                                     }
                                     onClicked: { if (assistantTeamPanel.hasTeamContext) assistantTeamPanel.toggleDetails(); else assistant.configureTeam() }

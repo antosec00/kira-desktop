@@ -756,6 +756,16 @@ class DeepSeekWebBackend(Backend):
         )
         if recovery_note:
             prompt += "\n\n" + recovery_note
+        supplied = getattr(ctx, "supplied_context", "") or ""
+        recall_marker = "Relevant accepted profile experience ("
+        if recall_marker in supplied:
+            start = supplied.index(recall_marker)
+            next_nl = supplied.find("\nOther chats in this project (", start)
+            if next_nl < 0:
+                next_nl = supplied.find("\nKira service metadata.", start)
+            recall_block = (supplied[start:next_nl] if next_nl > start else supplied[start:])[:720].strip()
+            if recall_block:
+                prompt += "\n\n" + recall_block
         return prompt + "\nCurrent user request:\n" + ctx.prompt
 
     @classmethod

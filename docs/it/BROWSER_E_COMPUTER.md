@@ -15,16 +15,17 @@ Kira offre quattro cose diverse, che spesso lavorano insieme:
 | --- | --- | --- |
 | Ricerca web ospitata | La ricerca eseguita dal provider sui suoi server, con fonti citate nella risposta | Solo **OpenAI diretto · ChatGPT**; modalità **Accesso live**, **Contenuti indicizzati**, **Ricerca disattivata** |
 | Ricerca web tramite browser | Lo strumento `browser.search`: l'agente apre una ricerca Google nel browser isolato di Kira | Ollama e gli altri provider con browser |
-| Browser integrato | Un Chromium dedicato, con profilo separato, che gira su uno schermo virtuale privato e compare nel pannello **Browser** accanto alla chat | Tutti i provider tranne **Codex** |
+| Browser integrato | Un Chromium dedicato, con profilo separato, che gira su uno schermo virtuale privato e compare nel pannello **Browser** accanto alla chat | Tutti i provider |
 | Computer di Kira | Il controllo visivo del browser integrato: il modello osserva una schermata e agisce per coordinate | Come il browser, tranne **DeepSeek Web** |
 
-**Codex** usa i propri strumenti nativi e non riceve il browser di Kira. Con
-**Ollama** gli strumenti del browser vengono verificati al primo uso con una
-prova senza effetti; screenshot e Computer di Kira sono offerti solo se il
-modello selezionato accetta immagini. **DeepSeek Web** non riceve mai il
-Computer di Kira e riceve gli screenshot del browser solo con un modello che
-accetta immagini. Con **OpenAI diretto** gli strumenti della chat devono essere
-attivi perché l'agente possa usare il web.
+**Codex** e **Claude Code** usano i propri strumenti nativi per file e comandi,
+e ricevono il browser isolato e il Computer di Kira tramite il server MCP
+privato del turno. Con **Ollama** gli strumenti del browser vengono verificati
+al primo uso con una prova senza effetti; screenshot e Computer di Kira sono
+offerti solo se il modello selezionato accetta immagini. **DeepSeek Web** non
+riceve mai il Computer di Kira e riceve gli screenshot del browser solo con un
+modello che accetta immagini. Con **OpenAI diretto** e gli altri provider gli
+strumenti della chat devono essere attivi perché l'agente possa usare il web.
 
 La ricerca ospitata di OpenAI dipende dal modello e dalle autorizzazioni del tuo
 account: un eventuale rifiuto viene mostrato così com'è, senza cambiare modello

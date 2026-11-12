@@ -283,3 +283,38 @@ def test_claude_code_native_receipts_use_operation_labels_and_literal_targets(qa
     assert rows[0]["receiptState"] == "error" and rows[0]["receiptLabel"] == "Lettura del file"
     assert observed == {"tool": "Read", "input": '{"file_path": "docs/overview.md"}', "source": "claude_code",
                         "path": "docs/overview.md"}
+
+
+def test_codex_native_and_mcp_receipts_use_operation_labels_and_literal_targets(qapp):
+    model = TranscriptModel()
+    model.append(kind="tool", title="codex.commandExecution", runId="run", toolId="cmd", body="", raw="{}",
+                 status="confermato", toolArguments={"command": "pytest -q tests/test_ui_web.py"})
+    model.append(kind="tool", title="codex.fileChange", runId="run", toolId="fc", body="", raw="{}",
+                 status="confermato", toolArguments={"changes": [{"path": "src/app.py"}, {"path": "README.md"}]})
+    model.append(kind="tool", title="codex.webSearch", runId="run", toolId="ws", body="", raw="{}",
+                 status="confermato", toolArguments={"query": "PySide6 offscreen"})
+    model.append(kind="tool", title="codex.mcpToolCall", runId="run", toolId="mcp1", body="", raw="{}",
+                 status="confermato", toolArguments={"server": "kira", "tool": "browser__search",
+                                                     "arguments": {"query": "kira browser"}})
+    model.append(kind="tool", title="codex.mcpToolCall", runId="run", toolId="mcp2", body="", raw="{}",
+                 status="confermato", toolArguments={"server": "kira", "tool": "help_search",
+                                                     "arguments": {"query": "souls"}})
+    model.append(kind="tool", title="codex.mcpToolCall", runId="run", toolId="mcp3", body="", raw="{}",
+                 status="confermato", toolArguments={"server": "docs", "tool": "lookup"})
+    rows = model.rows
+    assert [row["receiptLabel"] for row in rows] == [
+        "Esecuzione del comando",
+        "Modifica del file",
+        "Ricerca web",
+        "Ricerca nel browser",
+        "kira.help_search",
+        "Codex · docs.lookup",
+    ]
+    assert [row["receiptTarget"] for row in rows] == [
+        "pytest -q tests/test_ui_web.py",
+        "src/app.py (+1)",
+        "PySide6 offscreen",
+        "kira browser",
+        "",
+        "",
+    ]

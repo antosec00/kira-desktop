@@ -1344,8 +1344,23 @@ class OpenRouterBackend(OllamaBackend):
 
         def build_request(cur_model: str, cur_messages: list[Json], cur_max_tokens: int) -> Json:
             req_msgs: list[Json] = []
+            anthropic_explicit_cache = include_cache_control and cur_model.startswith("anthropic/")
             if system_text:
-                req_msgs.append({"role": "system", "content": system_text})
+                if anthropic_explicit_cache:
+                    req_msgs.append(
+                        {
+                            "role": "system",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": system_text,
+                                    "cache_control": {"type": "ephemeral"},
+                                }
+                            ],
+                        }
+                    )
+                else:
+                    req_msgs.append({"role": "system", "content": system_text})
             req_msgs.extend(cur_messages)
             req: Json = {
                 "model": cur_model,
@@ -1358,7 +1373,13 @@ class OpenRouterBackend(OllamaBackend):
             if include_cache_control:
                 req["cache_control"] = {"type": "ephemeral"}
             if tool_defs:
-                req["tools"] = tool_defs
+                if anthropic_explicit_cache:
+                    req["tools"] = [
+                        *tool_defs[:-1],
+                        {**tool_defs[-1], "cache_control": {"type": "ephemeral"}},
+                    ]
+                else:
+                    req["tools"] = tool_defs
             if include_reasoning and reasoning_cfg is not None:
                 req["reasoning"] = reasoning_cfg
             if include_temperature and temperature_val is not None:

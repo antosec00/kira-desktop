@@ -317,19 +317,9 @@ class HistoryTools:
         for value in rows[:limit]:
             row = dict(value)
             text = row["content"]
-            folded = text.casefold()
-            position = folded.find(terms[0])
-            if len(folded) != len(text):
-                # Unicode folding can expand a character (for example ß -> ss).
-                # Returned offsets always address the unmodified original text.
-                low, high = 0, min(position, len(text))
-                while low < high:
-                    middle = (low + high + 1) // 2
-                    if len(text[:middle].casefold()) <= position:
-                        low = middle
-                    else:
-                        high = middle - 1
-                position = low
+            from kira.domain.text_match import best_excerpt_position
+
+            position = best_excerpt_position(text, terms, window=640)
             start = max(0, position - 160)
             result = {**self._metadata(row), "excerpt": text[start:start + 800], "excerpt_offset": start}
             if len(encode([*results, result]).encode()) > MAX_RESULT_BYTES - 512:

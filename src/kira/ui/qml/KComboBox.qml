@@ -14,8 +14,8 @@ ComboBox {
         implicitHeight: control.chip ? Math.max(30, appearance.uiFont.pixelSize + 17) : Math.max(40, appearance.uiFont.pixelSize + 27)
         radius: control.chip ? height / 2 : 8
         color: !control.enabled ? appearance.colors.disabled : control.down ? appearance.colors.pressed : control.chip ? (control.hovered ? appearance.colors.hover : "transparent") : appearance.colors.surfaceAlt
-        border.width: control.activeFocus ? 2 : 1
-        border.color: control.activeFocus ? appearance.colors.accent : control.hovered && !control.chip ? appearance.colors.accent : appearance.colors.border
+        border.width: control.visualFocus ? 2 : 1
+        border.color: control.visualFocus ? appearance.colors.accent : control.hovered && !control.chip && control.enabled ? appearance.colors.accent : appearance.colors.border
     }
     // The list opens as a raised surface under the control. It is modal so a
     // wheel or click outside cannot scroll the host view away from the control

@@ -77,9 +77,9 @@ Button {
     }
     background: Rectangle {
         radius: control.cornerRadius
-        color: !control.enabled ? appearance.colors.disabled : control.primary ? (control.down ? appearance.colors.accentPressed : (control.hovered || control.forceHover) ? appearance.colors.accentHover : appearance.colors.accent) : control.down ? appearance.colors.pressed : control.checked ? (control.quietSelection ? Qt.rgba(control.selectionInk.r, control.selectionInk.g, control.selectionInk.b, 0.13) : appearance.colors.selection) : (control.hovered || control.forceHover) ? appearance.colors.hover : control.subtle ? "transparent" : appearance.colors.surfaceAlt
-        border.width: control.activeFocus ? 2 : control.subtle ? 0 : 1
-        border.color: control.activeFocus ? appearance.colors.accent : control.primary ? "transparent" : control.hovered ? appearance.colors.accent : appearance.colors.border
+        color: !control.enabled ? (control.subtle ? "transparent" : appearance.colors.disabled) : control.primary ? (control.down ? appearance.colors.accentPressed : (control.hovered || control.forceHover) ? appearance.colors.accentHover : appearance.colors.accent) : control.down ? appearance.colors.pressed : control.checked ? (control.quietSelection ? Qt.rgba(control.selectionInk.r, control.selectionInk.g, control.selectionInk.b, 0.13) : appearance.colors.selection) : (control.hovered || control.forceHover) ? appearance.colors.hover : control.subtle ? "transparent" : appearance.colors.surfaceAlt
+        border.width: control.visualFocus ? 2 : control.subtle ? 0 : 1
+        border.color: control.visualFocus ? appearance.colors.accent : !control.enabled ? (control.subtle ? "transparent" : appearance.colors.border) : control.primary ? "transparent" : control.hovered ? appearance.colors.accent : appearance.colors.border
         Rectangle {
             visible: control.selectionMark && control.checked
             anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom

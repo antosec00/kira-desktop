@@ -58,9 +58,10 @@ class TranscriptModel(QAbstractListModel):
         "toolGroupAttention": False,
         "toolGroupStatus": "",
     }
-    # Claude Code reports its native tools as "claude_code.<Tool>"; the backend
-    # records these literal summary keys beside the provider input.
+    # Claude Code and Codex report native tools under their provider prefixes;
+    # backends record these literal summary keys beside the provider input.
     CLAUDE_CODE_PREFIX = "claude_code."
+    CODEX_PREFIX = "codex."
     CLAUDE_CODE_TARGETS = {"Read": "path", "Write": "path", "Edit": "path", "MultiEdit": "path",
                            "NotebookEdit": "path", "NotebookRead": "path", "LS": "path",
                            "Bash": "command", "Glob": "pattern", "Grep": "pattern",
@@ -237,11 +238,16 @@ class TranscriptModel(QAbstractListModel):
         if not isinstance(values, dict):
             return {}
         target: Any = None
+        evidence: dict[str, str] = {}
         if name in {"list_files", "search_files", "read_file", "write_file"}:
             target = values.get("path")
         elif name == "run_command":
             argv = values.get("argv")
             target = argv[0] if isinstance(argv, list) and argv else values.get("command")
+        elif name == "browser.search":
+            target = values.get("query") or values.get("url")
+        elif name == "browser.find":
+            target = values.get("text") or values.get("url")
         elif name.startswith("browser.") or name == "computer.observe":
             target = values.get("url")
         elif name == "computer.act":
@@ -259,7 +265,38 @@ class TranscriptModel(QAbstractListModel):
             target = values.get(key) if key else None
             if key == "command":
                 target = cls._receipt_literal(target, 160)
-        evidence = {}
+        elif name.startswith(cls.CODEX_PREFIX):
+            tool = name[len(cls.CODEX_PREFIX):]
+            if tool == "commandExecution":
+                target = cls._receipt_literal(values.get("command"), 160)
+            elif tool == "fileChange":
+                changes = values.get("changes")
+                if isinstance(changes, list) and changes and isinstance(changes[0], dict):
+                    first = cls._receipt_literal(changes[0].get("path"), 200)
+                    target = f"{first} (+{len(changes) - 1})" if first and len(changes) > 1 else first
+            elif tool == "webSearch":
+                target = values.get("query")
+            elif tool == "imageView":
+                target = values.get("path")
+            elif tool == "mcpToolCall":
+                server, mcp_tool = values.get("server"), values.get("tool")
+                if server == "kira" and isinstance(mcp_tool, str) and mcp_tool:
+                    kira_name = mcp_tool.replace("__", ".", 1) if "__" in mcp_tool else f"kira.{mcp_tool}"
+                    evidence["kira_tool"] = cls._receipt_literal(kira_name, 160)
+                    nested = cls._receipt_evidence(kira_name, values.get("arguments"), result=False)
+                    if nested.get("target"):
+                        target = nested["target"]
+                elif isinstance(server, str) and server and isinstance(mcp_tool, str) and mcp_tool:
+                    evidence["mcp_tool"] = cls._receipt_literal(f"{server}.{mcp_tool}", 160)
+            elif tool == "dynamicToolCall":
+                ns, dt = values.get("namespace"), values.get("tool")
+                kira_name = (f"{ns}.{dt}" if isinstance(ns, str) and ns and isinstance(dt, str) and dt
+                             else dt if isinstance(dt, str) else "")
+                if kira_name:
+                    evidence["kira_tool"] = cls._receipt_literal(kira_name, 160)
+                    nested = cls._receipt_evidence(kira_name, values.get("arguments"), result=False)
+                    if nested.get("target"):
+                        target = nested["target"]
         if literal := cls._receipt_literal(target):
             evidence["target"] = literal
         if result:
@@ -273,6 +310,9 @@ class TranscriptModel(QAbstractListModel):
                     evidence["error_code"] = code
             else:
                 evidence["error"] = cls._receipt_literal(error, 400)
+                exit_code = values.get("exitCode")
+                if not evidence["error"] and type(exit_code) is int and exit_code != 0:
+                    evidence["error"] = f"exit {exit_code}"
             # A completed browser call can still report a page that did not load
             # or a network budget that ran out; both keep their literal details.
             for key in ("page_error", "network_budget"):
@@ -290,13 +330,33 @@ class TranscriptModel(QAbstractListModel):
         "write_file": lambda: tr("Scrittura del file"),
         "run_command": lambda: tr("Esecuzione del comando"),
         "web_search": lambda: tr("Ricerca web"),
+        "browser.search": lambda: tr("Ricerca nel browser"),
         "browser.navigate": lambda: tr("Apertura della pagina"),
         "browser.snapshot": lambda: tr("Lettura della pagina"),
+        "browser.find": lambda: tr("Ricerca nella pagina"),
+        "browser.click": lambda: tr("Clic nella pagina"),
+        "browser.type": lambda: tr("Inserimento testo"),
+        "browser.press": lambda: tr("Pressione tasto"),
+        "browser.scroll": lambda: tr("Scorrimento della pagina"),
         "browser.screenshot": lambda: tr("Acquisizione della pagina"),
         "browser.tabs": lambda: tr("Schede del browser"),
+        "browser.select_tab": lambda: tr("Cambio scheda del browser"),
+        "browser.close_tab": lambda: tr("Chiusura scheda del browser"),
+        "browser.back": lambda: tr("Pagina precedente"),
+        "browser.close": lambda: tr("Chiusura del browser"),
         "browser.manual_login": lambda: tr("Accesso manuale al sito"),
         "computer.observe": lambda: tr("Osservazione del browser"),
         "computer.act": lambda: tr("Interazione con il browser"),
+    }
+    CODEX_TOOL_LABELS = {
+        "commandExecution": lambda: tr("Esecuzione del comando"),
+        "fileChange": lambda: tr("Modifica del file"),
+        "webSearch": lambda: tr("Ricerca web"),
+        "imageView": lambda: tr("Lettura dell’immagine"),
+        "mcpToolCall": lambda: tr("Strumento MCP"),
+        "dynamicToolCall": lambda: tr("Strumento di Kira"),
+        "collabAgentToolCall": lambda: tr("Sottoagente"),
+        "functionCallOutput": lambda: tr("Output del comando"),
     }
     NATIVE_TOOL_LABELS = {
         "Read": lambda: tr("Lettura del file"),
@@ -336,6 +396,7 @@ class TranscriptModel(QAbstractListModel):
         # as Kira's own tools. Kira tools mediated by Claude Code keep their
         # Kira names; any other native tool stays literal with its source.
         native = cls.NATIVE_TOOL_LABELS
+        evidence = row.get("_receiptEvidence", {})
         label: Any
         if name in labels:
             label = labels[name]()
@@ -349,9 +410,20 @@ class TranscriptModel(QAbstractListModel):
                 label = cls._receipt_literal(tool, 160)
             else:
                 label = tr("Claude Code · {tool}", tool=cls._receipt_literal(tool, 120))
+        elif name.startswith(cls.CODEX_PREFIX):
+            tool = name[len(cls.CODEX_PREFIX):]
+            kira_tool = evidence.get("kira_tool", "")
+            mcp_tool = evidence.get("mcp_tool", "")
+            if kira_tool:
+                label = labels[kira_tool]() if kira_tool in labels else cls._receipt_literal(kira_tool, 160)
+            elif mcp_tool:
+                label = tr("Codex · {tool}", tool=cls._receipt_literal(mcp_tool, 120))
+            elif tool in cls.CODEX_TOOL_LABELS:
+                label = cls.CODEX_TOOL_LABELS[tool]()
+            else:
+                label = tr("Codex · {tool}", tool=cls._receipt_literal(tool, 120))
         else:
             label = cls._receipt_literal(name, 160)
-        evidence = row.get("_receiptEvidence", {})
         state = cls._tool_group_status(row["status"])
         if state in {"error", "unconfirmed"}:
             preview = tool_error_summary(name, evidence.get("error_code")) or evidence.get("error", "")

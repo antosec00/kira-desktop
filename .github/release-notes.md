@@ -1,20 +1,38 @@
-## Novità in Kira Desktop 0.28.0
+## Novità in Kira Desktop 0.29.0
 
-- **Kira Desktop ora disponibile nativamente su Windows 10 e 11 (oltre a Linux)**:
-  - **Architettura unificata multipiattaforma**: un unico codice sorgente condiviso tra Linux (Ubuntu 24.04 e 26.04) e Windows 10/11 a 64 bit, così ogni nuova funzionalità, correzione o aggiornamento è immediatamente disponibile su entrambi i sistemi.
-  - **Installer ed eseguibile nativo Windows (`kira-desktop_windows_amd64_setup.exe`)**: installazione utente in `%LOCALAPPDATA%\Programs\Kira Desktop` senza richiedere privilegi di amministratore, eseguibile dedicato `KiraDesktop.exe` con icona multi-risoluzione integrata nell'header PE e registrazione `AppUserModelID` nella barra delle applicazioni, collegamenti su Desktop e Menu Start e supporto agli aggiornamenti firmati in-app.
-  - **Motore e IPC nativi su Windows**: comunicazione locale autenticata tra interfaccia e servizio in background, lock di file multi-processo, gestione dell'albero dei processi Win32 (`Job` / `taskkill /T`) senza finestre di console lampeggianti e azioni desktop native (Esplora file, Windows Terminal/PowerShell, Blocco note, Impostazioni di Windows, Gestione attività).
-  - **Tutti gli 8 provider pienamente operativi su Windows**: supporto nativo per **OpenAI Codex** (risoluzione automatica di `codex.exe`, ambiente di rete Win32 e recupero automatico di sessioni con token revocati), **Claude Code** (`claude.exe` nativo), **OpenAI · ChatGPT**, **Google Cloud · Vertex AI**, **OpenRouter**, **DeepSeek API**, **DeepSeek Web** (con solver PoW WebAssembly) e **Ollama**, oltre al browser isolato Playwright/Chromium.
+- **Browser Web isolato di Kira e Computer attivi su OpenAI Codex**:
+  - **Ricerca e navigazione nel browser isolato di Kira**: il provider `codex` supporta ora tutti gli strumenti `browser.*` e `computer.*` attraverso il relay MCP privato di Kira su Linux e Windows, incluso il passaggio di screenshot e osservazioni visive come blocchi immagine, rispettando le impostazioni e la politica di conferma della chat.
+  - **Ricevute strumenti corrette e localizzate**: risolto il falso stato «Non riuscita» sugli eventi nativi `codex.webSearch` e `codex.imageView` privi di campo `status` e aggiunte etichette e dettagli leggibili in italiano e inglese per le ricevute di Codex, Browser e Computer.
+- **Motore di Memoria, Contesto e Anime di Kira ottimizzato**:
+  - **Ordine a prefisso stabile e deduplicazione delta per-thread**: il contesto fornito separa le istruzioni stabili (profilo Anima, `KIRA.md`/`AGENTS.md`, note fissate, memoria compattata) dalle sezioni dinamiche del turno per massimizzare il riuso della cache prefisso, inviando su **Codex** e **Claude Code** il solo aggiornamento delta nei turni successivi della stessa conversazione.
+  - **Compattazione intelligente e continuità guidata da rilevanza**: *aging* selettivo degli output storici degli strumenti, conservazione *verbatim* dei turni recenti durante la compattazione, memoizzazione dei conteggi token preflight, selezione delle chat correlate per attinenza con estratti *head + tail* e ricerca nella cronologia centrata sul cluster più denso di corrispondenze.
+  - **Anime di Kira (`Souls`) con auto-recall selettivo**: richiamo automatico limitato (`<= 640` byte) delle lezioni accettate pertinenti alla richiesta corrente (anche nei turni di continuazione di **DeepSeek Web**), ricerca tollerante a radici e accenti in italiano e inglese e consolidamento automatico delle proposte pendenti duplicate.
+- **Ottimizzazioni su tutti gli 8 Provider (Linux e Windows)**:
+  - **Google Cloud · Vertex AI**: avvio dello streaming più reattivo (holdback ridotto a 80 caratteri per il testo ordinario), breakpoint `cache_control` e telemetria `cached_input_tokens` per i modelli Anthropic su Vertex, limite output a 65.536 token per evitare troncamenti durante il ragionamento esteso e guida al recupero incrementale su modifiche file ampie.
+  - **OpenRouter, DeepSeek API e Ollama**: breakpoint `cache_control` automatici per i modelli `anthropic/*` su OpenRouter, tracciamento `cache_read_input_tokens` su DeepSeek API e scala dinamica del budget di cronologia su Ollama con finestre `num_ctx >= 32768`.
+  - **Stabilità nativa Windows**: superficie browser in modalità pagina con ripubblicazione immediata dei frame e auto-installazione del motore Chromium isolato.
+- **Interfaccia QML e Chat Markdown perfezionate**:
+  - **Pulizia visiva dei controlli**: eliminato lo sfondo opaco sui pulsanti `subtle` disabilitati nella barra laterale e limitati gli anelli di focus alla sola navigazione da tastiera (`visualFocus`).
+  - **Blocchi di codice, tabelle e streaming in chat**: colorazione sintattica lessicale adattiva al tema chiaro/scuro nei blocchi di codice, tabelle Markdown con bordi tematici collassati e intestazioni evidenziate, e cache incrementale del prefisso per uno streaming più fluido delle risposte lunghe.
 
 ---
 
-## What's New in Kira Desktop 0.28.0
+## What's New in Kira Desktop 0.29.0
 
-- **Kira Desktop is now natively available on Windows 10 and 11 (alongside Linux)**:
-  - **Unified cross-platform architecture**: a single shared codebase across Linux (Ubuntu 24.04 and 26.04) and 64-bit Windows 10/11, ensuring every new feature, fix, and release is immediately reflected on both platforms.
-  - **Native Windows installer & executable (`kira-desktop_windows_amd64_setup.exe`)**: per-user installation under `%LOCALAPPDATA%\Programs\Kira Desktop` without administrator privileges, dedicated `KiraDesktop.exe` binary with multi-resolution PE icon resources and Windows Taskbar `AppUserModelID` integration, Desktop and Start Menu shortcuts, and signed in-app update support.
-  - **Native Windows engine & IPC**: authenticated local IPC between the GUI and background service, cross-process file locking, Win32 process-tree management without flashing console windows, and native desktop actions (File Explorer, Windows Terminal/PowerShell, Notepad, Windows Settings, Task Manager).
-  - **All 8 providers fully supported on Windows**: native support for **OpenAI Codex** (automatic `codex.exe` resolution, Win32 network environment preservation, and automatic recovery from revoked refresh tokens), **Claude Code** (native `claude.exe`), **OpenAI · ChatGPT**, **Google Cloud · Vertex AI**, **OpenRouter**, **DeepSeek API**, **DeepSeek Web** (with WebAssembly PoW solver), and **Ollama**, plus the isolated Playwright/Chromium browser.
+- **Kira Isolated Web Browser & Computer Enabled on OpenAI Codex**:
+  - **Full isolated browser & Computer support**: the `codex` provider now exposes Kira's `browser.*` and `computer.*` tools through Kira's private per-run MCP relay on both Linux and Windows, including base64 image delivery for screenshots and observations while honoring per-chat browser settings and confirmation policies.
+  - **Accurate, localized tool receipts**: fixed completed `codex.webSearch` and `codex.imageView` items falsely reporting failure when `status` is omitted, and added localized Italian and English receipt titles and details for Codex, Browser, and Computer actions.
+- **Optimized Memory, Context Engine & Kira Souls**:
+  - **Prefix-stable context ordering & per-thread delta deduplication**: stable instructions (Soul profile, `KIRA.md`/`AGENTS.md`, pinned notes, compacted memory) now consistently precede turn-dynamic sections to maximize prompt/KV cache hits, while **Codex** and **Claude Code** send compact turn-delta updates on resumed threads instead of repeating unchanged static context.
+  - **Smarter compaction & relevance-ranked continuity**: selective aging of older tool outputs, verbatim retention of recent turns during `DirectContext` compaction, body-hash preflight token memoization, query-relevance ranking of cross-chat summaries with *head + tail* conclusion excerpts, and match-cluster excerpt centering in history search.
+  - **Kira Souls automatic recall & deduplication**: bounded automatic recall (`<= 640` bytes) of accepted lessons relevant to the active prompt (including **DeepSeek Web** continuations), accent- and stem-tolerant Italian/English fallback search, and automatic consolidation of duplicate pending lesson proposals.
+- **Improvements Across All 8 Providers (Linux & Windows)**:
+  - **Google Cloud · Vertex AI**: faster streaming start (80-character prefix flush for ordinary text), `cache_control` breakpoints and `cached_input_tokens` telemetry for Anthropic models on Vertex, 65,536 `max_output_tokens` headroom to prevent thinking truncation, and incremental chunking recovery hints on large file edits.
+  - **OpenRouter, DeepSeek API & Ollama**: automatic `cache_control` breakpoints for `anthropic/*` models on OpenRouter, `cache_read_input_tokens` accounting on DeepSeek API, and scaled history budgets on Ollama when `num_ctx >= 32768`.
+  - **Native Windows polish**: page surface mode with immediate viewport frame republishing on handoff and automatic isolated Chromium engine installation.
+- **Refined QML Interface & Chat Markdown**:
+  - **Cleaner controls & focus states**: transparent background on disabled `subtle` sidebar buttons and keyboard-only focus rings (`visualFocus`) across buttons, selectors, and tool receipts.
+  - **Code highlighting, themed tables & smoother streaming**: theme-aware lexical syntax highlighting for fenced code blocks, Markdown tables with collapsed themed borders and shaded headers, and incremental heading-boundary prefix caching during live streaming.
 
 ---
 

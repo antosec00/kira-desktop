@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import binascii
 import contextlib
 import hmac
 import json
@@ -25,24 +27,30 @@ from typing import Any
 
 from kira import __version__
 from kira.backends.client_tools import KIRA_CLIENT_TOOL_NAMES, ClientToolBridge, ClientToolError, encoded
+from kira.backends.openai_web import MAX_SCREENSHOT_IMAGE_BYTES, is_browser_image_tool
 from kira.domain.assistant import assistant_tool_specs
 from kira.domain.autonomous_goals import GOAL_TOOL_NAMES, goal_tool_specs
 from kira.domain.canvas import canvas_tool_specs
 from kira.domain.code_index import code_index_tool_specs
+from kira.domain.computer import COMPUTER_TOOL_NAMES, computer_tool_specs
 from kira.domain.research import research_tool_specs
 from kira.domain.knowledge import knowledge_tool_specs
 from kira.domain.mcp_servers import mcp_tool_specs
 from kira.domain.project_tools import PROJECT_TOOL_CALL_TIMEOUT, PROJECT_TOOL_NAMES, project_tool_specs
 from kira.domain.souls import soul_tool_specs
 from kira.domain.studio import studio_tool_specs
-from kira.domain.contracts import Json, RunContext
+from kira.domain.contracts import Json, KiraError, RunContext
+from kira.domain.web import BROWSER_TOOL_NAMES, browser_tool_specs
 
 MCP_SERVER_NAME = "kira"
 MCP_FRAME_BYTES = 196_608
+MCP_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_RELAY_CLIENTS = 16
 MCP_TIMEOUT = 65.0
-# Kira's own tools and, in a chat with an autonomous goal, the goal tools.
-KIRA_RELAY_TOOLS = KIRA_CLIENT_TOOL_NAMES | GOAL_TOOL_NAMES
+BROWSER_MCP_TIMEOUT = 600.0
+IMAGE_PREFIX = "data:image/png;base64,"
+# Kira's own tools, isolated browser/Computer, and autonomous goal tools.
+KIRA_RELAY_TOOLS = KIRA_CLIENT_TOOL_NAMES | GOAL_TOOL_NAMES | BROWSER_TOOL_NAMES | COMPUTER_TOOL_NAMES
 PARSE_ERROR: Json = {"code": -32700, "message": "Parse error"}
 
 
@@ -63,6 +71,8 @@ def _relay_specs() -> dict[str, Json]:
             *code_index_tool_specs(), *canvas_tool_specs()]
     specs = {f"{MCP_SERVER_NAME}.{tool['name']}": tool for tool in kira}
     specs.update({f"goal.{tool['name']}": tool for tool in goal_tool_specs(writable=True)["tools"]})
+    specs.update({f"browser.{tool['name']}": tool for tool in browser_tool_specs()[0]["tools"]})
+    specs.update({f"computer.{tool['name']}": tool for tool in computer_tool_specs()[0]["tools"]})
     return specs
 
 
@@ -89,11 +99,49 @@ def _same_user(writer: asyncio.StreamWriter) -> bool:
         return False
 
 
-def _decode(data: bytes) -> Json:
+def _decode(data: bytes, maximum: int = MCP_FRAME_BYTES) -> Json:
     value = json.loads(data)
-    if not isinstance(value, dict) or len(encoded(value)) > MCP_FRAME_BYTES:
+    if not isinstance(value, dict) or len(encoded(value)) > maximum:
         raise ValueError("Invalid bounded object")
     return value
+
+
+def _tool_timeout(names: set[str]) -> float:
+    if names & (BROWSER_TOOL_NAMES | COMPUTER_TOOL_NAMES):
+        return BROWSER_MCP_TIMEOUT
+    if names & PROJECT_TOOL_NAMES:
+        return float(PROJECT_TOOL_CALL_TIMEOUT)
+    return MCP_TIMEOUT
+
+
+async def _screenshot_block(ctx: RunContext, text: str) -> Json | None:
+    """The owned screenshot of a successful visual tool as an MCP image block."""
+    try:
+        result = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        return None
+    image_id = result.get("browser_image_id")
+    if not isinstance(image_id, str) or not 1 <= len(image_id) <= 256:
+        raise ClientToolError("The screenshot omitted its owned image identity")
+    if ctx.tool_image is None:
+        raise ClientToolError("Screenshot image delivery is unavailable")
+    image = await ctx.tool_image(image_id)
+    url = image.get("image_url") if isinstance(image, dict) else None
+    if (not isinstance(image, dict) or image.get("type") != "input_image"
+            or not isinstance(url, str) or not url.startswith(IMAGE_PREFIX)):
+        raise ClientToolError("Screenshot delivery returned invalid pixels")
+    data = url[len(IMAGE_PREFIX):]
+    if len(data) > ((MAX_SCREENSHOT_IMAGE_BYTES + 2) // 3) * 4:
+        raise ClientToolError("The screenshot exceeds the 2 MiB image limit")
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ClientToolError("Screenshot delivery returned invalid pixels") from exc
+    if not raw or len(raw) > MAX_SCREENSHOT_IMAGE_BYTES:
+        raise ClientToolError("The screenshot exceeds the 2 MiB image limit")
+    return {"type": "image", "data": data, "mimeType": "image/png"}
 
 
 class KiraMcpRelay:
@@ -135,7 +183,7 @@ class KiraMcpRelay:
                     "args": ["-I", str(Path(__file__).with_name("kira_mcp_entry.py").resolve()),
                              str(descriptor)],
                     "enabled": True, "required": True, "startup_timeout_sec": 10,
-                    "tool_timeout_sec": PROJECT_TOOL_CALL_TIMEOUT if self.names & PROJECT_TOOL_NAMES else MCP_TIMEOUT,
+                    "tool_timeout_sec": _tool_timeout(self.names),
                     # These are the service's already-authorized, run-bound
                     # callbacks. Codex's generic MCP approval prompt cannot be
                     # answered under approvalPolicy=never. Grant only these exact
@@ -191,11 +239,21 @@ class KiraMcpRelay:
                     # under its same identity after an uncertain effect.
                     return
                 result = await operation
-                response = {"content": [{"type": "text", "text": item["text"]}
-                                        for item in result["contentItems"]],
-                            "isError": not result["success"]}
+                content: list[Json] = [{"type": "text", "text": item["text"]}
+                                       for item in result["contentItems"]]
+                is_error = not result["success"]
+                if not is_error and is_browser_image_tool(namespace, tool) and content:
+                    try:
+                        image = await _screenshot_block(self.ctx, str(content[0]["text"]))
+                    except (ClientToolError, KiraError) as exc:
+                        content.append({"type": "text", "text": f"Screenshot image delivery failed: {exc}"})
+                        is_error = True
+                    else:
+                        if image is not None:
+                            content.append(image)
+                response = {"content": content, "isError": is_error}
             writer.write(encoded(response) + b"\n")
-            await asyncio.wait_for(writer.drain(), 5)
+            await asyncio.wait_for(writer.drain(), 10)
         except asyncio.CancelledError:
             raise
         except (OSError, ValueError, ClientToolError, TimeoutError):
@@ -244,9 +302,9 @@ def _descriptor(path: Path) -> Json:
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() \
-                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 4096:
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 8192:
             raise ValueError("Descriptor is not private")
-        value = _decode(stream.read(4097))
+        value = _decode(stream.read(8193))
     if set(value) != {"socket", "capability", "tools"} \
             or not isinstance(value["capability"], str) or len(value["capability"]) != 64 \
             or value["socket"] != str(path.parent / "relay.sock") \
@@ -264,23 +322,24 @@ def _descriptor(path: Path) -> Json:
 
 async def _relay_call(config: Json, request: Json) -> Json:
     writer: asyncio.StreamWriter | None = None
+    name = request.get("name")
+    call_names = {name} if isinstance(name, str) else set()
     try:
-        async with asyncio.timeout(PROJECT_TOOL_CALL_TIMEOUT
-                                   if request.get("name") in PROJECT_TOOL_NAMES else MCP_TIMEOUT):
+        async with asyncio.timeout(_tool_timeout(call_names)):
             if sys.platform == "win32":
                 ep_text = Path(config["socket"]).read_text(encoding="utf-8").strip()
                 host, port_str = ep_text.rsplit(":", 1)
                 reader, writer = await asyncio.open_connection(
-                    host, int(port_str), limit=MCP_FRAME_BYTES
+                    host, int(port_str), limit=MCP_RESPONSE_BYTES
                 )
             else:
                 reader, writer = await asyncio.open_unix_connection(
-                    config["socket"], limit=MCP_FRAME_BYTES)
+                    config["socket"], limit=MCP_RESPONSE_BYTES)
             if not _same_user(writer):
                 raise ValueError("Unexpected relay owner")
             writer.write(encoded({**request, "capability": config["capability"]}) + b"\n")
             await writer.drain()
-            return _decode(await reader.readline())
+            return _decode(await reader.readline(), MCP_RESPONSE_BYTES)
     finally:
         if writer is not None:
             writer.close()

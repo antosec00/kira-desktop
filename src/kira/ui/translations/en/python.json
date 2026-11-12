@@ -647,6 +647,20 @@
   "Il provider {provider} è disattivato. Riattivalo nel pannello Modelli.": "Provider {provider} is disabled. Re-enable it in the Models panel.",
   "Non puoi disattivare il provider mentre un'esecuzione è in corso.": "You cannot disable the provider while a run is in progress.",
   "Provider {provider} attivato.": "Provider {provider} enabled.",
-  "Provider {provider} disattivato.": "Provider {provider} disabled."
+  "Provider {provider} disattivato.": "Provider {provider} disabled.",
+  "Ricerca nel browser": "Browser search",
+  "Ricerca nella pagina": "Find in page",
+  "Clic nella pagina": "Click in page",
+  "Inserimento testo": "Text input",
+  "Pressione tasto": "Key press",
+  "Scorrimento della pagina": "Page scroll",
+  "Cambio scheda del browser": "Switch browser tab",
+  "Chiusura scheda del browser": "Close browser tab",
+  "Pagina precedente": "Previous page",
+  "Chiusura del browser": "Close browser",
+  "Lettura dell’immagine": "Read image",
+  "Strumento MCP": "MCP tool",
+  "Strumento di Kira": "Kira tool",
+  "Codex · {tool}": "Codex · {tool}"
 }
 

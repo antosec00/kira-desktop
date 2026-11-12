@@ -17,15 +17,17 @@ Kira offers four different things, which often work together:
 | --- | --- | --- |
 | Hosted web search | The search run by the provider on its own servers, with sources cited in the response | **Direct OpenAI · ChatGPT** only; modes **Live access**, **Indexed content**, **Search disabled** |
 | Web search through the browser | The `browser.search` tool: the agent opens a Google search in Kira's isolated browser | Ollama and the other providers with a browser |
-| Integrated browser | A dedicated Chromium, with a separate profile, running on a private virtual screen and shown in the **Browser** panel next to the chat | All providers except **Codex** |
+| Integrated browser | A dedicated Chromium, with a separate profile, running on a private virtual screen and shown in the **Browser** panel next to the chat | All providers |
 | Kira's Computer | Visual control of the integrated browser: the model observes a screenshot and acts by coordinates | Same as the browser, except **DeepSeek Web** |
 
-**Codex** uses its own native tools and does not receive Kira's browser. With
-**Ollama** the browser tools are verified at first use with a side-effect-free
-probe; screenshots and Kira's Computer are offered only if the selected model
-accepts images. **DeepSeek Web** never receives Kira's Computer, and receives
-browser screenshots only with a model that accepts images. With **Direct
-OpenAI** the chat tools must be enabled for the agent to use the web.
+**Codex** and **Claude Code** use their own native tools for files and commands,
+and receive Kira's isolated browser and Computer through the per-run private MCP
+server. With **Ollama** the browser tools are verified at first use with a
+side-effect-free probe; screenshots and Kira's Computer are offered only if the
+selected model accepts images. **DeepSeek Web** never receives Kira's Computer,
+and receives browser screenshots only with a model that accepts images. With
+**Direct OpenAI** and the other providers the chat tools must be enabled for the
+agent to use the web.
 
 OpenAI's hosted search depends on the model and on your account's
 authorizations: a refusal is shown as is, without changing model or payment

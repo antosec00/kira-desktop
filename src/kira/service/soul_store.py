@@ -252,6 +252,21 @@ class SoulStore:
             if expected != actual:
                 raise KiraError("CONFLICT", "This evidence already supports a different proposal of this kind")
             return self.proposal(dict(prior))
+        if kind == "lesson":
+            from kira.domain.text_match import normalized_statement
+
+            norm_stmt = normalized_statement(statement)
+            pending_rows = self.db.execute(
+                "SELECT * FROM soul_proposals WHERE soul_id=? AND kind='lesson' AND status='pending' AND scope=?",
+                (soul_id, scope)).fetchall()
+            for pending_row in pending_rows:
+                same_target = (
+                    scope == "profile"
+                    or (scope == "project" and pending_row["project_id"] == project_id)
+                    or (scope == "chat" and pending_row["session_id"] == session_id)
+                )
+                if same_target and normalized_statement(str(pending_row["statement"])) == norm_stmt:
+                    return self.proposal(dict(pending_row))
         count = self.db.execute("SELECT COUNT(*) FROM soul_proposals WHERE soul_id=? AND status='pending'", (soul_id,)).fetchone()[0]
         if count >= 512:
             raise KiraError("LIMIT_REACHED", "Review pending profile suggestions before adding more")

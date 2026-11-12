@@ -53,7 +53,7 @@ KButton {
     background: Rectangle {
         radius: 7
         color: group.down ? appearance.colors.pressed : group.hovered ? appearance.colors.hover : "transparent"
-        border.width: group.activeFocus ? 2 : 0
+        border.width: group.visualFocus ? 2 : 0
         border.color: appearance.colors.accent
     }
 }

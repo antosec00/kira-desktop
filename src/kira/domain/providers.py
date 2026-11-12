@@ -10,7 +10,7 @@ IN_PROCESS_BACKENDS = frozenset({"ollama", "openai_chatgpt", "deepseek_account",
                                  "google_cloud", "openrouter"})
 
 #: Providers that receive Kira's isolated browser and Computer tools.
-WEB_BACKENDS = frozenset({"openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
+WEB_BACKENDS = frozenset({"codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
                           "claude_code", "google_cloud", "openrouter"})
 
 #: Providers that can run Team members, and therefore be offered Team delegation.

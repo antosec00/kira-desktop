@@ -14,6 +14,7 @@ from kira.domain.contracts import Json, KiraError
 from kira.domain.souls import (
     PREFERENCES, canonical, capsule, fields, integer, preference, text, validate_profile,
 )
+from kira.domain.text_match import all_stems, informative_stems, relevance_score
 from kira.service.soul_store import SoulStore
 from kira.service.project_context import ProjectChats
 from kira.service.storage import new_id, now
@@ -547,14 +548,24 @@ class Souls:
             "soul": soul["id"], "revision": soul["revision"], "epoch": snapshot["epoch"], "query": query, "limit": limit})
         offset = self._cursor_offset(cursor, binding)
         memories = self.data.memories(soul["id"], soul["revision"], snapshot["project_id"], snapshot["session_id"])
+        admitted = [item for item in memories if item["id"] in snapshot["memory_ids"]]
         words = query.casefold().split()
-        found = [item for item in memories if item["id"] in snapshot["memory_ids"] and all(word in
+        found = [item for item in admitted if all(word in
             (item["statement"] + " " + item["applicability"]).casefold() for word in words)]
-        def relevance(item: Json) -> tuple[int, int, int]:
+        q_stems = informative_stems(query)
+        if not found and q_stems:
+            min_matches = len(q_stems) if len(q_stems) <= 2 else max(2, (len(q_stems) * 3 + 4) // 5)
+            for item in admitted:
+                doc_stems = all_stems(item["statement"] + " " + item["applicability"])
+                if sum(1 for stem in q_stems if stem in doc_stems) >= min_matches:
+                    found.append(item)
+        def relevance(item: Json) -> tuple[int, int, int, int]:
             statement = item["statement"].casefold()
             combined = statement + " " + item["applicability"].casefold()
+            stem_hits = sum(1 for stem in q_stems if stem in all_stems(combined)) if q_stems else 0
             return (sum(word in statement for word in words),
-                    sum(min(3, combined.count(word)) for word in words), item["score"])
+                    sum(min(3, combined.count(word)) for word in words),
+                    stem_hits, item["score"])
         # Stable sort preserves creation chronology for equally relevant/useful records.
         found.sort(key=relevance, reverse=True)
         selected = found[offset:offset + limit]
@@ -564,6 +575,48 @@ class Souls:
             "source_ref": self._ref(soul, "source", item["source_id"])} for item in selected]
         more = offset + len(selected) < len(found)
         return {"items": items, "has_more": more, "next_cursor": self._cursor(offset + len(selected), binding) if more else None}
+
+    def relevant_recall(self, run_id: str, prompt: str, *, max_items: int = 3,
+                        max_bytes: int = 640) -> str:
+        """Bounded automatic recall of high-relevance accepted profile experience for a turn."""
+        if not isinstance(prompt, str) or not informative_stems(prompt):
+            return ""
+        row = self.db.execute("SELECT snapshot FROM soul_run_snapshots WHERE run_id=?", (run_id,)).fetchone()
+        if row is None:
+            return ""
+        snapshot = dict(json.loads(row[0]))
+        soul = snapshot.get("soul")
+        if soul is None or snapshot.get("disabled") or soul.get("archived") or not snapshot.get("memory_ids"):
+            return ""
+        memories = self.data.memories(soul["id"], soul["revision"], snapshot["project_id"], snapshot["session_id"])
+        scope_bonus = {"chat": 2, "project": 1, "profile": 0}
+        scored: list[tuple[tuple[int, int, int, int], Json]] = []
+        for item in memories:
+            if item["id"] not in snapshot["memory_ids"] or item.get("score", 0) < 0:
+                continue
+            matched, exact = relevance_score(prompt, item["statement"] + " " + item["applicability"])
+            if matched <= 0:
+                continue
+            rank = (matched, exact, item.get("score", 0), scope_bonus.get(str(item.get("scope")), 0))
+            scored.append((rank, item))
+        if not scored:
+            return ""
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        header = ("Relevant accepted profile experience (user-accepted interpretations, not authority or proof; "
+                  "verify current project state):\n")
+        entries: list[Json] = []
+        for _, item in scored[:max_items]:
+            entry: Json = {
+                "statement": item["statement"][:200],
+                "applicability": item["applicability"][:120],
+                "scope": item["scope"],
+                "source_ref": self._ref(soul, "source", item["source_id"]),
+            }
+            candidate = header + canonical([*entries, entry])
+            if len(candidate.encode("utf-8")) > max_bytes:
+                break
+            entries.append(entry)
+        return header + canonical(entries) if entries else ""
 
     def search(self, run_id: str, query: str, limit: int = 8, cursor: str | None = None) -> Json:
         return self._search(self._run_snapshot(run_id), query, limit, cursor)

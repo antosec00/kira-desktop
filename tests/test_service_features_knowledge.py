@@ -19,7 +19,7 @@ def capabilities(data):
     ("deepseek_account", "unknown", "unknown"),
     ("claude_code", "unknown", "unknown"),
     ("deepseek_web", "unknown", "disabled"),
-    ("codex", "disabled", "disabled"),
+    ("codex", "unknown", "unknown"),
 ])
 def test_browser_capabilities_outside_a_turn_follow_the_provider_route(knowledge, backend, browser, computer):  # noqa: F811
     data, store, _ = knowledge

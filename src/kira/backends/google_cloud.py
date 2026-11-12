@@ -1810,6 +1810,32 @@ _CANNED_REFUSAL_MARKERS: tuple[str, ...] = (
 )
 
 
+_REFUSAL_SUSPECT_OPENERS: tuple[str, ...] = (
+    "mi dispiace",
+    "non posso",
+    "spiacente",
+    "purtroppo non posso",
+    "sorry",
+    "i cannot",
+    "i can't",
+    "i'm sorry",
+    "i am sorry",
+    "as an ai",
+    "in quanto modello",
+)
+
+
+def _is_refusal_suspect_prefix(text: str) -> bool:
+    """Return True when partial streamed text opens with an apology/refusal phrase."""
+    clean = text.strip().lstrip("*_#>- ").strip().casefold()
+    if not clean:
+        return True
+    return any(
+        clean.startswith(opener) or opener.startswith(clean)
+        for opener in _REFUSAL_SUSPECT_OPENERS
+    )
+
+
 def _is_canned_security_refusal(text: str) -> bool:
     """Detect canned post-thought cyber-safety refusals emitted when safetySettings=OFF."""
     clean = text.strip().lstrip("*_#>- ").strip().casefold()
@@ -2759,7 +2785,15 @@ class GoogleCloudBackend(OllamaBackend):
                                                             )
                                                     else:
                                                         pending_deltas.append(value)
-                                                        if len(text) >= 360 and not _is_canned_security_refusal(text):
+                                                        ready_fast = (
+                                                            len(text) >= 80
+                                                            and not _is_refusal_suspect_prefix(text)
+                                                            and not _is_canned_security_refusal(text)
+                                                        )
+                                                        if ready_fast or (
+                                                            len(text) >= 360
+                                                            and not _is_canned_security_refusal(text)
+                                                        ):
                                                             deltas_flushed = True
                                                             if ctx:
                                                                 for chunk_val in pending_deltas:
@@ -3019,11 +3053,17 @@ class GoogleCloudBackend(OllamaBackend):
             "stream": True,
         }
         if system_text:
-            request["system"] = system_text
+            request["system"] = [
+                {
+                    "type": "text",
+                    "text": system_text,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
 
         tools = body.get("tools", [])
         if isinstance(tools, list) and tools:
-            request["tools"] = [
+            built_tools: list[Json] = [
                 {
                     "name": item["function"]["name"],
                     "description": item["function"].get("description", ""),
@@ -3032,6 +3072,9 @@ class GoogleCloudBackend(OllamaBackend):
                 for item in tools
                 if isinstance(item, dict) and isinstance(item.get("function"), dict)
             ]
+            if built_tools:
+                built_tools[-1] = {**built_tools[-1], "cache_control": {"type": "ephemeral"}}
+                request["tools"] = built_tools
 
         effort = ctx.settings.get("reasoning_effort") if ctx else None
         budget = _thinking_budget_for_effort(effort if isinstance(effort, str) else None)
@@ -3047,6 +3090,7 @@ class GoogleCloudBackend(OllamaBackend):
         blocks: dict[int, Json] = {}
         tool_calls: list[Json] = []
         input_tokens: int | None = None
+        cached_input_tokens: int | None = None
         output_tokens: int | None = None
         stop_reason = ""
         message_stopped = False
@@ -3152,7 +3196,14 @@ class GoogleCloudBackend(OllamaBackend):
                         event_type = event or str(record.get("type") or "")
                         if event_type == "message_start":
                             usage = record.get("message", {}).get("usage", {})
-                            input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+                            if isinstance(usage, dict):
+                                raw_in = usage.get("input_tokens")
+                                cache_read = usage.get("cache_read_input_tokens")
+                                cache_write = usage.get("cache_creation_input_tokens")
+                                parts_in = [v for v in (raw_in, cache_read, cache_write) if type(v) is int and v >= 0]
+                                input_tokens = sum(parts_in) if parts_in else None
+                                if type(cache_read) is int and cache_read >= 0:
+                                    cached_input_tokens = cache_read
                         elif event_type == "content_block_start":
                             index = record.get("index")
                             block = record.get("content_block")
@@ -3275,6 +3326,7 @@ class GoogleCloudBackend(OllamaBackend):
                 else stop_reason
             ),
             "prompt_eval_count": input_tokens,
+            "cached_input_tokens": cached_input_tokens,
             "eval_count": output_tokens,
             "max_output_tokens": request_cap,
             "tool_input_incomplete": incomplete_tool_input,

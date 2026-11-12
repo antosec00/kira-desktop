@@ -44,9 +44,129 @@ class RenderStyle:
     strong: str = "#f5f7f8"
     muted: str = "#9aa3ad"
     rule: str = "#2a313a"
+    table_header: str = ""
+    syntax_keyword: str = ""
+    syntax_string: str = ""
+    syntax_comment: str = ""
+    syntax_number: str = ""
 
 
 DEFAULT_STYLE = RenderStyle()
+
+_HASH_COMMENT_LANGS = frozenset({
+    "py", "python", "sh", "bash", "zsh", "shell", "yaml", "yml", "toml", "rb", "ruby", "r",
+})
+_SLASH_COMMENT_LANGS = frozenset({
+    "js", "javascript", "ts", "typescript", "jsx", "tsx", "rs", "rust", "go", "golang",
+    "c", "cpp", "cxx", "cc", "h", "hpp", "java", "kt", "kotlin", "swift", "cs", "csharp",
+    "jsonc", "qml", "css", "scss",
+})
+_SQL_LANGS = frozenset({"sql", "sqlite", "postgres", "postgresql", "mysql"})
+_HIGHLIGHT_LANGS = _HASH_COMMENT_LANGS | _SLASH_COMMENT_LANGS | _SQL_LANGS | frozenset({"json"})
+
+_KEYWORDS = frozenset({
+    "def", "class", "return", "yield", "async", "await", "import", "from", "as", "if",
+    "elif", "else", "for", "while", "break", "continue", "try", "except", "finally",
+    "raise", "with", "lambda", "pass", "True", "False", "None", "and", "or", "not", "in",
+    "is", "match", "case", "fn", "let", "mut", "pub", "impl", "struct", "enum", "trait",
+    "use", "mod", "crate", "where", "const", "static", "type", "interface", "export",
+    "default", "function", "var", "new", "throw", "catch", "typeof", "instanceof",
+    "null", "undefined", "true", "false", "func", "package", "defer", "go", "chan",
+    "select", "void", "int", "float", "double", "bool", "char", "auto", "SELECT", "FROM",
+    "WHERE", "INSERT", "INTO", "UPDATE", "DELETE", "JOIN", "LEFT", "INNER", "GROUP",
+    "ORDER", "BY", "LIMIT", "CREATE", "TABLE", "INDEX", "PRIMARY", "KEY", "NULL", "AND", "OR",
+})
+
+_HASH_LEXER = re.compile(
+    r'(?P<comment>#[^\n]*)'
+    r'|(?P<string>"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\')'
+    r'|(?P<ident>\b[A-Za-z_][A-Za-z0-9_]*\b)'
+    r'|(?P<number>\b(?:0[xXoObB][0-9a-fA-F_]+|\d+(?:\.\d+)?)\b)'
+)
+_SLASH_LEXER = re.compile(
+    r'(?P<comment>//[^\n]*|/\*[\s\S]*?\*/)'
+    r'|(?P<string>`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\')'
+    r'|(?P<ident>\b[A-Za-z_][A-Za-z0-9_]*\b)'
+    r'|(?P<number>\b(?:0[xXoObB][0-9a-fA-F_]+|\d+(?:\.\d+)?)\b)'
+)
+_SQL_LEXER = re.compile(
+    r'(?P<comment>--[^\n]*|/\*[\s\S]*?\*/)'
+    r'|(?P<string>\'(?:\'\'|[^\'\n])*\'|"(?:\\.|[^"\\\n])*")'
+    r'|(?P<ident>\b[A-Za-z_][A-Za-z0-9_]*\b)'
+    r'|(?P<number>\b\d+(?:\.\d+)?\b)'
+)
+_JSON_LEXER = re.compile(
+    r'(?P<string>"(?:\\.|[^"\\\n])*")'
+    r'|(?P<ident>\b(?:true|false|null)\b)'
+    r'|(?P<number>-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)'
+)
+_FENCE_LINE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def _highlight_code(content: str, lang: str, style: RenderStyle) -> str:
+    """Safe, resource-free lexical syntax highlighting preserving exact plain text."""
+    if not style.syntax_keyword or len(content) > 24_000 or lang not in _HIGHLIGHT_LANGS:
+        return escape(content)
+    lexer = (
+        _HASH_LEXER if lang in _HASH_COMMENT_LANGS
+        else _SLASH_LEXER if lang in _SLASH_COMMENT_LANGS
+        else _SQL_LEXER if lang in _SQL_LANGS
+        else _JSON_LEXER
+    )
+    out: list[str] = []
+    pos = 0
+    for match in lexer.finditer(content):
+        start, end = match.span()
+        if start > pos:
+            out.append(escape(content[pos:start]))
+        raw = match.group(0)
+        group = match.lastgroup
+        color = ""
+        if group == "comment":
+            color = style.syntax_comment
+        elif group == "string":
+            color = style.syntax_string
+        elif group == "number":
+            color = style.syntax_number
+        elif group == "ident" and (raw in _KEYWORDS or (lang in _SQL_LANGS and raw.upper() in _KEYWORDS)):
+            color = style.syntax_keyword
+        escaped = escape(raw)
+        out.append(f'<span style="color:{color}">{escaped}</span>' if color else escaped)
+        pos = end
+    if pos < len(content):
+        out.append(escape(content[pos:]))
+    return "".join(out)
+
+
+def _streaming_heading_split(source: str) -> int:
+    """Return a safe CommonMark ATX heading boundary index for incremental streaming, or 0."""
+    if len(source) < 1_200 or "]:" in source:
+        return 0
+    fence_char = ""
+    fence_len = 0
+    last_boundary = 0
+    offset = 0
+    prev_blank = False
+    for line in source.splitlines(keepends=True):
+        stripped = line.rstrip("\r\n")
+        fence_match = _FENCE_LINE_RE.match(stripped)
+        if fence_match:
+            marker, rest = fence_match.group(1), fence_match.group(2)
+            if not fence_char:
+                if "`" not in marker or "`" not in rest:
+                    fence_char = marker[0]
+                    fence_len = len(marker)
+            elif marker[0] == fence_char and len(marker) >= fence_len and not rest.strip():
+                fence_char = ""
+                fence_len = 0
+        elif not fence_char and prev_blank and stripped.startswith("#"):
+            hashes = len(stripped) - len(stripped.lstrip("#"))
+            if 1 <= hashes <= 6 and len(stripped) > hashes and stripped[hashes] == " ":
+                if offset >= 512:
+                    last_boundary = offset
+        prev_blank = not fence_char and stripped == ""
+        offset += len(line)
+    return last_boundary if 0 < last_boundary < len(source) - 64 else 0
 
 
 def safe_href(url: str) -> str | None:
@@ -144,7 +264,9 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
             # Qt interprets a final newline before </pre> as an extra blank
             # paragraph. Retain internal whitespace, tabs and all code text.
             content = token.content.removesuffix("\n")
-            if token.info.strip().split(maxsplit=1)[:1] in (["diff"], ["patch"]) and style.added:
+            fence_lang = (token.info.strip().split(maxsplit=1)[0].casefold()
+                          if token.info and token.info.strip() else "")
+            if fence_lang in {"diff", "patch"} and style.added:
                 lines = []
                 for line in content.split("\n"):
                     color = style.added if line.startswith("+") else (
@@ -152,6 +274,8 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
                     literal = escape(line)
                     lines.append(f'<span style="color:{color}">{literal}</span>' if color else literal)
                 rendered = "\n".join(lines)
+            elif fence_lang and style.syntax_keyword:
+                rendered = _highlight_code(content, fence_lang, style)
             else:
                 rendered = escape(content)
             # Long lines wrap inside the block: the transcript has no horizontal scroll,
@@ -182,10 +306,18 @@ def _render_tokens(tokens: list[Token], style: RenderStyle = DEFAULT_STYLE) -> s
                 alignment = str(token.attrGet("style") or "")
                 align = next((value for value in ("left", "center", "right")
                               if alignment == f"text-align:{value}"), "left")
-                chunks.append(f'<{token.tag} align="{align}" style="padding:6px">')
+                cell_style = (
+                    f"padding:7px 10px; color:{style.strong}; background-color:{style.table_header}"
+                    if token.tag == "th" and style.table_header
+                    else f"padding:6px 10px; color:{style.body}"
+                )
+                chunks.append(f'<{token.tag} align="{align}" style="{cell_style}">')
         elif token.tag == "table":
-            chunks.append('<table border="1" cellspacing="0" cellpadding="6">'
-                          if token.nesting == 1 else "</table>")
+            chunks.append(
+                f'<table border="1" cellspacing="0" cellpadding="6" '
+                f'style="border-collapse:collapse; border-color:{style.rule}; margin-top:8px; margin-bottom:10px">'
+                if token.nesting == 1 else "</table>"
+            )
         elif token.tag in simple_tags and token.nesting:
             if token.hidden:  # Tight list paragraphs should not add margins.
                 continue
@@ -219,6 +351,7 @@ class MarkdownRenderer(QObject):
         self._smart_parser.enable(["table", "strikethrough", "replacements", "smartquotes"])
         self._cache: OrderedDict[tuple[RenderStyle, str], str] = OrderedDict()
         self._cache_bytes = 0
+        self._stream_prefix_cache: OrderedDict[tuple[RenderStyle, str], str] = OrderedDict()
 
     @Slot(QObject)
     def invalidate(self, item: QObject | None) -> None:
@@ -265,6 +398,11 @@ class MarkdownRenderer(QObject):
             strong=colors.get("textStrong", colors.get("text", "#f5f7f8")),
             muted=colors.get("textSecondary", colors.get("muted", "#9aa3ad")),
             rule=colors.get("border", "#2a313a"),
+            table_header=colors.get("surfaceAlt", ""),
+            syntax_keyword=colors["accent"] if colored else "",
+            syntax_string=colors.get("success", "") if colored else "",
+            syntax_comment=colors.get("muted", colors.get("textSecondary", "#9aa3ad")) if colored else "",
+            syntax_number=colors.get("warning", colors.get("inlineCodeText", colors["accent"])) if colored else "",
         )
         return self._render(text, style)
 
@@ -279,7 +417,22 @@ class MarkdownRenderer(QObject):
             self._cache.move_to_end(key)
             return self._cache[key]
         parser = self._smart_parser if style.smart else self._parser
-        rendered = _render_tokens(parser.parse(source), style)
+        split = _streaming_heading_split(source)
+        if split > 0:
+            prefix_src, tail_src = source[:split], source[split:]
+            prefix_key = (style, prefix_src)
+            if prefix_key in self._stream_prefix_cache:
+                self._stream_prefix_cache.move_to_end(prefix_key)
+                prefix_html = self._stream_prefix_cache[prefix_key]
+            else:
+                prefix_html = _render_tokens(parser.parse(prefix_src), style)
+                if len(prefix_src) + len(prefix_html) <= 262_144:
+                    while len(self._stream_prefix_cache) >= 4:
+                        self._stream_prefix_cache.popitem(last=False)
+                    self._stream_prefix_cache[prefix_key] = prefix_html
+            rendered = prefix_html + _render_tokens(parser.parse(tail_src), style)
+        else:
+            rendered = _render_tokens(parser.parse(source), style)
         if len(rendered) > MAX_OUTPUT:
             rendered = "<p>" + escape(source).replace("\n", "<br>") + "</p>"
         size = self._entry_size(key, rendered)
@@ -298,4 +451,6 @@ class MarkdownRenderer(QObject):
         return (sys.getsizeof(key) + sys.getsizeof(style) + sys.getsizeof(source)
                 + sys.getsizeof(rendered) + sum(sys.getsizeof(value) for value in (
                     style.code, style.link, style.added, style.removed, style.language,
-                    style.inline_code, style.body, style.strong, style.muted, style.rule)))
+                    style.inline_code, style.body, style.strong, style.muted, style.rule,
+                    style.table_header, style.syntax_keyword, style.syntax_string,
+                    style.syntax_comment, style.syntax_number)))

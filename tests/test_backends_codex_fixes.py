@@ -206,3 +206,46 @@ async def test_relay_close_cancels_in_flight_calls_before_waiting_for_connection
         pending.cancel()
         await asyncio.gather(pending, return_exceptions=True)
         await relay.close()
+
+
+async def test_codex_relays_browser_and_computer_tools_with_screenshots_and_websearch_status(tmp_path, monkeypatch):
+    import base64
+    from kira.domain.computer import computer_tool_specs
+    from kira.domain.web import browser_tool_specs
+
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 32).decode("ascii")
+    ctx, calls, events = context(tmp_path, [*assistant_tool_specs(), *browser_tool_specs(), *computer_tool_specs()])
+
+    async def callback(call_id, name, arguments):
+        calls.append((call_id, name, arguments))
+        if name == "browser.screenshot":
+            return {"ok": True, "browser_image_id": "img-1", "url": "https://example.test/"}
+        return {"ok": True, "url": "https://example.test/search"}
+
+    async def tool_image(image_id):
+        assert image_id == "img-1"
+        return {"type": "input_image", "image_url": "data:image/png;base64," + png}
+
+    ctx.client_tool_call = callback
+    ctx.tool_image = tool_image
+    RelayServer.instances = []
+    RelayServer.script = [("browser__search", {"query": "kira docs"}), ("browser__screenshot", {})]
+    monkeypatch.setattr(codex, "AppServer", RelayServer)
+    result = await codex.CodexBackend().run(ctx)
+    assert result["state"] == "completed", result
+    rpc = RelayServer.instances[0]
+    turn_prompt = dict(rpc.requests)["turn/start"]["input"][0]["text"]
+    assert "mcp__kira__browser__" in turn_prompt
+    assert [(name, arguments) for _, name, arguments in calls] == [
+        ("browser.search", {"query": "kira docs"}),
+        ("browser.screenshot", {}),
+    ]
+    screenshot_content = rpc.results["browser__screenshot"]["content"]
+    assert screenshot_content[1] == {"type": "image", "data": png, "mimeType": "image/png"}
+    assert rpc.closed and await rpc.mcp.stop() == 0
+
+    streamed = set()
+    await codex.CodexBackend()._item(ctx, "item/completed", {
+        "id": "ws-1", "type": "webSearch", "query": "kira release"}, streamed)
+    completed = [payload for kind, payload in events if kind == "tool.completed"]
+    assert completed[-1]["name"] == "codex.webSearch" and completed[-1]["result"]["ok"] is True

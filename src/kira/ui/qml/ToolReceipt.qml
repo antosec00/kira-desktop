@@ -35,7 +35,7 @@ Button {
         radius: 7
         color: receipt.down ? appearance.colors.pressed : receipt.hovered ? appearance.colors.hover
             : receipt.outcome === "running" ? appearance.colors.surface : "transparent"
-        border.width: receipt.activeFocus ? 2 : 0
+        border.width: receipt.visualFocus ? 2 : 0
         border.color: appearance.colors.accent
         Rectangle {
             x: 8; y: 0; width: 1; height: parent.height

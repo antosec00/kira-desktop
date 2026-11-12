@@ -14,7 +14,7 @@ behind every answer.
 | Provider | How it connects | Who executes the tools | Isolated browser and Kira's Computer | Attached images | Team | Autonomous goals | Research (proposals from the model) | Reasoning summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Ollama** | An Ollama server already installed; endpoint in **Settings → Connections → Ollama endpoint** | Kira | Yes (tools verified on first use; screenshots only with a model that accepts images); no Computer without vision | No (paths as text only) | Yes | Yes | Yes | No |
-| **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes | Yes |
+| **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) plus the Kira tools via MCP | Yes | No (paths as text) | Yes | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **Google Cloud · Vertex AI** | **Models → Google Cloud → Add / Switch Google account** (isolated OAuth2 PKCE), read-only system `gcloud` ADC, or API Key | Kira | Yes | Yes (PNG/JPEG/WebP/GIF) | Yes | Yes | Yes | Yes |
 | **OpenRouter** | **Models → OpenRouter → OpenRouter API key** (`sk-or-v1-...` stored in your local `0600` profile) or `OPENROUTER_API_KEY` env var | Kira | Yes (Computer with vision for multimodal models) | Yes, with models declaring `image` input in `/api/v1/models` | Yes | Yes | Yes | Yes (for models with `reasoning` / `thinking`) |

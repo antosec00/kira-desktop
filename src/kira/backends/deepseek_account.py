@@ -856,7 +856,7 @@ class DeepSeekAccountBackend(OllamaBackend):
         text = ""
         blocks: dict[int, Json] = {}
         tool_calls: list[Json] = []
-        input_tokens = output_tokens = None
+        input_tokens = output_tokens = cached_input_tokens = None
         stop_reason = ""
         message_stopped = False
         incomplete_tool_input = False
@@ -902,7 +902,14 @@ class DeepSeekAccountBackend(OllamaBackend):
                         raise StreamError("DeepSeek emitted an invalid Messages event")
                     if event == "message_start":
                         usage = record.get("message", {}).get("usage", {})
-                        input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+                        if isinstance(usage, dict):
+                            raw_in = usage.get("input_tokens")
+                            cache_read = usage.get("cache_read_input_tokens")
+                            cache_write = usage.get("cache_creation_input_tokens")
+                            parts_in = [v for v in (raw_in, cache_read, cache_write) if type(v) is int and v >= 0]
+                            input_tokens = sum(parts_in) if parts_in else None
+                            if type(cache_read) is int and cache_read >= 0:
+                                cached_input_tokens = cache_read
                     elif event == "content_block_start":
                         index = record.get("index")
                         block = record.get("content_block")
@@ -976,7 +983,8 @@ class DeepSeekAccountBackend(OllamaBackend):
         terminal: Json = {"done": True, "done_reason": "tool_use" if tool_calls else
                           "length" if stop_reason == "max_tokens" else
                           "tool_input_incomplete" if incomplete_tool_input else stop_reason,
-                          "prompt_eval_count": input_tokens, "eval_count": output_tokens,
+                          "prompt_eval_count": input_tokens, "cached_input_tokens": cached_input_tokens,
+                          "eval_count": output_tokens,
                           "max_output_tokens": request["max_tokens"],
                           "tool_input_incomplete": incomplete_tool_input}
         return message, terminal

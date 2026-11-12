@@ -32,6 +32,7 @@ from kira.backends.openai_web import MAX_SCREENSHOT_IMAGE_BYTES, is_browser_imag
 from kira.backends.client_tools import ClientToolBridge, ClientToolError, encoded, validate_tools
 from kira.domain.contracts import HOST_PERMISSIONS, WRITE_PERMISSIONS, Json, KiraError, RunContext
 from kira.domain.questions import question_tool_specs, validate_request
+from kira.domain.text_match import split_supplied_context
 
 BACKEND = "claude_code"
 CAPABILITIES = {"streaming": True, "tools": True, "cancellation": True, "resume": True,
@@ -338,6 +339,7 @@ class ClaudeCodeBackend:
         self.client_factory = client_factory
         self.stderr_bytes = 0
         self._launcher: Path | None = None
+        self._delivered_threads: dict[tuple[str, str], tuple[str, bool, bool]] = {}
 
     def _count_stderr(self, line: str) -> None:
         # Raw diagnostic text can contain credentials. Count and discard it.
@@ -652,15 +654,40 @@ class ClaudeCodeBackend:
             if ctx.cancel.is_set():
                 return {"state": "cancelled", "outcome": {"started": False}}
             prompt = ctx.prompt
-            if ctx.supplied_context:
+            session_id_str = str(ctx.session.get("id", ""))
+            static_prefix, dynamic_tail = split_supplied_context(ctx.supplied_context)
+            static_hash = (hashlib.sha256(static_prefix.encode("utf-8")).hexdigest()
+                           if static_prefix and dynamic_tail else "")
+            prior = (self._delivered_threads.get((session_id_str, str(backend_ref)))
+                     if backend_ref and static_hash else None)
+            has_browser = any(item.name.startswith("browser__") for item in mcp_tools)
+            has_questions = ctx.request_input is not None and ctx.read_input is not None
+            if prior is not None and prior[0] == static_hash:
+                prompt = ("Kira turn context update (unchanged project instructions, profile and "
+                          "pinned notes from earlier in this thread remain active):\n"
+                          + dynamic_tail + "\n\nTask:\n" + prompt)
+            elif ctx.supplied_context:
                 prompt = "Kira-supplied project context:\n" + ctx.supplied_context + "\n\nTask:\n" + prompt
-            if any(item.name.startswith("browser__") for item in mcp_tools):
+            if has_browser and not (prior is not None and prior[0] == static_hash and prior[1]):
                 prompt = BROWSER_GUIDANCE + prompt
-            if ctx.request_input is not None and ctx.read_input is not None:
+            if has_questions and not (prior is not None and prior[0] == static_hash and prior[2]):
                 prompt = QUESTION_GUIDANCE + prompt
             turn_started = True  # An unacknowledged prompt must never count as a safe failure.
             await client.query(user_turn(prompt, images) if images else prompt)
-            return await self._observe(module, client, ctx, set(mcp_names), state)
+            observed = await self._observe(module, client, ctx, set(mcp_names), state)
+            resolved_ref = str((observed.get("outcome") or {}).get("session_id") or backend_ref or "")
+            if observed.get("state") == "completed" and static_hash and resolved_ref:
+                if state.get("compacted"):
+                    self._delivered_threads.pop((session_id_str, resolved_ref), None)
+                else:
+                    if len(self._delivered_threads) >= 128 and (session_id_str, resolved_ref) not in self._delivered_threads:
+                        self._delivered_threads.pop(next(iter(self._delivered_threads)))
+                    self._delivered_threads[(session_id_str, resolved_ref)] = (
+                        static_hash,
+                        has_browser or bool(prior and prior[1]),
+                        has_questions or bool(prior and prior[2]),
+                    )
+            return observed
         except asyncio.CancelledError:
             raise
         except ClaudeCodeUnavailable as exc:
@@ -742,6 +769,7 @@ class ClaudeCodeBackend:
             if message.subtype == "init":
                 await self._initialized(ctx, message.data, view, mcp_names)
             elif message.subtype == "compact_boundary":
+                state["compacted"] = True
                 await ctx.emit("backend.notice", {"message": "Claude Code compacted its context"})
         elif isinstance(message, module.StreamEvent):
             await self._stream_event(ctx, message.event, view)

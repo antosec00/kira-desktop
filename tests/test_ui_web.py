@@ -92,7 +92,7 @@ def test_settings_are_read_only_until_saved_and_preserve_draft_model_and_effort(
     assert workspace.selectedModel == "synthetic-model" and workspace.selectedEffort == "high"
 
 
-@pytest.mark.parametrize("blocked", ["archived", "team", "busy", "configuring", "loading", "offline", "codex"])
+@pytest.mark.parametrize("blocked", ["archived", "team", "busy", "configuring", "loading", "offline", "unsupported"])
 def test_preferences_never_update_an_unavailable_or_busy_chat(web, blocked):
     workspace, controller, requests = web
     controller.refresh()
@@ -111,10 +111,20 @@ def test_preferences_never_update_an_unavailable_or_busy_chat(web, blocked):
     elif blocked == "offline":
         workspace._connected_value = False
     else:
-        workspace._backend = "codex"
+        workspace._backend = "unsupported"
     controller.apply()
     controller.setBrowserEnabled(False)
     assert len(requests) == 1 and not controller.canEdit
+
+
+def test_codex_enables_browser_panel_and_preferences(web):
+    workspace, controller, requests = web
+    workspace._backend = "codex"
+    workspace._session["backend"] = "codex"
+    assert controller.available
+    controller.refresh()
+    requests[-1][2](snapshot(backend="codex", account_id=""))
+    assert controller.canEdit
 
 
 def test_deepseek_web_enables_browser_panel_and_accepts_browser_events(web):

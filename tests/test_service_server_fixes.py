@@ -361,7 +361,8 @@ async def test_inspected_context_shows_history_supplied_to_deepseek_account(env)
 @pytest.mark.parametrize("backend,settings,saved", [
     ("deepseek_web", {"reasoning_effort": "high", "tools": True}, {"tools": True}),
     ("ollama", {"reasoning_effort": "high", "service_tier": "default"}, {"reasoning_effort": "high"}),
-    ("codex", {"browser_enabled": False, "reasoning_effort": "high"}, {"reasoning_effort": "high"}),
+    ("codex", {"browser_enabled": False, "think": True, "reasoning_effort": "high"},
+     {"browser_enabled": False, "reasoning_effort": "high"}),
     ("claude_code", {"openai_account_id": "synthetic-account", "reasoning_effort": "high"},
      {"reasoning_effort": "high"}),
     ("deepseek_account", {"openai_account_id": "synthetic-account", "temperature": 0.5}, {}),

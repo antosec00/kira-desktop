@@ -151,7 +151,7 @@ def test_policy_guard_stays_with_original_choice_and_refresh_uses_no_guard(web):
         "browser_action_approval": "always", "expected_generation": 3}
 
 
-@pytest.mark.parametrize("blocked", ["archived", "team", "configuring", "loading", "offline", "codex", "unloaded"])
+@pytest.mark.parametrize("blocked", ["archived", "team", "configuring", "loading", "offline", "unsupported", "unloaded"])
 def test_live_policy_requires_an_owned_loaded_available_chat(web, blocked):
     workspace, controller, requests = loaded(web)
     if blocked == "archived":
@@ -164,8 +164,8 @@ def test_live_policy_requires_an_owned_loaded_available_chat(web, blocked):
         workspace._chat_loading = True
     elif blocked == "offline":
         workspace._connected_value = False
-    elif blocked == "codex":
-        workspace._backend = "codex"
+    elif blocked == "unsupported":
+        workspace._backend = "unsupported"
     else:
         controller._data = {}
     controller.setActionApprovalAlways(True)
@@ -216,7 +216,7 @@ def test_quick_option_does_not_claim_another_scope_as_this_chat(web, scope):
     elif scope == "team":
         workspace._runs["run"]["team_id"] = "team"
     elif scope == "provider":
-        workspace._backend = "codex"
+        workspace._backend = "unsupported"
     else:
         workspace._chat_loading = True
     assert not workspace.approvalCanAlways
