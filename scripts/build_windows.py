@@ -8,6 +8,7 @@ natively on Windows (`python scripts/build_windows.py`).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import shutil
 import struct
@@ -233,10 +234,12 @@ def main() -> int:
                 paths = Paths.from_env()
                 if not paths.socket.exists():
                     return
-                async with Client(paths=paths) as client:
-                    status = await asyncio.wait_for(client.request("hello"), timeout=1.5)
-                    if status:
-                        await asyncio.wait_for(client.request("service.shutdown"), timeout=1.5)
+                client = Client(paths=paths)
+                try:
+                    await asyncio.wait_for(client.connect(same_version=False), timeout=1.5)
+                    await asyncio.wait_for(client.request("service.shutdown"), timeout=2.5)
+                finally:
+                    await client.close()
 
             asyncio.run(_restart_idle_service())
         except Exception:
@@ -354,7 +357,7 @@ if h_upd:
         kernel32.UpdateResourceW(h_upd, ctypes.cast(14, wintypes.LPCWSTR), ctypes.cast(gid, wintypes.LPCWSTR), 0, grp_buf, len(grp_data))
     kernel32.EndUpdateResourceW(h_upd, False)
 """
-    subprocess.run([str(win_python), "-c", script], check=True)
+    subprocess.run([str(win_python), "-c", script], stdin=subprocess.DEVNULL, check=True)
 
 
 def _create_windows_shortcuts(install_dir: Path, desktop_dir: Path, appdata_dir: Path) -> None:
@@ -381,6 +384,7 @@ def _create_windows_shortcuts(install_dir: Path, desktop_dir: Path, appdata_dir:
     powershell = "powershell.exe" if shutil.which("powershell.exe") else "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
     subprocess.run(
         [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "; ".join(ps_lines)],
+        stdin=subprocess.DEVNULL,
         check=True,
     )
 
@@ -390,7 +394,7 @@ def _read_version() -> str:
     for line in init_text.splitlines():
         if line.startswith("__version__"):
             return line.split('"')[1]
-    return "0.29.0"
+    return "0.29.1"
 
 
 def _write_post_install_script(target_dir: Path) -> None:
@@ -609,6 +613,22 @@ namespace KiraDesktopSetup {{
                 string installDir = Path.Combine(Path.Combine(localAppData, "Programs"), "Kira Desktop");
                 Directory.CreateDirectory(installDir);
 
+                string existingPython = Path.Combine(installDir, @"venv\\Scripts\\python.exe");
+                string existingSrc = Path.Combine(installDir, @"app\\src");
+                if (File.Exists(existingPython) && Directory.Exists(existingSrc)) {{
+                    try {{
+                        string stopScript = "import sys; sys.path.insert(0, r'" + existingSrc.Replace("'", "\\'") + "'); from kira.cli import main; raise SystemExit(main(['stop-service']))";
+                        ProcessStartInfo stopPsi = new ProcessStartInfo(existingPython, "-I -c \\"" + stopScript + "\\"");
+                        stopPsi.WorkingDirectory = installDir;
+                        stopPsi.CreateNoWindow = true;
+                        stopPsi.UseShellExecute = false;
+                        using (Process sp = Process.Start(stopPsi)) {{
+                            sp.WaitForExit(5000);
+                        }}
+                    }} catch {{
+                    }}
+                }}
+
                 using (Stream res = Assembly.GetExecutingAssembly().GetManifestResourceStream("KiraPayload.zip")) {{
                     if (res == null)
                         throw new InvalidOperationException("Missing embedded KiraPayload.zip resource.");
@@ -716,6 +736,7 @@ namespace KiraDesktopSetup {{
                 "/r:System.Drawing.dll",
                 win_cs,
             ],
+            stdin=subprocess.DEVNULL,
             check=True,
         )
     elif shutil.which("mcs"):
@@ -760,6 +781,26 @@ def main() -> int:
     install_dir.mkdir(parents=True, exist_ok=True)
     app_dir.mkdir(parents=True, exist_ok=True)
 
+    win_python = install_dir / "venv" / "Scripts" / "python.exe"
+    if win_python.is_file() and (app_dir / "src").is_dir():
+        print("[0/4] Arresto di un eventuale servizio Windows inattivo prima della sincronizzazione ...")
+        win_src = _to_windows_path(app_dir / "src")
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+            subprocess.run(
+                [
+                    str(win_python),
+                    "-I",
+                    "-c",
+                    "import os, sys; "
+                    "[os.environ.pop(k, None) for k in ('WAYLAND_DISPLAY','DISPLAY','WSL_DISTRO_NAME','WSL_INTEROP')]; "
+                    f"sys.path.insert(0, r'{win_src}'); "
+                    "from kira.cli import main; raise SystemExit(main(['stop-service']))",
+                ],
+                stdin=subprocess.DEVNULL,
+                timeout=8,
+                check=False,
+            )
+
     print(f"[1/4] Sincronizzazione sorgenti in {app_dir} ...")
     copied = _sync_tree(REPO_ROOT / "src", app_dir / "src")
     for meta in ("pyproject.toml", "README.md", "LICENSE"):
@@ -795,6 +836,7 @@ def main() -> int:
                 "rc = 0 if avail else install_browser(paths); "
                 "print('      Stato installazione browser:', rc, 'disponibile:', engine_available(paths.data / 'browser-engine'))",
             ],
+            stdin=subprocess.DEVNULL,
             check=True,
         )
 

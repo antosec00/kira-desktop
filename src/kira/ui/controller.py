@@ -594,6 +594,7 @@ class Workspace(QObject):
         self._diagnostics_reported_code = ""
         self._diagnostics_sending = False
         self._reported_run_errors: dict[str, str] = self._load_reported_run_errors()
+        self._bootstrap_pending = False
         self._service_recovery_pending = False
         # An update stops the service on purpose: it must not be restarted meanwhile.
         self._service_hold = False
@@ -2327,6 +2328,7 @@ class Workspace(QObject):
 
     @Slot()
     def start(self) -> None:
+        self._bootstrap_pending = True
         self.client.connect_service()
 
         async def bootstrap() -> None:
@@ -2339,8 +2341,25 @@ class Workspace(QObject):
                 await asyncio.wait({task}, timeout=0.1)
             await task
 
-        self._background(lambda: asyncio.run(bootstrap()),
-                         lambda _: self.client.connect_service())
+        def _bootstrap_done(_: Any) -> None:
+            self._bootstrap_pending = False
+            self.client.incompatible = False
+            if not self._connected_value and self._notice:
+                self._notice = ""
+                self.changed.emit()
+            self.client.connect_service()
+
+        def _bootstrap_failed(message: str) -> None:
+            self._bootstrap_pending = False
+            self._problem(message)
+
+        job = BackgroundJob(lambda: asyncio.run(bootstrap()), self)
+        self._jobs.append(job)
+        job.result.connect(_bootstrap_done)
+        job.failed.connect(_bootstrap_failed)
+        job.finished.connect(lambda: self._jobs.remove(job))
+        job.finished.connect(job.deleteLater)
+        job.start()
 
     @Slot()
     def _connected(self) -> None:
@@ -2412,6 +2431,7 @@ class Workspace(QObject):
     @Slot(object)
     def _service_recovered(self, _result: Any) -> None:
         self._service_recovery_pending = False
+        self.client.incompatible = False
         self.client.connect_service()
         if not self._connected_value:
             self._service_recovery_timer.start()
@@ -2424,6 +2444,8 @@ class Workspace(QObject):
 
     @Slot(object)
     def _problem(self, message: str) -> None:
+        if self._bootstrap_pending and self.client.incompatible:
+            return
         self._notice = message
         self.changed.emit()
 

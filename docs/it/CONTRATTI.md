@@ -819,14 +819,19 @@ prompt, configurazione ed eventi, verifica dell'UID del peer).
 ## 8. Compatibilità
 
 - **GUI e servizio devono avere la stessa versione.** `hello` restituisce
-  `app_version`; la GUI rifiuta un servizio diverso prima di inviare qualsiasi
-  comando. Per aggiornare segui [Installazione](INSTALLAZIONE.md#aggiornamento):
-  a mano finisci il lavoro, metti in pausa la coda, chiudi il browser, fai il
-  backup, chiudi la GUI, ferma il servizio con `kira-desktop stop-service`,
-  aggiorna, riavvia. L'aggiornamento da Kira chiama `database.backup`, poi
-  `service.shutdown` dopo aver smesso di riavviare il servizio; un `BUSY` lascia
-  tutto com'era e il servizio resta attivo. Dopo l'installazione riavvia
-  l'interfaccia, che avvia il servizio della nuova versione.
+  `app_version`; la GUI rifiuta un servizio diverso prima di inviare comandi
+  operativi. All'avvio, se è rimasto in ascolto un servizio di un'altra versione
+  con lo stesso protocollo IPC, l'avvio gli chiede `service.shutdown` e, se il
+  servizio è inattivo, lo sostituisce con quello della versione corrente; se il
+  servizio risponde `BUSY` perché c'è lavoro in corso, il lavoro viene
+  preservato e l'avvio segnala l'incompatibilità. Per aggiornare a mano segui
+  [Installazione](INSTALLAZIONE.md#aggiornamento): finisci il lavoro, metti in
+  pausa la coda, chiudi il browser, fai il backup, chiudi la GUI, ferma il
+  servizio con `kira-desktop stop-service`, aggiorna e riavvia. L'aggiornamento
+  da Kira chiama `database.backup`, poi `service.shutdown` dopo aver smesso di
+  riavviare il servizio; un `BUSY` lascia tutto com'era e il servizio resta
+  attivo. Dopo l'installazione riavvia l'interfaccia, che avvia il servizio
+  della nuova versione.
 - **Il database si aggiorna da solo.** All'avvio su un database più vecchio il
   servizio crea prima un backup privato coerente e poi applica le modifiche in
   una transazione, senza riscrivere né cancellare le righe esistenti: progetti,

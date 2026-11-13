@@ -816,14 +816,19 @@ configuration and events, peer UID verification).
 ## 8. Compatibility
 
 - **GUI and service must have the same version.** `hello` returns
-  `app_version`; the GUI rejects a different service before sending any
-  command. To upgrade, follow [Installation](INSTALLATION.md#upgrading): by
-  hand, finish the work, pause the queue, close the browser, make the backup,
-  close the GUI, stop the service with `kira-desktop stop-service`, upgrade,
-  restart. Updating from Kira calls `database.backup`, then `service.shutdown`
-  after it stops restarting the service; a `BUSY` leaves everything as it was
-  and the service keeps running. After the installation it restarts the
-  interface, which starts the service of the new version.
+  `app_version`; the GUI rejects a different service before sending operational
+  commands. On startup, if a service from another version with the same IPC
+  protocol is still listening, bootstrap requests `service.shutdown` and, when
+  the service is idle, replaces it with the current version's service; if the
+  running service replies `BUSY` because work is still active, that work is
+  preserved and startup reports the mismatch. To upgrade by hand, follow
+  [Installation](INSTALLATION.md#upgrading): finish the work, pause the queue,
+  close the browser, make the backup, close the GUI, stop the service with
+  `kira-desktop stop-service`, upgrade and restart. Updating from Kira calls
+  `database.backup`, then `service.shutdown` after it stops restarting the
+  service; a `BUSY` leaves everything as it was and the service keeps running.
+  After the installation it restarts the interface, which starts the service of
+  the new version.
 - **The database upgrades itself.** On startup over an older database the
   service first creates a consistent private backup and then applies the
   changes in a single transaction, without rewriting or deleting the existing

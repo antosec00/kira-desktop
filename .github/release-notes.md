@@ -1,38 +1,24 @@
-## Novità in Kira Desktop 0.29.0
+## Novità in Kira Desktop 0.29.1
 
-- **Browser Web isolato di Kira e Computer attivi su OpenAI Codex**:
-  - **Ricerca e navigazione nel browser isolato di Kira**: il provider `codex` supporta ora tutti gli strumenti `browser.*` e `computer.*` attraverso il relay MCP privato di Kira su Linux e Windows, incluso il passaggio di screenshot e osservazioni visive come blocchi immagine, rispettando le impostazioni e la politica di conferma della chat.
-  - **Ricevute strumenti corrette e localizzate**: risolto il falso stato «Non riuscita» sugli eventi nativi `codex.webSearch` e `codex.imageView` privi di campo `status` e aggiunte etichette e dettagli leggibili in italiano e inglese per le ricevute di Codex, Browser e Computer.
-- **Motore di Memoria, Contesto e Anime di Kira ottimizzato**:
-  - **Ordine a prefisso stabile e deduplicazione delta per-thread**: il contesto fornito separa le istruzioni stabili (profilo Anima, `KIRA.md`/`AGENTS.md`, note fissate, memoria compattata) dalle sezioni dinamiche del turno per massimizzare il riuso della cache prefisso, inviando su **Codex** e **Claude Code** il solo aggiornamento delta nei turni successivi della stessa conversazione.
-  - **Compattazione intelligente e continuità guidata da rilevanza**: *aging* selettivo degli output storici degli strumenti, conservazione *verbatim* dei turni recenti durante la compattazione, memoizzazione dei conteggi token preflight, selezione delle chat correlate per attinenza con estratti *head + tail* e ricerca nella cronologia centrata sul cluster più denso di corrispondenze.
-  - **Anime di Kira (`Souls`) con auto-recall selettivo**: richiamo automatico limitato (`<= 640` byte) delle lezioni accettate pertinenti alla richiesta corrente (anche nei turni di continuazione di **DeepSeek Web**), ricerca tollerante a radici e accenti in italiano e inglese e consolidamento automatico delle proposte pendenti duplicate.
-- **Ottimizzazioni su tutti gli 8 Provider (Linux e Windows)**:
-  - **Google Cloud · Vertex AI**: avvio dello streaming più reattivo (holdback ridotto a 80 caratteri per il testo ordinario), breakpoint `cache_control` e telemetria `cached_input_tokens` per i modelli Anthropic su Vertex, limite output a 65.536 token per evitare troncamenti durante il ragionamento esteso e guida al recupero incrementale su modifiche file ampie.
-  - **OpenRouter, DeepSeek API e Ollama**: breakpoint `cache_control` automatici per i modelli `anthropic/*` su OpenRouter, tracciamento `cache_read_input_tokens` su DeepSeek API e scala dinamica del budget di cronologia su Ollama con finestre `num_ctx >= 32768`.
-  - **Stabilità nativa Windows**: superficie browser in modalità pagina con ripubblicazione immediata dei frame e auto-installazione del motore Chromium isolato.
-- **Interfaccia QML e Chat Markdown perfezionate**:
-  - **Pulizia visiva dei controlli**: eliminato lo sfondo opaco sui pulsanti `subtle` disabilitati nella barra laterale e limitati gli anelli di focus alla sola navigazione da tastiera (`visualFocus`).
-  - **Blocchi di codice, tabelle e streaming in chat**: colorazione sintattica lessicale adattiva al tema chiaro/scuro nei blocchi di codice, tabelle Markdown con bordi tematici collassati e intestazioni evidenziate, e cache incrementale del prefisso per uno streaming più fluido delle risposte lunghe.
+- **Eliminazione sicura dei progetti da Kira (`Elimina progetto…`)**:
+  - **Rimozione dal registro locale senza toccare i file su disco**: puoi ora eliminare un progetto dall'elenco di Kira tramite il menu contestuale della barra laterale (tasto destro o `⋮`), `File → Elimina progetto…` o il pannello *Memoria e istruzioni del progetto*, con finestra di conferma esplicita. Kira rimuove le sole registrazioni interne (chat, cronologia, schede di Ricerca, artefatti interni e bozze locali del progetto), lasciando intatti la cartella e tutti i tuoi file sul computer; l'operazione viene rifiutata (`BUSY`) se nel progetto ci sono esecuzioni, Team o browser manuali attivi.
+- **Sostituzione automatica e sicura del servizio inattivo dopo gli aggiornamenti (Windows e Linux)**:
+  - **Nessuno stallo per disallineamento di versione**: se aggiorni manualmente il pacchetto (`setup.exe` su Windows o `.deb` su Ubuntu) o i sorgenti mentre il servizio in background della versione precedente è ancora rimasto in ascolto ma inattivo, Kira gli chiede ora automaticamente di arrestarsi (`service.shutdown`) e avvia subito il nuovo servizio senza rimanere bloccata sulla schermata di caricamento.
+  - **Protezione rigorosa del lavoro attivo**: se il servizio precedente risponde `BUSY` perché un'esecuzione, un Team o un browser manuale sono ancora in corso, il lavoro viene preservato integralmente e Kira segnala l'attesa. Anche l'installer e il launcher di Windows fermano ora preventivamente un eventuale servizio inattivo prima di aggiornare i file.
+- **Documentazione, vetrina e trasparenza sui dati**:
+  - **Vetrina rinnovata e trasparenza esplicita**: aggiornate le schermate ad alta risoluzione in italiano e inglese, la panoramica animata e la documentazione di sicurezza ([Permessi e sicurezza](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/PERMESSI_E_SICUREZZA.md)), esplicitando che l'unico segnale esterno facoltativo di Kira è il conteggio anonimo di versione e sistema operativo (`id` UUIDv4 casuale locale, `v`, `os`, `kind` — verificabile nel codice in `src/kira/ui/updates.py` e disattivabile in **Impostazioni → Dati locali → Aggiornamenti**).
 
 ---
 
-## What's New in Kira Desktop 0.29.0
+## What's New in Kira Desktop 0.29.1
 
-- **Kira Isolated Web Browser & Computer Enabled on OpenAI Codex**:
-  - **Full isolated browser & Computer support**: the `codex` provider now exposes Kira's `browser.*` and `computer.*` tools through Kira's private per-run MCP relay on both Linux and Windows, including base64 image delivery for screenshots and observations while honoring per-chat browser settings and confirmation policies.
-  - **Accurate, localized tool receipts**: fixed completed `codex.webSearch` and `codex.imageView` items falsely reporting failure when `status` is omitted, and added localized Italian and English receipt titles and details for Codex, Browser, and Computer actions.
-- **Optimized Memory, Context Engine & Kira Souls**:
-  - **Prefix-stable context ordering & per-thread delta deduplication**: stable instructions (Soul profile, `KIRA.md`/`AGENTS.md`, pinned notes, compacted memory) now consistently precede turn-dynamic sections to maximize prompt/KV cache hits, while **Codex** and **Claude Code** send compact turn-delta updates on resumed threads instead of repeating unchanged static context.
-  - **Smarter compaction & relevance-ranked continuity**: selective aging of older tool outputs, verbatim retention of recent turns during `DirectContext` compaction, body-hash preflight token memoization, query-relevance ranking of cross-chat summaries with *head + tail* conclusion excerpts, and match-cluster excerpt centering in history search.
-  - **Kira Souls automatic recall & deduplication**: bounded automatic recall (`<= 640` bytes) of accepted lessons relevant to the active prompt (including **DeepSeek Web** continuations), accent- and stem-tolerant Italian/English fallback search, and automatic consolidation of duplicate pending lesson proposals.
-- **Improvements Across All 8 Providers (Linux & Windows)**:
-  - **Google Cloud · Vertex AI**: faster streaming start (80-character prefix flush for ordinary text), `cache_control` breakpoints and `cached_input_tokens` telemetry for Anthropic models on Vertex, 65,536 `max_output_tokens` headroom to prevent thinking truncation, and incremental chunking recovery hints on large file edits.
-  - **OpenRouter, DeepSeek API & Ollama**: automatic `cache_control` breakpoints for `anthropic/*` models on OpenRouter, `cache_read_input_tokens` accounting on DeepSeek API, and scaled history budgets on Ollama when `num_ctx >= 32768`.
-  - **Native Windows polish**: page surface mode with immediate viewport frame republishing on handoff and automatic isolated Chromium engine installation.
-- **Refined QML Interface & Chat Markdown**:
-  - **Cleaner controls & focus states**: transparent background on disabled `subtle` sidebar buttons and keyboard-only focus rings (`visualFocus`) across buttons, selectors, and tool receipts.
-  - **Code highlighting, themed tables & smoother streaming**: theme-aware lexical syntax highlighting for fenced code blocks, Markdown tables with collapsed themed borders and shaded headers, and incremental heading-boundary prefix caching during live streaming.
+- **Safe Project Deletion (`Delete project…`)**:
+  - **Remove projects from Kira without touching files on disk**: you can now delete a project from Kira's sidebar context menu (right-click or `⋮`), `File → Delete project…`, or the *Project memory and instructions* dialog with an explicit confirmation prompt. Kira deletes only its internal database records and local project state (chats, runs, Research records, internal artifacts, and drafts), leaving the project folder and every file on your computer completely untouched; deletion is refused (`BUSY`) while runs, Teams, or manual browser sessions are active in that project.
+- **Seamless Idle Service Upgrade on Windows & Linux**:
+  - **Automatic replacement of idle older services**: after a manual installer upgrade (`setup.exe` on Windows or `.deb` on Ubuntu) or source update, if an idle background service from the previous version is still listening, Kira now automatically requests a graceful `service.shutdown` and starts the new service instead of stalling on a version-mismatch screen.
+  - **Strict protection of active work**: if the older service reports `BUSY` (active run, Team, or manual browser control), Kira preserves the running work untouched and surfaces a clear notice. Both the Windows installer and launcher now also cleanly stop idle background services across version changes.
+- **Refreshed Showcase & Explicit Privacy Transparency**:
+  - **Updated media & version-ping documentation**: refreshed English and Italian UI screenshots, animated showcase preview, and [Permissions and security](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/PERMISSIONS_AND_SECURITY.md) documentation clearly detailing the optional 4-field anonymous version/OS count (`id` random local UUIDv4, `v`, `os`, `kind` — directly inspectable in `src/kira/ui/updates.py` and toggleable in **Settings → Local data → Updates**).
 
 ---
 

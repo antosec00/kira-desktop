@@ -263,26 +263,39 @@ descritto in [Installazione](INSTALLAZIONE.md). I file privati sono creati con
 permessi 0600. I file e le cartelle che gli strumenti e i comandi di Kira creano
 nei tuoi progetti hanno invece i permessi consueti (0644 e 0755).
 
-Kira non invia telemetria: non ci sono statistiche d'uso, segnalazioni
-automatiche di errori o aggiornamenti scaricati o installati in silenzio. Il
-traffico di rete va soltanto ai provider che hai collegato, ai siti aperti nel
-browser integrato (da te o dall'agente, comprese le ricerche Google di
-`browser.search`), ai controlli degli aggiornamenti descritti sotto e, quando lo
+Kira non raccoglie mai il contenuto di progetti, chat, prompt, file o comandi,
+non invia segnalazioni automatiche di errori e non scarica né installa
+aggiornamenti in silenzio. Il traffico di rete va soltanto ai provider che hai
+collegato, ai siti aperti nel browser integrato (da te o dall'agente, comprese
+le ricerche Google di `browser.search`), al controllo degli aggiornamenti (con
+l'unico conteggio anonimo di versione descritto sotto), alle segnalazioni
+diagnostiche redatte quando premi tu il pulsante per inviarle e, quando lo
 esegui tu, al download del motore con `kira-desktop browser-install`.
 
 Il controllo degli aggiornamenti (8 secondi dopo l'avvio e ogni 24 ore, da
 disattivare in **Impostazioni → Dati locali → Aggiornamenti**) chiede a
-`api.github.com` l'ultima release; in un checkout dei sorgenti esegue invece
-`git fetch` sul remoto del checkout, senza mai chiedere credenziali. Il
-pacchetto si scarica dagli indirizzi di GitHub che servono i file delle release
-solo dopo **Aggiorna ora**. Oltre allo User-Agent `Kira-Desktop/<versione>` non
-parte alcun dato su di te. Nulla si installa senza che tu prema **Aggiorna
+`api.github.com` l'ultima release con il solo User-Agent
+`Kira-Desktop/<versione>`; in un checkout dei sorgenti esegue invece `git fetch`
+sul remoto del checkout, senza mai chiedere credenziali. Durante questo
+controllo, se l'opzione **Statistiche anonime di versione (ID casuale, versione
+e sistema operativo)** è attiva nella stessa scheda, Kira invia anche una
+singola richiesta con quattro soli campi — `id` (un UUIDv4 casuale generato in
+locale e conservato con permessi `0600` in `installation_id`), `v` (versione di
+Kira), `os` (`windows`, `linux`, `wsl2`) e `kind` (`package`, `source`) — per
+sapere quante installazioni usano l'applicazione e su quale sistema operativo,
+come verificabile direttamente in `src/kira/ui/updates.py`; puoi disattivare il
+segnale in qualsiasi momento con il relativo interruttore. Un rapporto
+diagnostico parte verso il servizio di raccolta solo su tua azione esplicita,
+dopo la redazione automatica di percorsi utente, token `Bearer` e chiavi API, e
+restituisce il codice ricevuta dell'invio. Il pacchetto di aggiornamento si
+scarica dagli indirizzi di GitHub che servono i file delle release solo dopo
+**Aggiorna ora**. Nulla si installa senza che tu prema **Aggiorna
 ora**: Kira fa prima un backup coerente del database, accetta il pacchetto solo
 se la firma Ed25519 di `SHA256SUMS` è valida per la chiave integrata nell'app e
 l'impronta SHA-256 corrisponde, procede solo se il servizio inattivo accetta di
-fermarsi e installa con `pkexec apt-get install -y --no-remove`, che chiede la
-password del sistema, oppure ti mostra il comando `sudo apt install` da
-eseguire tu. I passi sono in [Installazione](INSTALLAZIONE.md#aggiornare-da-kira).
+fermarsi e installa con `pkexec apt-get install -y --no-remove` (o l'installer
+silenzioso firmato su Windows), oppure ti mostra il comando `sudo apt install`
+da eseguire tu. I passi sono in [Installazione](INSTALLAZIONE.md#aggiornare-da-kira).
 
 ### Credenziali
 

@@ -42,7 +42,13 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
   private del tuo profilo. Kira non legge cookie né credenziali di altre
   applicazioni; i token e le chiavi degli accessi che gestisce (ChatGPT, Google
   Cloud, OpenRouter, DeepSeek) restano in file privati del profilo (`0600`), fuori da
-  database, esportazioni e diagnostica.
+  database, esportazioni e diagnostica. L'unico segnale esterno è un conteggio
+  anonimo e facoltativo delle versioni durante il controllo degli aggiornamenti —
+  un UUIDv4 casuale locale, la versione di Kira, il sistema operativo (`windows`,
+  `linux`, `wsl2`) e il tipo di installazione, ispezionabile direttamente in
+  [`src/kira/ui/updates.py`](src/kira/ui/updates.py) e disattivabile in
+  **Impostazioni → Dati locali → Aggiornamenti** — senza mai inviare prompt,
+  percorsi o dati personali.
 - **Porta il tuo modello.** Ollama sul tuo computer, OpenAI Codex, il tuo piano
   ChatGPT, Google Cloud · Vertex AI (con i tuoi crediti o saldo GCP e multi-account
   isolato), OpenRouter (oltre 300 modelli con adattamento automatico al contesto e

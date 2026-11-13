@@ -256,26 +256,36 @@ described in [Installation](INSTALLATION.md). Private files are created with
 0600 permissions. Files and folders that Kira's tools and commands create in
 your projects get the usual permissions (0644 and 0755) instead.
 
-Kira sends no telemetry: there are no usage statistics, automatic error reports
-or silently downloaded or installed updates. Network traffic goes only to the
-providers you have connected, to the sites opened in the integrated browser (by
-you or by the agent, including the Google searches of `browser.search`), to the
-update checks described below and, when you run it yourself, to the engine
-download of `kira-desktop browser-install`.
+Kira never collects the content of projects, chats, prompts, files or commands,
+never sends automatic error reports and never silently downloads or installs
+updates. Network traffic goes only to the providers you have connected, to the
+sites opened in the integrated browser (by you or by the agent, including the
+Google searches of `browser.search`), to the update check (with the single
+anonymous version count described below), to redacted diagnostic reports when
+you explicitly press the button to submit one and, when you run it yourself, to
+the engine download of `kira-desktop browser-install`.
 
 The update check (8 seconds after startup and every 24 hours, which you can turn
 off in **Settings → Local data → Updates**) asks `api.github.com` for the latest
-release; in a source checkout it runs `git fetch` on the checkout's remote
-instead, never asking for credentials. The package is downloaded from the
-GitHub addresses that serve the release files only after **Update now**. Apart
-from the User-Agent `Kira-Desktop/<version>` no data about you is sent. Nothing
-is installed unless you press **Update now**: Kira first makes a consistent
-database backup, accepts the package only when the Ed25519 signature of
-`SHA256SUMS` is valid for the key built into the app and the SHA-256 checksum
-matches, goes ahead only if the idle service agrees to stop, and installs with
-`pkexec apt-get install -y --no-remove`, which asks for the system password, or
-shows you the `sudo apt install` command to run yourself. The steps are in
-[Installation](INSTALLATION.md#updating-from-kira).
+release with only the User-Agent `Kira-Desktop/<version>`; in a source checkout
+it runs `git fetch` on the checkout's remote instead, never asking for
+credentials. During that check, when **Anonymous version statistics (random ID,
+version and operating system)** is enabled in the same pane, Kira also sends a
+single request carrying only four fields — `id` (a random local UUIDv4 kept with
+`0600` permissions in `installation_id`), `v` (Kira version), `os` (`windows`,
+`linux`, `wsl2`) and `kind` (`package`, `source`) — solely to count active
+installations by operating system, as you can inspect directly in
+`src/kira/ui/updates.py`; you can turn that toggle off at any time. A diagnostic
+report is sent only on your explicit action, after local redaction of user home
+paths, `Bearer` tokens and API keys, and returns a receipt code. The update
+package is downloaded from the GitHub addresses that serve the release files
+only after **Update now**. Nothing is installed unless you press **Update now**:
+Kira first makes a consistent database backup, accepts the package only when the
+Ed25519 signature of `SHA256SUMS` is valid for the key built into the app and
+the SHA-256 checksum matches, goes ahead only if the idle service agrees to
+stop, and installs with `pkexec apt-get install -y --no-remove` (or the verified
+silent installer on Windows), or shows you the `sudo apt install` command to run
+yourself. The steps are in [Installation](INSTALLATION.md#updating-from-kira).
 
 ### Credentials
 

@@ -717,7 +717,7 @@ Code structure, tests and customization are in [Development](DEVELOPMENT.md).
 | Symptom | What to do |
 | --- | --- |
 | Wrong projects or empty history | You are opening another profile: check `KIRA_HOME` and the XDG variables of the interface and of the service. Do not create a new database over the old one |
-| The interface reports a version different from the service | Finish the work, close the window, stop the idle service with `stop-service` (it also works with a service of another version) and restart with the same code for both |
+| The interface reports a version different from the service | An idle service from another version is replaced automatically on startup; if this notice appears, the old service still has active work: wait for it to finish, stop the service with `stop-service` and reopen Kira |
 | EGL/Zink warnings in WSLg | They are harmless: Kira uses software rendering for the interface. If you set a renderer by hand, your choice prevails |
 | Provider unavailable | Check the configured executable or endpoint and the account status at the provider. A model listed in the catalog does not guarantee that your account can use it |
 | Dragging a file from Windows does not work | Use paste or **Attach**: in WSLg the drag event does not always reach Kira |

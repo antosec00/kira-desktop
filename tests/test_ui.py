@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import threading
 import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -488,3 +489,56 @@ def test_qt_client_refuses_incompatible_service(qapp, qtbot, tmp_path):
     assert not client.request("run.start", {}, lambda _: pytest.fail("Mutation must be rejected"))
     client.close()
     server.close()
+
+
+def test_workspace_start_recovers_after_bootstrap_replaces_incompatible_service(qapp, qtbot, tmp_path, monkeypatch):
+    paths = Paths(*(tmp_path / name for name in ("config", "data", "state", "run")))
+    paths.ensure()
+    server = QLocalServer()
+    assert server.listen(str(paths.socket))
+    state = {"version": "0.0.1"}
+    peers = []
+
+    def accepted():
+        peer = server.nextPendingConnection()
+        peers.append(peer)
+
+        def read():
+            for raw in bytes(peer.readAll()).splitlines():
+                if not raw.strip():
+                    continue
+                request = json.loads(raw)
+                if request["method"] == "hello":
+                    result = {"version": 1, "app_version": state["version"]}
+                elif request["method"] == "project.list":
+                    result = {"projects": []}
+                elif request["method"] == "settings.get":
+                    result = {"settings": {}}
+                else:
+                    result = {"available": False, "models": [], "capabilities": {}}
+                peer.write(json.dumps({"version": 1, "id": request["id"], "result": result}).encode() + b"\n")
+
+        peer.readyRead.connect(read)
+
+    server.newConnection.connect(accepted)
+    release_bootstrap = threading.Event()
+
+    async def fake_ensure(_paths):
+        await asyncio.to_thread(release_bootstrap.wait, 2.0)
+        state["version"] = __version__
+
+    monkeypatch.setattr("kira.ui.controller.ensure_service", fake_ensure)
+    ws = Workspace(paths)
+    try:
+        ws.start()
+        qtbot.waitUntil(lambda: ws.client.incompatible)
+        assert ws.notice == ""
+        release_bootstrap.set()
+        qtbot.waitUntil(lambda: ws.connected, timeout=3000)
+        assert not ws.client.incompatible
+        assert ws.notice == ""
+    finally:
+        ws.close()
+        ws.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        server.close()

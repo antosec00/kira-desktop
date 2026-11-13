@@ -318,6 +318,59 @@ async def test_installed_package_uses_the_packaged_unit(xdg_profile, monkeypatch
     assert xdg_profile == [("systemctl", ("systemctl", "--user", "start", "kira-desktop.service"))]
 
 
+async def test_ensure_service_replaces_idle_older_version_service(tmp_path, monkeypatch):
+    paths = Paths(*(tmp_path / name for name in ("config", "data", "state", "run")))
+    paths.ensure()
+    old_service: FakeService | None = None
+
+    def on_shutdown(_params):
+        assert old_service is not None
+        threading.Thread(target=old_service.close, daemon=True).start()
+        return {"result": {"stopping": True}}
+
+    old_service = FakeService(paths.socket, app_version="0.0.1", answers={"service.shutdown": on_shutdown})
+    new_services: list[FakeService] = []
+
+    def spawn_new(command, **kwargs):
+        if paths.socket.exists():
+            paths.socket.unlink()
+        new_services.append(FakeService(paths.socket, app_version=__version__))
+
+    monkeypatch.setattr(client_module.subprocess, "Popen", spawn_new)
+    try:
+        await ensure_service(paths)
+        assert old_service.methods() == ["hello", "hello", "service.shutdown"]
+        assert len(new_services) == 1
+        async with Client(paths) as client:
+            hello = await client.request("hello")
+            assert hello["app_version"] == __version__
+    finally:
+        old_service.close()
+        for svc in new_services:
+            svc.close()
+
+
+async def test_ensure_service_preserves_busy_older_version_service(tmp_path, monkeypatch):
+    paths = Paths(*(tmp_path / name for name in ("config", "data", "state", "run")))
+    paths.ensure()
+    old_service = FakeService(
+        paths.socket,
+        app_version="0.0.1",
+        answers={"service.shutdown": {"error": {"code": "BUSY", "message": "Active runs remain"}}},
+    )
+    launched = []
+    monkeypatch.setattr(client_module.subprocess, "Popen", lambda *a, **kw: launched.append(a))
+    try:
+        with pytest.raises(KiraError) as exc_info:
+            await ensure_service(paths)
+        assert exc_info.value.code == "VERSION_MISMATCH"
+        assert "Active runs remain" in str(exc_info.value)
+        assert not launched
+        assert old_service.methods() == ["hello", "hello", "service.shutdown"]
+    finally:
+        old_service.close()
+
+
 @pytest.mark.parametrize("installed", [True, False])
 async def test_start_failure_names_the_log_of_the_start_mode(xdg_profile, monkeypatch, installed):
     monkeypatch.setattr(client_module, "running_installed_package", lambda: installed)

@@ -719,7 +719,7 @@ del codice, test e personalizzazione sono in [Sviluppo](SVILUPPO.md).
 | Sintomo | Cosa fare |
 | --- | --- |
 | Progetti sbagliati o cronologia vuota | Stai aprendo un altro profilo: controlla `KIRA_HOME` e le variabili XDG dell'interfaccia e del servizio. Non creare un nuovo database sopra quello vecchio |
-| L'interfaccia segnala una versione diversa dal servizio | Finisci il lavoro, chiudi la finestra, ferma il servizio inattivo con `stop-service` (funziona anche con un servizio di un'altra versione) e riavvia con lo stesso codice per entrambi |
+| L'interfaccia segnala una versione diversa dal servizio | Un servizio inattivo di un'altra versione viene sostituito automaticamente all'avvio; se il messaggio compare significa che il vecchio servizio ha ancora lavoro attivo: attendi che finisca, ferma il servizio con `stop-service` e riapri Kira |
 | Avvisi EGL/Zink in WSLg | Sono innocui: Kira usa il rendering software per l'interfaccia. Se hai impostato a mano un renderer, la tua scelta prevale |
 | Provider non disponibile | Verifica eseguibile o endpoint configurati e lo stato dell'account presso il provider. Un modello elencato nel catalogo non garantisce che il tuo account possa usarlo |
 | Trascinare un file da Windows non funziona | Usa incolla o **Allega**: in WSLg l'evento di trascinamento non sempre arriva a Kira |

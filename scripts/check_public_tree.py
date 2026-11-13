@@ -20,25 +20,25 @@ REVIEWED_BINARY = {
     # Documentation and showcase media rendered by scripts/render_doc_screenshots.py
     # and scripts/render_showcase_media.py from synthetic fixture data.
     "docs/images/chat-dark.png":
-        "e250593fac75694d09957f6c1e1ad0e659b4f19943d7bff5084e9d747acd9c6e",
+        "456accb29144ce12c4ca6bf46c468d0c6c0a7b89a5549b1ba804fa4e1ddeac32",
     "docs/images/chat-light.png":
-        "240e2f371e600b55e0a39017a096a52d056aa16082cd248765400cd8401be40c",
+        "2e7c51153914b10e35042ab6af12701ee1a85fd0d3405ae1e1bdac8a06fae987",
     "docs/images/model-popover.png":
         "e6bf5b48f7be6f1dcd4e4b685613fc15f28081febc77021b1d9bf59e6379c79b",
     "docs/images/models.png":
-        "95460fada5d95a6d2a2b6e0c9651f3d6fae68b4520c363367320c618f83c175d",
+        "da44e604f377745a6168223e3acadaac21908a8afe28d5d28be36333f2ff9e49",
     "docs/images/settings.png":
-        "b125f1aad891d9cd51404fb8e00caad585422bc61ceb78ee050cac3a36e3e3fe",
+        "81e33f26a43c0ecfb0306963a1ee7beb5202b3d8be01163009356cfbdf4a18e4",
     "docs/images/chat-dark-en.png":
-        "0e52d967085c03715b860095e0dff5c4b711efe6a6460676b3c3224ea3dd5fee",
+        "5aaa14d8513f9e677e1504505df6015fa8cd4fbaa402178a4f3776e7edad2a4b",
     "docs/images/chat-browser-en.png":
         "543125b22a8c17b6a2dd85d48e31b3009bc863a7470a327fdf41b408557e8b75",
     "docs/images/models-en.png":
-        "2adca707b2c6ba5df1333aa7c0540050b3a9acdefc728ed9cc71edee47d815aa",
+        "133652d7eff37fb304e6fc651acd1731e7dfafd87b2497f38b186a97f2cae754",
     "docs/images/model-popover-en.png":
         "6700fa06fd33ec6bc62c7f782015637f6aa789fc0b520dccc3f40f04f573b1e6",
     "docs/images/kira-showcase.gif":
-        "7cb23ae5845f51ab22cb2f70ccffc0428c5cd07fd5b2bec70262f70bd5f4f824",
+        "1761dca7cf89e76ae5c40cd49ce019c05845c47dac1022cee96c07371907e70d",
     # Proof-of-work helper for the DeepSeek Web endpoint: the unmodified v1.0.0
     # release of AmanCode22/deepseek_pow_solver (MIT), a Rust-built module with no
     # imports (pure computation inside wasmtime). See docs/en/THIRD_PARTY_LICENSES.md.
@@ -46,11 +46,26 @@ REVIEWED_BINARY = {
         "fde55b7e43b00ce12ae8c08a272fc2e22a96c057e2f120fd7f4056506c10f144",
 }
 HISTORICAL_REVIEWED_BINARY = {
-    "docs/images/chat-dark.png": {"04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23"},
-    "docs/images/chat-light.png": {"bb094e3addbf7e306d945f54e294ba55a4bce111a5661e3ef28ebb19bac1a6b7"},
+    "docs/images/chat-dark.png": {
+        "04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23",
+        "e250593fac75694d09957f6c1e1ad0e659b4f19943d7bff5084e9d747acd9c6e",
+    },
+    "docs/images/chat-light.png": {
+        "bb094e3addbf7e306d945f54e294ba55a4bce111a5661e3ef28ebb19bac1a6b7",
+        "240e2f371e600b55e0a39017a096a52d056aa16082cd248765400cd8401be40c",
+    },
     "docs/images/model-popover.png": {"f8d0e29924051e13e02e2d3ae753441a50c5636dcb7e33ce03b30e8819d4fd09"},
-    "docs/images/models.png": {"fad14491b799abe415824a674166bbec04ba733837215e5d00daa5085b3acafd"},
-    "docs/images/settings.png": {"d921946b0ac3fde61699a148411e2c09e763d30fb6ea6f83659dd8ad028effb1"},
+    "docs/images/models.png": {
+        "fad14491b799abe415824a674166bbec04ba733837215e5d00daa5085b3acafd",
+        "95460fada5d95a6d2a2b6e0c9651f3d6fae68b4520c363367320c618f83c175d",
+    },
+    "docs/images/settings.png": {
+        "d921946b0ac3fde61699a148411e2c09e763d30fb6ea6f83659dd8ad028effb1",
+        "b125f1aad891d9cd51404fb8e00caad585422bc61ceb78ee050cac3a36e3e3fe",
+    },
+    "docs/images/chat-dark-en.png": {"0e52d967085c03715b860095e0dff5c4b711efe6a6460676b3c3224ea3dd5fee"},
+    "docs/images/models-en.png": {"2adca707b2c6ba5df1333aa7c0540050b3a9acdefc728ed9cc71edee47d815aa"},
+    "docs/images/kira-showcase.gif": {"7cb23ae5845f51ab22cb2f70ccffc0428c5cd07fd5b2bec70262f70bd5f4f824"},
 }
 HOME = re.compile(rb"/(?:home|Users)/[A-Za-z0-9_.-]+|[A-Za-z]:\\Users\\[A-Za-z0-9_.-]+")
 FIXTURE_HOMES = {

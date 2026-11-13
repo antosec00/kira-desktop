@@ -4,4 +4,4 @@ from kira.domain.compat import install_windows_compat
 
 install_windows_compat()
 
-__version__ = "0.29.0"
+__version__ = "0.29.1"

@@ -141,22 +141,58 @@ class Client:
         await self.close()
 
 
+async def _stop_idle_mismatched_service(paths: Paths, mismatch: KiraError) -> bool:
+    """Ask a running service of another app_version to stop if idle; preserve BUSY work."""
+    client = Client(paths)
+    try:
+        await client.connect(same_version=False)
+    except (OSError, ConnectionError, asyncio.TimeoutError):
+        return True
+    try:
+        await client.request("service.shutdown", timeout=5)
+    except KiraError as exc:
+        if exc.code == "BUSY":
+            raise KiraError("VERSION_MISMATCH", f"{mismatch} ({exc})") from exc
+        raise mismatch from exc
+    finally:
+        await client.close()
+    for _ in range(30):
+        probe = Client(paths)
+        try:
+            await probe.connect(same_version=False)
+        except (OSError, ConnectionError, asyncio.TimeoutError):
+            return True
+        finally:
+            await probe.close()
+        await asyncio.sleep(START_POLL_SECONDS)
+    return False
+
+
 async def ensure_service(paths: Paths | None = None) -> None:
     """Start the installed systemd unit or a detached background service, then verify hello."""
     paths = paths or Paths.from_env()
     paths.ensure()
 
-    async def available() -> bool:
+    replaced_idle = False
+
+    async def available(*, allow_idle_replace: bool = False) -> bool:
+        nonlocal replaced_idle
         client = Client(paths)
         try:
             await client.connect()
             return True
+        except KiraError as exc:
+            if allow_idle_replace and exc.code == "VERSION_MISMATCH":
+                await client.close()
+                replaced_idle = await _stop_idle_mismatched_service(paths, exc)
+                return False
+            raise
         except (OSError, ConnectionError, asyncio.TimeoutError):
             return False
         finally:
             await client.close()
 
-    if await available():
+    if await available(allow_idle_replace=True):
         return
     systemd_started = False
     # The packaged unit runs the packaged code: a source checkout or a KIRA_HOME
@@ -164,6 +200,12 @@ async def ensure_service(paths: Paths | None = None) -> None:
     if (running_installed_package() and SYSTEMD_UNIT.exists()
             and not os.environ.get("KIRA_HOME") and paths == Paths.from_env()):
         try:
+            if replaced_idle:
+                stop_proc = await asyncio.create_subprocess_exec(
+                    "systemctl", "--user", "stop", "kira-desktop.service",
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(stop_proc.wait(), 10)
             process = await asyncio.create_subprocess_exec(
                 "systemctl", "--user", "start", "kira-desktop.service",
                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,

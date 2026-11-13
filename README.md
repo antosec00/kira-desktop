@@ -44,7 +44,12 @@ always see what really happened.
   of your profile. Kira never reads cookies or other applications' credentials;
   the tokens and API keys of the sign-ins it manages (ChatGPT, Google Cloud,
   OpenRouter, DeepSeek) stay in private files of your profile (`0600`), outside the
-  database, exports and diagnostics.
+  database, exports and diagnostics. The only external signal is an optional
+  anonymous version count during update checks — a random local UUIDv4, the Kira
+  version, the operating system (`windows`, `linux`, `wsl2`) and the install kind,
+  inspectable directly in [`src/kira/ui/updates.py`](src/kira/ui/updates.py) and
+  toggleable in **Settings → Local data → Updates** — with zero prompts, file paths
+  or personal data.
 - **Bring your own model.** Ollama on your computer, OpenAI Codex, your ChatGPT
   plan, Google Cloud · Vertex AI (with your GCP credits or balance and isolated
   multi-account switching), OpenRouter (300+ models with automatic context
