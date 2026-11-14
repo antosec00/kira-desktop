@@ -93,17 +93,22 @@ def test_optional_claude_code_opentelemetry_floor_is_locked_across_targets():
 
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     optional = pyproject["project"]["optional-dependencies"]["claude-code"]
+    assert "claude-agent-sdk==0.2.182" in optional
     assert "opentelemetry-api>=1.45.2" in optional
 
     lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    sdk_packages = [pkg for pkg in lock["package"] if pkg["name"] == "claude-agent-sdk"]
+    assert len(sdk_packages) == 1 and sdk_packages[0]["version"] == "0.2.182"
     otel_packages = [pkg for pkg in lock["package"] if pkg["name"] == "opentelemetry-api"]
     assert len(otel_packages) == 1
     version = tuple(int(part) for part in otel_packages[0]["version"].split("."))
     assert version >= (1, 45, 2)
 
     windows_script = (ROOT / "scripts/build_windows.py").read_text()
+    assert "claude-agent-sdk==0.2.182" in windows_script
     assert 'opentelemetry-api>=1.45.2' in windows_script
 
     runtime_lock = (ROOT / "packaging/requirements.lock.txt").read_text()
+    assert "claude-agent-sdk" not in runtime_lock
     assert "opentelemetry-api" not in runtime_lock
 

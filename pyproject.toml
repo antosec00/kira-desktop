@@ -39,7 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Personal-use provider: drives the locally signed-in Claude Code. Not packaged.
-claude-code = ["claude-agent-sdk==0.2.168", "opentelemetry-api>=1.45.2"]
+claude-code = ["claude-agent-sdk==0.2.182", "opentelemetry-api>=1.45.2"]
 
 [project.urls]
 Homepage = "https://github.com/antosec00/kira-desktop"
