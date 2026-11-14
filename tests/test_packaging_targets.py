@@ -86,3 +86,24 @@ def test_packaged_documentation_keeps_repository_layout_for_relative_links():
     italian = {Path(name).name for name in placements if name.startswith("docs/it/")}
     english = {Path(name).name for name in placements if name.startswith("docs/en/")}
     assert len(italian) == len(english) == len(list((ROOT / "docs/it").glob("*.md")))
+
+
+def test_optional_claude_code_opentelemetry_floor_is_locked_across_targets():
+    import tomllib
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    optional = pyproject["project"]["optional-dependencies"]["claude-code"]
+    assert "opentelemetry-api>=1.45.2" in optional
+
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    otel_packages = [pkg for pkg in lock["package"] if pkg["name"] == "opentelemetry-api"]
+    assert len(otel_packages) == 1
+    version = tuple(int(part) for part in otel_packages[0]["version"].split("."))
+    assert version >= (1, 45, 2)
+
+    windows_script = (ROOT / "scripts/build_windows.py").read_text()
+    assert 'opentelemetry-api>=1.45.2' in windows_script
+
+    runtime_lock = (ROOT / "packaging/requirements.lock.txt").read_text()
+    assert "opentelemetry-api" not in runtime_lock
+

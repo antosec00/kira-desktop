@@ -574,3 +574,17 @@ async def test_image_attachments_travel_in_one_streamed_user_message(tmp_path):
         ctx, _, _ = context(tmp_path, image_inputs={"fixture-run": parts})
         assert (await backend(tmp_path, []).run(ctx))["state"] == "failed"
         assert not FakeClient.instances
+
+
+def test_mcp_traceparent_extraction_rejects_oversized_newline_suffix_without_backtracking():
+    import time
+
+    from mcp.shared._otel import extract_trace_context
+
+    malicious = f"00-{'a' * 32}-{'b' * 16}-01-{' ' * 40_000}\n"
+    started = time.perf_counter()
+    extracted = extract_trace_context({"traceparent": malicious})
+    elapsed = time.perf_counter() - started
+    assert extracted is None
+    assert elapsed < 0.05
+

@@ -656,7 +656,8 @@ namespace KiraDesktopSetup {{
                         "& $uv venv --python 3.12 venv; " +
                         "& $uv pip install --python venv\\\\Scripts\\\\python.exe " +
                         "PySide6-Essentials==6.11.2 cryptography==50.0.2 httpx==0.28.1 markdown-it-py==4.0.0 " +
-                        "pydantic==2.12.5 PyJWT[crypto]==2.15.1 playwright==1.64.0 \\"wasmtime>=49.0.0\\" claude-agent-sdk";
+                        "pydantic==2.12.5 PyJWT[crypto]==2.15.1 playwright==1.64.0 \\"wasmtime>=49.0.0\\" " +
+                        "claude-agent-sdk==0.2.168 \\"opentelemetry-api>=1.45.2\\"";
                     ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \\"" + psBootstrap + "\\"");
                     psi.CreateNoWindow = true;
                     psi.UseShellExecute = false;
