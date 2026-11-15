@@ -1245,16 +1245,19 @@ ApplicationWindow {
                                             })
                                         })
                                     }
+                                    function isNearYEnd() {
+                                        return atYEnd || (contentHeight > 0 && height > 0 && contentY + height >= originY + contentHeight - 2)
+                                    }
                                     boundsBehavior: Flickable.StopAtBounds
                                     ScrollBar.vertical: KScrollBar {
                                         id: conversationBar; objectName: "conversationScrollBar"
                                         onPressedChanged: {
                                             if (pressed) { conversation.cancelFlick(); window.followOutput = false }
-                                            else window.followOutput = conversation.atYEnd
+                                            else window.followOutput = conversation.isNearYEnd()
                                         }
                                     }
                                     onMovementStarted: window.followOutput = false
-                                    onMovementEnded: window.followOutput = atYEnd
+                                    onMovementEnded: window.followOutput = isNearYEnd()
                                     onCountChanged: scheduleFollow()
                                     onContentHeightChanged: scheduleFollow()
                                     Connections {
@@ -1547,7 +1550,17 @@ ApplicationWindow {
                                     color: muted
                                     font: appearance.uiFont
                                 }
-                                KButton { anchors.right: parent.right; anchors.rightMargin: 35; anchors.bottom: parent.bottom; anchors.bottomMargin: 16; text: qsTr("↓  Ultimi aggiornamenti"); visible: !window.followOutput && conversation.historyReady && !workspace.chatLoading; onClicked: { window.followOutput = true; conversation.scrollToEnd() } }
+                                KButton {
+                                    objectName: "jumpToLatestButton"
+                                    readonly property real availableRight: parent.width - 23 - (conversationBar.visible ? conversationBar.width + 12 : 0)
+                                    x: Math.max(23, Math.min(availableRight - width, Math.round((23 + availableRight - width) / 2)))
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 16
+                                    z: 4
+                                    text: qsTr("↓  Ultimi aggiornamenti")
+                                    visible: !window.followOutput && conversation.historyReady && !workspace.chatLoading
+                                    onClicked: { window.followOutput = true; conversation.scrollToEnd() }
+                                }
                             }
                             RunErrorPanel {
                                 failure: workspace.runFailure

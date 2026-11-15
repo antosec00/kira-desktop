@@ -120,7 +120,7 @@ def test_content_and_code_fonts_update_without_changing_originals(appearance_ui,
 def test_readable_width_and_font_changes_keep_the_reading_anchor(appearance_ui, qtbot):
     view, window, appearance, _ = appearance_ui
     window.resize(1680, 900)
-    # The bounded reading column is the default; this checks the full-width choice first.
+    # Full-width conversation is the default; verify explicit full_width=True then bounded 900px column.
     appearance.setOption("full_width", True)
     for index in range(32):
         view.transcript.append(kind="assistant", title="KIRA", body=f"Message {index}\n\n" + "Synthetic readable content. " * 45)

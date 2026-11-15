@@ -20,7 +20,7 @@ APPEARANCE_DEFAULTS: dict[str, Any] = {
     "mode": "dark", "separate": False,
     "ui_size": 13, "content_size": 14, "code_size": 12,
     "motion": "legacy", "sidebar_translucent": False, "contrast": 45,
-    "smart_punctuation": False, "full_width": False,
+    "smart_punctuation": False, "full_width": True,
     "diff_indicators": "color", "pointer_cursors": True,
     "shared": deepcopy(STYLE_DEFAULTS), "light": deepcopy(STYLE_DEFAULTS),
     "dark": deepcopy(STYLE_DEFAULTS),

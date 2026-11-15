@@ -59,7 +59,7 @@ def test_destroyed_appearance_cancels_queued_portal_start(
 
 
 def test_defaults_and_real_font_catalog_preserve_original_theme(appearance):
-    assert appearance.dark and not appearance.fullWidth and appearance.pointerCursors
+    assert appearance.dark and appearance.fullWidth and appearance.pointerCursors
     assert not appearance.reduceMotion
     assert appearance.values["motion"] == "off"
     assert appearance.colors["background"] == "#15181b"

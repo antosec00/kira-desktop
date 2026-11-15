@@ -235,3 +235,46 @@ def test_activity_dots_pause_for_reduced_motion_waits_and_hidden_window(chat_ui,
     view.changed.emit()
     qtbot.wait(40)
     assert not activity.property("animating")
+
+
+def test_chat_defaults_to_full_width_and_jump_button_stays_clear_of_scrollbar(chat_ui, qtbot):
+    view, window, _, _ = chat_ui
+    window.resize(1680, 900)
+    for index in range(45):
+        view.transcript.append(kind="assistant", title="KIRA", body=f"Wide layout item {index}\n" + "Content line. " * 18)
+    qtbot.wait(100)
+    root = window.contentItem()
+    conversation = item(root, "conversation")
+    bar = item(root, "conversationScrollBar")
+    composer = item(root, "composerCard")
+    jump = item(root, "jumpToLatestButton")
+    assert composer.width() > 1100
+    entry = next(
+        entry for child in conversation.childItems() for entry in child.childItems()
+        if entry.objectName().startswith("messageEntry_") and entry.width() > 0
+    )
+    assert entry.width() == pytest.approx(conversation.width() - bar.width() - 8, abs=2)
+    assert not jump.isVisible()
+
+    # Drag thumb partway up: jump button appears cleanly centered and never touches the scrollbar.
+    thumb = item(bar, "scrollThumb")
+    center = thumb.mapToScene(thumb.boundingRect().center()).toPoint()
+    destination = bar.mapToScene(QPointF(bar.width() / 2, bar.height() / 3)).toPoint()
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=center)
+    QTest.mouseMove(window, destination, delay=60)
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=destination)
+    qtbot.wait(80)
+    assert jump.isVisible()
+    for width, height in ((1680, 900), (880, 620)):
+        window.resize(width, height)
+        qtbot.wait(50)
+        jump_rect = jump.mapRectToScene(jump.boundingRect())
+        bar_rect = bar.mapRectToScene(bar.boundingRect())
+        conv_rect = conversation.mapRectToScene(conversation.boundingRect())
+        assert jump_rect.left() >= conv_rect.left()
+        assert jump_rect.right() <= bar_rect.left() - 8
+
+    click(window, jump)
+    qtbot.wait(80)
+    assert window.property("followOutput")
+    assert not jump.isVisible()
