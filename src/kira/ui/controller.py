@@ -496,8 +496,12 @@ def tool_summary(data: Json) -> str:
     sections: list[str] = []
     if command := tool_command(data):
         sections.append("$ " + command)
+    if data.get("revisedPrompt"):
+        sections.append(str(data["revisedPrompt"]))
     if path := data.get("path"):
         sections.append(str(path))
+    elif saved_path := data.get("savedPath"):
+        sections.append(str(saved_path))
     if data.get("cwd"):
         sections.append(tr("Cartella: ") + str(data["cwd"]))
     exit_code = data.get("exit_code", data.get("exitCode"))

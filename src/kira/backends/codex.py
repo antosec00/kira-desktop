@@ -1325,12 +1325,31 @@ class CodexBackend:
             name = f"codex.{item_type}"
             if completed:
                 # Do not invoke ctx.execute_tool: execution already belongs to Codex.
-                result = {**item, "source": "codex", "observed_only": True,
-                          "ok": _observed_item_ok(item)}
+                cleaned = {k: v for k, v in item.items()
+                           if not (item_type == "imageGeneration" and k == "result")}
+                result: Json = {**cleaned, "source": "codex", "observed_only": True,
+                                "ok": _observed_item_ok(item)}
+                project_image: str | None = None
+                if item_type == "imageGeneration":
+                    failure = item.get("failure")
+                    if isinstance(failure, dict) and not result.get("error"):
+                        if failure.get("type") == "usageLimitExceeded":
+                            limit_id = failure.get("limitId") or "image_gen"
+                            result["error"] = f"Codex image generation quota exceeded ({limit_id})"
+                        else:
+                            result["error"] = f"Codex image generation failed ({failure.get('type', 'error')})"
+                    if item.get("status") == "completed":
+                        project_image = await self._materialize_generated_image(ctx, item, item_id)
+                        if project_image:
+                            result["path"] = project_image
+                        elif isinstance(item.get("savedPath"), str) and item["savedPath"]:
+                            result["path"] = item["savedPath"]
                 await ctx.emit("tool.completed", {"tool_id": item_id, "name": name, "result": result})
                 if item_type == "fileChange" and item.get("status") == "completed":
                     for change in item.get("changes", []):
                         await self._artifact(ctx, change.get("path"), item_id)
+                elif project_image:
+                    await self._artifact(ctx, project_image, item_id)
             else:
                 arguments = {k: v for k, v in item.items()
                              if k in {"command", "cwd", "changes", "arguments", "tool", "server",
@@ -1338,6 +1357,49 @@ class CodexBackend:
                                       "durationMs", "agentId"}}
                 await ctx.emit("tool.started", {"tool_id": item_id, "name": name,
                                                 "arguments": arguments, "source": "codex"})
+
+    async def _materialize_generated_image(
+        self, ctx: RunContext, item: Json, tool_id: str
+    ) -> str | None:
+        if ctx.mode != "execute" or ctx.permission not in {"project_write", "trusted_host", "full_access"}:
+            return None
+        saved_path = item.get("savedPath")
+        raw_result = item.get("result")
+
+        def write_image() -> str | None:
+            data: bytes | None = None
+            if isinstance(saved_path, str) and saved_path:
+                cand = Path(saved_path)
+                if cand.is_file() and not cand.is_symlink() and cand.stat().st_size <= 32 * 1024 * 1024:
+                    data = cand.read_bytes()
+            if data is None and isinstance(raw_result, str) and raw_result.strip():
+                stripped = raw_result.strip()
+                if len(stripped) <= 44 * 1024 * 1024:
+                    with contextlib.suppress(ValueError, binascii.Error):
+                        decoded = base64.b64decode(stripped, validate=True)
+                        if decoded and len(decoded) <= 32 * 1024 * 1024:
+                            data = decoded
+            if not data:
+                return None
+            ext = "gif" if data.startswith((b"GIF87a", b"GIF89a")) else "png"
+            root = ctx.root.resolve(strict=True)
+            out_dir = root / "generated_images"
+            if out_dir.is_symlink():
+                return None
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_resolved = out_dir.resolve(strict=True)
+            out_resolved.relative_to(root)
+            safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", tool_id)[:96] or "generated_image"
+            dest = out_resolved / f"{safe_id}.{ext}"
+            if dest.is_symlink():
+                return None
+            dest.write_bytes(data)
+            return str(dest)
+
+        try:
+            return await asyncio.to_thread(write_image)
+        except (OSError, ValueError):
+            return None
 
     async def _artifact(self, ctx: RunContext, value: Any, tool_id: str) -> None:
         if not isinstance(value, str):

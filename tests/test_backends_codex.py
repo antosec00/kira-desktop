@@ -339,15 +339,20 @@ async def test_resumed_thread_rejects_provider_model_substitution(tmp_path, fake
 
 
 async def test_run_forwards_current_turn_png_images_and_observes_new_0169_items(tmp_path, fake):
-    png_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+    png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+    png_url = f"data:image/png;base64,{png_b64}"
     img_gen = {"id": "img-1", "type": "imageGeneration", "status": "inProgress",
                "revisedPrompt": "fixture diagram"}
+    img_quota = {"id": "img-2", "type": "imageGeneration", "status": "failed",
+                 "revisedPrompt": "quota blocked", "result": "",
+                 "failure": {"type": "usageLimitExceeded", "limitId": "image_gen"}}
     sub_agent = {"id": "sub-1", "type": "subAgentActivity", "status": "inProgress",
                  "agentId": "worker-1", "prompt": "inspect"}
     sleep_item = {"id": "sleep-1", "type": "sleep", "status": "inProgress", "durationMs": 250}
     fake.queued = [
         event("item/started", item=img_gen),
-        event("item/completed", item={**img_gen, "status": "completed"}),
+        event("item/completed", item={**img_gen, "status": "completed", "result": png_b64}),
+        event("item/completed", item=img_quota),
         event("item/started", item=sub_agent),
         event("item/completed", item={**sub_agent, "status": "completed"}),
         event("item/started", item=sleep_item),
@@ -373,9 +378,16 @@ async def test_run_forwards_current_turn_png_images_and_observes_new_0169_items(
                        for k, p in events if k == "tool.completed"]
     assert completed_tools == [
         ("codex.imageGeneration", True, True),
+        ("codex.imageGeneration", False, True),
         ("codex.subAgentActivity", True, True),
         ("codex.sleep", True, True),
     ]
+    img_results = [p["result"] for k, p in events if k == "tool.completed" and p["name"] == "codex.imageGeneration"]
+    assert "result" not in img_results[0]
+    assert Path(img_results[0]["path"]).is_file()
+    assert "quota exceeded (image_gen)" in img_results[1]["error"]
+    artifact = next(p for k, p in events if k == "artifact.created")
+    assert artifact["path"] == img_results[0]["path"] and artifact["sha256"]
 
 
 @pytest.mark.parametrize("bad_parts", [

@@ -265,11 +265,13 @@ receives the start and completion events of every operation and shows them as
 receipts in the chat; it does not execute them a second time. A file written by
 Codex becomes an artifact only if Kira can resolve it inside the project and
 compute its hash; a file produced by a native command may not appear among the
-artifacts and must be inspected with **Open folder**. Images attached to the
-message (up to four images per request, normalized by Kira into private PNGs)
-are sent directly with the current turn to Codex; earlier turns remain managed
-in the provider's native thread. Codex's private reasoning does not enter the
-conversation.
+artifacts and must be inspected with **Open folder**. When Codex generates an
+image with its native tool (`imageGeneration`) and the project allows writes,
+Kira copies the generated image into `generated_images/` inside the project root
+and records it among the artifacts. Images attached to the message (up to four
+images per request, normalized by Kira into private PNGs) are sent directly with
+the current turn to Codex; earlier turns remain managed in the provider's native
+thread. Codex's private reasoning does not enter the conversation.
 
 ### Permissions: from Kira to the Codex sandbox
 

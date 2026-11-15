@@ -277,8 +277,11 @@ Kira riceve gli eventi di avvio e completamento di ogni operazione e li mostra
 come ricevute nella chat; non li esegue una seconda volta. Un file scritto da
 Codex diventa un artefatto solo se Kira riesce a risolverlo dentro il progetto e
 a calcolarne l'hash; un file prodotto da un comando nativo può non comparire tra
-gli artefatti e va ispezionato con **Apri cartella**. Le immagini allegate al
-messaggio (fino a quattro immagini per richiesta, normalizzate da Kira in PNG
+gli artefatti e va ispezionato con **Apri cartella**. Quando Codex genera
+un'immagine con il proprio strumento nativo (`imageGeneration`) e il progetto
+consente la scrittura, Kira copia l'immagine generata in `generated_images/`
+nella radice del progetto e la registra tra gli artefatti. Le immagini allegate
+al messaggio (fino a quattro immagini per richiesta, normalizzate da Kira in PNG
 privati) vengono inviate direttamente con il turno corrente a Codex; i turni
 precedenti restano gestiti nel thread nativo del provider. Il ragionamento
 privato di Codex non entra nella conversazione.
