@@ -336,3 +336,151 @@ async def test_resumed_thread_rejects_provider_model_substitution(tmp_path, fake
     assert (await codex.CodexBackend().run(ctx))['state'] == 'failed'
     assert not any(method == 'turn/start' for method, _ in fake.instances[0].requests)
     assert ctx.session['backend_ref'] == 'thread-fixture'
+
+
+async def test_run_forwards_current_turn_png_images_and_observes_new_0169_items(tmp_path, fake):
+    png_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+    img_gen = {"id": "img-1", "type": "imageGeneration", "status": "inProgress",
+               "revisedPrompt": "fixture diagram"}
+    sub_agent = {"id": "sub-1", "type": "subAgentActivity", "status": "inProgress",
+                 "agentId": "worker-1", "prompt": "inspect"}
+    sleep_item = {"id": "sleep-1", "type": "sleep", "status": "inProgress", "durationMs": 250}
+    fake.queued = [
+        event("item/started", item=img_gen),
+        event("item/completed", item={**img_gen, "status": "completed"}),
+        event("item/started", item=sub_agent),
+        event("item/completed", item={**sub_agent, "status": "completed"}),
+        event("item/started", item=sleep_item),
+        event("item/completed", item={**sleep_item, "status": "completed"}),
+        terminal("completed"),
+    ]
+    ctx, events, _, _ = context(tmp_path)
+    ctx.image_inputs = {ctx.run_id: [{"type": "input_image", "image_url": png_url}]}
+    result = await codex.CodexBackend().run(ctx)
+    assert result["state"] == "completed"
+    calls = dict(fake.instances[0].requests)
+    assert calls["turn/start"]["input"] == [
+        {"type": "text", "text": calls["turn/start"]["input"][0]["text"]},
+        {"type": "image", "url": png_url},
+    ]
+    started = [(p["name"], p["arguments"]) for k, p in events if k == "tool.started"]
+    assert started == [
+        ("codex.imageGeneration", {"revisedPrompt": "fixture diagram"}),
+        ("codex.subAgentActivity", {"agentId": "worker-1", "prompt": "inspect"}),
+        ("codex.sleep", {"durationMs": 250}),
+    ]
+    completed_tools = [(p["name"], p["result"]["ok"], p["result"]["observed_only"])
+                       for k, p in events if k == "tool.completed"]
+    assert completed_tools == [
+        ("codex.imageGeneration", True, True),
+        ("codex.subAgentActivity", True, True),
+        ("codex.sleep", True, True),
+    ]
+
+
+@pytest.mark.parametrize("bad_parts", [
+    [{"type": "input_image", "image_url": "data:image/jpeg;base64,/9j/4AAQ"}],
+    [{"type": "input_image", "image_url": "data:image/png;base64,not-valid-base64!!!"}],
+    [{"type": "input_image", "image_url": "data:image/png;base64,AAAA"}] * 5,
+])
+async def test_invalid_codex_image_inputs_fail_before_rpc_start(tmp_path, fake, bad_parts):
+    ctx, _, _, _ = context(tmp_path)
+    ctx.image_inputs = {ctx.run_id: bad_parts}
+    result = await codex.CodexBackend().run(ctx)
+    assert result["state"] == "failed"
+    assert not fake.instances[0].requests and fake.instances[0].closed
+
+
+async def test_single_pass_feature_verification_handles_deep_pages_and_deprecated_multi_agent(
+        tmp_path, monkeypatch):
+    pages = [
+        {"data": [{"name": f"feature_{i}", "enabled": False}], "nextCursor": f"cursor-{i}"}
+        for i in range(6)
+    ]
+    pages.append({
+        "data": [
+            {"name": "multi_agent_v2", "enabled": False, "stage": "underDevelopment"},
+            {"name": "multi_agent_v2_dynamic_tools", "enabled": False, "stage": "underDevelopment"},
+            {"name": "default_mode_request_user_input", "enabled": True, "stage": "beta"},
+            {"name": "send_message_to_user_async", "enabled": True, "stage": "underDevelopment"},
+        ],
+        "nextCursor": None,
+    })
+
+    class PagedServer(FakeServer):
+        page_index = 0
+
+        async def request(self, method, params, timeout=30):
+            if method == "experimentalFeature/list":
+                self.requests.append((method, params))
+                reply = pages[self.page_index]
+                self.page_index += 1
+                return reply
+            return await super().request(method, params, timeout)
+
+    for name, value in {"instances": [], "queued": [terminal("completed")],
+                        "resolved_model": "fixture-model", "resolved_effort": "ultra",
+                        "page_index": 0}.items():
+        monkeypatch.setattr(PagedServer, name, value)
+    monkeypatch.setattr(codex, "AppServer", PagedServer)
+    ctx, _, _, _ = context(tmp_path)
+    ctx.disable_native_agents = True
+    async def request_input(_):
+        return {"ok": True, "request_id": "q-1", "status": "answered", "answers": {}}
+    async def read_input(identity, wait):
+        return {"ok": True, "request_id": identity, "status": "answered", "answers": {}}
+    ctx.request_input, ctx.read_input = request_input, read_input
+    result = await codex.CodexBackend().run(ctx)
+    assert result["state"] == "completed"
+    feature_calls = [p for m, p in PagedServer.instances[0].requests if m == "experimentalFeature/list"]
+    assert len(feature_calls) == 7
+    assert feature_calls[0] == {"threadId": "thread-fixture", "limit": 100}
+    assert feature_calls[-1]["cursor"] == "cursor-5"
+
+
+async def test_discover_exposes_sanitized_workspace_name_without_email(monkeypatch):
+    class DiscoverServer:
+        closed = False
+        initialize_result = {"userAgent": "kira_desktop/0.169.0 (linux; x86_64)"}
+
+        async def request(self, method, params):
+            if method == "account/read":
+                return {
+                    "account": {
+                        "type": "chatgpt",
+                        "email": "private@example.test",
+                        "planType": "business",
+                        "workspaceName": "Acme Engineering",
+                    },
+                    "requiresOpenaiAuth": True,
+                }
+            if method == "model/list":
+                return {
+                    "data": [{
+                        "model": "gpt-5.4",
+                        "displayName": "GPT-5.4",
+                        "supportedReasoningEfforts": [{"reasoningEffort": "high"}],
+                        "defaultReasoningEffort": "high",
+                        "isDefault": True,
+                    }],
+                    "nextCursor": None,
+                }
+            raise AssertionError(method)
+
+    backend = codex.CodexBackend()
+    rpc = DiscoverServer()
+    async def control():
+        return rpc
+    monkeypatch.setattr(backend, "_get_control", control)
+    catalog = await backend.discover()
+    assert catalog["available"] is True
+    assert catalog["capabilities"]["images"] is True
+    assert catalog["capabilities"]["steering"] is True
+    assert catalog["account"] == {
+        "connected": True,
+        "type": "chatgpt",
+        "plan_type": "business",
+        "requires_openai_auth": True,
+        "workspace_name": "Acme Engineering",
+    }
+    assert "private@example.test" not in json.dumps(catalog)

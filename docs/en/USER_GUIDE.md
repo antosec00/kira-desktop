@@ -793,7 +793,7 @@ before interrupting, a limit on the wait, not on the total duration.
 | Provider | Browser and Kira's Computer | Attached images | Teams | Autonomous goals | Reasoning summary |
 | --- | --- | --- | --- | --- | --- |
 | **Ollama** | Yes (tools verified on first use; screenshots and Computer only with a model that accepts images) | No (paths as text) | Yes | Yes | No |
-| **Codex** | No (uses its own native tools) | No (paths as text) | Yes | Yes | Yes |
+| **Codex** | Yes | Yes (up to 4 PNGs) | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | Yes | Yes (up to 4) | Yes | Yes | Yes |
 | **Google Cloud · Vertex AI** | Yes | Yes (up to 4) | Yes | Yes | Yes |
 | **OpenRouter** | Yes (screenshots and Computer with models that accept images) | Yes, vision models only (up to 4) | Yes | Yes | Yes, with models that expose reasoning |

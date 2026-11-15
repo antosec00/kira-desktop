@@ -14,7 +14,7 @@ behind every answer.
 | Provider | How it connects | Who executes the tools | Isolated browser and Kira's Computer | Attached images | Team | Autonomous goals | Research (proposals from the model) | Reasoning summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Ollama** | An Ollama server already installed; endpoint in **Settings → Connections → Ollama endpoint** | Kira | Yes (tools verified on first use; screenshots only with a model that accepts images); no Computer without vision | No (paths as text only) | Yes | Yes | Yes | No |
-| **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) plus the Kira tools via MCP | Yes | No (paths as text) | Yes | Yes | Yes | Yes |
+| **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | Yes | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models** or **Settings → Connections** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **Google Cloud · Vertex AI** | **Models → Google Cloud → Add / Switch Google account** (isolated OAuth2 PKCE), read-only system `gcloud` ADC, or API Key | Kira | Yes | Yes (PNG/JPEG/WebP/GIF) | Yes | Yes | Yes | Yes |
 | **OpenRouter** | **Models → OpenRouter → OpenRouter API key** (`sk-or-v1-...` stored in your local `0600` profile) or `OPENROUTER_API_KEY` env var | Kira | Yes (Computer with vision for multimodal models) | Yes, with models declaring `image` input in `/api/v1/models` | Yes | Yes | Yes | Yes (for models with `reasoning` / `thinking`) |
@@ -255,17 +255,21 @@ official login with the ChatGPT account and opens the browser. The Codex service
 process stays alive until the browser completes the sign-in; Kira receives only
 the outcome (succeeded or failed) and neither reads nor stores the tokens. After
 signing in, press **Refresh** to load the catalog. The status line shows the
-account type and plan without the e-mail address.
+account type, plan and, when reported, workspace name without the e-mail
+address.
 
-### Native tools and receipts
+### Native tools, attached images and receipts
 
 Codex uses its own tools to read and write files and run commands. Kira
 receives the start and completion events of every operation and shows them as
 receipts in the chat; it does not execute them a second time. A file written by
 Codex becomes an artifact only if Kira can resolve it inside the project and
 compute its hash; a file produced by a native command may not appear among the
-artifacts and must be inspected with **Open folder**. Codex's private reasoning
-does not enter the conversation.
+artifacts and must be inspected with **Open folder**. Images attached to the
+message (up to four images per request, normalized by Kira into private PNGs)
+are sent directly with the current turn to Codex; earlier turns remain managed
+in the provider's native thread. Codex's private reasoning does not enter the
+conversation.
 
 ### Permissions: from Kira to the Codex sandbox
 

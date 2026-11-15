@@ -12,7 +12,7 @@ a ogni risposta.
 | Provider | Come si collega | Chi esegue gli strumenti | Browser isolato e Computer di Kira | Immagini allegate | Team | Obiettivi autonomi | Ricerca (proposte dal modello) | Riepilogo del ragionamento |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Ollama** | Server Ollama già installato; endpoint in **Impostazioni → Connessioni → Endpoint Ollama** | Kira | Sì (strumenti verificati al primo uso; screenshot solo con modello che accetta immagini); no Computer senza visione | No (solo percorsi come testo) | Sì | Sì | Sì | No |
-| **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) più gli strumenti Kira via MCP | Sì | No (percorsi come testo) | Sì | Sì | Sì | Sì |
+| **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | Sì | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli** o **Impostazioni → Connessioni** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
 | **Google Cloud · Vertex AI** | **Modelli → Google Cloud → Aggiungi / Cambia account Google** (OAuth2 PKCE isolato), `gcloud` ADC di sistema in sola lettura o API Key | Kira | Sì | Sì (PNG/JPEG/WebP/GIF) | Sì | Sì | Sì | Sì |
 | **OpenRouter** | **Modelli → OpenRouter → Chiave API OpenRouter** (`sk-or-v1-...` nel profilo locale `0600`) o variabile `OPENROUTER_API_KEY` | Kira | Sì (Computer con visione per i modelli multimodali) | Sì, con i modelli che dichiarano input `image` nel catalogo `/api/v1/models` | Sì | Sì | Sì | Sì (per i modelli con `reasoning` / `thinking`) |
@@ -267,17 +267,21 @@ il login ufficiale con l'account ChatGPT e apre il browser. Il processo di
 servizio di Codex resta attivo finché il browser completa l'accesso; Kira
 riceve solo l'esito (riuscito o fallito) e non legge né conserva i token.
 Dopo l'accesso premi **Aggiorna** per caricare il catalogo. La riga dello stato
-mostra tipo e piano dell'account senza indirizzo e-mail.
+mostra tipo, piano e, se riportato, il nome del workspace dell'account senza
+indirizzo e-mail.
 
-### Strumenti nativi e ricevute
+### Strumenti nativi, immagini allegate e ricevute
 
 Codex usa i propri strumenti per leggere e scrivere file ed eseguire comandi.
 Kira riceve gli eventi di avvio e completamento di ogni operazione e li mostra
 come ricevute nella chat; non li esegue una seconda volta. Un file scritto da
 Codex diventa un artefatto solo se Kira riesce a risolverlo dentro il progetto e
 a calcolarne l'hash; un file prodotto da un comando nativo può non comparire tra
-gli artefatti e va ispezionato con **Apri cartella**. Il ragionamento privato di
-Codex non entra nella conversazione.
+gli artefatti e va ispezionato con **Apri cartella**. Le immagini allegate al
+messaggio (fino a quattro immagini per richiesta, normalizzate da Kira in PNG
+privati) vengono inviate direttamente con il turno corrente a Codex; i turni
+precedenti restano gestiti nel thread nativo del provider. Il ragionamento
+privato di Codex non entra nella conversazione.
 
 ### Permessi: da Kira alla sandbox di Codex
 

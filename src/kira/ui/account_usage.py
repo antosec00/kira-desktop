@@ -244,6 +244,9 @@ def present_account_usage(data: Json, backend: str) -> Json:
     else:
         account_label = label(account.get("label"))
         plan = label(account.get("plan_type"))
+        workspace = account.get("workspace_name")
+        if isinstance(workspace, str) and workspace.strip():
+            plan = f"{plan} · {label(workspace)}"
     return {"account_status": account_status, "loaded": bool(data), "available": available, "account": account_label,
             "plan": plan, "groups": groups, "note": note,
             "source": tr("Account Codex") if backend == "codex" else

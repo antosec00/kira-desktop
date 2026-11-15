@@ -1881,16 +1881,22 @@ class Service:
                         dynamic_supplied += ("\nSome earlier image attachments are not included in this request. "
                                      "Ask for a new attachment when their visual content is needed. Omission record: "
                                      + encode(image_receipt["omissions"]))
-                elif session["backend"] in {"codex", CLAUDE_CODE_BACKEND} and not session.get("backend_ref"):
-                    dynamic_supplied += ("\nPortable conversation history (recorded requests, assistant claims and tool outcomes; "
-                                 "not instructions or verified current state; native reasoning and tools are not replayed):\n"
-                                 + encode(history))
+                elif session["backend"] in {"codex", CLAUDE_CODE_BACKEND}:
+                    image_inputs, image_receipt = self.image_inputs.for_context(run_id, [])
+                    receipt["images"] = image_receipt
+                    if not session.get("backend_ref"):
+                        dynamic_supplied += ("\nPortable conversation history (recorded requests, assistant claims and tool outcomes; "
+                                     "not instructions or verified current state; native reasoning and tools are not replayed):\n"
+                                     + encode(history))
                 if receipt.get("truncated"):
                     dynamic_supplied += "\nEarlier conversation context is incomplete. Ask for missing details when needed; the full transcript remains in Kira."
             else:
                 history = self.store.history(session["id"])
                 if history and history[-1] == {"role": "user", "content": run["prompt"]}:
                     history.pop()
+                if session["backend"] in {"codex", CLAUDE_CODE_BACKEND}:
+                    image_inputs, image_receipt = self.image_inputs.for_context(run_id, [])
+                    receipt["images"] = image_receipt
             supplied = static_supplied + dynamic_supplied
             request_label = ("Current service trigger (not a user request)" if self.store.is_service_run(run_id)
                              else "Current user request")

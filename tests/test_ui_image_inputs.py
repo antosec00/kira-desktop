@@ -149,7 +149,7 @@ def test_unsupported_provider_refuses_send_preserving_images(view):
     workspace, calls = view
     row = metadata(workspace)
     workspace.addDraftImage(row, ("project", "chat"))
-    workspace._backend = "codex"
+    workspace._backend = "ollama"
     workspace.send("describe")
     workspace.workbench.enqueue("describe")
     assert not calls and workspace.draft_image_ids() == [row["id"]]
@@ -264,7 +264,7 @@ def test_real_clipboard_routes_direct_images_and_preserves_other_provider_paths(
         QGuiApplication.clipboard().setMimeData(mime)
         QTest.keyClick(window, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
         qtbot.waitUntil(lambda: not prompt.property("attachmentBusy"))
-        if backend in {"openai_chatgpt", "claude_code"}:
+        if backend in {"codex", "openai_chatgpt", "claude_code"}:
             assert prompt.property("text") == "Literal draft"
             assert len(workspace.draftImages) == 1
             assert any(call[0] == "attachment.import" for call in calls)

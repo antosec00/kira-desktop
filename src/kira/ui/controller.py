@@ -1689,7 +1689,7 @@ class Workspace(QObject):
 
     @qt_property(bool, notify=changed)
     def imageInputsEnabled(self) -> bool:
-        if self._backend in {"openai_chatgpt", "claude_code", "google_cloud"}:
+        if self._backend in {"codex", "openai_chatgpt", "claude_code", "google_cloud"}:
             return True
         model = next((item for item in self.models if item.get("id") == self._model), {})
         capabilities = model.get("capabilities", {})

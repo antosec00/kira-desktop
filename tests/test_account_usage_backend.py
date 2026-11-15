@@ -143,8 +143,10 @@ def test_legacy_fallback_does_not_duplicate_multi_bucket_view_and_limits_are_bou
 def test_missing_snapshot_is_unavailable_and_unrecognized_fields_are_dropped():
     assert normalize_codex_usage({}, ACCOUNT)["reason"] == "invalid_response"
     result = normalize_codex_usage({"rateLimits": {}, "arbitrary": {"sensitive": "ignored"}},
-                                   {**ACCOUNT, "opaque_auth_field": "ignored"})
+                                   {**ACCOUNT, "workspaceName": "Fixture Workspace",
+                                    "opaque_auth_field": "ignored"})
     assert "ignored" not in json.dumps(result)
+    assert result["account"]["workspace_name"] == "Fixture Workspace"
     assert result["limits"][0]["windows"] == []
     assert result["limits"][0]["credits"] is None
 

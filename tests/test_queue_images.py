@@ -186,7 +186,7 @@ async def test_bad_current_image_is_rejected_and_queued_substitution_pauses(runt
 async def test_other_backend_rejects_image_queue_without_mutation(runtime):
     service, _, project, _, _ = runtime
     session = (await service.dispatch("session.create", {"project_id": project["id"],
-                "backend": "codex", "model": "fixture-codex"}))["session"]
+                "backend": "ollama", "model": "fixture-ollama"}))["session"]
     with pytest.raises(KiraError) as error:
         await service.dispatch("queue.add", {**params(runtime), "session_id": session["id"]})
     assert error.value.code == "UNSUPPORTED_IMAGES"
@@ -210,14 +210,21 @@ async def test_recovery_keeps_saved_queue_images_but_requires_resume(runtime):
         await restored.close()
 
 
-async def test_claude_code_accepts_image_queue_like_the_direct_providers(runtime, monkeypatch):
+@pytest.mark.parametrize("backend,model", [("codex", "fixture-codex"), ("claude_code", "sonnet")])
+async def test_native_cli_backends_accept_image_queue_and_deliver_current_turn_images(
+        runtime, monkeypatch, backend, model):
     # Queue admission never loads the optional Claude Code SDK; only chat creation checks it.
     monkeypatch.setattr(server_module, "require_claude_code", lambda: None)
-    service, _, project, _, _ = runtime
+    service, contexts, project, _, _ = runtime
     session = (await service.dispatch("session.create", {"project_id": project["id"],
-                "backend": "claude_code", "model": "sonnet"}))["session"]
+                "backend": backend, "model": model}))["session"]
     added = await service.dispatch("queue.add", {**params(runtime), "session_id": session["id"]})
     rows = service.store.all("SELECT * FROM prompt_queue")
     assert len(rows) == 1 and rows[0]["session_id"] == session["id"]
     assert service.image_inputs.linked("queue", rows[0]["id"]) == params(runtime)["attachments"]
     assert added
+    await service.dispatch("queue.resume", {"project_id": project["id"]})
+    await until(lambda: contexts and not service.tasks)
+    run = service.store.all("SELECT * FROM runs WHERE session_id=?", (session["id"],))[0]
+    assert list(contexts[0].image_inputs) == [run["id"]]
+    assert contexts[0].image_inputs[run["id"]][0]["image_url"].startswith("data:image/png;base64,")

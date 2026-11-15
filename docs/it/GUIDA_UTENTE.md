@@ -822,7 +822,7 @@ limite sull'attesa, non sulla durata totale.
 | Provider | Browser e Computer di Kira | Immagini allegate | Team | Obiettivi autonomi | Riepilogo del ragionamento |
 | --- | --- | --- | --- | --- | --- |
 | **Ollama** | Sì (strumenti verificati al primo uso; screenshot e Computer solo con un modello che accetta immagini) | No (percorsi come testo) | Sì | Sì | No |
-| **Codex** | No (usa i propri strumenti nativi) | No (percorsi come testo) | Sì | Sì | Sì |
+| **Codex** | Sì | Sì (fino a 4 PNG) | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
 | **Google Cloud · Vertex AI** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
 | **OpenRouter** | Sì (screenshot e Computer con modelli che accettano immagini) | Sì, solo modelli con visione (fino a 4) | Sì | Sì | Sì, con i modelli che espongono il ragionamento |

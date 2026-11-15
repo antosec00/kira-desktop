@@ -34,9 +34,11 @@ def _boolean(value: Any) -> bool | None:
 def codex_account(account: Any, account_id: Any = None) -> Json:
     """Whitelist identity display fields, never forwarding arbitrary auth payloads."""
     account = account if isinstance(account, dict) else {}
+    workspace = _text(account.get("workspaceName"), 128)
     return {"id": _text(account_id), "type": _text(account.get("type"), 64),
             "plan_type": _text(account.get("planType"), 64),
-            "label": _text(account.get("email"), 254)}
+            "label": _text(account.get("email"), 254),
+            **({"workspace_name": workspace} if workspace else {})}
 
 
 def unavailable_codex_usage(reason: str, account: Any = None) -> Json:
