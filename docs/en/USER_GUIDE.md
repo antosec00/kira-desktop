@@ -826,8 +826,8 @@ folder is readable. The session configuration notice and other routine
 provider acknowledgements do not appear in the chat; they remain among the
 run's recorded events.
 
-**Direct OpenAI · ChatGPT.** In **Models** or **Settings → Connections →
-ChatGPT accounts** press **Continue with ChatGPT**, authorize Kira in the
+**Direct OpenAI · ChatGPT.** In **Models → OpenAI · ChatGPT** press
+**Continue with ChatGPT**, authorize Kira in the
 browser and choose a model from your account's catalog. Kira communicates
 directly with OpenAI and manages the tool cycle, the questions and the Teams.
 Usage shares the limits of the ChatGPT plan and those assigned to the app; Kira
@@ -1290,14 +1290,12 @@ during work. Details in [Appearance and language](APPEARANCE_AND_LANGUAGE.md).
 
 ### Connections
 
-**ChatGPT accounts** (connecting, selecting and disconnecting accounts),
-**Google Cloud · Vertex AI** (OAuth account or API key, project and region),
-**OpenRouter** (`sk-or-v1-...` API key, custom models and credit check),
 **Ollama endpoint**, **Codex executable**, **Tool timeout (seconds)**, **Tool
 round limit (0 = unlimited)** and **Maximum output per run (bytes, up to 16
 MiB)**. These settings apply only with **Save settings** and, while work is in
 progress, remain read only until it ends. Output truncations are reported in
-the receipts.
+the receipts. Cloud provider accounts and keys are configured on the **Models**
+page.
 
 Below the provider settings you find **External MCP servers**, where you can
 add Model Context Protocol servers over **`stdio`** or **`HTTP / SSE`**, import

@@ -263,9 +263,6 @@ Item {
                     visible: settingsPage.selectedSection === 2
                     Layout.fillWidth: true
                     spacing: 14
-                    Heading { text: qsTr("Account ChatGPT") }
-                    DirectAccountPane { objectPrefix: "settingsChatGPT" }
-                    Rule {}
                     Heading { text: qsTr("Connessioni e limiti degli strumenti") }
                     Note {
                         objectName: "settingsBusyNotice"

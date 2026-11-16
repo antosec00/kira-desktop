@@ -856,8 +856,8 @@ progetto sia leggibile. L'avviso di configurazione della sessione e le altre
 conferme di routine del provider non compaiono nella chat; restano tra gli
 eventi registrati dell'esecuzione.
 
-**OpenAI diretto · ChatGPT.** In **Modelli** o **Impostazioni → Connessioni →
-Account ChatGPT** premi **Continua con ChatGPT**, autorizza Kira nel browser e
+**OpenAI diretto · ChatGPT.** In **Modelli → OpenAI · ChatGPT** premi
+**Continua con ChatGPT**, autorizza Kira nel browser e
 scegli un modello del catalogo del tuo account. Kira comunica direttamente con
 OpenAI e gestisce il ciclo degli strumenti, le domande e i Team. L'utilizzo
 condivide i limiti del piano ChatGPT e quelli assegnati all'app; Kira non passa
@@ -1328,14 +1328,12 @@ durante il lavoro. Dettagli in [Aspetto e lingua](ASPETTO_E_LINGUA.md).
 
 ### Connessioni
 
-**Account ChatGPT** (collegamento, selezione e disconnessione degli account),
-**Google Cloud · Vertex AI** (account OAuth o chiave API, progetto e regione),
-**OpenRouter** (chiave API `sk-or-v1-...`, modelli personalizzati e verifica
-crediti), **Endpoint Ollama**, **Eseguibile Codex**, **Timeout strumenti
+**Endpoint Ollama**, **Eseguibile Codex**, **Timeout strumenti
 (secondi)**, **Limite turni strumenti (0 = illimitati)** e **Output massimo per
 esecuzione (byte, fino a 16 MiB)**. Queste impostazioni si applicano solo con
 **Salva impostazioni** e, mentre c'è lavoro in corso, restano in sola lettura
-fino al termine. Le troncature dell'output vengono segnalate nelle ricevute.
+fino al termine. Le troncature dell'output vengono segnalate nelle ricevute. Gli
+account e le chiavi dei provider cloud si configurano nella pagina **Modelli**.
 
 Sotto le impostazioni dei provider trovi **Server MCP esterni**, dove puoi
 aggiungere server Model Context Protocol tramite **`stdio`** o **`HTTP / SSE`**,

@@ -1004,7 +1004,7 @@ ApplicationWindow {
                             elide: Text.ElideRight; Layout.maximumWidth: Math.max(80, headerLayout.width * 0.26); Layout.minimumWidth: 0
                         }
                         Text { font.family: appearance.uiFont.family; textFormat: Text.PlainText; text: "›"; color: muted; visible: headerKicker.visible; font.pixelSize: appearance.uiFont.pixelSize + 1 }
-                        Text { objectName: "projectHeaderTitle"; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: window.page === 0 ? (window.projectsOverview ? qsTr("Progetti") : (hasProject ? workspace.sessionTitle : qsTr("Il tuo prossimo progetto"))) : ["", qsTr("Modelli"), qsTr("Attività"), qsTr("Impostazioni"), qsTr("Team del progetto")][window.page]; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 3; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: Math.min(150, implicitWidth) }
+                        Text { objectName: "projectHeaderTitle"; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: window.page === 0 ? ((window.projectsOverview || (!hasProject && workspace.projects.length > 0)) ? qsTr("Progetti") : (hasProject ? workspace.sessionTitle : qsTr("Il tuo prossimo progetto"))) : ["", qsTr("Modelli"), qsTr("Attività"), qsTr("Impostazioni"), qsTr("Team del progetto")][window.page]; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 3; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: Math.min(150, implicitWidth) }
                     }
                     Row {
                         id: headerActions
@@ -1111,7 +1111,7 @@ ApplicationWindow {
                         anchors.centerIn: parent
                         width: Math.min(parent.width - 70, 540)
                         spacing: 18
-                        visible: !hasProject
+                        visible: !hasProject && workspace.projects.length === 0
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Uno spazio per lavorare.\nUn filo da ritrovare."); color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + (window.width < 1000 ? 16 : 20); font.weight: Font.Medium; lineHeight: 1.2; Layout.fillWidth: true; wrapMode: Text.Wrap }
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Scegli una cartella, collega un modello e porta avanti il lavoro. Conversazioni, strumenti e risultati restano nel progetto, anche quando chiudi questa finestra."); color: muted; font.pixelSize: appearance.uiFont.pixelSize + 2; lineHeight: 1.45; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         KButton { text: qsTr("Crea il primo progetto  →"); primary: true; implicitHeight: 44 + Math.max(0, appearance.uiFont.pixelSize - 13); Layout.topMargin: 12; onClicked: newProject.open() }
@@ -1123,7 +1123,7 @@ ApplicationWindow {
                         id: projectsOverviewScroll
                         objectName: "projectsOverviewPage"
                         anchors.fill: parent
-                        visible: hasProject && window.projectsOverview
+                        visible: workspace.projects.length > 0 && (window.projectsOverview || !hasProject)
                         clip: true
                         contentWidth: availableWidth
                         ColumnLayout {

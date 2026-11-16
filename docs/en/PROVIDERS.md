@@ -378,7 +378,7 @@ loop, permissions, questions and Team are managed by Kira.
 
 ### Connecting
 
-In **Models** or in **Settings → Connections → ChatGPT accounts** press
+In **Models → OpenAI · ChatGPT** press
 **Continue with ChatGPT**. The browser opens with the official sign-in:
 authorize Kira and enable the use of your ChatGPT plan. A valid identity without
 that permission cannot run inference. Return to Kira, press **Refresh status**

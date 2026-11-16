@@ -245,13 +245,13 @@ def test_unconfirmed_remote_logout_warning_survives_status_refresh(direct, qtbot
     account.refresh()
     requests[-1][2](status(active="", accounts=[]))
     assert "revoca remota" in account.warning
+    workspace._backend = "openai_chatgpt"
     engine = create_engine(workspace)
     window = engine.rootObjects()[0]
-    window.setProperty("page", 3)
-    window.findChild(QObject, "settingsPane").setProperty("selectedSection", 2)
+    window.setProperty("page", 1)
     qtbot.wait(20)
     try:
-        warning = window.findChild(QObject, "settingsChatGPTWarning")
+        warning = window.findChild(QObject, "modelsChatGPTWarning")
         assert warning is not None and warning.property("visible")
         assert warning.property("text") == account.warning
     finally:
@@ -264,16 +264,16 @@ def test_unconfirmed_remote_logout_warning_survives_status_refresh(direct, qtbot
 def test_real_qml_account_controls_are_explicit_and_guarded(direct, qtbot):
     workspace, account, requests, opened = direct
     account._apply(status())
+    workspace._backend = "openai_chatgpt"
     engine = create_engine(workspace)
     assert engine.rootObjects()
     window = engine.rootObjects()[0]
-    window.setProperty("page", 3)
-    window.findChild(QObject, "settingsPane").setProperty("selectedSection", 2)
+    window.setProperty("page", 1)
     qtbot.wait(30)
     try:
-        login = window.findChild(QObject, "settingsChatGPTLogin")
+        login = window.findChild(QObject, "modelsChatGPTLogin")
         assert login is not None and login.property("text") == "Continua con ChatGPT"
-        choice = window.findChild(QObject, "settingsChatGPTChoice")
+        choice = window.findChild(QObject, "modelsChatGPTChoice")
         assert choice is not None and choice.property("currentIndex") == 0
         assert choice.property("displayText") == "First account"
         assert login.property("enabled") and not requests and not opened
@@ -284,7 +284,7 @@ def test_real_qml_account_controls_are_explicit_and_guarded(direct, qtbot):
         requests[-1][2](status("awaiting_browser", authorization_url="https://auth.openai.com/authorize"))
         qtbot.wait(20)
         assert not login.property("enabled")
-        cancel = window.findChild(QObject, "settingsChatGPTCancel")
+        cancel = window.findChild(QObject, "modelsChatGPTCancel")
         assert cancel is not None and cancel.property("visible") and cancel.property("enabled")
         assert not any(row[0] == "run.start" for row in requests)
     finally:

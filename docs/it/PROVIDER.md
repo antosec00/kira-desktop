@@ -394,7 +394,7 @@ da Kira.
 
 ### Collegamento
 
-In **Modelli** oppure in **Impostazioni → Connessioni → Account ChatGPT** premi
+In **Modelli → OpenAI · ChatGPT** premi
 **Continua con ChatGPT**. Si apre il browser con l'accesso ufficiale: autorizza
 Kira e attiva l'uso del tuo piano ChatGPT. Un'identità valida senza quel
 permesso non può eseguire inferenza. Torna in Kira, premi **Aggiorna stato** e

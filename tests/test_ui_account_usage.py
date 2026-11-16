@@ -204,7 +204,7 @@ def test_real_dialog_minimum_size_zero_unknown_and_error(usage, qtbot, qtlog, la
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-@pytest.mark.parametrize("surface", ["welcome", "settings"])
+@pytest.mark.parametrize("surface", ["welcome", "models"])
 def test_browser_failure_feedback_and_copy_are_visible_on_account_surfaces(usage, qtbot, monkeypatch, surface):
     from kira.ui.external_links import BrowserOpenResult
 
@@ -214,14 +214,13 @@ def test_browser_failure_feedback_and_copy_are_visible_on_account_surfaces(usage
     monkeypatch.setattr(workspace, "copy", copies.append)
     workspace.directAccount._apply({"accounts": [{"id": "a", "label": "Synthetic account",
         "connected": True, "plan_enabled": True}], "active_account_id": "a"})
-    if surface == "settings":
+    if surface == "models":
         workspace.directAccount.dismissWelcome()
+        workspace._backend = "openai_chatgpt"
     engine = create_engine(workspace)
     window = engine.rootObjects()[0]
-    window.setProperty("page", 3)
-    if surface == "settings":
-        evaluate(window.findChild(QObject, "settingsPane"), "showSection(2)")
-    prefix = "chatGPTWelcome" if surface == "welcome" else "settingsChatGPT"
+    window.setProperty("page", 1 if surface == "models" else 3)
+    prefix = "chatGPTWelcome" if surface == "welcome" else "modelsChatGPT"
     try:
         qtbot.wait(20)
         button = window.findChild(QObject, prefix + "Usage")
