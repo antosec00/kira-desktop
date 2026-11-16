@@ -619,7 +619,15 @@ class Service:
         if method == "project.list":
             fields(params, set())
             return {"projects": self.store.all(
-                "SELECT * FROM projects WHERE COALESCE(json_extract(memory, '$.project_deleted'), 0) = 0 "
+                "SELECT p.id, p.name, p.root, p.instructions, p.permission, p.memory, p.created_at, "
+                "MAX("
+                "p.updated_at, "
+                "COALESCE((SELECT MAX(s.created_at) FROM sessions s WHERE s.project_id = p.id), ''), "
+                "COALESCE((SELECT MAX(r.updated_at) FROM runs r JOIN sessions s ON r.session_id = s.id WHERE s.project_id = p.id), ''), "
+                "COALESCE((SELECT MAX(w.updated_at) FROM workspaces w WHERE w.project_id = p.id), '')"
+                ") AS updated_at "
+                "FROM projects p "
+                "WHERE COALESCE(json_extract(p.memory, '$.project_deleted'), 0) = 0 "
                 "ORDER BY updated_at DESC"
             )}
         if method == "project.delete":

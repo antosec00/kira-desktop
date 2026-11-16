@@ -1013,6 +1013,12 @@
   "Elimina progetto da Kira": "Remove project from Kira",
   "Elimina progetto…": "Delete project…",
   "Rimuovere «%1» da Kira?": "Remove “%1” from Kira?",
-  "Verranno rimosse le chat, la memoria e le impostazioni del progetto salvate in Kira. La cartella e tutti i tuoi file su disco non verranno toccati.": "Chats, memory, and project settings saved in Kira will be removed. The folder and all your files on disk will not be touched."
+  "Verranno rimosse le chat, la memoria e le impostazioni del progetto salvate in Kira. La cartella e tutti i tuoi file su disco non verranno toccati.": "Chats, memory, and project settings saved in Kira will be removed. The folder and all your files on disk will not be touched.",
+  "Ordinati per ultima attività. Seleziona un progetto per aprire la conversazione o avviarne una nuova.": "Sorted by latest activity. Select a project to open its conversation or start a new one.",
+  "Aperto": "Open",
+  "Ultima attività · %1": "Latest activity · %1",
+  "Host fidato": "Trusted host",
+  "Torna alla chat": "Back to chat",
+  "Apri progetto": "Open project"
 }
 

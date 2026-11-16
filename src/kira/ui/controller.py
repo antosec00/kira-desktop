@@ -1297,7 +1297,27 @@ class Workspace(QObject):
 
     @qt_property("QVariantList", notify=changed)
     def projects(self) -> list[Json]:
-        return self._projects
+        current_id = str(self._project.get("id") or "")
+        current_latest = str(self._project.get("updated_at") or self._project.get("created_at") or "")
+        if current_id:
+            for session in self._sessions:
+                stamp = str(session.get("updated_at") or session.get("created_at") or "")
+                if stamp > current_latest:
+                    current_latest = stamp
+            for run in self._runs.values():
+                stamp = str(run.get("updated_at") or run.get("created_at") or "")
+                if stamp > current_latest:
+                    current_latest = stamp
+        rows: list[Json] = []
+        for proj in self._projects:
+            pid = str(proj.get("id") or "")
+            stamp = str(proj.get("updated_at") or proj.get("created_at") or "")
+            if pid and pid == current_id and current_latest > stamp:
+                rows.append({**proj, "updated_at": current_latest})
+            else:
+                rows.append(proj)
+        rows.sort(key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
+        return rows
 
     @qt_property("QVariantMap", notify=changed)
     def project(self) -> Json:

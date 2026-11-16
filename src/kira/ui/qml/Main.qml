@@ -38,23 +38,37 @@ ApplicationWindow {
     palette.disabled.buttonText: appearance.colors.disabledText
     readonly property bool compact: workspace.density === "compact" || window.height < 720
     property int page: 0
+    property bool projectsOverview: false
     property alias workspacePanels: panelHost
-    onPageChanged: panelHost.closeCurrent()
+    function showChat() {
+        projectsOverview = false
+        page = 0
+    }
+    function showProjectsOverview() {
+        panelHost.closeCurrent()
+        projectsOverview = true
+        page = 0
+        workspace.refreshProjects()
+    }
+    onPageChanged: {
+        if (page !== 0) projectsOverview = false
+        panelHost.closeCurrent()
+    }
     // "Apri le opzioni del modello con la chat": the stored preference opens the
     // model popover whenever a chat is shown; closing it never changes the preference.
-    readonly property string modelOptionsScope: workspace.modelControlsVisible + "|" + page + "|" + hasProject + "|" + workspace.sessionId
-    onModelOptionsScopeChanged: if (workspace.modelControlsVisible && page === 0 && hasProject && !workspace.busy) Qt.callLater(function() { modelPopover.open() })
+    readonly property string modelOptionsScope: workspace.modelControlsVisible + "|" + page + "|" + projectsOverview + "|" + hasProject + "|" + workspace.sessionId
+    onModelOptionsScopeChanged: if (workspace.modelControlsVisible && page === 0 && !projectsOverview && hasProject && !workspace.busy) Qt.callLater(function() { modelPopover.open() })
     readonly property bool browserFocused: workspace.web.paneVisible && (workspace.web.expanded || window.width < 1120)
     readonly property bool studioFocused: workspace.studio.paneVisible && (workspace.studio.expanded || window.width < 1120)
     readonly property bool canvasFocused: workspace.canvas.paneVisible && (workspace.canvas.expanded || window.width < 1120)
     readonly property bool visualFocused: browserFocused || studioFocused || canvasFocused
     readonly property bool motionEnabled: !appearance.reduceMotion && window.visible && window.visibility !== Window.Minimized
-    readonly property bool chatMotionEnabled: motionEnabled && page === 0
+    readonly property bool chatMotionEnabled: motionEnabled && page === 0 && !projectsOverview
     readonly property var chatIndicators: workspace.chatStatusIndicators
-    readonly property bool browserPresented: window.visible && window.visibility !== Window.Minimized && page === 0
+    readonly property bool browserPresented: window.visible && window.visibility !== Window.Minimized && page === 0 && !projectsOverview
     onBrowserPresentedChanged: workspace.web.setWindowActive(browserPresented)
     readonly property bool detailsVisible: workspace.uiPreferences.details_visible
-    readonly property bool detailsDrawerRequested: detailsVisible && width < 1120 && hasProject && page === 0 && !workspace.web.paneVisible && !workspace.studio.paneVisible && !workspace.canvas.paneVisible
+    readonly property bool detailsDrawerRequested: detailsVisible && width < 1120 && hasProject && page === 0 && !projectsOverview && !workspace.web.paneVisible && !workspace.studio.paneVisible && !workspace.canvas.paneVisible
     onDetailsDrawerRequestedChanged: syncDetailsDrawer()
     Component.onCompleted: syncDetailsDrawer()
     function syncDetailsDrawer() {
@@ -152,11 +166,11 @@ ApplicationWindow {
     }
     function performAction(action) {
         if (action === "new_project") newProject.open()
-        else if (action === "new_chat") { window.page = 0; workspace.newChat(); prompt.forceActiveFocus() }
+        else if (action === "new_chat") { window.showChat(); workspace.newChat(); prompt.forceActiveFocus() }
         else if (action === "files") { mentionStart = -1; openProjectFiles() }
         else if (["queue", "history", "archives", "changes", "goal"].indexOf(action) >= 0) workbenchDialog.openSection(action)
         else if (action === "chat_tools") workbenchDialog.openSection("chat")
-        else if (action === "chat") { workbenchDialog.close(); window.page = 0 }
+        else if (action === "chat") { workbenchDialog.close(); window.showChat() }
         else if (action === "context") chatContextDialog.open()
         else if (action === "compact") {
             // Direct providers compact from the context panel; a native compaction
@@ -169,14 +183,14 @@ ApplicationWindow {
         else if (action === "copy_last") workbench.copyLastOutput()
         else if (["execute", "plan", "review", "recap"].indexOf(action) >= 0) {
             workbench.setMode(action)
-            window.page = 0
+            window.showChat()
             if (action === "recap" && !prompt.text.trim()) prompt.text = qsTr("Riepiloga la conversazione, le decisioni prese e i prossimi passi.")
             if (action === "review" && !prompt.text.trim()) prompt.text = qsTr("Esamina le modifiche del progetto e segnala problemi concreti, senza modificare file.")
             prompt.forceActiveFocus()
         }
-        else if (action === "model") { window.page = 0; modelPopover.open() }
-        else if (action === "research") { window.page = 0; researchDialog.open() }
-        else if (action === "editor") { window.page = 0; workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.openProjectExplorer() }
+        else if (action === "model") { window.showChat(); modelPopover.open() }
+        else if (action === "research") { window.showChat(); researchDialog.open() }
+        else if (action === "editor") { window.showChat(); workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.openProjectExplorer() }
         else if (action === "checkpoint") { workbench.createCheckpoint(""); workbenchDialog.openSection("changes") }
         else if (action === "spotlight") { ambient.openSpotlight() }
         else if (action === "permissions") memoryDialog.open()
@@ -214,14 +228,14 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: if (hasProject) resumeDialog.open() }
     Shortcut { sequence: "Ctrl+N"; onActivated: newProject.open() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: hasProject; onActivated: window.performAction("new_chat") }
-    Shortcut { sequence: "Ctrl+L"; onActivated: { window.page = 0; prompt.forceActiveFocus() } }
+    Shortcut { sequence: "Ctrl+L"; onActivated: { window.showChat(); prompt.forceActiveFocus() } }
     Shortcut { sequence: "Ctrl+Shift+C"; onActivated: workspace.copyTranscript() }
     Shortcut { sequence: "Alt+Space"; onActivated: ambient.toggleSpotlight() }
     Shortcut { sequence: "Alt+Shift+P"; enabled: hasProject && workspace.sessionId.length > 0; onActivated: workspace.pinSession(workspace.sessionId, !workspace.currentSessionPinned) }
     Connections {
         target: ambient
         function onRaiseMainWindowRequested() {
-            window.page = 0
+            window.showChat()
             window.show()
             window.raise()
             window.requestActivate()
@@ -239,7 +253,7 @@ ApplicationWindow {
         target: workspace
         function onPromptAccepted() { prompt.text = ""; window.followOutput = true }
         function onChatChanged() { panelHost.closeCurrent(); window.commandStart = -1; window.mentionStart = -1; window.restoringDraft = true; prompt.text = workspace.draftText; window.restoringDraft = false; window.followOutput = true }
-        function onProjectCreated() { newProject.close(); window.page = 0 }
+        function onProjectCreated() { newProject.close(); window.showChat() }
         function onTranscriptChanged() { conversation.scheduleFollow() }
         function onChatLoadingChanged() {
             conversation.historyReady = false
@@ -377,7 +391,7 @@ ApplicationWindow {
         }
         if (menuKey === "view") {
             return [
-                { id: "menuViewProjects", label: qsTr("Conversazione e Progetti"), shortcut: "", icon: "projects", enabled: true, action: function() { window.page = 0 } },
+                { id: "menuViewProjects", label: qsTr("Conversazione e Progetti"), shortcut: "", icon: "projects", enabled: true, action: function() { window.showProjectsOverview() } },
                 { id: "menuViewModels", label: qsTr("Modelli e Provider"), shortcut: "", icon: "models", enabled: true, action: function() { window.page = 1 } },
                 { id: "menuViewActivity", label: qsTr("Attività registrate"), shortcut: "", icon: "activity", enabled: true, action: function() { window.page = 2 } },
                 { id: "menuViewTeam", label: qsTr("Team del progetto"), shortcut: "", icon: "team", enabled: hasProject, action: function() { window.page = 4 } },
@@ -408,9 +422,9 @@ ApplicationWindow {
         if (menuKey === "tools") {
             return [
                 { id: "menuToolsEditor", label: qsTr("Editor di codice Kira"), shortcut: "", icon: "code", enabled: hasProject, action: function() { window.performAction("editor") } },
-                { id: "menuToolsCanvas", label: qsTr("Canvas interattivo"), shortcut: "", icon: "studio", enabled: hasProject, action: function() { window.page = 0; workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.toggleCanvas() } },
-                { id: "menuToolsBrowser", label: qsTr("Browser integrato"), shortcut: "", icon: "browser", enabled: workspace.web.available, action: function() { window.page = 0; workspace.studio.hideStudio(); workspace.canvas.hideCanvas(); workspace.web.showBrowser() } },
-                { id: "menuToolsStudio", label: qsTr("Studio creativo"), shortcut: "", icon: "image", enabled: workspace.studio.available, action: function() { window.page = 0; workspace.studio.showStudio() } },
+                { id: "menuToolsCanvas", label: qsTr("Canvas interattivo"), shortcut: "", icon: "studio", enabled: hasProject, action: function() { window.showChat(); workspace.web.hideBrowser(); workspace.studio.hideStudio(); workspace.canvas.toggleCanvas() } },
+                { id: "menuToolsBrowser", label: qsTr("Browser integrato"), shortcut: "", icon: "browser", enabled: workspace.web.available, action: function() { window.showChat(); workspace.studio.hideStudio(); workspace.canvas.hideCanvas(); workspace.web.showBrowser() } },
+                { id: "menuToolsStudio", label: qsTr("Studio creativo"), shortcut: "", icon: "image", enabled: workspace.studio.available, action: function() { window.showChat(); workspace.studio.showStudio() } },
                 { separator: true },
                 { id: "menuToolsQueue", label: qsTr("Coda del progetto"), shortcut: "", icon: "queue", enabled: hasProject, action: function() { workbenchDialog.openSection("queue") } },
                 { id: "menuToolsChanges", label: qsTr("Modifiche e Checkpoint"), shortcut: "", icon: "file", enabled: hasProject, action: function() { workbenchDialog.openSection("changes") } },
@@ -582,13 +596,17 @@ ApplicationWindow {
                         Layout.minimumWidth: 0
                         implicitHeight: (window.compact ? 36 : 43) + Math.max(0, appearance.uiFont.pixelSize - 13)
                         text: sidebar.rail ? "" : modelData.title
-                        objectName: modelData.page === 4 ? "teamNavButton" : ""
+                        objectName: modelData.page === 0 ? "projectsNavButton" : modelData.page === 4 ? "teamNavButton" : ""
                         enabled: modelData.page !== 4 || hasProject
                         iconName: modelData.icon
                         leftAligned: !sidebar.rail
-                        checked: window.page === modelData.page; quietSelection: true
+                        checked: modelData.page === 0 ? (window.page === 0 && (window.projectsOverview || !hasProject)) : window.page === modelData.page
+                        quietSelection: true
                         subtle: true
-                        onClicked: window.page = modelData.page
+                        onClicked: {
+                            if (modelData.page === 0) window.showProjectsOverview()
+                            else window.page = modelData.page
+                        }
                         Accessible.name: modelData.title
                         toolTipText: sidebar.rail ? modelData.title : ""
                     }
@@ -675,7 +693,17 @@ ApplicationWindow {
                                 leftAligned: true; subtle: true
                                 font.weight: workspace.project.id === projectEntry.modelData.id ? Font.DemiBold : Font.Normal
                                 toolTipText: projectEntry.modelData.root
-                                onClicked: { if (workspace.project.id === projectEntry.modelData.id) projectEntry.expanded = !projectEntry.expanded; else { projectEntry.expanded = true; workspace.openProject(projectEntry.modelData.id) } window.page = 0; window.followOutput = true }
+                                onClicked: {
+                                    if (workspace.project.id === projectEntry.modelData.id) {
+                                        if (window.projectsOverview) projectEntry.expanded = true
+                                        else projectEntry.expanded = !projectEntry.expanded
+                                    } else {
+                                        projectEntry.expanded = true
+                                        workspace.openProject(projectEntry.modelData.id)
+                                    }
+                                    window.showChat()
+                                    window.followOutput = true
+                                }
                             }
                             TapHandler {
                                 acceptedButtons: Qt.RightButton
@@ -709,7 +737,7 @@ ApplicationWindow {
                                     implicitHeight: Math.ceil(24 * appearance.uiFont.pixelSize / 13)
                                     toolTipText: qsTr("Nuova chat nel progetto")
                                     Accessible.name: qsTr("Nuova chat in %1").arg(projectEntry.modelData.name)
-                                    onClicked: { projectEntry.expanded = true; workspace.newChatInProject(projectEntry.modelData.id); window.page = 0 }
+                                    onClicked: { projectEntry.expanded = true; workspace.newChatInProject(projectEntry.modelData.id); window.showChat() }
                                 }
                             }
                         }
@@ -739,7 +767,7 @@ ApplicationWindow {
                                         cornerRadius: 8
                                         forceHover: chatRowHover.hovered || chatEntry.menuOpenForChat
                                         text: chatEntry.modelData.title || chatEntry.modelData.label || qsTr("Nuova chat")
-                                        checked: workspace.sessionId === chatEntry.modelData.id
+                                        checked: workspace.sessionId === chatEntry.modelData.id && !window.projectsOverview
                                         quietSelection: true; selectionMark: true
                                         subtle: true; leftAligned: true
                                         font.weight: chatEntry.isUnread ? Font.DemiBold : Font.Normal
@@ -808,7 +836,7 @@ ApplicationWindow {
                                                     && chatEntry.listY < projectList.contentY + projectList.height
                                             }
                                         }
-                                        onClicked: { const sid = chatEntry.modelData.id; window.page = 0; workspace.selectSession(sid) }
+                                        onClicked: { const sid = chatEntry.modelData.id; window.showChat(); workspace.selectSession(sid) }
                                     }
                                     KButton {
                                         objectName: "chatRename_" + chatEntry.modelData.id
@@ -870,8 +898,8 @@ ApplicationWindow {
                             KButton {
                                 objectName: "newChatButton"; width: parent.width; implicitHeight: 34 + Math.max(0, appearance.uiFont.pixelSize - 13)
                                 text: qsTr("+  Nuova chat"); subtle: true; leftAligned: true
-                                checked: !workspace.sessionId && window.page === 0
-                                onClicked: { workspace.newChat(); window.page = 0 }
+                                checked: !workspace.sessionId && window.page === 0 && !window.projectsOverview
+                                onClicked: { workspace.newChat(); window.showChat() }
                                 toolTipText: qsTr("Nuova chat nel progetto · Ctrl+Shift+N")
                             }
                             KButton {
@@ -889,7 +917,7 @@ ApplicationWindow {
                     Layout.fillWidth: true; implicitHeight: sidebar.rail ? 38 : Math.max(window.compact ? 40 : 46, appearance.uiFont.pixelSize * 2 + 16)
                     subtle: true; leftAligned: !sidebar.rail; wrapText: !sidebar.rail
                     enabled: hasProject && workspace.sessionId.length > 0
-                    onClicked: { window.page = 0; assistantTeamPanel.showEnvironment() }
+                    onClicked: { window.showChat(); assistantTeamPanel.showEnvironment() }
                     Accessible.name: qsTr("Conoscenza e strumenti")
                     toolTipText: qsTr("Conoscenza, capacità e strumenti di Kira")
                 }
@@ -956,14 +984,14 @@ ApplicationWindow {
                         Text {
                             id: headerKicker; objectName: "projectHeaderKicker"
                             font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText
-                            text: window.page === 0 ? (workspace.project.name || "") : ["", qsTr("Inferenza e agenti"), qsTr("Evidenza durabile"), qsTr("Preferenze"), qsTr("Collaborazione")][window.page]
+                            text: window.page === 0 ? (window.projectsOverview ? "" : (workspace.project.name || "")) : ["", qsTr("Inferenza e agenti"), qsTr("Evidenza durabile"), qsTr("Preferenze"), qsTr("Collaborazione")][window.page]
                             // The chat title keeps its room; the project name yields first.
                             visible: text.length > 0 && !projectHeader.compactActions
                             color: muted; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 1)
                             elide: Text.ElideRight; Layout.maximumWidth: Math.max(80, headerLayout.width * 0.26); Layout.minimumWidth: 0
                         }
                         Text { font.family: appearance.uiFont.family; textFormat: Text.PlainText; text: "›"; color: muted; visible: headerKicker.visible; font.pixelSize: appearance.uiFont.pixelSize + 1 }
-                        Text { objectName: "projectHeaderTitle"; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: window.page === 0 ? (hasProject ? workspace.sessionTitle : qsTr("Il tuo prossimo progetto")) : ["", qsTr("Modelli"), qsTr("Attività"), qsTr("Impostazioni"), qsTr("Team del progetto")][window.page]; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 3; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: Math.min(150, implicitWidth) }
+                        Text { objectName: "projectHeaderTitle"; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: window.page === 0 ? (window.projectsOverview ? qsTr("Progetti") : (hasProject ? workspace.sessionTitle : qsTr("Il tuo prossimo progetto"))) : ["", qsTr("Modelli"), qsTr("Attività"), qsTr("Impostazioni"), qsTr("Team del progetto")][window.page]; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 3; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: Math.min(150, implicitWidth) }
                     }
                     Row {
                         id: headerActions
@@ -982,7 +1010,7 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         HeaderSecondaryButton {
                             objectName: "projectResearchButton"; label: qsTr("Ricerca"); compactIcon: "research"
-                            visible: hasProject && (window.page === 0 || window.page === 4)
+                            visible: hasProject && ((window.page === 0 && !window.projectsOverview) || window.page === 4)
                             enabled: projectResearch.available
                             badge: projectResearch.pendingProposals
                             checked: panelHost.activePanel === researchDialog; quietSelection: true
@@ -992,16 +1020,16 @@ ApplicationWindow {
                         }
                         HeaderSecondaryButton {
                             objectName: "resumeWorkspaceButton"; label: qsTr("Riprendi"); compactIcon: "resume"
-                            visible: hasProject && window.page === 0
+                            visible: hasProject && window.page === 0 && !window.projectsOverview
                             checked: panelHost.activePanel === resumeDialog; quietSelection: true
                             toolTipText: qsTr("Riprendi lavoro · esiti, strumenti e prove · Ctrl+Shift+R"); Accessible.name: toolTipText
                             onClicked: resumeDialog.open()
                         }
                         HeaderSecondaryButton { objectName: "quickActionsButton"; label: qsTr("Azioni"); compactIcon: "actions"; toolTipText: qsTr("Azioni rapide · Ctrl+Shift+P"); Accessible.name: toolTipText; onClicked: { window.commandStart = -1; window.openActions("") } }
-                        HeaderSecondaryButton { objectName: "projectExportButton"; label: qsTr("Esporta"); compactIcon: "export"; visible: hasProject && window.page === 0; toolTipText: qsTr("Esporta chat in Markdown"); Accessible.name: toolTipText; onClicked: { window.memoryExport = false; exportDialog.open() } }
+                        HeaderSecondaryButton { objectName: "projectExportButton"; label: qsTr("Esporta"); compactIcon: "export"; visible: hasProject && window.page === 0 && !window.projectsOverview; toolTipText: qsTr("Esporta chat in Markdown"); Accessible.name: toolTipText; onClicked: { window.memoryExport = false; exportDialog.open() } }
                         HeaderSecondaryButton {
                             objectName: "detailsToggle"; label: qsTr("Dettagli"); compactIcon: "details"
-                            visible: hasProject && window.page === 0
+                            visible: hasProject && window.page === 0 && !window.projectsOverview
                             checked: window.width >= 1120 ? window.detailsVisible : detailsDrawer.visible; quietSelection: true
                             onClicked: workspace.setUiPreference("details_visible", !window.detailsVisible)
                             toolTipText: checked ? qsTr("Nascondi dettagli del progetto") : qsTr("Mostra dettagli del progetto")
@@ -1078,9 +1106,173 @@ ApplicationWindow {
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Kira Desktop organizza progetti, chat e risultati. Il provider scelto esegue i compiti AI."); visible: !workspace.onboardingComplete; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Modelli locali o in cloud  ·  Dati sul tuo computer"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.topMargin: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
+                    ScrollView {
+                        id: projectsOverviewScroll
+                        objectName: "projectsOverviewPage"
+                        anchors.fill: parent
+                        visible: hasProject && window.projectsOverview
+                        clip: true
+                        contentWidth: availableWidth
+                        ColumnLayout {
+                            id: projectsOverviewColumn
+                            readonly property real sideMargin: appearance.fullWidth ? 28 : (projectsOverviewScroll.availableWidth < 900 ? 24 : Math.max(28, (projectsOverviewScroll.availableWidth - 960) / 2))
+                            width: projectsOverviewScroll.availableWidth
+                            spacing: 14
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: projectsOverviewColumn.sideMargin
+                                Layout.rightMargin: projectsOverviewColumn.sideMargin
+                                Layout.topMargin: 28
+                                ColumnLayout {
+                                    Layout.fillWidth: true; spacing: 6
+                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Progetti"); color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 11; font.weight: Font.DemiBold; font.letterSpacing: -0.2; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: qsTr("Ordinati per ultima attività. Seleziona un progetto per aprire la conversazione o avviarne una nuova."); color: appearance.colors.textSecondary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                }
+                                KButton { objectName: "overviewNewProjectButton"; text: qsTr("Nuovo progetto"); iconName: "plus"; primary: true; onClicked: newProject.open() }
+                            }
+                            Repeater {
+                                model: workspace.projects
+                                delegate: Rectangle {
+                                    id: projectCard
+                                    required property int index
+                                    required property var modelData
+                                    objectName: "projectOverviewCard_" + modelData.id
+                                    readonly property bool isCurrent: workspace.project.id === modelData.id
+                                    readonly property string activityStamp: modelData.updated_at || modelData.created_at || ""
+                                    readonly property string relativeActivity: { localization.revision; return kformat.relativeTime(activityStamp) }
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: projectsOverviewColumn.sideMargin
+                                    Layout.rightMargin: projectsOverviewColumn.sideMargin
+                                    implicitHeight: projectCardBody.implicitHeight + 28
+                                    radius: 14
+                                    color: projectCardHover.hovered ? appearance.colors.surfaceAlt : appearance.colors.surface
+                                    border.width: isCurrent ? 2 : 1
+                                    border.color: isCurrent ? appearance.colors.accent : appearance.colors.border
+                                    HoverHandler { id: projectCardHover; cursorShape: appearance.pointerCursors ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                    TapHandler {
+                                        onTapped: {
+                                            if (!projectCard.isCurrent) workspace.openProject(projectCard.modelData.id)
+                                            window.showChat()
+                                            window.followOutput = true
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        id: projectCardBody
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        anchors.leftMargin: 18
+                                        anchors.rightMargin: 18
+                                        spacing: 8
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 10
+                                            KIcon { name: "projects"; ink: projectCard.isCurrent ? appearance.colors.accent : appearance.colors.textSecondary; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                                            Text {
+                                                objectName: "projectOverviewName_" + projectCard.modelData.id
+                                                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic
+                                                textFormat: Text.PlainText
+                                                text: projectCard.modelData.name
+                                                color: appearance.colors.text
+                                                font.pixelSize: appearance.uiFont.pixelSize + 3
+                                                font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
+                                                Layout.maximumWidth: Math.max(180, projectCardBody.width * 0.55)
+                                            }
+                                            Rectangle {
+                                                visible: projectCard.isCurrent
+                                                implicitWidth: currentBadgeText.implicitWidth + 14
+                                                implicitHeight: 20
+                                                radius: 10
+                                                color: appearance.colors.accentSoft
+                                                Text {
+                                                    id: currentBadgeText
+                                                    anchors.centerIn: parent
+                                                    text: qsTr("Aperto")
+                                                    textFormat: Text.PlainText
+                                                    font.family: appearance.uiFont.family
+                                                    font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 3)
+                                                    font.weight: Font.DemiBold
+                                                    color: appearance.colors.accent
+                                                }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text {
+                                                objectName: "projectOverviewActivity_" + projectCard.modelData.id
+                                                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic
+                                                textFormat: Text.PlainText
+                                                text: projectCard.relativeActivity.length > 0 ? qsTr("Ultima attività · %1").arg(projectCard.relativeActivity) : kformat.timestamp(projectCard.activityStamp)
+                                                color: muted
+                                                font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 2)
+                                            }
+                                        }
+                                        Text {
+                                            font.family: appearance.codeFont.family; font.styleName: appearance.codeFont.styleName; font.weight: appearance.codeFont.weight; font.italic: appearance.codeFont.italic
+                                            textFormat: Text.PlainText
+                                            text: projectCard.modelData.root || ""
+                                            color: muted
+                                            font.pixelSize: Math.max(10, appearance.codeFont.pixelSize - 1)
+                                            elide: Text.ElideMiddle
+                                            Layout.fillWidth: true
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true; spacing: 8
+                                            KIcon {
+                                                name: "lock"
+                                                ink: ["trusted_host", "full_access"].indexOf(projectCard.modelData.permission) >= 0 ? appearance.colors.warning : muted
+                                                Layout.preferredWidth: 13; Layout.preferredHeight: 13
+                                            }
+                                            Text {
+                                                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic
+                                                textFormat: Text.PlainText
+                                                text: projectCard.modelData.permission === "full_access" ? qsTr("Accesso completo")
+                                                    : projectCard.modelData.permission === "trusted_host" ? qsTr("Host fidato")
+                                                    : projectCard.modelData.permission === "project_write" ? qsTr("Scrittura nel progetto")
+                                                    : qsTr("Sola lettura")
+                                                color: ["trusted_host", "full_access"].indexOf(projectCard.modelData.permission) >= 0 ? appearance.colors.warning : muted
+                                                font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 2)
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                            KButton {
+                                                objectName: "projectOverviewNewChat_" + projectCard.modelData.id
+                                                text: qsTr("Nuova chat")
+                                                iconName: "plus"
+                                                subtle: true
+                                                implicitHeight: 32 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                                onClicked: { workspace.newChatInProject(projectCard.modelData.id); window.showChat() }
+                                            }
+                                            KButton {
+                                                objectName: "projectOverviewOpen_" + projectCard.modelData.id
+                                                text: projectCard.isCurrent ? qsTr("Torna alla chat") : qsTr("Apri progetto")
+                                                primary: projectCard.isCurrent
+                                                subtle: !projectCard.isCurrent
+                                                implicitHeight: 32 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                                onClicked: {
+                                                    if (!projectCard.isCurrent) workspace.openProject(projectCard.modelData.id)
+                                                    window.showChat()
+                                                    window.followOutput = true
+                                                }
+                                            }
+                                            KButton {
+                                                id: overviewCardMenuBtn
+                                                objectName: "projectOverviewMenu_" + projectCard.modelData.id
+                                                iconName: "more-vertical"
+                                                subtle: true
+                                                implicitWidth: 32 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                                implicitHeight: 32 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                                toolTipText: qsTr("Opzioni progetto")
+                                                Accessible.name: qsTr("Opzioni progetto %1").arg(projectCard.modelData.name)
+                                                onClicked: window.openProjectContextMenu(projectCard.modelData, overviewCardMenuBtn)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Item { Layout.preferredHeight: 16 }
+                        }
+                    }
                     SplitView {
                         id: browserSplit; objectName: "browserSplit"
-                        anchors.fill: parent; visible: hasProject; orientation: Qt.Horizontal
+                        anchors.fill: parent; visible: hasProject && !window.projectsOverview; orientation: Qt.Horizontal
                         handle: Rectangle { implicitWidth: 6; color: SplitHandle.pressed ? appearance.colors.accent : appearance.colors.border }
                         ColumnLayout {
                             id: chatColumn; objectName: "chatColumn"
@@ -3139,21 +3331,21 @@ ApplicationWindow {
     WorkspaceDialog { id: resumeDialog; parent: Overlay.overlay; inspectorKey: "riprendi" }
     ActionDialog {
         id: actionDialog; parent: Overlay.overlay
-        onProjectSelected: { window.page = 0; window.followOutput = true }
+        onProjectSelected: { window.showChat(); window.followOutput = true }
         onSoulRequested: function(soulId, viewMode) {
-            window.page = 0
+            window.showChat()
             souls.openSoulView(soulId, viewMode)
             soulDialog.open()
         }
         onResearchRequested: function(projectId, recordId) {
-            window.page = 0
+            window.showChat()
             if (projectId && (!workspace.project || workspace.project.id !== projectId)) {
                 workspace.openProject(projectId)
             }
             researchDialog.open()
         }
         onCanvasRequested: function(projectId, artifactId) {
-            window.page = 0
+            window.showChat()
             if (projectId && (!workspace.project || workspace.project.id !== projectId)) {
                 workspace.openProject(projectId)
             }

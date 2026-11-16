@@ -278,3 +278,42 @@ def test_chat_defaults_to_full_width_and_jump_button_stays_clear_of_scrollbar(ch
     qtbot.wait(80)
     assert window.property("followOutput")
     assert not jump.isVisible()
+
+
+def test_projects_sidebar_button_shows_projects_sorted_by_latest_activity(chat_ui, qtbot):
+    view, window, paths, _ = chat_ui
+    view._projects = [
+        {"id": "older", "name": "Older Project", "root": str(paths.data / "older"),
+         "permission": "read_only", "created_at": "2026-01-01T10:00:00Z", "updated_at": "2026-01-01T10:00:00Z"},
+        {"id": "synthetic", "name": "Chat layout fixture", "root": str(paths.data),
+         "permission": "project_write", "created_at": "2026-01-01T08:00:00Z", "updated_at": "2026-01-01T08:00:00Z"},
+        {"id": "middle", "name": "Middle Project", "root": str(paths.data / "middle"),
+         "permission": "trusted_host", "created_at": "2026-01-02T12:00:00Z", "updated_at": "2026-01-02T12:00:00Z"},
+    ]
+    # Live run activity in the currently open project bumps it to the top of workspace.projects.
+    view._runs = {"r1": {"id": "r1", "session_id": "s1", "state": "completed",
+                         "created_at": "2026-01-03T15:00:00Z", "updated_at": "2026-01-03T15:00:00Z"}}
+    view.changed.emit()
+    qtbot.wait(50)
+    assert [p["id"] for p in view.projects] == ["synthetic", "middle", "older"]
+
+    root = window.contentItem()
+    projects_nav = item(root, "projectsNavButton")
+    overview = item(root, "projectsOverviewPage")
+    split = item(root, "browserSplit")
+    assert split.isVisible() and not overview.isVisible()
+
+    click(window, projects_nav)
+    qtbot.wait(60)
+    assert window.property("projectsOverview")
+    assert overview.isVisible() and not split.isVisible()
+    card_top = item(root, "projectOverviewCard_synthetic")
+    card_mid = item(root, "projectOverviewCard_middle")
+    card_old = item(root, "projectOverviewCard_older")
+    assert card_top.isVisible() and card_mid.isVisible() and card_old.isVisible()
+    assert card_top.y() < card_mid.y() < card_old.y()
+
+    click(window, item(root, "projectOverviewOpen_synthetic"))
+    qtbot.wait(60)
+    assert not window.property("projectsOverview")
+    assert split.isVisible() and not overview.isVisible()
