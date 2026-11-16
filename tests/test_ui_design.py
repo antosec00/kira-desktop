@@ -65,7 +65,7 @@ def test_model_panel_toggle_gains_chat_space_without_changing_session(design_ui,
     qtbot.wait(50)
     root = window.contentItem()
     version_label = item(root, "appVersionLabel")
-    assert version_label.property("text").endswith(view.appVersion)
+    assert version_label.property("text") == "Kira Desktop"
     assert version_label.property("contentWidth") <= version_label.width() + 0.5
     toggle = item(root, "modelControlsToggle")
     popover = window.findChild(QObject, "modelPopover")

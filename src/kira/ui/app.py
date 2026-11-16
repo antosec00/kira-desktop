@@ -1,12 +1,13 @@
 """Desktop entry point; resources resolve from the installed package."""
 
+import struct
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QTimer, QUrl
-from PySide6.QtGui import QFont, QGuiApplication, QIcon
+from PySide6.QtCore import QBuffer, QByteArray, QCoreApplication, QEvent, QIODevice, QSize, QStandardPaths, Qt, QTimer, QUrl
+from PySide6.QtGui import QFont, QGuiApplication, QIcon, QImage, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuick import QQuickImageProvider, QQuickWindow
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from kira import __version__
@@ -27,14 +28,92 @@ from kira.ui.research_controller import ResearchController
 from kira.ui.updates import Updates
 
 
+class MascotImageProvider(QQuickImageProvider):
+    """Smooth-scaled mascot textures matching physical screen pixels without GPU mipmap blur."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(QQuickImageProvider.ImageType.Image)
+        self._source = QImage(str(path))
+        self._cache: dict[tuple[int, int], QImage] = {}
+
+    def requestImage(self, _id: str, _size: QSize, requested_size: QSize) -> QImage:
+        if self._source.isNull():
+            return QImage()
+        w = requested_size.width() if requested_size.width() > 0 else 128
+        h = requested_size.height() if requested_size.height() > 0 else 128
+        key = (w, h)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        scaled = self._source.scaled(
+            w,
+            h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        if len(self._cache) >= 32:
+            self._cache.clear()
+        self._cache[key] = scaled
+        return scaled
+
+
+def _build_windows_ico(png_path: Path) -> Path | None:
+    cache_root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation)
+    target = (Path(cache_root) if cache_root else png_path.parent) / "kira-mascot-v2.ico"
+    if target.is_file():
+        return target
+    source = QImage(str(png_path))
+    if source.isNull():
+        return None
+    dims = (16, 24, 32, 48, 64, 128, 256)
+    blobs: list[tuple[int, bytes]] = []
+    for dim in dims:
+        scaled = source.scaled(
+            dim,
+            dim,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        ba = QByteArray()
+        buf = QBuffer(ba)
+        buf.open(QIODevice.OpenModeFlag.WriteOnly)
+        scaled.save(buf, b"PNG")
+        buf.close()
+        blobs.append((dim, bytes(ba.data())))
+    header = struct.pack("<HHH", 0, 1, len(blobs))
+    offset = 6 + 16 * len(blobs)
+    entries = bytearray()
+    payload = bytearray()
+    for dim, data in blobs:
+        b_dim = 0 if dim >= 256 else dim
+        entries.extend(struct.pack("<BBBBHHII", b_dim, b_dim, 0, 0, 1, 32, len(data), offset))
+        payload.extend(data)
+        offset += len(data)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(header + bytes(entries) + bytes(payload))
+        return target
+    except OSError:
+        return None
+
+
 def _app_icon() -> QIcon:
     assets = Path(__file__).parent / "assets"
     ico_path = assets / "kira.ico"
     png_path = assets / "kira-mascot.png"
+    icon = QIcon()
     if sys.platform == "win32" and ico_path.is_file():
-        icon = QIcon(str(ico_path))
-        if png_path.is_file():
-            icon.addFile(str(png_path))
+        icon.addFile(str(ico_path))
+    source = QImage(str(png_path))
+    if not source.isNull():
+        for dim in (16, 20, 24, 32, 40, 48, 64, 128, 256):
+            scaled = source.scaled(
+                dim,
+                dim,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            icon.addPixmap(QPixmap.fromImage(scaled))
         return icon
     return QIcon(str(png_path))
 
@@ -55,6 +134,8 @@ def _apply_window_icon(window: QQuickWindow) -> None:
             Path(sys.executable).resolve().parents[2] / "kira.ico",
         ]
         ico_file = next((p for p in ico_candidates if p.is_file()), None)
+        if ico_file is None:
+            ico_file = _build_windows_ico(assets / "kira-mascot.png")
         if ico_file is None:
             return
         hwnd = int(window.winId())
@@ -88,8 +169,10 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
         app.setFont(font)
         app.setWindowIcon(_app_icon())
     directory = Path(__file__).parent / "qml"
+    assets = Path(__file__).parent / "assets"
     with qml_disk_cache(directory, "Kira Desktop"):
         engine = QQmlApplicationEngine()
+        engine.addImageProvider("kira-mascot", MascotImageProvider(assets / "kira-mascot.png"))
         engine.addImageProvider("kira-browser", BrowserFrames(workspace.web.frames))
         engine.addImageProvider("kira-canvas", BrowserFrames(workspace.canvas.frames))
         localization = Localization(workspace, engine, engine)
@@ -150,6 +233,8 @@ def create_engine(workspace: Workspace) -> QQmlApplicationEngine:
 def show_launch_splash(workspace: Workspace) -> QQmlApplicationEngine | None:
     """A still picture of Kira while the main interface is being built."""
     engine = QQmlApplicationEngine()
+    assets = Path(__file__).parent / "assets"
+    engine.addImageProvider("kira-mascot", MascotImageProvider(assets / "kira-mascot.png"))
     engine.rootContext().setContextProperty("appearance", Appearance(workspace, engine))
     directory = Path(__file__).parent / "qml"
     # The first QML load of the process fixes the cache location for all of them.

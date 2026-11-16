@@ -50,10 +50,11 @@ Item {
             objectName: "loadingMascot"
             anchors.centerIn: parent
             width: art.size; height: art.size
-            source: "../assets/kira-mascot.png"
-            sourceSize.width: art.size * 2; sourceSize.height: art.size * 2
+            source: "image://kira-mascot/default"
+            sourceSize.width: Math.max(art.size, Math.round(art.size * Screen.devicePixelRatio))
+            sourceSize.height: Math.max(art.size, Math.round(art.size * Screen.devicePixelRatio))
             fillMode: Image.PreserveAspectFit
-            smooth: true; mipmap: true
+            smooth: true; mipmap: false
             Accessible.role: Accessible.Graphic
             Accessible.name: qsTr("Kira, mascotte dell'applicazione")
             transform: Translate { id: bob }

@@ -34,9 +34,10 @@ RowLayout {
     Image {
         objectName: "activityMascot"
         Layout.preferredWidth: 27; Layout.preferredHeight: 27
-        source: "../assets/kira-mascot.png"
-        sourceSize.width: 64; sourceSize.height: 64
-        fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
+        source: "image://kira-mascot/default"
+        sourceSize.width: Math.max(27, Math.round(27 * Screen.devicePixelRatio))
+        sourceSize.height: Math.max(27, Math.round(27 * Screen.devicePixelRatio))
+        fillMode: Image.PreserveAspectFit; smooth: true; mipmap: false
         Accessible.ignored: true
     }
     StatusIndicator {

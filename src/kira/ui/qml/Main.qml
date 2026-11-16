@@ -564,26 +564,39 @@ ApplicationWindow {
                     Layout.minimumWidth: 0
                     Layout.topMargin: 10
                     Layout.bottomMargin: window.compact ? 10 : 20
-                    spacing: 11
+                    spacing: 10
                     Rectangle {
                         width: 44; height: 44; radius: 14
                         color: "transparent"
                         Image {
                             objectName: "kiraMascot"
-                            anchors.fill: parent; anchors.margins: 3
-                            source: "../assets/kira-mascot.png"
-                            sourceSize.width: 128; sourceSize.height: 128
+                            anchors.fill: parent
+                            source: "image://kira-mascot/default"
+                            sourceSize.width: Math.max(44, Math.round(width * Screen.devicePixelRatio))
+                            sourceSize.height: Math.max(44, Math.round(height * Screen.devicePixelRatio))
                             fillMode: Image.PreserveAspectFit
-                            smooth: true; mipmap: true
+                            smooth: true; mipmap: false
                             Accessible.role: Accessible.Graphic
                             Accessible.name: qsTr("Kira, mascotte dell'applicazione")
                         }
                     }
-                    ColumnLayout {
+                    Text {
+                        objectName: "appVersionLabel"
                         visible: !sidebar.rail
-                        Layout.fillWidth: true; Layout.minimumWidth: 0; spacing: 0
-                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: "kira"; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 12; font.weight: Font.DemiBold; font.letterSpacing: 0.2 }
-                        Text { objectName: "appVersionLabel"; Layout.fillWidth: true; Layout.minimumWidth: 0; fontSizeMode: Text.HorizontalFit; minimumPixelSize: 8; font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: "DESKTOP  /  " + workspace.appVersion; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: workspace.appVersion.length > 7 || window.width < 1080 ? 0 : 1.6 }
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.alignment: Qt.AlignVCenter
+                        fontSizeMode: Text.HorizontalFit
+                        minimumPixelSize: 10
+                        font.family: appearance.uiFont.family
+                        font.styleName: appearance.uiFont.styleName
+                        font.italic: appearance.uiFont.italic
+                        textFormat: Text.PlainText
+                        text: "Kira Desktop"
+                        color: appearance.colors.text
+                        font.pixelSize: appearance.uiFont.pixelSize + 6
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: -0.2
                     }
                 }
                 KButton { objectName: "actionPaletteButton"; text: sidebar.rail ? "" : qsTr("Cerca  ·  Ctrl+K"); iconName: "search"; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; leftAligned: !sidebar.rail; onClicked: actionDialog.open(); Accessible.name: qsTr("Cerca progetti e azioni, Control K"); toolTipText: sidebar.rail ? qsTr("Cerca  ·  Ctrl+K") : "" }
@@ -1663,7 +1676,7 @@ ApplicationWindow {
                                                             font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold
                                                         }
                                                     }
-                                                    Image { visible: entry.kind === "assistant"; source: "../assets/kira-mascot.png"; sourceSize.width: 48; sourceSize.height: 48; Layout.preferredWidth: 20; Layout.preferredHeight: 20; fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true; Accessible.ignored: true }
+                                                    Image { visible: entry.kind === "assistant"; source: "image://kira-mascot/default"; sourceSize.width: Math.max(20, Math.round(20 * Screen.devicePixelRatio)); sourceSize.height: Math.max(20, Math.round(20 * Screen.devicePixelRatio)); Layout.preferredWidth: 20; Layout.preferredHeight: 20; fillMode: Image.PreserveAspectFit; smooth: true; mipmap: false; Accessible.ignored: true }
                                                     Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; visible: entry.kind !== "state" && entry.kind !== "user"; textFormat: Text.PlainText; text: entry.kind === "tool" ? "⌘  " + entry.title : entry.title; color: entry.kind === "assistant" ? appearance.colors.textSecondary : accent; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); font.weight: Font.DemiBold; font.letterSpacing: entry.kind === "assistant" ? 1.2 : 0; Layout.fillWidth: true; elide: Text.ElideRight }
                                                     Item { visible: entry.kind === "user"; Layout.fillWidth: true }
                                                     Item { visible: entry.kind === "state"; Layout.fillWidth: true }
