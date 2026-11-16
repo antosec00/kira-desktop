@@ -106,8 +106,8 @@ animazioni** la schermata resta ferma.
 
 Al primo avvio la schermata iniziale offre **Come funziona Kira**, che apre la
 **Guida iniziale**: cartella e permessi del progetto, provider e modello,
-ripresa del lavoro. Puoi aprirla in qualsiasi momento con **Guida iniziale**
-nella barra laterale. Il suggerimento **Il prossimo passo** sopra la
+ripresa del lavoro. Puoi aprirla in qualsiasi momento da **Aiuto → Guida
+iniziale**. Il suggerimento **Il prossimo passo** sopra la
 conversazione si chiude con **Nascondi**; Kira ricorda la scelta e puoi
 mostrarlo di nuovo da **Impostazioni → Lavoro**.
 
@@ -201,11 +201,11 @@ il puntatore per leggere il nome.
 
 La barra laterale ha tre stati: **Intera** (progetti e chat, più le sezioni
 dell'app), **Solo icone** (restano Cerca, Progetti, Attività, Team, Conoscenza e
-strumenti, Modelli, Impostazioni e Guida iniziale, con il nome al passaggio del
+strumenti, Modelli e Impostazioni, con il nome al passaggio del
 puntatore) e **Nascosta**. Il pulsante in alto a sinistra e **Ctrl+B** passano
 da uno stato all'altro; la scelta si salva in **Impostazioni → Lavoro → Barra
 laterale**. Il punto in basso indica il collegamento al servizio locale.
-Quando c'è una versione più nuova di Kira, sopra **Guida iniziale** compare
+Quando c'è una versione più nuova di Kira, nella barra laterale compare
 **Aggiorna a <versione>**, che apre la finestra dell'aggiornamento (vedi
 [Aggiornamenti in breve](#aggiornamenti-in-breve)).
 

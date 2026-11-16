@@ -105,8 +105,8 @@ in while the rest finishes loading. With **Reduce motion** the screen stays stil
 
 On first launch the start screen offers **How Kira works**, which opens the
 **Getting started** guide: project folder and permissions, provider and model,
-resuming work. You can open it at any time with **Getting started** in the
-sidebar. The **Next step** hint above the conversation closes with **Hide**;
+resuming work. You can open it at any time from **Help → Getting started**.
+The **Next step** hint above the conversation closes with **Hide**;
 Kira remembers the choice and you can show it again from **Settings → Work**.
 
 ### Creating your first project
@@ -197,11 +197,11 @@ the pointer to read the name.
 
 The sidebar has three states: **Whole** (projects and chats, plus the app
 sections), **Icons only** (Search, Projects, Activity, Team, Knowledge and
-tools, Models, Settings and Getting started remain, with the name shown on
+tools, Models and Settings remain, with the name shown on
 hover) and **Hidden**. The button at the top left and **Ctrl+B** cycle through
 the states; the choice is saved in **Settings → Work → Sidebar**. The dot at
 the bottom indicates the connection to the local service. When a newer version
-of Kira exists, **Update to <version>** appears above **Getting started** and
+of Kira exists, **Update to <version>** appears in the sidebar and
 opens the update window (see [Updates at a glance](#updates-at-a-glance)).
 
 In the **Projects and chats** list a small mark indicates the current chat;

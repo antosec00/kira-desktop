@@ -908,7 +908,6 @@ ApplicationWindow {
                     Accessible.name: qsTr("Aggiornamento disponibile · %1").arg(updates.latestVersion)
                     toolTipText: sidebar.rail ? qsTr("Aggiornamento disponibile · %1").arg(updates.latestVersion) : ""
                 }
-                KButton { objectName: "onboardingNavButton"; text: sidebar.rail ? "" : qsTr("Guida iniziale"); iconName: "help"; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; leftAligned: !sidebar.rail; onClicked: onboardingDialog.open(); Accessible.name: qsTr("Guida iniziale"); toolTipText: sidebar.rail ? qsTr("Guida iniziale") : "" }
                 Rectangle {
                     Layout.fillWidth: true; implicitHeight: sidebar.rail ? 26 : connectionLabel.implicitHeight + (window.compact ? 16 : 26)
                     color: "transparent"
