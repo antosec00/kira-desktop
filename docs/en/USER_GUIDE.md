@@ -837,14 +837,14 @@ sign-in finish the work and empty the queue; if you revoke access in the
 browser, cancel it in the account panel too. You can always disconnect Kira
 from the ChatGPT settings.
 
-**Google Cloud · Vertex AI.** In **Models → Google Cloud · Vertex AI** or in
-**Settings → Connections** connect a Google account (OAuth with Application
+**Google Cloud · Vertex AI.** In **Models → Google Cloud · Vertex AI**
+connect a Google account (OAuth with Application
 Default Credentials) or a Google Cloud / Vertex AI API key, choose your Google
 Cloud project, region and a Gemini or partner model from the catalog. Kira
 manages the full tool cycle, attached images, reasoning, the browser, autonomous
 goals and Teams.
 
-**OpenRouter.** In **Models → OpenRouter** or in **Settings → Connections**
+**OpenRouter.** In **Models → OpenRouter**
 paste your OpenRouter API key (`sk-or-v1-...`, or set `OPENROUTER_API_KEY`).
 Kira stores it privately in `$XDG_CONFIG_HOME/kira/openrouter/config.json`
 (`0600` permissions), checks key status and credit usage through `/api/v1/key`,

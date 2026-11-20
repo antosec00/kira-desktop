@@ -1,24 +1,34 @@
-## Novità in Kira Desktop 0.29.1
+## Novità in Kira Desktop 0.30.0
 
-- **Eliminazione sicura dei progetti da Kira (`Elimina progetto…`)**:
-  - **Rimozione dal registro locale senza toccare i file su disco**: puoi ora eliminare un progetto dall'elenco di Kira tramite il menu contestuale della barra laterale (tasto destro o `⋮`), `File → Elimina progetto…` o il pannello *Memoria e istruzioni del progetto*, con finestra di conferma esplicita. Kira rimuove le sole registrazioni interne (chat, cronologia, schede di Ricerca, artefatti interni e bozze locali del progetto), lasciando intatti la cartella e tutti i tuoi file sul computer; l'operazione viene rifiutata (`BUSY`) se nel progetto ci sono esecuzioni, Team o browser manuali attivi.
-- **Sostituzione automatica e sicura del servizio inattivo dopo gli aggiornamenti (Windows e Linux)**:
-  - **Nessuno stallo per disallineamento di versione**: se aggiorni manualmente il pacchetto (`setup.exe` su Windows o `.deb` su Ubuntu) o i sorgenti mentre il servizio in background della versione precedente è ancora rimasto in ascolto ma inattivo, Kira gli chiede ora automaticamente di arrestarsi (`service.shutdown`) e avvia subito il nuovo servizio senza rimanere bloccata sulla schermata di caricamento.
-  - **Protezione rigorosa del lavoro attivo**: se il servizio precedente risponde `BUSY` perché un'esecuzione, un Team o un browser manuale sono ancora in corso, il lavoro viene preservato integralmente e Kira segnala l'attesa. Anche l'installer e il launcher di Windows fermano ora preventivamente un eventuale servizio inattivo prima di aggiornare i file.
-- **Documentazione, vetrina e trasparenza sui dati**:
-  - **Vetrina rinnovata e trasparenza esplicita**: aggiornate le schermate ad alta risoluzione in italiano e inglese, la panoramica animata e la documentazione di sicurezza ([Permessi e sicurezza](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/PERMESSI_E_SICUREZZA.md)), esplicitando che l'unico segnale esterno facoltativo di Kira è il conteggio anonimo di versione e sistema operativo (`id` UUIDv4 casuale locale, `v`, `os`, `kind` — verificabile nel codice in `src/kira/ui/updates.py` e disattivabile in **Impostazioni → Dati locali → Aggiornamenti**).
+- **Codex: immagini in ingresso e in uscita**:
+  - **Immagini allegate inviate a Codex**: le immagini allegate al messaggio (fino a quattro per richiesta, normalizzate da Kira in PNG privati) arrivano ora direttamente a Codex insieme al turno corrente, invece di essere passate come semplici percorsi di testo.
+  - **Immagini generate salvate nel progetto**: quando Codex genera un'immagine con il proprio strumento nativo e il progetto consente la scrittura, Kira la copia in `generated_images/` nella radice del progetto e la registra tra gli artefatti.
+  - **Compatibilità con Codex 0.169.0** e nome del workspace dell'account mostrato nella riga di stato, sempre senza indirizzo e-mail. Dettagli in [Provider](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/PROVIDER.md).
+- **Progetti in primo piano**:
+  - **Vista Progetti all'avvio**: se hai già dei progetti, Kira si apre sull'elenco dei progetti; la stessa vista si apre con **Progetti** nella barra laterale ed è ordinata per ultima attività, così riprendi subito il lavoro più recente.
+- **Interfaccia più pulita**:
+  - **Chat a tutta larghezza per impostazione predefinita** e pulsante per tornare all'ultimo messaggio centrato sulla conversazione.
+  - **Niente doppioni**: gli account ChatGPT si gestiscono solo in **Modelli → OpenAI · ChatGPT** (la sezione duplicata in **Impostazioni → Connessioni** è stata rimossa) e la **Guida iniziale** si apre da **Aiuto → Guida iniziale** invece che da un pulsante nella barra laterale.
+  - **Windows**: icone della mascotte nitide e intestazione con il marchio Kira Desktop.
+- **Sicurezza e dipendenze**:
+  - `opentelemetry-api` aggiornato a 1.45.2 (CVE-2026-126360) e `claude-agent-sdk` aggiornato a 0.2.182.
 
 ---
 
-## What's New in Kira Desktop 0.29.1
+## What's New in Kira Desktop 0.30.0
 
-- **Safe Project Deletion (`Delete project…`)**:
-  - **Remove projects from Kira without touching files on disk**: you can now delete a project from Kira's sidebar context menu (right-click or `⋮`), `File → Delete project…`, or the *Project memory and instructions* dialog with an explicit confirmation prompt. Kira deletes only its internal database records and local project state (chats, runs, Research records, internal artifacts, and drafts), leaving the project folder and every file on your computer completely untouched; deletion is refused (`BUSY`) while runs, Teams, or manual browser sessions are active in that project.
-- **Seamless Idle Service Upgrade on Windows & Linux**:
-  - **Automatic replacement of idle older services**: after a manual installer upgrade (`setup.exe` on Windows or `.deb` on Ubuntu) or source update, if an idle background service from the previous version is still listening, Kira now automatically requests a graceful `service.shutdown` and starts the new service instead of stalling on a version-mismatch screen.
-  - **Strict protection of active work**: if the older service reports `BUSY` (active run, Team, or manual browser control), Kira preserves the running work untouched and surfaces a clear notice. Both the Windows installer and launcher now also cleanly stop idle background services across version changes.
-- **Refreshed Showcase & Explicit Privacy Transparency**:
-  - **Updated media & version-ping documentation**: refreshed English and Italian UI screenshots, animated showcase preview, and [Permissions and security](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/PERMISSIONS_AND_SECURITY.md) documentation clearly detailing the optional 4-field anonymous version/OS count (`id` random local UUIDv4, `v`, `os`, `kind` — directly inspectable in `src/kira/ui/updates.py` and toggleable in **Settings → Local data → Updates**).
+- **Codex: image input and output**:
+  - **Attached images are sent to Codex**: images attached to a message (up to four per request, normalized by Kira into private PNGs) now reach Codex directly with the current turn instead of being passed as plain text paths.
+  - **Generated images are saved in the project**: when Codex generates an image with its native tool and the project allows writing, Kira copies it into `generated_images/` at the project root and records it as an artifact.
+  - **Codex 0.169.0 compatibility**, and the account's workspace name in the status row, still without the e-mail address. Details in [Providers](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/PROVIDERS.md).
+- **Projects front and center**:
+  - **Projects view on startup**: when you already have projects, Kira opens on the project list; the same view opens from **Projects** in the sidebar and is sorted by latest activity, so you can pick up your most recent work right away.
+- **A cleaner interface**:
+  - **Full-width chat by default**, and the jump-to-latest button is centered on the conversation.
+  - **No more duplicates**: ChatGPT accounts are managed only in **Models → OpenAI · ChatGPT** (the duplicate section in **Settings → Connections** is gone), and **Getting started** opens from **Help → Getting started** instead of a sidebar button.
+  - **Windows**: crisp mascot icons and a Kira Desktop brand header.
+- **Security and dependencies**:
+  - `opentelemetry-api` upgraded to 1.45.2 (CVE-2026-126360) and `claude-agent-sdk` upgraded to 0.2.182.
 
 ---
 

@@ -13,7 +13,7 @@ a ogni risposta.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Ollama** | Server Ollama già installato; endpoint in **Impostazioni → Connessioni → Endpoint Ollama** | Kira | Sì (strumenti verificati al primo uso; screenshot solo con modello che accetta immagini); no Computer senza visione | No (solo percorsi come testo) | Sì | Sì | Sì | No |
 | **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | Sì | Sì | Sì | Sì |
-| **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli** o **Impostazioni → Connessioni** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
+| **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli → OpenAI · ChatGPT** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
 | **Google Cloud · Vertex AI** | **Modelli → Google Cloud → Aggiungi / Cambia account Google** (OAuth2 PKCE isolato), `gcloud` ADC di sistema in sola lettura o API Key | Kira | Sì | Sì (PNG/JPEG/WebP/GIF) | Sì | Sì | Sì | Sì |
 | **OpenRouter** | **Modelli → OpenRouter → Chiave API OpenRouter** (`sk-or-v1-...` nel profilo locale `0600`) o variabile `OPENROUTER_API_KEY` | Kira | Sì (Computer con visione per i modelli multimodali) | Sì, con i modelli che dichiarano input `image` nel catalogo `/api/v1/models` | Sì | Sì | Sì | Sì (per i modelli con `reasoning` / `thinking`) |
 | **DeepSeek Account** (sperimentale) | **Modelli → DeepSeek API → Accedi con DeepSeek**, oppure **Usa DeeperSeeker** | Kira | Sì | Sì, solo modelli con visione | Sì | Sì | Sì | No |
