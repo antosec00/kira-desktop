@@ -401,6 +401,12 @@ def main():
             "text": prompt.property("text"), "error": prompt.property("attachmentError"),
         }
         prompt.setProperty("text", "")
+        # The fixture chat uses a provider that receives images with the message.
+        # Paste as a provider without image input to check the saved private file.
+        fixture_backend = workspace._backend
+        workspace._backend = "ollama"
+        workspace.changed.emit()
+        assert not workspace.imageInputsEnabled
         bitmap = QImage(16, 12, QImage.Format.Format_ARGB32)
         bitmap.fill(QColor("#82aaff"))
         app.clipboard().setImage(bitmap)
@@ -414,6 +420,8 @@ def main():
         assert not actual.isNull() and actual.size() == bitmap.size()
         assert saved.stat().st_mode & 0o777 == 0o600
         assert saved.parent.stat().st_mode & 0o777 == 0o700
+        workspace._backend = fixture_backend
+        workspace.changed.emit()
         prompt.setProperty("text", "")
         QTest.qWait(30)
         point = prompt.mapToScene(QPointF(15, 15))
