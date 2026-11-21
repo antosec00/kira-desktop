@@ -1,34 +1,24 @@
-## Novità in Kira Desktop 0.30.0
+## Novità in Kira Desktop 0.31.0
 
-- **Codex: immagini in ingresso e in uscita**:
-  - **Immagini allegate inviate a Codex**: le immagini allegate al messaggio (fino a quattro per richiesta, normalizzate da Kira in PNG privati) arrivano ora direttamente a Codex insieme al turno corrente, invece di essere passate come semplici percorsi di testo.
-  - **Immagini generate salvate nel progetto**: quando Codex genera un'immagine con il proprio strumento nativo e il progetto consente la scrittura, Kira la copia in `generated_images/` nella radice del progetto e la registra tra gli artefatti.
-  - **Compatibilità con Codex 0.169.0** e nome del workspace dell'account mostrato nella riga di stato, sempre senza indirizzo e-mail. Dettagli in [Provider](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/PROVIDER.md).
-- **Progetti in primo piano**:
-  - **Vista Progetti all'avvio**: se hai già dei progetti, Kira si apre sull'elenco dei progetti; la stessa vista si apre con **Progetti** nella barra laterale ed è ordinata per ultima attività, così riprendi subito il lavoro più recente.
-- **Interfaccia più pulita**:
-  - **Chat a tutta larghezza per impostazione predefinita** e pulsante per tornare all'ultimo messaggio centrato sulla conversazione.
-  - **Niente doppioni**: gli account ChatGPT si gestiscono solo in **Modelli → OpenAI · ChatGPT** (la sezione duplicata in **Impostazioni → Connessioni** è stata rimossa) e la **Guida iniziale** si apre da **Aiuto → Guida iniziale** invece che da un pulsante nella barra laterale.
-  - **Windows**: icone della mascotte nitide e intestazione con il marchio Kira Desktop.
-- **Sicurezza e dipendenze**:
-  - `opentelemetry-api` aggiornato a 1.45.2 (CVE-2026-126360) e `claude-agent-sdk` aggiornato a 0.2.182.
+- **Kira Cloud, modelli già pronti dentro l'applicazione**:
+  - **Nuovo provider facoltativo**: in **Modelli → Kira Cloud** premi **Accedi a Kira Cloud**, confermi il collegamento nel browser e scegli un modello. Non servono account presso altri fornitori né chiavi API, e la password non viene mai digitata dentro l'applicazione.
+  - **Piano, credito e limiti sempre visibili**: il pannello mostra il piano attivo, il credito AI del mese, la data di rinnovo e i limiti del piano; il saldo si aggiorna al termine di ogni risposta. Quando il credito finisce le richieste si fermano con un messaggio esplicito, senza addebiti aggiuntivi.
+  - **Tutto il resto come sempre**: strumenti, permessi, contesto e ragionamento funzionano come con gli altri provider gestiti da Kira, e puoi alternare Kira Cloud e gli altri provider nella stessa conversazione.
+  - Kira Cloud richiede un account su [kiradesktop.com](https://kiradesktop.com) con un piano attivo; al momento l'attivazione del piano avviene su richiesta dal sito. Kira Desktop resta gratuito e utilizzabile con tutti gli altri provider. Dettagli in [Provider](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/it/PROVIDER.md#kira-cloud).
+- **Lettura dei file più attenta ai consumi**:
+  - **File binari descritti, non letti**: quando un modello chiede di leggere un file che non è testo (file compilati, archivi, immagini), Kira ne riporta tipo e dimensione invece di inviarne il contenuto, che non avrebbe significato e consumerebbe inutilmente contesto e credito. Vale per tutti i provider.
 
 ---
 
-## What's New in Kira Desktop 0.30.0
+## What's New in Kira Desktop 0.31.0
 
-- **Codex: image input and output**:
-  - **Attached images are sent to Codex**: images attached to a message (up to four per request, normalized by Kira into private PNGs) now reach Codex directly with the current turn instead of being passed as plain text paths.
-  - **Generated images are saved in the project**: when Codex generates an image with its native tool and the project allows writing, Kira copies it into `generated_images/` at the project root and records it as an artifact.
-  - **Codex 0.169.0 compatibility**, and the account's workspace name in the status row, still without the e-mail address. Details in [Providers](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/PROVIDERS.md).
-- **Projects front and center**:
-  - **Projects view on startup**: when you already have projects, Kira opens on the project list; the same view opens from **Projects** in the sidebar and is sorted by latest activity, so you can pick up your most recent work right away.
-- **A cleaner interface**:
-  - **Full-width chat by default**, and the jump-to-latest button is centered on the conversation.
-  - **No more duplicates**: ChatGPT accounts are managed only in **Models → OpenAI · ChatGPT** (the duplicate section in **Settings → Connections** is gone), and **Getting started** opens from **Help → Getting started** instead of a sidebar button.
-  - **Windows**: crisp mascot icons and a Kira Desktop brand header.
-- **Security and dependencies**:
-  - `opentelemetry-api` upgraded to 1.45.2 (CVE-2026-126360) and `claude-agent-sdk` upgraded to 0.2.182.
+- **Kira Cloud, models ready to use inside the application**:
+  - **New optional provider**: in **Models → Kira Cloud** press **Sign in to Kira Cloud**, confirm the device link in the browser and pick a model. No accounts with other providers and no API keys are needed, and your password is never typed inside the application.
+  - **Plan, credit and limits always visible**: the panel shows the active plan, the month's AI credit, the renewal date and the plan limits; the balance updates at the end of each answer. When credit runs out, requests stop with an explicit message and no extra charges.
+  - **Everything else as usual**: tools, permissions, context and reasoning work as with the other providers managed by Kira, and you can switch between Kira Cloud and the other providers in the same conversation.
+  - Kira Cloud requires a [kiradesktop.com](https://kiradesktop.com) account with an active plan; for now the plan is activated on request from the website. Kira Desktop stays free and usable with every other provider. Details in [Providers](https://github.com/__REPOSITORY__/blob/__COMMIT__/docs/en/PROVIDERS.md#kira-cloud).
+- **File reading that wastes less**:
+  - **Binary files are described, not read**: when a model asks to read a file that is not text (compiled artifacts, archives, images), Kira reports its type and size instead of sending its content, which would carry no meaning and needlessly use context and credit. This applies to every provider.
 
 ---
 
