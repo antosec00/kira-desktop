@@ -598,7 +598,7 @@ def main():
         """))
         assert rows and all(row and row["textFormat"] == 0 for row in rows)
         assert [row["text"] for row in rows] == [
-            "Ollama", "Codex", "OpenAI diretto · ChatGPT", "DeepSeek Account",
+            "Kira Cloud", "Ollama", "Codex", "OpenAI diretto · ChatGPT", "DeepSeek Account",
             "DeepSeek Web · sperimentale", "Claude Code · uso personale",
             "Google Cloud · Vertex AI", "OpenRouter"]
 
