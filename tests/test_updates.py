@@ -111,7 +111,7 @@ def test_unsigned_tampered_or_foreign_packages_are_refused(signer, tmp_path):
             prepare_package(client, latest_release(client), "24.04", tmp_path)
     assert not list(tmp_path.glob("*.deb"))
     with release_server(payload, sums, signature) as client:
-        with pytest.raises(UpdateError, match="Ubuntu"):
+        with pytest.raises(UpdateError, match="questo sistema"):
             prepare_package(client, latest_release(client), "22.04", tmp_path)
     other = signed(signer, payload, "kira-desktop_ubuntu26.04_amd64.deb")
     with release_server(payload, *other) as client:
@@ -161,10 +161,19 @@ def test_installation_kind_and_ubuntu_version(tmp_path):
     assert install_kind(checkout / "src/kira/__init__.py") == ("other", None)
     release = tmp_path / "os-release"
     release.write_text('NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="24.04"\n')
-    assert ubuntu_version(release) == "24.04"
+    assert ubuntu_version(release, python=(3, 14)) == "24.04"
+    # Other systems get the package built for the Python that runs Kira.
+    release.write_text('ID=kali\nID_LIKE=debian\nVERSION_ID="2026.3"\n')
+    assert ubuntu_version(release, python=(3, 14)) == "26.04"
+    assert ubuntu_version(release, python=(3, 12)) == "24.04"
+    assert ubuntu_version(release, python=(3, 13)) == ""
+    release.write_text('ID=linuxmint\nID_LIKE="ubuntu debian"\nVERSION_ID="22"\n')
+    assert ubuntu_version(release, python=(3, 12)) == "24.04"
+    assert ubuntu_version(release, python=(3, 13)) == "22"
     release.write_text('ID=debian\nVERSION_ID="13"\n')
-    assert ubuntu_version(release) == ""
-    assert ubuntu_version(tmp_path / "missing") == ""
+    assert ubuntu_version(release, python=(3, 13)) == ""
+    assert ubuntu_version(tmp_path / "missing", python=(3, 13)) == ""
+    assert ubuntu_version(tmp_path / "missing", python=(3, 12)) == "24.04"
 
 
 def git(*arguments, cwd):

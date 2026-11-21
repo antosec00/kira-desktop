@@ -519,8 +519,9 @@ Che cosa controlla e come aggiorna dipende dall'installazione:
 
 - **Pacchetto** (codice in `/opt/kira-desktop/`): Kira chiede a GitHub l'ultima
   release pubblicata e la confronta con la versione installata. Per aggiornare
-  scarica il pacchetto della tua versione di Ubuntu (24.04 o 26.04) nella
-  cartella `updates/` dei dati del profilo, con permessi 0600, verifica la firma
+  scarica il pacchetto della tua versione di Ubuntu (24.04 o 26.04; sugli altri
+  sistemi basati su Debian quello costruito per il Python di sistema, 3.12 o
+  3.14) nella cartella `updates/` dei dati del profilo, con permessi 0600, verifica la firma
   Ed25519 `SHA256SUMS.sig` del file `SHA256SUMS` con la chiave pubblica
   integrata in Kira e poi l'impronta SHA-256 del pacchetto. Una release senza
   firma, con una firma non valida o con un'impronta diversa viene rifiutata e non

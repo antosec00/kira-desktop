@@ -377,7 +377,7 @@ Item {
                         text: updates.kind === "source"
                               ? qsTr("Questa è una cartella dei sorgenti: Kira controlla il ramo remoto con git e aggiorna con git e uv.")
                               : updates.kind === "package"
-                                ? qsTr("Kira chiede a GitHub l’ultima release, scarica il pacchetto per la tua versione di Ubuntu e lo installa solo se la firma è valida.")
+                                ? qsTr("Kira chiede a GitHub l’ultima release, scarica il pacchetto per il tuo sistema e lo installa solo se la firma è valida.")
                                 : qsTr("Questa installazione non si aggiorna da Kira: usa la pagina delle release.")
                     }
                     Flow {

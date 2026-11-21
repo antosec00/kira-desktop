@@ -58,6 +58,8 @@ PACKAGE_ASSETS = {
     "26.04": "kira-desktop_ubuntu26.04_amd64.deb",
     "windows": "kira-desktop_windows_amd64_setup.exe",
 }
+# The Python each Ubuntu package is built for: the fallback on other Debian-based systems.
+PYTHON_PACKAGES = {(3, 12): "24.04", (3, 14): "26.04"}
 FIRST_CHECK_DELAY_MS = 8000
 CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
@@ -101,7 +103,15 @@ def install_kind(module_file: Path | None = None) -> tuple[str, Path | None]:
     return "other", None
 
 
-def ubuntu_version(os_release: Path = Path("/etc/os-release")) -> str:
+def ubuntu_version(os_release: Path = Path("/etc/os-release"),
+                   python: tuple[int, int] | None = None) -> str:
+    """The key of this system's package in PACKAGE_ASSETS, or a value that names none.
+
+    A supported Ubuntu release names its package directly. Any other system where the
+    package is installed (Debian, Kali, Mint and similar) gets the package built for the
+    Python that runs Kira, the requirement each package declares; apt still refuses the
+    installation when another declared dependency is missing.
+    """
     if sys.platform == "win32":
         return "windows"
     fields: dict[str, str] = {}
@@ -110,10 +120,14 @@ def ubuntu_version(os_release: Path = Path("/etc/os-release")) -> str:
             key, _, value = line.partition("=")
             fields[key.strip()] = value.strip().strip('"')
     except (OSError, UnicodeError):
-        return ""
-    if fields.get("ID") != "ubuntu" and "ubuntu" not in fields.get("ID_LIKE", "").split():
-        return ""
-    return fields.get("VERSION_ID", "")
+        pass
+    version = ""
+    if fields.get("ID") == "ubuntu" or "ubuntu" in fields.get("ID_LIKE", "").split():
+        version = fields.get("VERSION_ID", "")
+    if version in PACKAGE_ASSETS:
+        return version
+    running = python if python is not None else (sys.version_info[0], sys.version_info[1])
+    return PYTHON_PACKAGES.get(running, version)
 
 
 def verified_checksums(sums: bytes, signature: bytes, public_key_pem: str | None = None) -> dict[str, str]:
@@ -338,7 +352,7 @@ def prepare_package(client: httpx.Client, release: Json, version_id: str, cache:
     """Download this system's package and accept it only with a valid signature and checksum."""
     name = PACKAGE_ASSETS.get(version_id)
     if name is None:
-        raise UpdateError(tr("Non c'è un pacchetto di Kira per questa versione di Ubuntu."))
+        raise UpdateError(tr("Non c'è un pacchetto di Kira per questo sistema."))
     assets = release["assets"]
     if name not in assets or "SHA256SUMS" not in assets:
         raise UpdateError(tr("La release non contiene il pacchetto per questo sistema."))

@@ -519,8 +519,9 @@ What is checked and how the update works depends on the installation:
 
 - **Package** (code in `/opt/kira-desktop/`): Kira asks GitHub for the latest
   published release and compares it with the installed version. To update, it
-  downloads the package for your Ubuntu version (24.04 or 26.04) into the
-  `updates/` folder of the profile's data, with 0600 permissions, verifies the
+  downloads the package for your Ubuntu version (24.04 or 26.04; on other
+  Debian-based systems the one built for the system Python, 3.12 or 3.14) into
+  the `updates/` folder of the profile's data, with 0600 permissions, verifies the
   Ed25519 signature `SHA256SUMS.sig` of the `SHA256SUMS` file with the public
   key built into Kira, then the SHA-256 checksum of the package. A release
   without a signature, with an invalid signature or with a different checksum is
