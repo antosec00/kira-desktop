@@ -66,6 +66,10 @@ def _window_title(window: Json) -> str:
         return tr("Settimanale · Opus")
     if kind == "seven_day_sonnet":
         return tr("Settimanale · Sonnet")
+    if kind == "kira_monthly_credit":
+        return tr("Credito mensile del piano")
+    if kind == "kira_extra_credit":
+        return tr("Crediti extra")
     return _period(window.get("duration_minutes"))
 
 

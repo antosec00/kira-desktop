@@ -229,6 +229,16 @@ class FileTools:
             content, lossy = data.decode("utf-8"), False
         except UnicodeDecodeError:
             content, lossy = data.decode("utf-8", "replace"), True
+        replaced = content.count("\ufffd") if lossy else 0
+        if b"\x00" in data[:8192] or (replaced >= 32 and replaced * 10 > len(content)):
+            # Compiled artifacts, archives and images are not text: decoding them yields
+            # megabytes of replacement characters that cost a model far more than text and
+            # carry no meaning. Report what the file is instead of its bytes.
+            return {"ok": True, "path": self._reported_path(parts), "content": "",
+                    "sha256": digest(data), "bytes": len(data), "encoding": "binary", "lossy": True,
+                    "binary": True,
+                    "note": "Binary file: its content is not text and was not returned. "
+                            "Inspect it with a suitable command instead of reading it."}
         result = {"ok": True, "path": self._reported_path(parts), "content": content,
                   "sha256": digest(data), "bytes": len(data)}
         if lossy:

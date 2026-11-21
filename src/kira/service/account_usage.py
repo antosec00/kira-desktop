@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from kira.domain.account_usage import normalize_claude_plan, unavailable_claude_usage
 from kira.domain.contracts import Json, KiraError
@@ -16,6 +16,15 @@ if TYPE_CHECKING:
 
 MAX_EVENTS = 10_000
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cached_input_tokens", "total_tokens")
+
+
+def _iso_seconds(value: str) -> int | None:
+    """Epoch seconds of an ISO-8601 UTC timestamp, or None when it is absent or malformed."""
+    from datetime import datetime
+    try:
+        return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()) if value else None
+    except ValueError:
+        return None
 
 
 class AccountUsage:
@@ -203,6 +212,77 @@ class AccountUsage:
                 "account": account,
                 "limits": [],
                 "reason": "not_exposed",
+                "local_usage": self.local(backend, None, observed_at),
+            }
+        if backend == "kira_cloud":
+            auth = self.service.kira_cloud_accounts.auth
+            try:
+                status = await auth.refresh()
+            except Exception:
+                status = auth.status()
+            connected = bool(status.get("connected"))
+            email = str(status.get("email") or "")
+            name = str(status.get("name") or "")
+            plan_label = str(status.get("plan_label") or "") or "Kira Cloud"
+            account = {
+                "type": "kira_cloud",
+                "email": email,
+                "label": f"{name} ({email})" if name and email else (email or "Kira Cloud"),
+                "plan_type": plan_label,
+                "connected": connected,
+            }
+            if not connected:
+                return {
+                    "available": False,
+                    "source": backend,
+                    "scope": "provider_account",
+                    "observed_at": observed_at,
+                    "account": account,
+                    "limits": [],
+                    "reason": "not_connected",
+                    "local_usage": self.local(backend, None, observed_at),
+                }
+            symbol = "$" if status.get("currency") == "USD" else "€"
+
+            def money(value: Any) -> str:
+                return f"{float(value or 0.0):.2f} {symbol}"
+
+            def window(kind: str, limit: Any, remaining: Any, reset: str) -> Json:
+                total = float(limit or 0.0)
+                left = max(0.0, min(total, float(remaining or 0.0)))
+                percent = int(round(left / total * 100.0)) if total > 0 else 0
+                return {
+                    "kind": kind,
+                    "used_percent": 100 - percent if total > 0 else 0,
+                    "remaining_percent": percent,
+                    "value_text": f"{money(left)} / {money(total)}",
+                    "resets_at": _iso_seconds(reset),
+                }
+
+            windows: list[Json] = []
+            if float(status.get("monthly_limit") or 0.0) > 0:
+                windows.append(window("kira_monthly_credit", status.get("monthly_limit"),
+                                      status.get("monthly_remaining"),
+                                      str(status.get("monthly_period_ends_at") or "")))
+            if float(status.get("credits_limit") or 0.0) > 0:
+                windows.append(window("kira_extra_credit", status.get("credits_limit"),
+                                      status.get("credits_remaining"), ""))
+            total_remaining = float(status.get("total_remaining") or 0.0)
+            group: Json = {
+                "id": "kira_cloud_credit",
+                "name": "Kira Cloud",
+                "plan_type": plan_label,
+                "status": "allowed" if total_remaining > 0 else "allowed_warning",
+                "credits": {"has_credits": True, "unlimited": False, "balance": money(total_remaining)},
+                "windows": windows,
+            }
+            return {
+                "available": True,
+                "source": backend,
+                "scope": "provider_account",
+                "observed_at": observed_at,
+                "account": account,
+                "limits": [group],
                 "local_usage": self.local(backend, None, observed_at),
             }
         account = {"type": "local", "label": "Ollama", "plan_type": None}

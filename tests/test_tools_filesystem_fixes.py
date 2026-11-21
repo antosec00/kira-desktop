@@ -332,3 +332,14 @@ def test_entry_bounds_still_apply_with_race_tolerance(tmp_path, monkeypatch):
     monkeypatch.setattr(filesystem, "MAX_ENTRIES", 2)
     listed = FileTools(tmp_path).list_files({})
     assert listed["truncated"] and len(listed["entries"]) == 2
+
+
+def test_binary_file_is_described_not_returned(tmp_path):
+    """A compiled artifact read as text once cost a user most of a day's credit in two requests."""
+    (tmp_path / "lib.rlib").write_bytes(bytes(range(256)) * 2000)
+    (tmp_path / "blob.bin").write_bytes(b"\xff\xfe\xfd" * 50_000)
+    files = FileTools(tmp_path)
+    for name in ("lib.rlib", "blob.bin"):
+        read = files.read_file({"path": name})
+        assert read["ok"] and read["binary"] is True and read["content"] == "" and read["lossy"] is True
+        assert read["bytes"] > 100_000 and "Binary file" in read["note"]

@@ -59,6 +59,10 @@ Dialog {
                 visible: providerSwitch.backend === "google_cloud"
                 Layout.fillWidth: true
             }
+            KiraCloudPane {
+                visible: providerSwitch.backend === "kira_cloud"
+                Layout.fillWidth: true
+            }
             OpenRouterPane {
                 visible: providerSwitch.backend === "openrouter"
                 Layout.fillWidth: true

@@ -16,7 +16,7 @@ Json = dict[str, Any]
 MAX_SUMMARY_BYTES = 65_536
 MAX_SUMMARY_ITEMS = 64
 MAX_SUMMARY_RUNS = 60
-PROVIDERS = frozenset({"openai_chatgpt", "codex", "ollama", "deepseek_account", "deepseek_web", "google_cloud", "openrouter"})
+PROVIDERS = frozenset({"openai_chatgpt", "codex", "ollama", "deepseek_account", "deepseek_web", "google_cloud", "openrouter", "kira_cloud"})
 SUMMARY_EVENTS = {"reasoning.summary.delta", "reasoning.summary.completed", "reasoning.summary.status"}
 _STEP_HEADING_RE = re.compile(r"(?:^|\n)\s*(?:\*\*([^\*\n]{3,80})\*\*|#{1,3}\s+([^\n]{3,80}))")
 
@@ -46,7 +46,8 @@ def provider_label(provider: str) -> str:
             "deepseek_account": tr("DeepSeek Account"),
             "deepseek_web": tr("DeepSeek Web · sperimentale"),
             "google_cloud": tr("Google Cloud · Vertex AI"),
-            "openrouter": tr("OpenRouter")}.get(provider, provider)
+            "openrouter": tr("OpenRouter"),
+        "kira_cloud": tr("Kira Cloud")}.get(provider, provider)
 
 
 def bounded_text(value: str, limit: int) -> tuple[str, bool]:

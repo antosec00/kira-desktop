@@ -141,7 +141,8 @@ def test_real_provider_dialog_keeps_current_selector_and_localizes_at_minimum_si
         qtbot.wait(40)
         dialog = window.findChild(QObject, "providerSwitchDialog")
         assert dialog.property("visible") and dialog.property("width") <= 840
-        assert window.findChild(QObject, "backendBox").property("currentIndex") == 1
+        # Kira Cloud is listed first, so the current provider sits one row lower.
+        assert window.findChild(QObject, "backendBox").property("currentIndex") == 2
         assert window.findChild(QObject, "switchProviderModel").property("currentValue") == "vision-model"
         assert window.findChild(QObject, "switchProviderApply").property("enabled")
         engine.rootContext().contextProperty("localization").setLanguage("en")

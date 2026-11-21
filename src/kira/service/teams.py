@@ -222,6 +222,8 @@ class Teams:
                 await self.service.google_accounts.prepare()
             elif config["backend"] == "openrouter":
                 await self.service.openrouter_accounts.prepare()
+            elif config["backend"] == "kira_cloud":
+                await self.service.kira_cloud_accounts.prepare()
             previous = self.store.db.execute("SELECT id,fingerprint FROM team_runs WHERE request_id=?", (request,)).fetchone()
             if previous:
                 if previous["fingerprint"] != digest:

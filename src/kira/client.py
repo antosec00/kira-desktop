@@ -225,12 +225,17 @@ async def ensure_service(paths: Paths | None = None) -> None:
             command = (["/usr/bin/python3", "-I", str(INSTALLED_LAUNCHER), "service"]
                        if INSTALLED_LAUNCHER.exists() and running_installed_package()
                        else [sys.executable, "-m", "kira.service.server"])
+            child_env = dict(os.environ)
+            src_root = str(Path(__file__).resolve().parents[1])
+            existing_pp = child_env.get("PYTHONPATH", "")
+            child_env["PYTHONPATH"] = f"{src_root}:{existing_pp}" if existing_pp else src_root
             popen_kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
                 "stdout": log_fd,
                 "stderr": log_fd,
                 "start_new_session": True,
                 "close_fds": sys.platform != "win32",
+                "env": child_env,
             }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)

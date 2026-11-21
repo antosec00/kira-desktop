@@ -504,4 +504,3 @@ async def test_openrouter_free_model_keepalive_stall_and_429_auto_fallback(
         assert completed_msgs == ["Risposta completata tramite fallback gratuito veloce."]
     finally:
         await backend.close()
-

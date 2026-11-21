@@ -844,6 +844,12 @@ Cloud project, region and a Gemini or partner model from the catalog. Kira
 manages the full tool cycle, attached images, reasoning, the browser, autonomous
 goals and Teams.
 
+**Kira Cloud.** The simplest way to have models ready to use: in **Models →
+Kira Cloud** press **Sign in to Kira Cloud**, confirm in the browser and pick
+a model. No API keys are needed; you need a kiradesktop.com account with an
+active plan. The panel shows plan, remaining AI credit and limits. Details in
+[Providers](PROVIDERS.md#kira-cloud).
+
 **OpenRouter.** In **Models → OpenRouter**
 paste your OpenRouter API key (`sk-or-v1-...`, or set `OPENROUTER_API_KEY`).
 Kira stores it privately in `$XDG_CONFIG_HOME/kira/openrouter/config.json`

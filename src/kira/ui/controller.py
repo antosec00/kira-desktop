@@ -24,6 +24,7 @@ from kira import __version__
 from kira.client import ensure_service
 from kira.domain.contracts import RUN_STATES, TERMINAL_STATES
 from kira.domain.paths import Paths
+from kira.domain.pricing import register_catalog_pricing
 from kira.domain.providers import WEB_BACKENDS
 from kira.ui.presentation import join_ui, refresh_ui, tr
 from kira.ui.input_controller import InputController
@@ -33,6 +34,7 @@ from kira.ui.direct_account import DirectAccountController
 from kira.ui.deepseek_account import DeepSeekAccountController
 from kira.ui.google_account import GoogleAccountController
 from kira.ui.openrouter_account import OpenRouterAccountController
+from kira.ui.kira_cloud_account import KiraCloudAccountController
 from kira.ui.external_links import BrowserLauncher, BrowserOpenResult
 from kira.ui.account_usage import AccountUsageController
 from kira.ui.workbench_controller import WorkbenchController, guidance_label
@@ -707,6 +709,10 @@ class Workspace(QObject):
         self.googleAccount.changed.connect(self.accountChanged.emit)
         self.openrouterAccount = OpenRouterAccountController(self)
         self.openrouterAccount.changed.connect(self.accountChanged.emit)
+        self.kiraCloudAccount = KiraCloudAccountController(self)
+        self.kiraCloudAccount.changed.connect(self.accountChanged.emit)
+        self._kira_cloud_was_connected = False
+        self.kiraCloudAccount.changed.connect(self._kira_cloud_account_changed)
         self.providerSwitch = ProviderSwitchController(self)
         self.accountUsage = AccountUsageController(self)
         self._web = WebController(self)
@@ -766,6 +772,7 @@ class Workspace(QObject):
         self.deepseekAccount.changed.emit()
         self.googleAccount.changed.emit()
         self.openrouterAccount.changed.emit()
+        self.kiraCloudAccount.changed.emit()
         # A language notification must not trigger project discovery through a
         # child controller's ordinary workspace-change connection.
         self.teams._retranslating = True
@@ -1599,7 +1606,8 @@ class Workspace(QObject):
                 "deepseek_web": tr("DeepSeek Web · sperimentale"),
                 "claude_code": tr("Claude Code · uso personale"),
                 "google_cloud": tr("Google Cloud · Vertex AI"),
-                "openrouter": tr("OpenRouter")}.get(backend, backend)
+                "openrouter": tr("OpenRouter"),
+                "kira_cloud": tr("Kira Cloud")}.get(backend, backend)
 
     @qt_property(str, notify=changed)
     def backendLabel(self) -> str:
@@ -1611,7 +1619,7 @@ class Workspace(QObject):
         return {"codex": "Codex", "ollama": "Ollama", "openai_chatgpt": tr("OpenAI diretto"),
                 "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
                 "claude_code": tr("Claude Code"), "google_cloud": tr("Google Cloud"),
-                "openrouter": tr("OpenRouter")}.get(self._backend, self._backend)
+                "openrouter": tr("OpenRouter"), "kira_cloud": tr("Kira Cloud")}.get(self._backend, self._backend)
 
     @qt_property("QVariantList", notify=preferencesChanged)
     def disabledBackends(self) -> list[str]:
@@ -1655,12 +1663,12 @@ class Workspace(QObject):
                 self._backend, self._model, self._effort = fallback, "", ""
                 self._tools = fallback in {
                     "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                    "claude_code", "google_cloud", "openrouter",
+                    "claude_code", "google_cloud", "openrouter", "kira_cloud",
                 }
                 if self.connected:
                     self.discover(fallback)
             if hasattr(self, "teams") and self.teams._draft.get("backend") == backend:
-                team_choices = ("codex", "ollama", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter")
+                team_choices = ("kira_cloud", "codex", "ollama", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter")
                 self.teams._draft["backend"] = next((b for b in team_choices if b not in updated), "codex")
                 self.teams.changed.emit()
             self._notice = tr("Provider {provider} disattivato.", provider=label)
@@ -1717,7 +1725,7 @@ class Workspace(QObject):
             return True
         model = next((item for item in self.models if item.get("id") == self._model), {})
         capabilities = model.get("capabilities", {})
-        return (self._backend in {"deepseek_account", "deepseek_web", "openrouter"}
+        return (self._backend in {"deepseek_account", "deepseek_web", "openrouter", "kira_cloud"}
                 and isinstance(capabilities, dict) and capabilities.get("images") is True)
 
     def direct_account_id(self) -> str:
@@ -1744,7 +1752,7 @@ class Workspace(QObject):
 
     def ensure_direct_catalog(self) -> None:
         # Providers not probed at connection time are discovered once a chat selects them.
-        if (self.connected and self._backend in {"openai_chatgpt", "claude_code", "google_cloud", "openrouter"}
+        if (self.connected and self._backend in {"openai_chatgpt", "claude_code", "google_cloud", "openrouter", "kira_cloud"}
                 and self.provider_catalog() is None):
             self.discover(self._backend)
 
@@ -1780,6 +1788,8 @@ class Workspace(QObject):
             return tr("Claude Code non risulta collegato. Accedi da un terminale con claude e /login, poi aggiorna.")
         if self._backend == "google_cloud" and not self.googleAccount.connected:
             return tr("Google Cloud non collegato. Configura gcloud ADC o una chiave API in Modelli.")
+        if self._backend == "kira_cloud" and not self.kiraCloudAccount.connected:
+            return tr("Kira Cloud non collegato. Accedi con il tuo account Kira Cloud in Modelli o dal menu Account.")
         if self._backend == "openrouter" and not self.openrouterAccount.connected:
             return tr("OpenRouter non collegato. Configura la tua chiave API OpenRouter in Modelli.")
         if not self.models:
@@ -1791,6 +1801,8 @@ class Workspace(QObject):
                 return tr("Nessun modello DeepSeek Web disponibile; aggiorna il catalogo dopo il collegamento.")
             if self._backend == "google_cloud":
                 return tr("Nessun modello Google Cloud disponibile; verifica Project ID o chiave API.")
+            if self._backend == "kira_cloud":
+                return tr("Nessun modello Kira Cloud disponibile; verifica il tuo account Kira e aggiorna.")
             if self._backend == "openrouter":
                 return tr("Nessun modello OpenRouter disponibile; verifica la chiave API e aggiorna.")
             return tr("Nessun modello disponibile. Installa un modello tramite Ollama, poi aggiorna.")
@@ -1804,6 +1816,8 @@ class Workspace(QObject):
             return tr("{count} modelli · login di Claude Code · solo per uso personale", count=len(self.models))
         if self._backend == "google_cloud":
             return tr("{count} modelli Google Cloud / Vertex AI disponibili", count=len(self.models))
+        if self._backend == "kira_cloud":
+            return tr("{count} modelli Kira Cloud disponibili", count=len(self.models))
         if self._backend == "openrouter":
             return tr("{count} modelli OpenRouter disponibili", count=len(self.models))
         return tr("{count} modelli disponibili · nessun download automatico", count=len(self.models))
@@ -1830,6 +1844,8 @@ class Workspace(QObject):
             disconnected = not self.deepseekAccount.webConnected
         elif self._backend == "google_cloud":
             disconnected = not self.googleAccount.connected
+        elif self._backend == "kira_cloud":
+            disconnected = not self.kiraCloudAccount.connected
         elif self._backend == "openrouter":
             disconnected = not self.openrouterAccount.connected
         else:
@@ -1865,7 +1881,7 @@ class Workspace(QObject):
 
     @qt_property(bool, notify=changed)
     def canUseTools(self) -> bool:
-        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code", "google_cloud", "openrouter"}:
+        if self._backend in {"codex", "openai_chatgpt", "deepseek_account", "claude_code", "google_cloud", "openrouter", "kira_cloud"}:
             return True
         model: Json = next((m for m in self.models if m.get("id") == self._model), {})
         caps = model.get("capabilities", {})
@@ -2402,6 +2418,8 @@ class Workspace(QObject):
         self.directAccount.refresh()
         self.discover("deepseek_account")
         self.deepseekAccount.refresh()
+        self.kiraCloudAccount.refresh()
+        self.openrouterAccount.refresh()
         self.refreshResources()
         if self._startup_stage == "service":
             # Wait for models only when the selected provider is queried at startup.
@@ -2472,6 +2490,15 @@ class Workspace(QObject):
             return
         self._notice = message
         self.changed.emit()
+
+    @Slot()
+    def _kira_cloud_account_changed(self) -> None:
+        """Drop a stale "sign in to the provider" notice once the Kira Cloud account is connected."""
+        connected = self.kiraCloudAccount.connected
+        if connected and not self._kira_cloud_was_connected and self._backend == "kira_cloud" and self._notice:
+            self._notice = ""
+            self.changed.emit()
+        self._kira_cloud_was_connected = connected
 
     @Slot()
     def dismissNotice(self) -> None:
@@ -2868,6 +2895,7 @@ class Workspace(QObject):
             self._artifacts = []
             self._artifact_paths.clear()
             self.chatChanged.emit()
+            self.changed.emit()
             self._problem(str(error.get("message", tr("Chat non disponibile"))))
 
         self.client.request("session.snapshot", {"project_id": project_id, "session_id": session_id}, loaded, failed)
@@ -3278,7 +3306,7 @@ class Workspace(QObject):
         if self.busy:
             return
         if backend not in {"ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                           "claude_code", "google_cloud", "openrouter"}:
+                           "claude_code", "google_cloud", "openrouter", "kira_cloud"}:
             return
         if not self.isProviderEnabled(backend):
             self._problem(tr("Il provider {provider} è disattivato. Riattivalo nel pannello Modelli.",
@@ -3292,7 +3320,7 @@ class Workspace(QObject):
             return
         self._backend, self._model, self._effort = backend, "", ""
         self._tools = backend in {"codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                                  "claude_code", "google_cloud", "openrouter"}
+                                  "claude_code", "google_cloud", "openrouter", "kira_cloud"}
         self._num_ctx = 0
         self._think = None
         self._session = {}
@@ -3300,6 +3328,8 @@ class Workspace(QObject):
         self.ensure_direct_catalog()
         if backend == "google_cloud":
             self.googleAccount.refresh()
+        elif backend == "kira_cloud":
+            self.kiraCloudAccount.refresh()
         elif backend == "openrouter":
             self.openrouterAccount.refresh()
         self.discover(backend)
@@ -3449,6 +3479,7 @@ class Workspace(QObject):
                     self._catalogs[backend] = catalog
             else:
                 self._catalogs[backend] = catalog
+            register_catalog_pricing(backend, catalog.get("models"))
             self.changed.emit()
             if backend == self._startup_backend:
                 self._startup_backend = ""
@@ -3868,6 +3899,8 @@ class Workspace(QObject):
                 self._waiting_browser_tools.pop(run_id, None)
                 self._streaming_items.pop(run_id, None)
                 self._approval = {}
+                if self._backend == "kira_cloud":
+                    self.kiraCloudAccount.refreshSoon()
                 for index, item in enumerate(self.transcript.rows):
                     if item["runId"] == run_id and item["status"] == "streaming":
                         self.transcript.update(index, status="incompleto")
@@ -3918,6 +3951,8 @@ class Workspace(QObject):
                     tot_reasoning = 0
                     tot_all = 0
                     valid_rounds = 0
+                    tot_charged = 0.0
+                    charged_rounds = 0
                     for r_usage in self._session_usage_rounds.values():
                         r_in = r_usage.get("input_tokens")
                         r_out = r_usage.get("output_tokens")
@@ -3931,6 +3966,10 @@ class Workspace(QObject):
                             r_reason = r_usage.get("reasoning_output_tokens")
                             if type(r_reason) is int:
                                 tot_reasoning += r_reason
+                            r_charged = r_usage.get("charged_usd")
+                            if isinstance(r_charged, (int, float)) and not isinstance(r_charged, bool) and r_charged >= 0:
+                                tot_charged += float(r_charged)
+                                charged_rounds += 1
                             r_tot = r_usage.get("total_tokens")
                             tot_all += r_tot if type(r_tot) is int else (r_in + r_out)
                     if valid_rounds > 0:
@@ -3942,6 +3981,9 @@ class Workspace(QObject):
                             "reasoningOutputTokens": tot_reasoning,
                             "requests": valid_rounds,
                         }
+                        if charged_rounds == valid_rounds:
+                            # Every request reported its exact charge: show the sum, not an estimate.
+                            merged["thread_total"]["chargedUsd"] = round(tot_charged, 6)
                         if "requests" not in merged:
                             merged["requests"] = valid_rounds
                 self._usage = merged
@@ -4270,6 +4312,7 @@ class Workspace(QObject):
         self.deepseekAccount.close()
         self.googleAccount.close()
         self.openrouterAccount.close()
+        self.kiraCloudAccount.close()
         self.browser.close()
         self.flushDrafts()
         self.assistant.close()

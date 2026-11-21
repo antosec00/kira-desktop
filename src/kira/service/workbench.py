@@ -349,8 +349,9 @@ def _changes(root: Path, selected: str | None) -> Json:
             header = f"\n### Untracked: {path}\n".encode()
             try:
                 helper = FileTools(root, min(MAX_DIFF - size, 100_000))
-                data = helper.read_file({"path": path})["content"]
-                if "\0" in data:
+                read = helper.read_file({"path": path})
+                data = read["content"]
+                if read.get("binary") or "\0" in data:
                     body = b"[Binary file; content is not previewed]\n"
                 else:
                     body = ("--- /dev/null\n+++ b/" + path + "\n" +

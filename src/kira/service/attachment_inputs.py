@@ -41,7 +41,7 @@ class AttachmentInputs:
 
     def validate(self, session: Json, identifiers: list[str]) -> list[Json]:
         image_capable = (session["backend"] in {"codex", "openai_chatgpt", "deepseek_account",
-                                                "claude_code", "google_cloud", "openrouter"}
+                                                "claude_code", "google_cloud", "openrouter", "kira_cloud"}
                          or session["backend"] == "deepseek_web"
                          and session.get("model") in {"deepseek-v4-flash", "deepseek-reasoner"})
         if identifiers and not image_capable:

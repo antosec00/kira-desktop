@@ -165,7 +165,7 @@ class TeamController(QObject):
         self.evidenceChanged.emit()
 
     def _new_draft(self) -> Json:
-        supported = self.workspace.backend in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter"}
+        supported = self.workspace.backend in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter", "kira_cloud"}
         return {"mode": "automatic", "goal": "", "max_agents": DEFAULT_MAX_AGENTS,
                 "backend": self.workspace.backend if supported else "codex",
                 "concurrency": DEFAULT_CONCURRENCY, "round_limit": DEFAULT_ROUND_LIMIT,
@@ -655,7 +655,7 @@ class TeamController(QObject):
     @Slot()
     def prepareDraft(self) -> None:
         """Inherit the current conversation choice until the user edits that team field."""
-        if self.workspace.backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter"}:
+        if self.workspace.backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter", "kira_cloud"}:
             return
         defaults = self._new_draft()
         edited = self._config_edits.get(self._project_id, set())
@@ -674,7 +674,7 @@ class TeamController(QObject):
 
     @Slot(str)
     def setBackend(self, backend: str) -> None:
-        if backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter"} or self.busy or self.workspace.busy:
+        if backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "google_cloud", "openrouter", "kira_cloud"} or self.busy or self.workspace.busy:
             return
         self._config_edits.setdefault(self._project_id, set()).add("backend")
         if self._draft["backend"] == backend:

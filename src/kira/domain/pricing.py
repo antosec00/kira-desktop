@@ -49,6 +49,35 @@ def register_dynamic_model_pricing(backend: str, model: str, pricing: ModelPrici
     _DYNAMIC_PRICING[(b, m)] = pricing
 
 
+def register_catalog_pricing(backend: str, models: Any) -> None:
+    """Register the per-model USD rates carried by a provider catalog received in another process.
+
+    The service registers live rates where it discovers them; the UI runs in its own process and
+    would otherwise fall back to a generic rate, showing a cost unrelated to the real charge.
+    """
+    if not isinstance(models, list):
+        return
+    for row in models:
+        if not isinstance(row, dict) or not isinstance(row.get("pricing"), dict):
+            continue
+        prices = row["pricing"]
+        input_per_m = _valid_number(prices.get("input_per_1m_usd"))
+        output_per_m = _valid_number(prices.get("output_per_1m_usd"))
+        if input_per_m is None or output_per_m is None or (input_per_m <= 0 and output_per_m <= 0):
+            continue
+        cached = _valid_number(prices.get("cached_input_per_1m_usd"))
+        window = _valid_int(row.get("context_window"))
+        register_dynamic_model_pricing(backend, str(row.get("id") or ""), ModelPricing(
+            family=str(row.get("id") or ""),
+            billing_mode="api",
+            input_per_m=float(input_per_m),
+            cached_input_per_m=float(cached if cached is not None else input_per_m),
+            cache_write_per_m=float(input_per_m),
+            output_per_m=float(output_per_m),
+            default_context_window=window or 128_000,
+        ))
+
+
 def resolve_model_pricing(backend: str, model: str = "") -> ModelPricing:
     """Return per-1M-token USD rates and default context window for a backend/model pair."""
     b = (backend or "").strip().lower()
@@ -224,6 +253,11 @@ def calculate_cost_telemetry(usage: Json, backend: str = "", model: str = "") ->
     write_cost = (write_tokens / 1_000_000.0) * pricing.cache_write_per_m
     output_cost = (output_tokens / 1_000_000.0) * pricing.output_per_m
     total_cost = input_cost + cached_cost + write_cost + output_cost
+    # A provider that reports what it actually charged is authoritative: list prices cannot know
+    # cache-write surcharges, tiered rates or rounding.
+    charged = _valid_number(usage.get("charged_usd"))
+    if charged is not None:
+        total_cost = float(charged)
 
     # What the same prompt + completion would have cost without prompt caching reads
     baseline_input_cost = (input_tokens / 1_000_000.0) * pricing.input_per_m

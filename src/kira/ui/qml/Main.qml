@@ -936,6 +936,7 @@ ApplicationWindow {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: window.compact ? 2 : 3
+                    KButton { objectName: "kiraAccountNavButton"; text: sidebar.rail ? "" : (kiraCloudAccount.connected ? ("Kira · " + kiraCloudAccount.totalAvailableText) : qsTr("Accedi a Kira")); iconName: "user"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: kiraCloudAccount.connected; primary: !kiraCloudAccount.connected; onClicked: kiraAccountDialog.open(); Accessible.name: qsTr("Account Kira"); toolTipText: sidebar.rail ? qsTr("Account Kira") : "" }
                     KButton { objectName: "modelsNavButton"; text: sidebar.rail ? "" : qsTr("Modelli"); iconName: "models"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; quietSelection: true; checked: window.page === 1; onClicked: window.page = 1; Accessible.name: qsTr("Modelli"); toolTipText: sidebar.rail ? qsTr("Modelli") : "" }
                     KButton { objectName: "settingsNavButton"; text: sidebar.rail ? "" : qsTr("Impostazioni"); iconName: "settings"; leftAligned: !sidebar.rail; Layout.fillWidth: true; implicitHeight: sidebarColumn.navHeight; subtle: true; quietSelection: true; checked: window.page === 3; onClicked: window.page = 3; Accessible.name: qsTr("Impostazioni"); toolTipText: sidebar.rail ? qsTr("Impostazioni") : "" }
                 }
@@ -1051,6 +1052,17 @@ ApplicationWindow {
                         HeaderSecondaryButton { objectName: "headerNewProjectButton"; label: qsTr("Progetto"); compactIcon: "plus"; subtle: false; primary: true; toolTipText: qsTr("Nuovo progetto · Ctrl+N"); Accessible.name: qsTr("Nuovo progetto"); onClicked: newProject.open() }
                     }
                     Rectangle { width: 1; height: 22; color: appearance.colors.border }
+                    KButton {
+                        objectName: "topBarKiraAccountButton"
+                        iconName: "user"
+                        text: projectHeader.compactActions ? "" : (kiraCloudAccount.connected ? ((kiraCloudAccount.userName || kiraCloudAccount.userEmail || qsTr("Account Kira")) + " · " + kiraCloudAccount.totalAvailableText) : qsTr("Accedi a Kira"))
+                        subtle: kiraCloudAccount.connected
+                        primary: !kiraCloudAccount.connected
+                        implicitHeight: 34
+                        onClicked: kiraAccountDialog.open()
+                        toolTipText: kiraCloudAccount.connected ? qsTr("Account Kira Cloud (%1) · Totale residuo %2").arg(kiraCloudAccount.planName).arg(kiraCloudAccount.totalAvailableText) : qsTr("Accedi o registrati su Kira Cloud")
+                        Accessible.name: toolTipText
+                    }
                     KButton {
                         objectName: "themeToggle"; iconName: appearance.dark ? "sun" : "moon"; subtle: true
                         implicitWidth: 38; implicitHeight: 38
@@ -2365,7 +2377,7 @@ ApplicationWindow {
                                                 readonly property var availableBackendIds: {
                                                     workspace.disabledBackends
                                                     const enabled = workspace.enabledBackends || []
-                                                    const all = ["ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code", "google_cloud", "openrouter"]
+                                                    const all = ["kira_cloud", "ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code", "google_cloud", "openrouter"]
                                                     const list = enabled.length > 0 ? all.filter(function(b) { return enabled.indexOf(b) >= 0 }) : all
                                                     if (workspace.backend && list.indexOf(workspace.backend) < 0) list.push(workspace.backend)
                                                     return list
@@ -2564,6 +2576,35 @@ ApplicationWindow {
                                             onClicked: metricsDialog.open()
                                         }
                                     }
+                                    RowLayout {
+                                        visible: workspace.backend === "kira_cloud"
+                                        Layout.fillWidth: true; spacing: 6
+                                        Text {
+                                            objectName: "kiraCloudPlanIndicator"
+                                            Layout.fillWidth: true
+                                            text: kiraCloudAccount.chatFooterText
+                                            font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                            color: (!kiraCloudAccount.connected || kiraCloudAccount.totalAvailable <= 0) ? appearance.colors.warning : appearance.colors.muted
+                                            textFormat: Text.PlainText; wrapMode: Text.Wrap
+                                        }
+                                        KButton {
+                                            objectName: "kiraCloudPlanUsage"
+                                            text: kiraCloudAccount.connected ? qsTr("Saldi & Crediti") : qsTr("Accedi a Kira Cloud")
+                                            implicitHeight: 25 + Math.max(0, appearance.uiFont.pixelSize - 13)
+                                            font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 2)
+                                            subtle: true
+                                            onClicked: {
+                                                if (kiraCloudAccount.connected) {
+                                                    kiraCloudAccount.refresh()
+                                                    accountUsage.refresh()
+                                                    kiraAccountDialog.open()
+                                                } else {
+                                                    window.page = 1
+                                                    modelsPage.show("kira_cloud")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 Text {
                                     visible: workspace.backend === "openai_chatgpt" && workspace.planQuotaLimited
@@ -2614,8 +2655,8 @@ ApplicationWindow {
                         // With a chat open (or when inspecting a disabled provider), the provider buttons
                         // only show and configure a provider; "Usa modello" is what moves the chat to it.
                         property string viewedBackend: ""
-                        readonly property bool foreign: viewedBackend.length > 0 && viewedBackend !== workspace.backend && (workspace.sessionId.length > 0 || !providerEnabled(viewedBackend))
-                        readonly property string shownBackend: foreign ? viewedBackend : workspace.backend
+                        readonly property bool foreign: viewedBackend.length > 0 && viewedBackend !== workspace.backend
+                        readonly property string shownBackend: viewedBackend.length > 0 ? viewedBackend : workspace.backend
                         readonly property bool shownProviderEnabled: providerEnabled(shownBackend)
                         readonly property var viewedCatalog: { workspace.models; return foreign ? workspace.catalogFor(viewedBackend) : ({}) }
                         function providerEnabled(backend) {
@@ -2623,17 +2664,16 @@ ApplicationWindow {
                             return disabled.indexOf(backend) < 0
                         }
                         function show(backend) {
+                            viewedBackend = backend
                             if (!providerEnabled(backend)) {
-                                viewedBackend = backend
                                 return
                             }
                             if (backend === "google_cloud") googleAccount.refresh()
                             if (backend === "openrouter") openrouterAccount.refresh()
-                            if (workspace.sessionId.length === 0 || backend === workspace.backend) {
-                                viewedBackend = ""
+                            if (backend === "kira_cloud") kiraCloudAccount.refresh()
+                            if ((workspace.sessionId.length === 0 || backend === workspace.backend) && !workspace.busy && !assistant.active) {
                                 workspace.setBackend(backend)
                             } else {
-                                viewedBackend = backend
                                 workspace.discover(backend)
                             }
                         }
@@ -2650,14 +2690,15 @@ ApplicationWindow {
                         // Providers are a segmented row; the selected one carries the page.
                         Flow {
                             Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; spacing: 6
-                            KButton { objectName: "ollamaBackendButton"; text: "Ollama" + (modelsPage.providerEnabled("ollama") ? "" : " · Off"); opacity: modelsPage.providerEnabled("ollama") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "ollama"; onClicked: modelsPage.show("ollama") }
-                            KButton { objectName: "codexBackendButton"; text: "Codex" + (modelsPage.providerEnabled("codex") ? "" : " · Off"); opacity: modelsPage.providerEnabled("codex") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "codex"; onClicked: modelsPage.show("codex") }
-                            KButton { objectName: "directBackendButton"; text: qsTr("OpenAI · ChatGPT") + (modelsPage.providerEnabled("openai_chatgpt") ? "" : " · Off"); opacity: modelsPage.providerEnabled("openai_chatgpt") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "openai_chatgpt"; onClicked: modelsPage.show("openai_chatgpt") }
-                            KButton { objectName: "deepseekBackendButton"; text: qsTr("DeepSeek API") + (modelsPage.providerEnabled("deepseek_account") ? "" : " · Off"); opacity: modelsPage.providerEnabled("deepseek_account") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "deepseek_account"; onClicked: modelsPage.show("deepseek_account") }
-                            KButton { objectName: "deepseekWebBackendButton"; text: qsTr("DeepSeek Web") + (modelsPage.providerEnabled("deepseek_web") ? "" : " · Off"); opacity: modelsPage.providerEnabled("deepseek_web") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "deepseek_web"; onClicked: modelsPage.show("deepseek_web") }
-                            KButton { objectName: "claudeCodeBackendButton"; text: qsTr("Claude Code") + (modelsPage.providerEnabled("claude_code") ? "" : " · Off"); opacity: modelsPage.providerEnabled("claude_code") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "claude_code"; onClicked: modelsPage.show("claude_code") }
-                            KButton { objectName: "googleCloudBackendButton"; text: qsTr("Google Cloud · Vertex AI") + (modelsPage.providerEnabled("google_cloud") ? "" : " · Off"); opacity: modelsPage.providerEnabled("google_cloud") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "google_cloud"; onClicked: modelsPage.show("google_cloud") }
-                            KButton { objectName: "openrouterBackendButton"; text: qsTr("OpenRouter") + (modelsPage.providerEnabled("openrouter") ? "" : " · Off"); opacity: modelsPage.providerEnabled("openrouter") || checked ? 1.0 : 0.55; cornerRadius: 17; enabled: !workspace.busy && !assistant.active; checked: modelsPage.shownBackend === "openrouter"; onClicked: modelsPage.show("openrouter") }
+                            KButton { objectName: "kiraCloudBackendButton"; text: qsTr("Kira Cloud") + (modelsPage.providerEnabled("kira_cloud") ? "" : " · Off"); opacity: modelsPage.providerEnabled("kira_cloud") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "kira_cloud"; onClicked: modelsPage.show("kira_cloud") }
+                            KButton { objectName: "ollamaBackendButton"; text: "Ollama" + (modelsPage.providerEnabled("ollama") ? "" : " · Off"); opacity: modelsPage.providerEnabled("ollama") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "ollama"; onClicked: modelsPage.show("ollama") }
+                            KButton { objectName: "codexBackendButton"; text: "Codex" + (modelsPage.providerEnabled("codex") ? "" : " · Off"); opacity: modelsPage.providerEnabled("codex") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "codex"; onClicked: modelsPage.show("codex") }
+                            KButton { objectName: "directBackendButton"; text: qsTr("OpenAI · ChatGPT") + (modelsPage.providerEnabled("openai_chatgpt") ? "" : " · Off"); opacity: modelsPage.providerEnabled("openai_chatgpt") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "openai_chatgpt"; onClicked: modelsPage.show("openai_chatgpt") }
+                            KButton { objectName: "deepseekBackendButton"; text: qsTr("DeepSeek API") + (modelsPage.providerEnabled("deepseek_account") ? "" : " · Off"); opacity: modelsPage.providerEnabled("deepseek_account") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "deepseek_account"; onClicked: modelsPage.show("deepseek_account") }
+                            KButton { objectName: "deepseekWebBackendButton"; text: qsTr("DeepSeek Web") + (modelsPage.providerEnabled("deepseek_web") ? "" : " · Off"); opacity: modelsPage.providerEnabled("deepseek_web") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "deepseek_web"; onClicked: modelsPage.show("deepseek_web") }
+                            KButton { objectName: "claudeCodeBackendButton"; text: qsTr("Claude Code") + (modelsPage.providerEnabled("claude_code") ? "" : " · Off"); opacity: modelsPage.providerEnabled("claude_code") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "claude_code"; onClicked: modelsPage.show("claude_code") }
+                            KButton { objectName: "googleCloudBackendButton"; text: qsTr("Google Cloud · Vertex AI") + (modelsPage.providerEnabled("google_cloud") ? "" : " · Off"); opacity: modelsPage.providerEnabled("google_cloud") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "google_cloud"; onClicked: modelsPage.show("google_cloud") }
+                            KButton { objectName: "openrouterBackendButton"; text: qsTr("OpenRouter") + (modelsPage.providerEnabled("openrouter") ? "" : " · Off"); opacity: modelsPage.providerEnabled("openrouter") || checked ? 1.0 : 0.55; cornerRadius: 17; checked: modelsPage.shownBackend === "openrouter"; onClicked: modelsPage.show("openrouter") }
                         }
                         // One status line: what the provider reported and the actions that follow.
                         Rectangle {
@@ -2669,6 +2710,7 @@ ApplicationWindow {
                                 id: providerStatusRow; anchors.fill: parent; anchors.margins: 12; anchors.leftMargin: 16; spacing: 12
                                 Rectangle { objectName: "providerStatusDot"; width: 10; height: 10; radius: 5; color: !modelsPage.shownProviderEnabled ? muted : modelsPage.foreign ? (modelsPage.viewedCatalog.available ? appearance.colors.success : modelsPage.viewedCatalog.error ? appearance.colors.warning : muted) : workspace.providerState === "error" ? appearance.colors.danger : workspace.providerState === "ok" ? appearance.colors.success : workspace.providerState === "warning" ? appearance.colors.warning : muted; Layout.alignment: Qt.AlignVCenter }
                                 ReadText { objectName: "providerStatusText"; text: !modelsPage.shownProviderEnabled ? qsTr("%1 è disattivato · Riattivalo con il pulsante a destra per utilizzarlo nelle chat e nei team.").arg(kformat.providerLabel(modelsPage.shownBackend)) : !modelsPage.foreign ? workspace.providerText : modelsPage.viewedCatalog.available ? qsTr("%1 modelli disponibili. Questa chat usa %2: con «Usa modello» la continui con %3.").arg((modelsPage.viewedCatalog.models || []).length).arg(kformat.providerLabel(workspace.backend)).arg(kformat.providerLabel(modelsPage.viewedBackend)) : modelsPage.viewedCatalog.error ? qsTr("%1 non è ancora pronto: %2").arg(kformat.providerLabel(modelsPage.viewedBackend)).arg(modelsPage.viewedCatalog.error) : qsTr("Caricamento dei modelli…"); Layout.fillWidth: true; color: !modelsPage.shownProviderEnabled ? muted : !modelsPage.foreign && workspace.providerUnavailable ? appearance.colors.danger : appearance.colors.text; wrapMode: Text.Wrap }
+                                KButton { objectName: "kiraCloudStatusLoginButton"; text: kiraCloudAccount.connected ? qsTr("Account Kira · %1").arg(kiraCloudAccount.planName) : qsTr("Accedi a Kira Account"); primary: !kiraCloudAccount.connected; visible: modelsPage.shownBackend === "kira_cloud" && modelsPage.shownProviderEnabled; onClicked: kiraAccountDialog.open() }
                                 KButton { objectName: "codexLoginButton"; text: qsTr("Accedi con Codex"); iconName: "external"; visible: modelsPage.shownBackend === "codex" && modelsPage.shownProviderEnabled; onClicked: workspace.login() }
                                 KButton {
                                     objectName: "providerEnableToggleButton"
@@ -2699,6 +2741,7 @@ ApplicationWindow {
                         DeepSeekAccountPane { visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "deepseek_account"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
                         DeepSeekWebPane { objectName: "deepseekWebPane"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "deepseek_web"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
                         GoogleCloudPane { objectName: "googleCloudPane"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "google_cloud"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        KiraCloudPane { objectName: "kiraCloudPane"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "kira_cloud"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
                         OpenRouterPane { objectName: "openrouterPane"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "openrouter"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
                         ReadText { objectName: "claudeCodePersonalNotice"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "claude_code"; text: qsTr("Claude Code usa l'accesso già fatto nel tuo Claude Code locale: Kira non legge né conserva le credenziali. Solo per uso personale: non distribuire Kira con questo provider. I permessi del progetto decidono gli strumenti di Claude Code; Kira blocca i percorsi fuori dal progetto e registra le azioni osservate."); Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; color: muted; wrapMode: Text.Wrap }
                         GridLayout {
@@ -2726,8 +2769,9 @@ ApplicationWindow {
                                             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelCard.modelData.name || modelCard.modelData.id; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 4; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Text { font.family: appearance.codeFont.family; textFormat: Text.PlainText; text: modelCard.modelData.id; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); elide: Text.ElideMiddle; Layout.maximumWidth: 200 }
                                         }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelsPage.shownBackend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : modelsPage.shownBackend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : modelsPage.shownBackend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["openai_chatgpt", "deepseek_account", "google_cloud", "openrouter"].indexOf(modelsPage.shownBackend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelsPage.shownBackend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : modelsPage.shownBackend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : modelsPage.shownBackend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["kira_cloud", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter"].indexOf(modelsPage.shownBackend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelSize_" + modelCard.modelData.id; visible: !!modelCard.modelData.size_bytes || modelsPage.shownBackend === "ollama"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg(Number(modelCard.modelData.size_bytes / 1073741824).toLocaleString(Qt.locale(localization.language), "f", 2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelPrice_" + modelCard.modelData.id; readonly property var pricing: modelCard.modelData.pricing || null; readonly property string unit: pricing && pricing.currency === "USD" ? "$" : "€"; visible: !!pricing && (pricing.input_per_1m > 0 || pricing.output_per_1m > 0); text: visible ? qsTr("Costo per 1M di token: %1 in ingresso · %2 in uscita").arg(Number(pricing.input_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit).arg(Number(pricing.output_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit) : ""; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
                                         Flow {
                                             visible: modelCard.efforts.length > 0
                                             Layout.fillWidth: true; spacing: 4
@@ -2746,7 +2790,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true; Layout.topMargin: 4
                                             Item { Layout.fillWidth: true }
                                             Text { visible: modelCard.selected; font.family: appearance.uiFont.family; textFormat: Text.PlainText; text: qsTr("Selezionato"); color: appearance.colors.accent; font.weight: Font.DemiBold; font.pixelSize: appearance.uiFont.pixelSize }
-                                            KButton { objectName: "useModel_" + modelCard.modelData.id; visible: !modelCard.selected; text: qsTr("Usa modello"); enabled: !workspace.busy && !assistant.active && modelsPage.shownProviderEnabled; onClicked: { if (modelsPage.foreign) { providerSwitch.chooseModel(modelsPage.viewedBackend, modelCard.modelData.id); return } workspace.setModel(modelCard.modelData.id); if (hasProject) window.page = 0 } }
+                                            KButton { objectName: "useModel_" + modelCard.modelData.id; visible: !modelCard.selected; text: qsTr("Usa modello"); enabled: !workspace.busy && !assistant.active && modelsPage.shownProviderEnabled; onClicked: { if (modelsPage.foreign && workspace.sessionId.length > 0) { providerSwitch.chooseModel(modelsPage.viewedBackend, modelCard.modelData.id); return } if (modelsPage.foreign) workspace.setBackend(modelsPage.shownBackend); workspace.setModel(modelCard.modelData.id); if (hasProject) window.page = 0 } }
                                         }
                                     }
                                 }
@@ -4124,6 +4168,13 @@ ApplicationWindow {
             width: parent.width; spacing: 18
             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; font.pixelSize: appearance.uiFont.pixelSize; textFormat: Text.PlainText; text: (workspace.busy || teams.busy || assistant.active) ? qsTr("Puoi chiudere la finestra e riconnetterti alla cronologia. Per interrompere il lavoro usa Ferma. Spegnere il computer o arrestare WSL interrompe anche il servizio.") : qsTr("La cronologia è conservata. Chiudere questa finestra lascia disponibile il servizio locale."); color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             RowLayout { Item { Layout.fillWidth: true } KButton { text: qsTr("Resta"); onClicked: closeDialog.close() } KButton { text: qsTr("Chiudi finestra"); primary: true; onClicked: { window.closeConfirmed = true; window.close() } } }
+        }
+    }
+    KiraAccountDialog {
+        id: kiraAccountDialog
+        onOpenKiraCloudModels: {
+            window.page = 1
+            modelsPage.show("kira_cloud")
         }
     }
     AmbientOverlay {}

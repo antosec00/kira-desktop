@@ -153,7 +153,7 @@ class ProviderSwitchController(QObject):
 
     def _begin(self, backend: str, preset: str) -> None:
         if (backend not in {"codex", "openai_chatgpt", "ollama", "deepseek_account", "deepseek_web",
-                            "claude_code", "google_cloud", "openrouter"} or not self.workspace.sessionId
+                            "claude_code", "google_cloud", "openrouter", "kira_cloud"} or not self.workspace.sessionId
                 or not self.workspace.connected or self.workspace.busy or self.workspace.teams.busy
                 or self.workspace.assistant.active or self.workspace._session.get("team_id")):
             return

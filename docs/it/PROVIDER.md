@@ -15,6 +15,7 @@ a ogni risposta.
 | **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | Sì | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli → OpenAI · ChatGPT** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
 | **Google Cloud · Vertex AI** | **Modelli → Google Cloud → Aggiungi / Cambia account Google** (OAuth2 PKCE isolato), `gcloud` ADC di sistema in sola lettura o API Key | Kira | Sì | Sì (PNG/JPEG/WebP/GIF) | Sì | Sì | Sì | Sì |
+| **Kira Cloud** | **Modelli → Kira Cloud → Accedi a Kira Cloud**: l'accesso si conferma nel browser, senza chiavi API | Kira | Sì (Computer con visione per i modelli che accettano immagini) | Sì, con i modelli che accettano immagini | Sì | Sì | Sì | Sì (per i modelli con ragionamento) |
 | **OpenRouter** | **Modelli → OpenRouter → Chiave API OpenRouter** (`sk-or-v1-...` nel profilo locale `0600`) o variabile `OPENROUTER_API_KEY` | Kira | Sì (Computer con visione per i modelli multimodali) | Sì, con i modelli che dichiarano input `image` nel catalogo `/api/v1/models` | Sì | Sì | Sì | Sì (per i modelli con `reasoning` / `thinking`) |
 | **DeepSeek Account** (sperimentale) | **Modelli → DeepSeek API → Accedi con DeepSeek**, oppure **Usa DeeperSeeker** | Kira | Sì | Sì, solo modelli con visione | Sì | Sì | Sì | No |
 | **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | Sì, con DeepSeek Reasoner (web) |
@@ -861,6 +862,70 @@ Il catalogo integrato espone:
 - **Modelli personalizzati**: nel campo **Modelli personalizzati** puoi
   aggiungere qualsiasi ulteriore ID modello del Model Garden separato da
   virgola.
+
+## Kira Cloud
+
+**Kira Cloud** (`kira_cloud`) è il servizio facoltativo di Kira Desktop che
+mette a disposizione i modelli AI già pronti dentro l'applicazione: non devi
+creare account presso altri fornitori né gestire chiavi API. Richiede un
+account su [kiradesktop.com](https://kiradesktop.com) con un piano attivo.
+Tutto il resto di Kira Desktop resta gratuito e utilizzabile con gli altri
+provider descritti in questa guida.
+
+### Accesso
+
+In **Modelli → Kira Cloud** premi **Accedi a Kira Cloud**: si apre il browser
+sulla pagina di accesso di kiradesktop.com, confermi il collegamento del
+dispositivo e l'applicazione risulta collegata. **La password non viene mai
+digitata dentro l'applicazione.** In alternativa puoi incollare il token di
+collegamento che trovi nella Console del tuo account.
+
+Sul computer Kira conserva solo il token di collegamento del dispositivo, in
+un file del profilo locale leggibile solo dal tuo utente (`0600`). Puoi
+scollegare il dispositivo dall'applicazione (**Esci dall'account**) o dalla Console, che
+permette anche di rigenerare il token: in quel caso l'applicazione segnala la
+sessione scaduta e chiede un nuovo accesso.
+
+### Piano, credito e limiti
+
+Il pannello **Kira Cloud** mostra il piano attivo, il credito AI del mese
+(disponibile e utilizzato, nella valuta del tuo account), la data di rinnovo e
+i limiti del piano, cioè quante richieste puoi avere in corso
+contemporaneamente e quante al minuto. Il saldo si aggiorna al termine di ogni
+risposta. **Gestisci il piano nella Console** porta alla pagina del tuo account con un collegamento
+monouso, senza chiederti di nuovo la password.
+
+Ogni richiesta consuma credito in base al modello scelto e alla quantità di
+testo elaborata. Quando il credito finisce, le richieste a Kira Cloud si
+fermano con un messaggio esplicito fino al rinnovo: non ci sono addebiti
+automatici aggiuntivi. Nel frattempo puoi continuare a lavorare con qualsiasi
+altro provider.
+
+### Modelli
+
+Il catalogo viene letto dal servizio e può cambiare nel tempo. Per ogni modello
+l'applicazione mostra la finestra di contesto, le capacità (strumenti,
+immagini, ragionamento) e il costo per milione di token. Puoi scegliere un
+modello diverso per ogni chat, cambiarlo a metà conversazione e usare più
+modelli in parallelo in chat diverse, entro il limite di richieste
+contemporanee del piano. `kira-auto` e `kira-eco` sono due scelte rapide: un
+modello equilibrato per il lavoro di tutti i giorni e uno più economico.
+
+### Strumenti, contesto e ragionamento
+
+Gli strumenti sono eseguiti da Kira con i permessi, la modalità e le
+approvazioni del progetto, come per gli altri provider gestiti da Kira. Il
+contesto della chat è mantenuto e compattato da Kira in base alla finestra del
+modello scelto. Con i modelli che lo prevedono, il riepilogo del ragionamento
+compare nella chat.
+
+### Che cosa viene inviato
+
+Kira Cloud riceve il contenuto delle richieste che invii (testo, file e
+immagini che scegli di allegare, risultati degli strumenti) per generare la
+risposta. I file dei tuoi progetti, la memoria e le impostazioni restano sul
+tuo computer. L'informativa completa è su
+[kiradesktop.com/privacy](https://kiradesktop.com/privacy).
 
 ## OpenRouter
 

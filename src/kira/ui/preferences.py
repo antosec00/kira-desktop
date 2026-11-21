@@ -80,6 +80,7 @@ KNOWN_BACKENDS: tuple[str, ...] = (
     "claude_code",
     "google_cloud",
     "openrouter",
+    "kira_cloud",
 )
 
 DEFAULTS = {

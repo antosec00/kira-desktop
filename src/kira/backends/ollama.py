@@ -37,7 +37,7 @@ MAX_METADATA_BYTES = 262_144
 METADATA_TIMEOUT = 10.0
 DISCOVERY_TIMEOUT = 20.0
 OLLAMA_CHAT_READ_TIMEOUT = 600.0
-MAX_MODELS = 64
+MAX_MODELS = 128
 MAX_MODEL_NAME_BYTES = 512
 MAX_DETAIL_BYTES = 32_768
 MAX_DISCOVERY_BYTES = 512_000
@@ -718,7 +718,8 @@ class OllamaBackend:
         except httpx.HTTPStatusError as exc:
             detail = getattr(exc, "safe_detail", "")
             suffix = f" — {detail}" if isinstance(detail, str) and detail else ""
-            return {"state": "failed", "error": f"{provider} HTTP {exc.response.status_code}{suffix}"}
+            label = "Kira Cloud" if provider == "kira_cloud" else provider
+            return {"state": "failed", "error": f"{label} HTTP {exc.response.status_code}{suffix}"}
         except (httpx.HTTPError, ValueError, StreamError, ClientToolError) as exc:
             return {"state": "interrupted", "error": f"{type(exc).__name__}: {str(exc)[:1000]}"}
         finally:
@@ -910,6 +911,7 @@ class OllamaBackend:
                                    ("cache_creation_input_tokens", "cache_creation_input_tokens"),
                                    ("reasoning_output_tokens", "reasoning_output_tokens"),
                                    ("total_tokens", "total_tokens"),
+                                   ("charged_usd", "charged_usd"),
                                    ("eval_duration", "eval_duration_ns"),
                                    ("total_duration", "total_duration_ns"),
                                    ("load_duration", "load_duration_ns")]:
@@ -926,7 +928,8 @@ class OllamaBackend:
                 active_turn.append(message)
             else:
                 messages.append(message)
-            public_message = {k: v for k, v in message.items() if k not in {"thinking", "reasoning_details"}}
+            public_message = {k: v for k, v in message.items()
+                              if k not in {"thinking", "reasoning_details", "reasoning_state"}}
             calls = message.get("tool_calls", [])
             await ctx.emit("message.completed", {"content": message.get("content", ""),
                             "item_id": item_id,

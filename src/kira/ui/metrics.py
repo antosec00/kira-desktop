@@ -110,7 +110,8 @@ def present_metrics(usage: dict[str, Any], resources: dict[str, Any],
                 "deepseek_account": tr("DeepSeek Account"), "deepseek_web": tr("DeepSeek Web"),
                 "claude_code": tr("Claude Code"),
                 "google_cloud": tr("Google Cloud · Vertex AI"),
-                "openrouter": tr("OpenRouter")}.get(source, source)
+                "openrouter": tr("OpenRouter"),
+        "kira_cloud": tr("Kira Cloud")}.get(source, source)
     scope = usage.get("scope")
     claude = source == "claude_code"
     heading = tr("Ultima richiesta") if scope == "last_request" else tr("Ultima misura del provider")
@@ -278,6 +279,7 @@ def present_context_gauge(
                 "cached_input_tokens": thread.get("cachedInputTokens", 0),
                 "output_tokens": thread.get("outputTokens", 0),
                 "total_tokens": thread.get("totalTokens"),
+                "charged_usd": thread.get("chargedUsd"),
             },
             backend=gauge["backend"],
             model=gauge["model"],
@@ -380,6 +382,7 @@ def present_telemetry(
                 "cached_input_tokens": thread.get("cachedInputTokens", 0),
                 "output_tokens": thread.get("outputTokens", 0),
                 "total_tokens": thread.get("totalTokens"),
+                "charged_usd": thread.get("chargedUsd"),
             },
             backend=resolved_backend,
             model=resolved_model,

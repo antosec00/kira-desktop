@@ -17,6 +17,7 @@ behind every answer.
 | **Codex** | Codex installed separately; **Models → Codex → Sign in with Codex** | The provider (Codex native tools, observed by Kira) plus the Kira tools via MCP | Yes | Yes (up to 4 PNG) | Yes | Yes | Yes | Yes |
 | **Direct OpenAI · ChatGPT** | **Continue with ChatGPT** in **Models → OpenAI · ChatGPT** | Kira | Yes | Yes (up to 4 PNG/JPEG/WebP/static GIF) | Yes | Yes | Yes | Yes |
 | **Google Cloud · Vertex AI** | **Models → Google Cloud → Add / Switch Google account** (isolated OAuth2 PKCE), read-only system `gcloud` ADC, or API Key | Kira | Yes | Yes (PNG/JPEG/WebP/GIF) | Yes | Yes | Yes | Yes |
+| **Kira Cloud** | **Models → Kira Cloud → Sign in to Kira Cloud**: sign-in is confirmed in the browser, with no API keys | Kira | Yes (Computer with vision for models that accept images) | Yes, with models that accept images | Yes | Yes | Yes | Yes (for reasoning models) |
 | **OpenRouter** | **Models → OpenRouter → OpenRouter API key** (`sk-or-v1-...` stored in your local `0600` profile) or `OPENROUTER_API_KEY` env var | Kira | Yes (Computer with vision for multimodal models) | Yes, with models declaring `image` input in `/api/v1/models` | Yes | Yes | Yes | Yes (for models with `reasoning` / `thinking`) |
 | **DeepSeek Account** (experimental) | **Models → DeepSeek API → Sign in with DeepSeek**, or **Use DeeperSeeker** | Kira | Yes | Yes, vision models only | Yes | Yes | Yes | No |
 | **DeepSeek Web** (experimental) | The web session's `userToken` pasted into the **DeepSeek Web · direct access** panel | Kira (text protocol) | Browser yes, Computer no | Yes (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Yes | Yes, with DeepSeek Reasoner (web) |
@@ -825,6 +826,67 @@ The built-in catalog exposes:
        quota is greater than zero in **IAM & Admin → Quotas**.
 - **Custom models**: in the **Custom models** field you can add any additional
   comma-separated Model Garden model ID.
+
+## Kira Cloud
+
+**Kira Cloud** (`kira_cloud`) is the optional Kira Desktop service that makes
+AI models available ready to use inside the application: you do not need
+accounts with other providers or API keys. It requires an account on
+[kiradesktop.com](https://kiradesktop.com) with an active plan. Everything
+else in Kira Desktop stays free and usable with the other providers described
+in this guide.
+
+### Sign-in
+
+In **Models → Kira Cloud** press **Sign in to Kira Cloud**: the browser opens
+the kiradesktop.com sign-in page, you confirm linking the device and the
+application is connected. **Your password is never typed inside the
+application.** Alternatively you can paste the link token found in your
+account Console.
+
+On your computer Kira keeps only the device link token, in a local profile
+file readable only by your user (`0600`). You can disconnect the device from
+the application (**Sign out**) or from the Console, which also lets you
+regenerate the token: in that case the application reports the session as
+expired and asks you to sign in again.
+
+### Plan, credit and limits
+
+The **Kira Cloud** panel shows the active plan, the month's AI credit
+(available and used, in your account currency), the renewal date and the plan
+limits, that is how many requests you can have in progress at once and how
+many per minute. The balance updates at the end of each answer. **Manage your plan in the
+Console** takes you to your account page through a single-use link, without
+asking for your password again.
+
+Each request uses credit according to the chosen model and the amount of text
+processed. When credit runs out, Kira Cloud requests stop with an explicit
+message until renewal: there are no automatic extra charges. In the meantime
+you can keep working with any other provider.
+
+### Models
+
+The catalog is read from the service and may change over time. For each model
+the application shows the context window, capabilities (tools, images,
+reasoning) and the cost per million tokens. You can choose a different model
+for each chat, switch it mid-conversation and use several models in parallel
+in different chats, within the plan's simultaneous request limit. `kira-auto`
+and `kira-eco` are two quick choices: a balanced model for everyday work and a
+cheaper one.
+
+### Tools, context and reasoning
+
+Tools are executed by Kira under the project's permissions, mode and
+approvals, as with the other providers managed by Kira. The chat context is
+maintained and compacted by Kira according to the chosen model's window. With
+models that provide it, the reasoning summary appears in the chat.
+
+### What is sent
+
+Kira Cloud receives the content of the requests you send (text, files and
+images you choose to attach, tool results) in order to generate the answer.
+Your project files, memory and settings stay on your computer. The full
+policy is at [kiradesktop.com/privacy](https://kiradesktop.com/privacy).
 
 ## OpenRouter
 

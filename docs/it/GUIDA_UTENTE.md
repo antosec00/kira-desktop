@@ -874,6 +874,12 @@ progetto Google Cloud, la regione e un modello Gemini o partner del catalogo.
 Kira gestisce l'intero ciclo degli strumenti, le immagini allegate, il
 ragionamento, il browser, gli obiettivi autonomi e i Team.
 
+**Kira Cloud.** È il modo più semplice per avere i modelli già pronti: in
+**Modelli → Kira Cloud** premi **Accedi a Kira Cloud**, conferma nel browser
+e scegli un modello. Non servono chiavi API; serve un account su
+kiradesktop.com con un piano attivo. Il pannello mostra piano, credito AI
+residuo e limiti. Dettagli in [Provider](PROVIDER.md#kira-cloud).
+
 **OpenRouter.** In **Modelli → OpenRouter**
 incolla la tua chiave API OpenRouter (`sk-or-v1-...`, oppure imposta
 `OPENROUTER_API_KEY`). Kira la salva privatamente in

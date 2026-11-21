@@ -14,6 +14,7 @@ QtObject {
         case "claude_code": return qsTr("Claude Code · uso personale")
         case "google_cloud": return qsTr("Google Cloud · Vertex AI")
         case "openrouter": return qsTr("OpenRouter")
+        case "kira_cloud": return qsTr("Kira Cloud")
         }
         return String(backend || "")
     }
