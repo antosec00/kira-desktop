@@ -543,7 +543,7 @@ implicitly.
 | `run.state` | `{state, error?, outcome?}` | The `running` event also records `backend, model, reasoning_effort` and the run's derived metadata. |
 | `message.user` | `{content, attachments?:[metadata], source?}` | `source:"steer"` for a consumed batch of guidance. |
 | `message.delta` | `{content, item_id?}` | Incremental assistant text. |
-| `message.completed` | `{content?, item_id?}` | Finished message; snapshots and exports keep `item_id` and `complete`. |
+| `message.completed` | `{content?, item_id?, attachments?:[metadata]}` | Finished message; snapshots and exports keep `item_id` and `complete`. `attachments` lists the images the model produced, as Kira's private normalized copies (with the `path` of the saved original). |
 | `context.supplied` | `{content}` | Context supplied by Kira (memory, excerpts, notes, goal), inspectable. |
 | `context.status` / `context.compaction` | public metrics and phases | Whitelisted fields only; never the encrypted native state. |
 | `tool.started` | `{tool_id, name, arguments}` | |
@@ -647,6 +647,8 @@ tools from an MCP server inside the service process.
 | `guidance(kind, payload)` | callback | Boundary for user guidance in providers with a service-managed inbox. |
 | `context_state`, `context_save`, `context_page`, `context_catalog` | state and callbacks | Durable context managed by Kira (Direct OpenAI, DeepSeek Account, Google Cloud, OpenRouter). |
 | `tool_image(ref)` | callback | Retrieves the pixels of a screenshot owned by the service. |
+| `save_generated_image(bytes, type, tool_id)` | callback | Saves an image produced by the model: the original in `generated_images/` when the turn may write to the project, otherwise in Kira's private data; returns its record and the private normalized copy. |
+| `generated_image_inputs()` | callback | The images of the latest answer of this chat that produced any, as image parts for a follow-up edit. |
 
 ### Result of `run`
 

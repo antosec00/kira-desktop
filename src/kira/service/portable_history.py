@@ -89,7 +89,13 @@ def portable_history(store: Store, session_id: str, current_run_id: str, *,
                 steering.append(len(group))
                 group.append({"role": "user", "content": str(payload.get("content", ""))})
             elif event["type"] == "message.completed" and isinstance(payload.get("content"), str):
-                group.append({"role": "assistant", "content": payload["content"]})
+                content = payload["content"]
+                produced = payload.get("attachments")
+                if isinstance(produced, list) and produced:
+                    content += (("\n" if content else "") + f"[This recorded answer included {len(produced)} "
+                                "generated image(s). Their pixels are available only when explicitly "
+                                "included in this request.]")
+                group.append({"role": "assistant", "content": content})
             elif event["type"] == "tool.completed":
                 tools.append(len(group))
                 data = encode({"name": payload.get("name"), "result": payload.get("result")})

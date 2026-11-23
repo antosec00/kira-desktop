@@ -34,6 +34,8 @@ CONFIG: dict[str, Any] = {
 }
 MODELS = {"object": "list", "data": [
     {"id": "kira-auto", "name": "Kira Auto", "context_length": 1_000_000, "max_output_tokens": 16000,
+     "family": "Maker  One", "resolves_to": "big-model", "description": "Il modello consigliato da Kira.",
+     "scores": {"intelligence": 54.5, "ignored": "high", "negative": -1},
      "capabilities": {"vision": True, "tools": True, "reasoning": True, "temperature": False, "prompt_cache": True},
      "pricing": {"usd": {"input_per_mtok": 2.6, "output_per_mtok": 13.0, "cached_input_per_mtok": 0.26}}},
     {"id": "small-model", "name": "Small", "context_length": 64_000, "max_output_tokens": 8000,
@@ -210,7 +212,8 @@ async def test_sign_in_page_outside_kira_is_refused(tmp_path: Path, monkeypatch:
         await account.close()
 
 
-async def connected_backend(tmp_path: Path, handler: Any, monkeypatch: pytest.MonkeyPatch) -> KiraCloudBackend:
+async def connected_backend(tmp_path: Path, handler: Any, monkeypatch: pytest.MonkeyPatch,
+                            models: dict[str, Any] = MODELS) -> KiraCloudBackend:
     monkeypatch.delenv(kira_cloud.PORTAL_ENV, raising=False)
     monkeypatch.delenv(kira_cloud.GATEWAY_ENV, raising=False)
 
@@ -218,7 +221,7 @@ async def connected_backend(tmp_path: Path, handler: Any, monkeypatch: pytest.Mo
         if request.url.host == "kiradesktop.com":
             return httpx.Response(200, json=CONFIG)
         if request.url.path == "/v1/models":
-            return httpx.Response(200, json=MODELS)
+            return httpx.Response(200, json=models)
         return handler(request)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(routed))
@@ -232,6 +235,12 @@ async def test_catalog_lists_kira_models_and_prices(tmp_path: Path, monkeypatch:
     try:
         found = await backend.discover()
         assert found["available"] is True and [m["id"] for m in found["models"]] == ["kira-auto", "small-model"]
+        # What the interface needs to organize the list travels with each row, as the catalog states it.
+        auto, small = found["models"]
+        assert (auto["family"], auto["recommended"], auto["description"]) == (
+            "Maker One", True, "Il modello consigliato da Kira.")
+        assert auto["scores"] == {"intelligence": 54.5}
+        assert (small["family"], small["maker"], small["recommended"], small["scores"]) == ("", "", False, {})
         assert found["models"][0]["capabilities"]["images"] is True and found["models"][1]["capabilities"]["images"] is False
         assert TOKEN not in json.dumps(found)
         pricing = resolve_model_pricing(BACKEND, "kira-auto")
@@ -250,7 +259,10 @@ async def test_chat_with_tools_returns_the_opaque_state_untouched(tmp_path: Path
         assert request.headers["User-Agent"].startswith("Kira-Desktop/")
         # Nothing beyond the standard transport headers and the Kira ones leaves the desktop.
         assert set(request.headers) <= {"host", "accept", "accept-encoding", "connection", "content-type",
-                                        "content-length", "user-agent", "authorization"}, set(request.headers)
+                                        "content-length", "user-agent", "authorization",
+                                        "x-kira-features"}, set(request.headers)
+        # The app declares what it can show; the service offers image models only to apps that do.
+        assert request.headers["X-Kira-Features"] == "image-output"
         requests.append(json.loads(request.content))
         if len(requests) == 1:
             return sse(
@@ -452,3 +464,344 @@ def test_cost_shown_is_the_charge_reported_by_the_service_when_present():
     for bad in (-1, "0.5", None, True, float("nan")):
         assert calculate_cost_telemetry({**usage, "charged_usd": bad}, backend="kira_cloud",
                                         model="price-test-model")["total_cost_usd"] == estimated["total_cost_usd"]
+
+
+# ---------------------------------------------------------------------------- image models
+PICTURE = b"\x89PNG\r\n\x1a\n" + b"synthetic-picture-bytes"
+PICTURE_URL = "data:image/png;base64," + __import__("base64").b64encode(PICTURE).decode("ascii")
+IMAGE_MODELS = {"object": "list", "data": [
+    *MODELS["data"],
+    {"id": "kira-image", "name": "Kira Image", "context_length": 65_536, "max_output_tokens": 8000,
+     "capabilities": {"vision": True, "tools": True, "reasoning": False, "temperature": True, "prompt_cache": True,
+                      "image_output": True},
+     "max_reference_images": 2,
+     "pricing": {"usd": {"input_per_mtok": 0.5, "output_per_mtok": 3.0, "per_image": 0.05},
+                 "eur": {"input_per_mtok": 0.46, "output_per_mtok": 2.78, "per_image": 0.046}}},
+    {"id": "kira-image-text-only", "name": "Kira Image Lite", "context_length": 4096,
+     "capabilities": {"vision": False, "tools": False, "image_output": True},
+     "max_reference_images": 0,
+     # Many image models are charged per picture only: token prices can be absent.
+     "pricing": {"usd": {"per_image": 0.02, "input_per_mtok": None, "output_per_mtok": None}}},
+]}
+
+
+def image_context(tmp_path: Path, events: list[tuple[str, dict[str, Any]]], *, model: str = "kira-image",
+                  prompt: str = "Un gatto astronauta, formato 16:9") -> tuple[RunContext, list[tuple[bytes, str, str]]]:
+    saved: list[tuple[bytes, str, str]] = []
+    ctx = context(tmp_path, events, model=model, tools=True)
+    ctx.prompt = prompt
+
+    async def save(data: bytes, declared: str, tool_id: str) -> dict[str, Any]:
+        saved.append((data, declared, tool_id))
+        name = f"kira-{len(saved)}.png"
+        return {"path": str(tmp_path / "generated_images" / name), "name": name, "in_project": True,
+                "mime": "image/png", "bytes": len(data), "sha256": "ab" * 32, "width": 64, "height": 36,
+                "preview": {"id": f"00000000-0000-4000-8000-00000000000{len(saved)}", "name": name,
+                            "mime": "image/png", "width": 64, "height": 36, "bytes": 99, "sha256": "cd" * 32}}
+
+    ctx.save_generated_image = save
+    return ctx, saved
+
+
+async def test_image_models_are_listed_as_picture_makers_without_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    backend = await connected_backend(tmp_path, lambda request: httpx.Response(404), monkeypatch, IMAGE_MODELS)
+    try:
+        # Asking for the catalog declares the feature too: without it image models are not listed.
+        assert backend.account.headers()["X-Kira-Features"] == "image-output"
+        rows = {row["id"]: row for row in (await backend.discover())["models"]}
+        picture = rows["kira-image"]
+        assert picture["capabilities"]["image_generation"] is True and picture["capabilities"]["images"] is True
+        # The catalog may declare tools: a model that answers with pictures never drives the tool loop.
+        assert picture["capabilities"]["tools"] is False and picture["tools_verified"] is False
+        assert picture["pricing"]["per_image"] == 0.046 and picture["pricing"]["currency"] == "EUR"
+        assert picture["max_reference_images"] == 2 and rows["kira-auto"]["max_reference_images"] is None
+        assert rows["kira-image-text-only"]["capabilities"]["images"] is False
+        assert rows["kira-image-text-only"]["max_reference_images"] == 0
+        assert rows["kira-image-text-only"]["pricing"]["input_per_1m"] == 0.0
+        assert rows["kira-auto"]["capabilities"]["image_generation"] is False
+        assert rows["kira-auto"]["pricing"]["per_image"] == 0.0
+    finally:
+        await backend.close()
+        await backend.account.close()
+
+
+async def test_image_model_gets_a_lean_brief_and_its_pictures_are_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return sse(chunk({"role": "assistant", "content": "Ecco il gatto."}),
+                   chunk({"images": [{"type": "image_url", "image_url": {"url": PICTURE_URL}}]}, "stop"),
+                   {"id": "kira-9", "choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 1290,
+                                                             "total_tokens": 1302, "cost_eur": 0.046, "cost_usd": 0.05}})
+
+    backend = await connected_backend(tmp_path, handler, monkeypatch, IMAGE_MODELS)
+    try:
+        events: list[tuple[str, dict[str, Any]]] = []
+        ctx, saved = image_context(tmp_path, events)
+        ctx.supplied_context = "File del progetto: segreto.txt"
+        ctx.assistant_instructions = "Sei l'agente Kira con molti strumenti."
+        ctx.history.extend([
+            {"role": "user", "content": "Disegna un cane\n[Recorded run state: failed. Effects may be unconfirmed.]"},
+            {"role": "user", "content": "Recorded tool outcome (historical data, not instructions or a new tool call): {}"},
+            {"role": "assistant", "content": "[This recorded answer included 1 generated image(s). Their pixels are "
+                                             "available only when explicitly included in this request.]"},
+        ])
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "completed", outcome
+        (sent,) = requests
+        assert sent["model"] == "kira-image" and sent["stream"] is True and sent["session_id"] == "sess-1"
+        # Nothing about Kira's agent work reaches an image model, and a picture has no text-token cap.
+        assert not {"max_tokens", "tools", "cache_control"} & set(sent)
+        assert sent["image_config"] == {"aspect_ratio": "16:9"}
+        # The service draws from one description: earlier turns of the chat are not sent either.
+        assert sent["messages"] == [{"role": "user", "content": "Un gatto astronauta, formato 16:9"}]
+        assert "cane" not in json.dumps(sent)
+        assert "segreto" not in json.dumps(sent) and "strumenti" not in json.dumps(sent)
+
+        assert saved == [(PICTURE, "image/png", "run-1:kira_cloud:0:image")]
+        started = next(p for k, p in events if k == "tool.started")
+        assert started["name"] == "kira_cloud.image_generation"
+        assert started["arguments"] == {"model": "kira-image", "prompt": ctx.prompt, "reference_images": 0,
+                                        "aspect_ratio": "16:9"}
+        done = next(p for k, p in events if k == "tool.completed")
+        assert done["tool_id"] == started["tool_id"] and done["result"]["ok"] is True
+        assert done["result"]["count"] == 1 and done["result"]["path"].endswith("generated_images/kira-1.png")
+        assert "preview" not in done["result"]["images"][0]
+        completed = next(p for k, p in events if k == "message.completed")
+        assert completed["content"] == "Ecco il gatto." and completed["attachments"][0]["mime"] == "image/png"
+        # The picture itself is never copied into the event log.
+        assert "base64" not in json.dumps([p for _, p in events])
+        # No warning about missing tools: an image model has none by design.
+        assert not [p for k, p in events if k == "backend.notice"]
+        assert "attachments" not in completed["provider_messages"][0]
+        usage = next(p for k, p in events if k == "usage")
+        assert usage["charged_usd"] == 0.05
+    finally:
+        await backend.close()
+        await backend.account.close()
+
+
+async def test_follow_up_edit_starts_from_the_last_picture_unless_one_is_attached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return sse(chunk({"images": [{"type": "image_url", "image_url": {"url": PICTURE_URL}}]}, "stop"))
+
+    backend = await connected_backend(tmp_path, handler, monkeypatch, IMAGE_MODELS)
+    try:
+        previous = {"type": "input_image", "image_url": "data:image/png;base64,UFJFVklPVVM=", "detail": "auto"}
+        attached = {"type": "input_image", "image_url": "data:image/png;base64,QVRUQUNIRUQ=", "detail": "auto"}
+        asked = 0
+
+        async def latest() -> list[dict[str, Any]]:
+            nonlocal asked
+            asked += 1
+            return [previous]
+
+        ctx, _ = image_context(tmp_path, [], prompt="Rendilo blu")
+        ctx.generated_image_inputs = latest
+        ctx.history.extend([{"role": "user", "content": "Un gatto astronauta"},
+                            {"role": "assistant", "content": "Ecco."}])
+        assert (await backend.run(ctx))["state"] == "completed"
+        assert requests[0]["messages"] == [{"role": "user", "content": [
+            {"type": "text", "text": "Rendilo blu"},
+            {"type": "image_url", "image_url": {"url": previous["image_url"], "detail": "auto"}}]}]
+        assert "image_config" not in requests[0]
+
+        # An image attached to this request is the reference; the earlier picture is not added.
+        ctx, _ = image_context(tmp_path, [], prompt="Togli lo sfondo")
+        ctx.generated_image_inputs = latest
+        ctx.image_inputs = {"run-1": [attached]}
+        assert (await backend.run(ctx))["state"] == "completed"
+        assert asked == 1
+        assert requests[1]["messages"][-1]["content"][1:] == [
+            {"type": "image_url", "image_url": {"url": attached["image_url"], "detail": "auto"}}]
+
+        # A model that reads only text never receives a reference picture.
+        ctx, _ = image_context(tmp_path, [], model="kira-image-text-only", prompt="Un logo")
+        ctx.generated_image_inputs = latest
+        assert (await backend.run(ctx))["state"] == "completed"
+        assert asked == 1 and requests[2]["messages"] == [{"role": "user", "content": "Un logo"}]
+
+        # The model states how many references it takes: earlier pictures beyond that stay out...
+        async def many() -> list[dict[str, Any]]:
+            return [previous, attached, previous]
+
+        ctx, _ = image_context(tmp_path, [], prompt="Uniscile")
+        ctx.generated_image_inputs = many
+        assert (await backend.run(ctx))["state"] == "completed"
+        assert [part["type"] for part in requests[3]["messages"][0]["content"]] == ["text", "image_url", "image_url"]
+
+        # ...and too many attachments are refused before the service is called: nothing is charged.
+        events: list[tuple[str, dict[str, Any]]] = []
+        ctx, saved = image_context(tmp_path, events, prompt="Uniscile")
+        ctx.image_inputs = {"run-1": [attached, previous, attached]}
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "interrupted" and "al massimo 2 immagini" in outcome["error"]
+        ctx, saved = image_context(tmp_path, events, model="kira-image-text-only", prompt="Un logo")
+        ctx.image_inputs = {"run-1": [attached]}
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "interrupted" and "non supporta allegati immagine" in outcome["error"]
+        # A picture needs a description: an attachment alone is not a request.
+        ctx, saved = image_context(tmp_path, events, prompt="")
+        ctx.image_inputs = {"run-1": [attached]}
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "interrupted" and "ha bisogno di una descrizione" in outcome["error"]
+        assert len(requests) == 4 and not saved and not any(kind.startswith("tool.") for kind, _ in events)
+    finally:
+        await backend.close()
+        await backend.account.close()
+
+
+class _SilentAfterAccepting(httpx.AsyncByteStream):
+    async def __aiter__(self) -> Any:
+        yield b": keep-alive\n\n"
+        raise httpx.ReadTimeout("no data")
+
+
+@pytest.mark.parametrize(("model", "expected_requests"), [("kira-image", 1), ("kira-auto", 3)])
+async def test_an_accepted_image_request_that_falls_silent_is_never_sent_twice(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str, expected_requests: int) -> None:
+    """A picture is charged as a whole: resending after silence could charge it twice."""
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, stream=_SilentAfterAccepting(), headers={"content-type": "text/event-stream"})
+
+    backend = await connected_backend(tmp_path, handler, monkeypatch, IMAGE_MODELS)
+    try:
+        events: list[tuple[str, dict[str, Any]]] = []
+        ctx, saved = image_context(tmp_path, events, model=model)
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "interrupted" and calls == expected_requests and not saved
+        if model == "kira-image":
+            done = next(p for k, p in events if k == "tool.completed")
+            assert done["result"]["ok"] is False and "non ha risposto in tempo" in done["result"]["error"]["message"]
+    finally:
+        await backend.close()
+        await backend.account.close()
+
+
+async def test_image_request_failures_close_the_receipt_and_can_be_retried_when_reported(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    replies: list[httpx.Response] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return replies.pop(0)
+
+    backend = await connected_backend(tmp_path, handler, monkeypatch, IMAGE_MODELS)
+    try:
+        # Not enough credit: nothing was generated, the receipt carries the service's own words.
+        replies.append(error(402, "insufficient_credit", "Credito insufficiente per questa immagine."))
+        events: list[tuple[str, dict[str, Any]]] = []
+        ctx, saved = image_context(tmp_path, events)
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "failed" and "Credito insufficiente" in outcome["error"] and not saved
+        done = next(p for k, p in events if k == "tool.completed")
+        assert done["result"] == {"ok": False, "error": {"code": "insufficient_credit",
+                                                          "message": "Credito insufficiente per questa immagine."}}
+
+        # A failure the service reports itself is safe to send again.
+        replies.extend([sse({"error": {"code": "overloaded", "message": "Il modello è molto richiesto."}}),
+                        sse(chunk({"images": [{"image_url": {"url": PICTURE_URL}}]}, "stop"))])
+        events = []
+        ctx, saved = image_context(tmp_path, events)
+        assert (await backend.run(ctx))["state"] == "completed" and len(saved) == 1 and not replies
+
+        # The service stops waiting and says so inside the answer: its code reaches the receipt,
+        # and the request is not sent again (the user decides).
+        replies.append(sse({"error": {"code": "image_failed", "message": "Non ti è stato addebitato nulla."}}))
+        events = []
+        ctx, saved = image_context(tmp_path, events)
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "interrupted" and "addebitato nulla" in outcome["error"] and not replies
+        done = next(p for k, p in events if k == "tool.completed")
+        assert done["result"] == {"ok": False, "error": {"code": "image_failed",
+                                                          "message": "Non ti è stato addebitato nulla."}}
+        # A declared failure is retried; when it keeps failing the last code is the one shown.
+        replies.extend(sse({"error": {"code": "overloaded", "message": "Il modello è molto richiesto."}})
+                       for _ in range(3))
+        events = []
+        ctx, saved = image_context(tmp_path, events)
+        assert (await backend.run(ctx))["state"] == "interrupted" and not replies and not saved
+        assert next(p for k, p in events if k == "tool.completed")["result"]["error"]["code"] == "overloaded"
+
+        # Anything that is not a picture is reported, never saved.
+        replies.append(sse(chunk({"images": [{"image_url": {"url": "https://example.com/picture.png"}},
+                                             {"image_url": {"url": "data:image/png;base64,@@@"}}]}, "stop")))
+        events = []
+        ctx, saved = image_context(tmp_path, events)
+        assert (await backend.run(ctx))["state"] == "completed" and not saved
+        done = next(p for k, p in events if k == "tool.completed")
+        assert done["result"]["ok"] is False and done["result"]["error"]["code"] == "invalid_image"
+        assert "attachments" not in next(p for k, p in events if k == "message.completed")
+
+        # A text-only answer from an image model is an answer, not an error.
+        replies.append(sse(chunk({"content": "Quale stile preferisci?"}, "stop")))
+        events = []
+        ctx, saved = image_context(tmp_path, events)
+        assert (await backend.run(ctx))["state"] == "completed"
+        done = next(p for k, p in events if k == "tool.completed")
+        assert done["result"]["ok"] is True and done["result"]["count"] == 0
+    finally:
+        await backend.close()
+        await backend.account.close()
+
+
+def test_aspect_ratio_is_read_only_from_explicit_standard_ratios() -> None:
+    ratio = kira_cloud._requested_aspect_ratio
+    assert ratio("Banner per il sito in 16:9, stile minimal") == "16:9"
+    assert ratio("ritratto 9:16") == "9:16" and ratio("formato (4:3).") == "4:3" and ratio("quadrato 01:1") == "1:1"
+    # Times, scores, larger numbers and ratios Kira does not offer are left alone.
+    for text in ("alle 16:30 in piazza", "risultato 16:9:2", "1920:1080", "scala 1:100", "versione 3.16:9", "nessuno"):
+        assert ratio(text) == "", text
+
+
+async def test_an_autonomous_goal_never_spends_credit_on_pictures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return sse(chunk({"images": [{"image_url": {"url": PICTURE_URL}}]}, "stop"))
+
+    backend = await connected_backend(tmp_path, handler, monkeypatch, IMAGE_MODELS)
+    try:
+        events: list[tuple[str, dict[str, Any]]] = []
+        ctx, saved = image_context(tmp_path, events)
+        from kira.domain.autonomous_goals import goal_tool_specs
+
+        ctx.client_tools = [goal_tool_specs(writable=True)]
+
+        async def client_tool(_call_id: str, _name: str, _arguments: dict[str, Any]) -> dict[str, Any]:
+            return {"ok": True}
+
+        ctx.client_tool_call = client_tool
+        outcome = await backend.run(ctx)
+        assert outcome["state"] == "interrupted" and "obiettivo autonomo" in outcome["error"]
+        assert calls == 0 and not saved and not any(kind.startswith("tool.") for kind, _ in events)
+    finally:
+        await backend.close()
+        await backend.account.close()
+
+
+def test_image_brief_is_the_request_of_this_turn_and_nothing_older() -> None:
+    brief = kira_cloud._image_brief
+    system = {"role": "system", "content": "Sei l'agente Kira."}
+    context = {"role": "user", "content": "Kira-supplied project context:\nsegreto.txt"}
+    earlier = [{"role": "user", "content": "Un cane"}, {"role": "assistant", "content": "[immagine]"}]
+    assert brief([system, context, *earlier, {"role": "user", "content": "Un gatto"}], "Un gatto") == "Un gatto"
+    # The same words asked twice: only the latest request counts.
+    assert brief([{"role": "user", "content": "Un gatto"}, {"role": "assistant", "content": "x"},
+                  {"role": "user", "content": "Un gatto"}], "Un gatto") == "Un gatto"
+    # Guidance added before the answer joins the request; added after it, it replaces the request
+    # (the picture just made travels as the reference).
+    waiting = [*earlier, {"role": "user", "content": "Un gatto"}, {"role": "user", "content": "con un casco"}]
+    assert brief(waiting, "Un gatto") == "Un gatto\n\ncon un casco"
+    answered = [*waiting, {"role": "assistant", "content": ""}, {"role": "user", "content": "più grande"}]
+    assert brief(answered, "Un gatto") == "più grande"
+    assert brief([], "  Un faro  ") == "Un faro" and brief(None, "") == "" and brief([system], "") == ""

@@ -44,6 +44,7 @@ from kira.service.provider_routing import (
 )
 from kira.service.image_attachments import ImageAttachments
 from kira.service.attachment_inputs import AttachmentInputs
+from kira.service.generated_images import GeneratedImages
 from kira.service.portable_history import portable_history
 
 from kira.service.project_context import ProjectChats, normalized_title
@@ -276,6 +277,7 @@ class Service:
             self.provider_routing = ProviderRouting(self)
             self.account_usage = AccountUsage(self)
             self.image_inputs = AttachmentInputs(self.store, ImageAttachments(self.paths.data / "image-attachments"))
+            self.generated_images = GeneratedImages(self)
             self.contexts = DirectContexts(self)
             self.contexts.recover()
             self.research = Research(self)
@@ -1482,11 +1484,17 @@ class Service:
                         text = text.encode()[:32_000].decode("utf-8", "ignore")
                         display_truncated = True
                     pending.pop(item, None)
-                if text:
+                produced = payload.get("attachments") if row["type"] == "message.completed" else None
+                if not isinstance(produced, list):
+                    produced = None
+                if text or produced:
                     if message is None:
                         message = {"run_id": run["id"], "role": "assistant", "item_id": item}
                         messages.append(message)
                     message.update(content=text, complete=row["type"] == "message.completed")
+                    if produced:
+                        # An answer can consist of generated images alone.
+                        message["attachments"] = produced
                     if row["type"] == "message.delta":
                         pending[item] = message
                 elif message is not None:
@@ -1948,6 +1956,7 @@ class Service:
                 backend = self._backend(session["backend"])
             tool_mode = "review" if lane.get("lane") == "team_conversation" else selected_mode
             context_options = self.web.attach(session, project, run_id, cancel, tool_mode, context_options or {})
+            context_options = self.generated_images.attach(session, project, run_id, tool_mode, context_options)
             if not managed_member:
                 context_options = self.research.attach(project, session, run_id, context_options)
                 context_options = self.project_tools.attach(session, project, run_id, cancel, tool_mode, context_options)

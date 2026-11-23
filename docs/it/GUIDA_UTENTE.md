@@ -250,6 +250,28 @@ e permessi scelti alla partenza. Con **Apri le opzioni del modello con la
 chat** (in **Impostazioni → Lavoro**) la finestra compare da sola ogni volta
 che entri in una chat.
 
+Quando un provider offre molti modelli, sotto i selettori compaiono gli aiuti
+per trovarne uno, gli stessi della pagina **Modelli**:
+
+- **Cerca un modello**: scrivi parte del nome o della casa produttrice;
+  **Invio** apre l'elenco dei risultati.
+- **Tutti · Testo · Immagini**: mostra solo i modelli che scrivono oppure solo
+  quelli che creano immagini.
+- **Ordina**: **Consigliati** segue l'ordine proposto dal provider; **Più
+  economici** e **Più costosi** ordinano per prezzo (per il testo il costo di
+  tre parti lette e una scritta, per le immagini il costo di un'immagine);
+  **Più capaci** compare quando il provider comunica un indice di capacità
+  misurato da test indipendenti. L'ordine scelto viene ricordato.
+- **Casa produttrice**: un pulsante per ogni casa, con il numero dei suoi
+  modelli; **Scelte rapide** raccoglie le scelte pronte del provider.
+- **Mostra tutti** toglie i filtri.
+
+Nell'elenco ogni modello riporta la casa e il prezzo accanto al nome. Il
+modello in uso resta sempre in elenco, anche quando i filtri lo
+nasconderebbero. Nella pagina **Modelli** le schede sono raggruppate per casa
+produttrice, oppure in un'unica classifica quando scegli un ordine per prezzo
+o capacità. Gli aiuti non compaiono per gli elenchi corti.
+
 ![La finestra Provider, modello e ragionamento aperta sopra il campo di scrittura](../images/model-popover.png)
 
 ### Il vassoio degli strumenti
@@ -878,7 +900,11 @@ ragionamento, il browser, gli obiettivi autonomi e i Team.
 **Modelli → Kira Cloud** premi **Accedi a Kira Cloud**, conferma nel browser
 e scegli un modello. Non servono chiavi API; serve un account su
 kiradesktop.com con un piano attivo. Il pannello mostra piano, credito AI
-residuo e limiti. Dettagli in [Provider](PROVIDER.md#kira-cloud).
+residuo e limiti. I modelli indicati come **Crea e modifica immagini**
+generano immagini dalla chat: descrivi l'immagine, oppure allegane una da
+modificare; il risultato compare nella risposta e, se il progetto consente la
+scrittura, viene salvato in `generated_images/`. Dettagli in
+[Provider](PROVIDER.md#kira-cloud).
 
 **OpenRouter.** In **Modelli → OpenRouter**
 incolla la tua chiave API OpenRouter (`sk-or-v1-...`, oppure imposta

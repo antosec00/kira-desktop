@@ -905,8 +905,9 @@ altro provider.
 
 Il catalogo viene letto dal servizio e può cambiare nel tempo. Per ogni modello
 l'applicazione mostra la finestra di contesto, le capacità (strumenti,
-immagini, ragionamento) e il costo per milione di token. Puoi scegliere un
-modello diverso per ogni chat, cambiarlo a metà conversazione e usare più
+immagini, ragionamento, creazione di immagini) e il costo: per milione di
+token, oppure indicativo per immagine per i modelli che creano immagini. Puoi
+scegliere un modello diverso per ogni chat, cambiarlo a metà conversazione e usare più
 modelli in parallelo in chat diverse, entro il limite di richieste
 contemporanee del piano. `kira-auto` e `kira-eco` sono due scelte rapide: un
 modello equilibrato per il lavoro di tutti i giorni e uno più economico.
@@ -919,10 +920,57 @@ contesto della chat è mantenuto e compattato da Kira in base alla finestra del
 modello scelto. Con i modelli che lo prevedono, il riepilogo del ragionamento
 compare nella chat.
 
+### Immagini: creazione e modifica
+
+Alcuni modelli del catalogo creano e modificano immagini. Nelle schede sono
+indicati come **Crea e modifica immagini** (oppure **Crea immagini da una
+descrizione**, se il modello non accetta immagini in ingresso) e mostrano un
+costo indicativo per immagine. Si usano come gli altri modelli: scegli il
+modello nella chat e descrivi l'immagine che vuoi.
+
+- **Creare.** Scrivi la descrizione e invia. Se nella richiesta indichi un
+  formato standard (per esempio `16:9`, `1:1`, `9:16`, `4:3`), Kira lo
+  comunica al modello come proporzione dell'immagine; se il modello non lo
+  prevede, viene usato il formato più vicino.
+- **Modificare un'immagine tua.** Allega l'immagine (fino a quattro, o meno
+  se il modello ne accetta meno: in quel caso Kira te lo dice prima di
+  inviare) e scrivi che cosa cambiare: le immagini allegate sono il
+  riferimento della richiesta.
+- **Continuare a modificare.** Senza nuovi allegati, la richiesta successiva
+  nella stessa chat parte dall'ultima immagine generata: puoi scrivere
+  «rendila più luminosa» o «aggiungi il logo in alto». Per ripartire da zero
+  apri una nuova chat.
+
+Ogni richiesta deve dire per intero che cosa vuoi: il modello vede le immagini
+di riferimento, non i messaggi precedenti della chat. Con i modelli che non
+accettano immagini in ingresso ogni richiesta è quindi indipendente dalle
+altre.
+
+L'immagine compare nella risposta, con il pulsante **Apri**. Quando il
+progetto consente la scrittura e la richiesta è in modalità **Esegui**, il
+file originale viene salvato in `generated_images/` nella cartella del
+progetto e registrato tra gli artefatti. Negli altri casi (progetto in sola
+lettura, modalità **Pianifica** o **Revisione**) resta nei dati privati di
+Kira e si apre comunque dalla chat. L'anteprima mostrata e l'immagine riusata
+come riferimento sono una copia PNG privata, ridotta se necessario a 2048
+pixel sul lato lungo.
+
+Un modello per immagini riceve solo la richiesta che hai appena scritto e le
+immagini di riferimento: non riceve i messaggi precedenti della chat, le
+istruzioni dell'agente, il contesto del progetto né gli strumenti, e non legge
+o modifica i file. Ogni immagine consuma credito; l'importo addebitato è
+quello comunicato dal servizio a fine risposta. La generazione può richiedere
+anche qualche minuto. Quando il servizio segnala che l'immagine non è stata
+creata, non viene addebitato nulla. Kira ripete da sola soltanto le richieste
+che il servizio dichiara non riuscite per sovraccarico; in ogni altro caso
+**non ripete la richiesta**, per non rischiare un doppio addebito: decidi tu
+se inviarla di nuovo.
+
 ### Che cosa viene inviato
 
 Kira Cloud riceve il contenuto delle richieste che invii (testo, file e
-immagini che scegli di allegare, risultati degli strumenti) per generare la
+immagini che scegli di allegare, immagini generate riusate come riferimento,
+risultati degli strumenti) per generare la
 risposta. I file dei tuoi progetti, la memoria e le impostazioni restano sul
 tuo computer. L'informativa completa è su
 [kiradesktop.com/privacy](https://kiradesktop.com/privacy).

@@ -30,6 +30,10 @@ RunGuidance = Callable[[str, Json], Awaitable[Json]]
 ContextSave = Callable[[Json], Awaitable[Json]]
 ContextPage = Callable[[Json], Awaitable[Json]]
 ToolImage = Callable[[str], Awaitable[Json]]
+#: Persist one image produced by the model: (bytes, declared media type, tool id) -> record.
+SaveGeneratedImage = Callable[[bytes, str, str], Awaitable[Json]]
+#: The latest images generated in this chat, as provider image parts for a follow-up edit.
+GeneratedImageInputs = Callable[[], Awaitable[list[Json]]]
 
 
 @dataclass
@@ -61,6 +65,8 @@ class RunContext:
     context_page: ContextPage | None = None
     context_catalog: Json | None = None
     tool_image: ToolImage | None = None
+    save_generated_image: SaveGeneratedImage | None = None
+    generated_image_inputs: GeneratedImageInputs | None = None
 
     @property
     def root(self) -> Path:

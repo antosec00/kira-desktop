@@ -40,6 +40,7 @@ from kira.ui.account_usage import AccountUsageController
 from kira.ui.workbench_controller import WorkbenchController, guidance_label
 from kira.ui.ipc import LocalClient
 from kira.ui.markdown import safe_href
+from kira.ui import model_catalog
 from kira.ui.models import DeferredRaw, TranscriptModel
 from kira.ui.reasoning_controller import ReasoningController, SUMMARY_EVENTS
 from kira.ui.native_labels import native_text
@@ -563,6 +564,7 @@ class Workspace(QObject):
     _report_finished = Signal(object)
     accountChanged = Signal()
     draftImagesChanged = Signal()
+    modelViewChanged = Signal()
 
     def __init__(self, paths: Paths | None = None, parent: QObject | None = None):
         super().__init__(parent)
@@ -638,6 +640,11 @@ class Workspace(QObject):
         self._draft_store = DraftStore(self.paths.config)
         self._drafts = self._draft_store.drafts.copy()
         self._draft_images = deepcopy(self._draft_store.images)
+        # How the model list is being read: kind, maker and words are for this sitting,
+        # the preferred order is remembered with the other interface preferences.
+        self._model_kind, self._model_group, self._model_query = "all", "", ""
+        self.changed.connect(self.modelViewChanged)
+        self.preferencesChanged.connect(self.modelViewChanged)
         self._prompt_history = self._draft_store.history.copy()
         self._pending_intents = [row.copy() for row in self._draft_store.pending]
         self._draft_dirty = False
@@ -1443,6 +1450,33 @@ class Workspace(QObject):
         except (OSError, ValueError):
             return ""
 
+    @Slot("QVariantMap")
+    def openGeneratedImage(self, row: Json) -> None:
+        """Open a picture a model produced: the saved original, else Kira's private copy of it."""
+        raw_path = str(row.get("path") or "")
+        private_copy = QUrl(self.imagePreview(row)).toLocalFile()
+        roots = [self.paths.artifacts, *([Path(str(self._project["root"]))] if self._project.get("root") else [])]
+
+        def validated() -> str:
+            # The recorded path is opened only where Kira saves pictures, and only as an image file.
+            with contextlib.suppress(OSError, ValueError):
+                file = Path(raw_path)
+                if (raw_path and file.is_absolute() and not file.is_symlink()
+                        and file.suffix.casefold() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}):
+                    resolved = file.resolve(strict=True)
+                    if (resolved.is_file() and not launch_denied(resolved)
+                            and any(resolved.is_relative_to(root.resolve()) for root in roots)):
+                        return str(resolved)
+            if private_copy:
+                return private_copy
+            raise ValueError(tr("L'immagine non è più disponibile su questo computer."))
+
+        def opened(file: str) -> None:
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(file)):
+                self._problem(tr("Il desktop non ha un'applicazione associata a questo file."))
+
+        self._background(validated, opened)
+
     def addDraftImage(self, row: Json, context: tuple[str, str]) -> bool:
         if context != (str(self._project.get("id", "")), self.sessionId):
             return False
@@ -1727,6 +1761,77 @@ class Workspace(QObject):
         capabilities = model.get("capabilities", {})
         return (self._backend in {"deepseek_account", "deepseek_web", "openrouter", "kira_cloud"}
                 and isinstance(capabilities, dict) and capabilities.get("images") is True)
+
+    @qt_property(bool, notify=changed)
+    def imageGenerationSelected(self) -> bool:
+        """The chat's model answers with pictures instead of working with Kira's tools."""
+        model = next((item for item in self.models if item.get("id") == self._model), {})
+        capabilities = model.get("capabilities", {})
+        return (self._backend == "kira_cloud" and isinstance(capabilities, dict)
+                and capabilities.get("image_generation") is True)
+
+    @qt_property(int, notify=changed)
+    def referenceImageLimit(self) -> int:
+        """Reference pictures one request to the chat's image model may carry; 0 when not stated."""
+        model = next((item for item in self.models if item.get("id") == self._model), {})
+        limit = model.get("max_reference_images")
+        return limit if self.imageGenerationSelected and type(limit) is int and limit > 0 else 0
+
+    # ------------------------------------------------------------------ choosing a model
+    def _model_state(self) -> Json:
+        return {"kind_filter": self._model_kind, "group_filter": self._model_group,
+                "sort": str(self._preferences.get("model_sort") or "recommended"), "query": self._model_query}
+
+    @qt_property("QVariantMap", notify=modelViewChanged)
+    def modelView(self) -> Json:
+        """The filters and orders that make sense for the chat's provider, and the ones in force."""
+        return model_catalog.view(self.models, **self._model_state())
+
+    @qt_property("QVariantList", notify=modelViewChanged)
+    def organizedModels(self) -> list[Json]:
+        """The provider's models as filtered and ordered; the model in use is always listed."""
+        return model_catalog.organize(self.models, **self._model_state(), keep=self._model)
+
+    @Slot("QVariantList", result="QVariantMap")
+    def modelViewFor(self, rows: list[Json]) -> Json:
+        return model_catalog.view(rows, **self._model_state())
+
+    @Slot("QVariantList", result="QVariantList")
+    def modelSections(self, rows: list[Json]) -> list[Json]:
+        """Any provider's models as titled groups, for the page of model cards."""
+        return model_catalog.sections(rows, **self._model_state())
+
+    @Slot(str)
+    def setModelKind(self, kind: str) -> None:
+        if kind in model_catalog.KINDS and kind != self._model_kind:
+            # Makers differ between text and pictures: a maker chosen for one is not kept for the other.
+            self._model_kind, self._model_group = kind, ""
+            self.modelViewChanged.emit()
+
+    @Slot(str)
+    def setModelGroup(self, group: str) -> None:
+        group = group[:60]
+        if group != self._model_group:
+            self._model_group = group
+            self.modelViewChanged.emit()
+
+    @Slot(str)
+    def setModelQuery(self, query: str) -> None:
+        query = " ".join(query.split())[:model_catalog.MAX_QUERY]
+        if query != self._model_query:
+            self._model_query = query
+            self.modelViewChanged.emit()
+
+    @Slot(str)
+    def setModelSort(self, sort: str) -> None:
+        if sort in model_catalog.SORTS:
+            self.setUiPreference("model_sort", sort)
+
+    @Slot()
+    def resetModelView(self) -> None:
+        if (self._model_kind, self._model_group, self._model_query) != ("all", "", ""):
+            self._model_kind, self._model_group, self._model_query = "all", "", ""
+            self.modelViewChanged.emit()
 
     def direct_account_id(self) -> str:
         """Use the selected chat's binding; an empty chat uses the active account."""
@@ -3538,6 +3643,12 @@ class Workspace(QObject):
         if self.draft_image_ids() and not self.imageInputsEnabled:
             self._problem(tr("Il modello selezionato non supporta immagini. Cambia modello o rimuovi le immagini prima di inviare."))
             return
+        limit = self.referenceImageLimit
+        if 0 < limit < len(self.draft_image_ids()):
+            # Said here, while the images are still in the draft: nothing is sent or charged.
+            self._problem(tr("Questo modello accetta al massimo {count} immagini di riferimento per richiesta. Rimuovi quelle in più prima di inviare.", count=limit)
+                          if limit > 1 else tr("Questo modello accetta una sola immagine di riferimento per richiesta. Rimuovi le altre prima di inviare."))
+            return
         if self._session:
             effective_prompt = self._ambient.consume_for_prompt(prompt) if self._ambient.hasCapturedContext else prompt
             if self._mentions.has_mentions(effective_prompt):
@@ -3809,13 +3920,20 @@ class Workspace(QObject):
             self._streaming_items.get(run_id, set()).discard(item_id)
             row = self.transcript.find(run_id, "assistant", item_id)
             text = payload.get("content")
+            # Pictures the model produced: Kira's private normalized copies, shown with the answer.
+            produced = payload.get("attachments")
+            produced = [dict(item) for item in produced[:4] if isinstance(item, dict)] \
+                if isinstance(produced, list) else []
             if row is None:
                 self.transcript.append(kind="assistant", title="KIRA", body=text or "",
-                                       status="completo", runId=run_id, toolId=item_id)
+                                       status="completo", runId=run_id, toolId=item_id,
+                                       attachments=produced)
             else:
                 fields = {"status": "completo"}
                 if text is not None:
                     fields["body"] = str(text)
+                if produced:
+                    fields["attachments"] = produced
                 self.transcript.update(row, **fields)
         elif kind == "tool.started":
             tool_id = str(payload.get("tool_id", ""))

@@ -544,7 +544,7 @@ non scadono mai e non vengono cancellati implicitamente.
 | `run.state` | `{state, error?, outcome?}` | L'evento `running` registra anche `backend, model, reasoning_effort` e i metadati derivati dell'esecuzione. |
 | `message.user` | `{content, attachments?:[metadati], source?}` | `source:"steer"` per un lotto di indicazioni consumato. |
 | `message.delta` | `{content, item_id?}` | Testo incrementale dell'assistente. |
-| `message.completed` | `{content?, item_id?}` | Messaggio concluso; snapshot ed export mantengono `item_id` e `complete`. |
+| `message.completed` | `{content?, item_id?, attachments?:[metadati]}` | Messaggio concluso; snapshot ed export mantengono `item_id` e `complete`. `attachments` elenca le immagini prodotte dal modello, come copie private normalizzate di Kira (con il `path` dell'originale salvato). |
 | `context.supplied` | `{content}` | Contesto fornito da Kira (memoria, estratti, note, obiettivo), ispezionabile. |
 | `context.status` / `context.compaction` | metriche pubbliche e fasi | Solo campi in whitelist; mai lo stato nativo cifrato. |
 | `tool.started` | `{tool_id, name, arguments}` | |
@@ -649,6 +649,8 @@ strumenti di Kira da un server MCP interno al processo del servizio.
 | `guidance(kind, payload)` | callback | Confine per le indicazioni dell'utente nei provider con inbox gestita dal servizio. |
 | `context_state`, `context_save`, `context_page`, `context_catalog` | stato e callback | Contesto durevole gestito da Kira (OpenAI diretto, DeepSeek Account, Google Cloud, OpenRouter). |
 | `tool_image(ref)` | callback | Recupera i pixel di uno screenshot posseduto dal servizio. |
+| `save_generated_image(bytes, tipo, tool_id)` | callback | Salva un'immagine prodotta dal modello: l'originale in `generated_images/` quando il turno può scrivere nel progetto, altrimenti nei dati privati di Kira; restituisce la sua scheda e la copia privata normalizzata. |
+| `generated_image_inputs()` | callback | Le immagini dell'ultima risposta di questa chat che ne ha prodotte, come parti immagine per una modifica successiva. |
 
 ### Risultato di `run`
 

@@ -868,7 +868,8 @@ you can keep working with any other provider.
 
 The catalog is read from the service and may change over time. For each model
 the application shows the context window, capabilities (tools, images,
-reasoning) and the cost per million tokens. You can choose a different model
+reasoning, image creation) and the cost: per million tokens, or an indicative
+cost per image for the models that create images. You can choose a different model
 for each chat, switch it mid-conversation and use several models in parallel
 in different chats, within the plan's simultaneous request limit. `kira-auto`
 and `kira-eco` are two quick choices: a balanced model for everyday work and a
@@ -881,10 +882,53 @@ approvals, as with the other providers managed by Kira. The chat context is
 maintained and compacted by Kira according to the chosen model's window. With
 models that provide it, the reasoning summary appears in the chat.
 
+### Images: creating and editing
+
+Some models in the catalog create and edit images. Their cards read **Creates
+and edits images** (or **Creates images from a description**, when the model
+does not accept images as input) and show an indicative cost per image. They
+are used like any other model: choose the model in the chat and describe the
+image you want.
+
+- **Create.** Write the description and send. If the request names a standard
+  format (for example `16:9`, `1:1`, `9:16`, `4:3`), Kira passes it to the
+  model as the image's aspect ratio; if the model does not offer it, the
+  closest format is used.
+- **Edit an image of yours.** Attach the image (up to four, or fewer if the
+  model accepts fewer: Kira then tells you before sending) and write what to
+  change: the attached images are the reference of the request.
+- **Keep editing.** Without new attachments, the next request in the same chat
+  starts from the last generated image: you can write "make it brighter" or
+  "add the logo at the top". To start from scratch, open a new chat.
+
+Every request must say in full what you want: the model sees the reference
+images, not the earlier messages of the chat. With models that do not accept
+images as input, each request is therefore independent of the others.
+
+The image appears in the answer, with an **Open** button. When the project
+allows writing and the request runs in **Execute** mode, the original file is
+saved in `generated_images/` inside the project folder and registered among
+the artifacts. Otherwise (read-only project, **Plan** or **Review** mode) it
+stays in Kira's private data and still opens from the chat. The preview shown
+and the image reused as a reference are a private PNG copy, reduced when
+needed to 2048 pixels on the long side.
+
+An image model receives only the request you have just written and the
+reference images: it does not receive the earlier messages of the chat, the
+agent instructions, the project context or the tools, and it neither reads
+nor changes files. Every image uses credit; the amount charged is the one the
+service reports at the end of the answer. Generation can take up to a few
+minutes. When the service reports that the image was not created, nothing is
+charged. Kira repeats on its own only the requests the service declares
+failed because it was overloaded; in every other case it **does not repeat
+the request**, to avoid the risk of a double charge: you decide whether to
+send it again.
+
 ### What is sent
 
 Kira Cloud receives the content of the requests you send (text, files and
-images you choose to attach, tool results) in order to generate the answer.
+images you choose to attach, generated images reused as a reference, tool
+results) in order to generate the answer.
 Your project files, memory and settings stay on your computer. The full
 policy is at [kiradesktop.com/privacy](https://kiradesktop.com/privacy).
 

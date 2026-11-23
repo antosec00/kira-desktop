@@ -21,6 +21,7 @@ import os
 import re
 import stat
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlparse
@@ -66,6 +67,22 @@ _TOKEN_RE = re.compile(r"kira_usr_[0-9a-f]{20,96}")
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 #: Service answers worth retrying after a short pause.
 _RETRYABLE_CODES = frozenset({"overloaded", "rate_limited", "timeout", "too_many_concurrent"})
+
+#: Image models. A picture arrives whole, in one stream record, after a wait that can last minutes.
+IMAGE_TOOL = "kira_cloud.image_generation"
+MAX_GENERATED_IMAGES = 4
+MAX_GENERATED_IMAGE_BASE64_CHARS = 44_739_244  # 32 MiB of image bytes
+MAX_IMAGE_STREAM_RECORD_BYTES = 48 * 1024 * 1024
+MAX_IMAGE_STREAM_BYTES = 96 * 1024 * 1024
+IMAGE_FIRST_TOKEN_TIMEOUT = 300.0
+#: Reference pictures per request when the catalog states no limit of its own.
+MAX_REFERENCE_IMAGES = 4
+_GENERATED_DATA_URL = re.compile(r"data:(image/(?:png|jpe?g|webp|gif|svg\+xml));base64,")
+_ASPECT_RATIOS = frozenset({"1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4",
+                            "9:16", "16:9", "9:21", "21:9"})
+_ASPECT_RATIO = re.compile(r"(?<![\d:.])(\d{1,2}):(\d{1,2})(?![:.,]?\d)")
+#: What this app can show. The service offers image models only to apps that declare it.
+FEATURES = "image-output"
 
 KIRA_CLOUD_CAPABILITIES: Json = {
     **CAPABILITIES,
@@ -282,7 +299,8 @@ class KiraCloudAccount:
         return _trusted_url(announced, allow_loopback=_is_loopback(portal_url()))
 
     def headers(self, *, auth: bool = True) -> dict[str, str]:
-        headers = {"User-Agent": f"Kira-Desktop/{__version__}", "Accept": "application/json"}
+        headers = {"User-Agent": f"Kira-Desktop/{__version__}", "Accept": "application/json",
+                   "X-Kira-Features": FEATURES}
         if auth and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
@@ -562,14 +580,28 @@ def _model_detail(row: Json) -> Json:
         ),
     )
     supports_reasoning = capabilities.get("reasoning") is True
+    image_output = capabilities.get("image_output") is True
+    reference_limit = row.get("max_reference_images")
+    scores = {key: float(value) for key, value in _mapping(row.get("scores")).items()
+              if isinstance(key, str) and len(key) <= 40 and type(value) in (int, float) and 0 < value < 1e6}
     return {
         "name": name,
+        # How the catalog presents the model: who makes it, and whether it is one of Kira's quick choices.
+        "family": " ".join(str(row.get("family") or "").split())[:60],
+        "maker": " ".join(str(row.get("maker") or "").split())[:60],
+        "recommended": isinstance(row.get("resolves_to"), str) and bool(row["resolves_to"]),
+        # Independent capability scores, only when the catalog reports them.
+        "scores": scores,
+        # How many reference pictures one request may carry; None when the catalog does not say.
+        "max_reference_images": reference_limit if type(reference_limit) is int and reference_limit >= 0 else None,
         "description": str(row.get("description") or "")[:240],
         "context_window": context_window,
         "max_output_tokens": max_output_tokens,
         "capabilities": [
-            *(["tools"] if capabilities.get("tools") is True else []),
+            # A model that answers with pictures never drives Kira's tool loop.
+            *(["tools"] if capabilities.get("tools") is True and not image_output else []),
             *(["vision"] if capabilities.get("vision") is True else []),
+            *(["image_output"] if image_output else []),
         ],
         "supports_reasoning": supports_reasoning,
         "supports_temperature": capabilities.get("temperature") is not False,
@@ -586,6 +618,9 @@ def _model_detail(row: Json) -> Json:
                 "cached_input_per_1m_usd": _price(usd, "cached_input_per_mtok", input_per_m),
                 "input_per_1m_eur": _price(eur, "input_per_mtok"),
                 "output_per_1m_eur": _price(eur, "output_per_mtok"),
+                # Indicative price of one generated image, when the catalog states it.
+                "per_image_usd": _price(usd, "per_image"),
+                "per_image_eur": _price(eur, "per_image"),
             },
         },
     }
@@ -832,6 +867,48 @@ def _chat_messages(source: Any, image_inputs: dict[str, list[Json]], *, vision: 
     return result, "\n\n".join(system_parts)
 
 
+@dataclass
+class _ImageRequest:
+    """One request to an image model: what is sent, and what came back."""
+
+    messages: list[Json]
+    config: Json = field(default_factory=dict)
+    received: list[str] = field(default_factory=list)
+    #: The code of a failure the service reported inside the answer, if any.
+    error_code: str = ""
+
+
+def _requested_aspect_ratio(prompt: str) -> str:
+    """The first standard aspect ratio the user wrote in the request, such as 16:9."""
+    for match in _ASPECT_RATIO.finditer(prompt[:4000]):
+        ratio = f"{int(match.group(1))}:{int(match.group(2))}"
+        if ratio in _ASPECT_RATIOS:
+            return ratio
+    return ""
+
+
+def _image_brief(source: Any, prompt: str) -> str:
+    """What the user is asking for now: the request of this turn, or guidance added after it.
+
+    The service draws from one description and its reference pictures; it keeps no dialogue.
+    Earlier turns, Kira's agent instructions, project context and tool records are never sent
+    to an image model: they describe other work and would only leak into the picture.
+    """
+    turns = [message for message in source if isinstance(message, dict)
+             and message.get("role") in {"user", "assistant"}
+             and isinstance(message.get("content"), str)] if isinstance(source, list) else []
+    start = next((index for index in range(len(turns) - 1, -1, -1)
+                  if turns[index]["role"] == "user" and turns[index]["content"] == prompt), None)
+    if start is None:
+        return prompt.strip()
+    texts: list[str] = []
+    for message in reversed(turns[start:]):
+        if message["role"] != "user":
+            break
+        texts.append(message["content"].strip())
+    return "\n\n".join(text for text in reversed(texts) if text)
+
+
 class KiraCloudBackend(OllamaBackend):
     """Chat completions through the Kira Cloud gateway, with Kira's full tool loop."""
 
@@ -933,17 +1010,24 @@ class KiraCloudBackend(OllamaBackend):
             models.append({
                 "id": model_id,
                 "name": detail["name"],
+                "description": detail.get("description", ""),
+                "family": detail.get("family", ""),
+                "maker": detail.get("maker", ""),
+                "recommended": bool(detail.get("recommended")),
+                "scores": dict(detail.get("scores") or {}),
                 "capabilities": {
                     **KIRA_CLOUD_CAPABILITIES,
                     "tools": has_tools,
                     "images": "vision" in caps,
                     "reasoning": bool(detail.get("supports_reasoning")),
+                    "image_generation": "image_output" in caps,
                 },
                 "tools_metadata": has_tools,
                 "tools_verified": has_tools,
                 "tool_probe": "passed" if has_tools else "not_run",
                 "context_window": detail.get("context_window"),
                 "max_output_tokens": detail.get("max_output_tokens"),
+                "max_reference_images": detail.get("max_reference_images"),
                 "supported_reasoning_efforts": list(detail.get("supported_reasoning_efforts", [])),
                 "catalog_fallback": False,
                 "pricing": {
@@ -953,6 +1037,7 @@ class KiraCloudBackend(OllamaBackend):
                     "input_per_1m_usd": prices.get("input_per_1m_usd", 0.0),
                     "output_per_1m_usd": prices.get("output_per_1m_usd", 0.0),
                     "cached_input_per_1m_usd": prices.get("cached_input_per_1m_usd", 0.0),
+                    "per_image": prices.get(f"per_image_{suffix}", 0.0),
                 },
             })
         result: Json = {"available": True, "models": models, "capabilities": KIRA_CLOUD_CAPABILITIES,
@@ -971,26 +1056,121 @@ class KiraCloudBackend(OllamaBackend):
         ctx_model = ctx.session.get("model") if ctx and isinstance(ctx.session, dict) else None
         model_id = _model_name(str(body.get("model") or ctx_model or "kira-auto"))
         detail = await self._show(model_id)
+        if ctx is not None and "image_output" in detail.get("capabilities", []):
+            return await self._image_turn(base, model_id, detail, body, ctx, item_id)
+        return await self._exchange(base, model_id, detail, body, ctx, item_id)
+
+    async def _image_turn(self, base: str, model_id: str, detail: Json, body: Json,
+                          ctx: RunContext, item_id: str | None) -> tuple[Json, Json]:
+        """One request to an image model: send a lean brief, keep the pictures it returns."""
+        if any(isinstance(space, dict) and space.get("name") == "goal" for space in ctx.client_tools):
+            # A goal advances through Kira's tools. An image model has none: every automatic
+            # cycle would only produce, and charge, another picture.
+            raise StreamError("In questa chat è attivo un obiettivo autonomo, che richiede un modello con "
+                              "strumenti. Scegli un modello di testo, oppure crea le immagini in un'altra chat.")
+        vision = "vision" in detail.get("capabilities", [])
+        limit = detail.get("max_reference_images")
+        limit = (limit if type(limit) is int else MAX_REFERENCE_IMAGES) if vision else 0
+        references = list(ctx.image_inputs.get(ctx.run_id) or [])
+        # Checked here, before the service is called: nothing is generated or charged.
+        if references and limit == 0:
+            raise StreamError(f"Il modello Kira Cloud selezionato ({model_id}) non supporta allegati immagine")
+        if len(references) > limit:
+            allowed = "1 immagine" if limit == 1 else f"{limit} immagini"
+            raise StreamError(f"Il modello Kira Cloud selezionato ({model_id}) accetta al massimo {allowed} di "
+                              "riferimento per richiesta: rimuovi quelle in più e invia di nuovo.")
+        brief = _image_brief(body.get("messages", []), ctx.prompt)
+        if not brief:
+            raise StreamError("Scrivi che cosa creare o modificare: un modello per immagini ha bisogno di una descrizione.")
+        if not references and limit and ctx.generated_image_inputs is not None:
+            # No new attachment: the request continues from the last picture made in this chat.
+            references = (await ctx.generated_image_inputs())[:limit]
+        parts = [_attachment_image_part(part) for part in references]
+        request = _ImageRequest(messages=[{"role": "user", "content": (
+            [{"type": "text", "text": brief}, *parts] if parts else brief)}])
+        ratio = _requested_aspect_ratio(brief)
+        if ratio:
+            request.config["aspect_ratio"] = ratio
+        tool_id = f"{item_id or ctx.run_id}:image"
+        await ctx.emit("tool.started", {"tool_id": tool_id, "name": IMAGE_TOOL, "source": BACKEND, "arguments": {
+            "model": model_id, "prompt": brief[:2000], "reference_images": len(references), **request.config}})
+
+        async def completed(result: Json) -> None:
+            await ctx.emit("tool.completed", {"tool_id": tool_id, "name": IMAGE_TOOL, "result": result})
+
+        try:
+            message, terminal = await self._exchange(base, model_id, detail, body, ctx, item_id, request)
+        except (httpx.HTTPError, StreamError) as exc:
+            # A refusal before the answer carries its code; one reported inside it was noted while reading.
+            code = getattr(exc, "code", "") or request.error_code
+            reason = getattr(exc, "safe_detail", "") or str(exc)
+            await completed({"ok": False, "error": {
+                "code": code if isinstance(code, str) and code else "request_failed",
+                "message": " ".join(str(reason).split())[:400]}})
+            raise
+
+        records: list[Json] = []
+        previews: list[Json] = []
+        failure = ""
+        for url in request.received[:MAX_GENERATED_IMAGES]:
+            match = _GENERATED_DATA_URL.match(url)
+            if match is None or len(url) - match.end() > MAX_GENERATED_IMAGE_BASE64_CHARS:
+                failure = failure or "Kira Cloud returned an image in an unsupported form"
+                continue
+            if ctx.save_generated_image is None:
+                failure = failure or "Image storage is unavailable for this run"
+                continue
+            try:
+                record = await ctx.save_generated_image(
+                    base64.b64decode(url[match.end():], validate=True), match.group(1), tool_id)
+            except (ValueError, KiraError) as exc:
+                failure = failure or (str(exc) if isinstance(exc, KiraError) else "Kira Cloud returned an invalid image")
+                continue
+            preview = record.pop("preview", None)
+            if isinstance(preview, dict):
+                previews.append({**preview, "path": record.get("path", "")})
+            records.append(record)
+        result: Json = {"ok": bool(records) or not request.received, "count": len(records), "images": records}
+        if records:
+            result["path"] = records[0]["path"]
+        if len(request.received) > MAX_GENERATED_IMAGES:
+            result["omitted"] = len(request.received) - MAX_GENERATED_IMAGES
+        if failure:
+            # Some pictures may have been kept: then this is a remark, not the outcome.
+            result["warning" if records else "error"] = {"code": "invalid_image", "message": failure[:400]}
+        elif not request.received:
+            result["notice"] = "The model answered without an image"
+        await completed(result)
+        if previews:
+            # Private normalized copies: what the interface shows and a later edit starts from.
+            message["attachments"] = previews
+        return message, terminal
+
+    async def _exchange(self, base: str, model_id: str, detail: Json, body: Json,
+                        ctx: RunContext | None, item_id: str | None,
+                        image: _ImageRequest | None = None) -> tuple[Json, Json]:
         caps = detail.get("capabilities", [])
         vision = "vision" in caps
-
-        raw_source = body.get("messages", [])
-        has_image_attachments = bool(ctx is not None and ctx.image_inputs.get(ctx.run_id))
-        if has_image_attachments and ctx is not None:
-            if not vision:
-                raise StreamError(f"Il modello Kira Cloud selezionato ({model_id}) non supporta allegati immagine")
-            source = _bind_active_prompt(raw_source, ctx)
-        else:
-            source = raw_source
-
         window_tokens = int(detail.get("context_window") or 128_000)
         max_context_chars = min(MAX_CONTEXT_CHARS, max(60_000, int(window_tokens * 1.8)))
         image_inputs = ctx.image_inputs if ctx else {}
-        messages, system_text = _chat_messages(
-            _compact_messages(source, max_chars=max_context_chars), image_inputs, vision=vision)
-        if body.get("format"):
-            system_text += ("\nReturn one JSON object matching this schema, with no surrounding text: "
-                            + json.dumps(body["format"]))
+        source: Any = []
+        if image is not None:
+            messages, system_text = image.messages, ""
+        else:
+            raw_source = body.get("messages", [])
+            has_image_attachments = bool(ctx is not None and ctx.image_inputs.get(ctx.run_id))
+            if has_image_attachments and ctx is not None:
+                if not vision:
+                    raise StreamError(f"Il modello Kira Cloud selezionato ({model_id}) non supporta allegati immagine")
+                source = _bind_active_prompt(raw_source, ctx)
+            else:
+                source = raw_source
+            messages, system_text = _chat_messages(
+                _compact_messages(source, max_chars=max_context_chars), image_inputs, vision=vision)
+            if body.get("format"):
+                system_text += ("\nReturn one JSON object matching this schema, with no surrounding text: "
+                                + json.dumps(body["format"]))
 
         requested_max = body.get("max_tokens", DEFAULT_REQUEST_MAX_TOKENS)
         if not isinstance(requested_max, int) or isinstance(requested_max, bool) or requested_max <= 0:
@@ -1035,7 +1215,7 @@ class KiraCloudBackend(OllamaBackend):
             ]
 
         session_id = str(ctx.session.get("id") or "")[:256] if ctx and isinstance(ctx.session, dict) else ""
-        use_cache = bool(detail.get("supports_prompt_cache"))
+        use_cache = bool(detail.get("supports_prompt_cache")) and image is None
         use_temperature = temperature is not None
 
         def build_request(cur_messages: list[Json], cur_max_tokens: int) -> Json:
@@ -1045,6 +1225,11 @@ class KiraCloudBackend(OllamaBackend):
             req_messages.extend(cur_messages)
             request: Json = {"model": model_id, "messages": req_messages,
                              "max_tokens": cur_max_tokens, "stream": True}
+            if image is not None:
+                # A picture is not bounded in text tokens: the service sizes and charges it as a whole.
+                del request["max_tokens"]
+                if image.config:
+                    request["image_config"] = dict(image.config)
             if session_id:
                 request["session_id"] = session_id
             if use_cache:
@@ -1063,8 +1248,11 @@ class KiraCloudBackend(OllamaBackend):
         overflow_retried = False
         param_fallback_retried = False
         waiting_notice_sent = False
-        first_token_deadline = self._first_token_timeout or DEFAULT_FIRST_TOKEN_TIMEOUT
+        first_token_deadline = self._first_token_timeout or (
+            IMAGE_FIRST_TOKEN_TIMEOUT if image is not None else DEFAULT_FIRST_TOKEN_TIMEOUT)
         limit = int(ctx.settings.get("max_output_bytes", 4 * 1024 * 1024)) if ctx else 65_536
+        record_limit = MAX_IMAGE_STREAM_RECORD_BYTES if image is not None else 8_388_608
+        stream_limit = MAX_IMAGE_STREAM_BYTES if image is not None else limit * 2 + MAX_IMAGE_BASE64_CHARS
 
         text = ""
         thought_text = ""
@@ -1090,6 +1278,10 @@ class KiraCloudBackend(OllamaBackend):
             finish_reason = ""
             total_bytes = 0
             received = False
+            accepted = False
+            if image is not None:
+                image.received = []
+                image.error_code = ""
             try:
                 async with self.client.stream(
                     "POST",
@@ -1111,7 +1303,7 @@ class KiraCloudBackend(OllamaBackend):
                         if code in ("context_length_exceeded", "request_too_large"):
                             # Too long for the model, or more expensive than the plan allows for a
                             # single request: compact harder and try once more.
-                            if overflow_retried:
+                            if overflow_retried or image is not None:
                                 raise KiraCloudContextOverflow(detail_message)
                             overflow_retried = True
                             messages, _ = _chat_messages(
@@ -1134,12 +1326,13 @@ class KiraCloudBackend(OllamaBackend):
                                 continue
                         raise KiraCloudHTTPError(response, code, detail_message)
 
+                    accepted = True
                     stream_started_at = time.monotonic()
                     data_lines: list[str] = []
                     async for line in response.aiter_lines():
                         if ctx is not None and ctx.cancel.is_set():
                             raise asyncio.CancelledError
-                        if len(line.encode("utf-8")) > 8_388_608:
+                        if len(line) > record_limit or len(line.encode("utf-8")) > record_limit:
                             raise StreamError("Kira Cloud stream record exceeds size limit")
                         if line.startswith(":"):
                             # Keep-alive while the model prepares its answer: bound the wait.
@@ -1156,7 +1349,7 @@ class KiraCloudBackend(OllamaBackend):
                         if raw.strip() == "[DONE]":
                             break
                         total_bytes += len(raw.encode("utf-8"))
-                        if total_bytes > limit * 2 + MAX_IMAGE_BASE64_CHARS:
+                        if total_bytes > stream_limit:
                             raise StreamError("Kira Cloud response exceeded configured output limit")
                         try:
                             record = json.loads(raw)
@@ -1168,6 +1361,8 @@ class KiraCloudBackend(OllamaBackend):
                         if isinstance(error, dict):
                             err_message = " ".join(str(error.get("message") or "").split())[:400] or (
                                 "Kira Cloud ha interrotto la risposta. Riprova.")
+                            if image is not None and isinstance(error.get("code"), str):
+                                image.error_code = error["code"][:64]
                             if not received and error.get("code") in _RETRYABLE_CODES:
                                 raise _FirstTokenStall(err_message)
                             raise StreamError(err_message)
@@ -1223,6 +1418,14 @@ class KiraCloudBackend(OllamaBackend):
                             if ctx:
                                 await ctx.emit("message.delta", {"content": content_delta, "item_id": item_id})
 
+                        image_deltas = delta.get("images")
+                        if image is not None and isinstance(image_deltas, list) and image_deltas:
+                            received = True
+                            for entry in image_deltas:
+                                url = _mapping(_mapping(entry).get("image_url")).get("url")
+                                if isinstance(url, str) and url:
+                                    image.received.append(url)
+
                         call_deltas = delta.get("tool_calls")
                         if isinstance(call_deltas, list) and call_deltas:
                             received = True
@@ -1245,12 +1448,17 @@ class KiraCloudBackend(OllamaBackend):
                                         entry["function"]["arguments"] += fn_delta["arguments"]
                     break
             except (_FirstTokenStall, httpx.TimeoutException, httpx.TransportError) as stall:
-                if not received and retries < len(self._backoff_delays):
+                reported = isinstance(stall, _FirstTokenStall) and str(stall) != "first token deadline exceeded"
+                # A picture is prepared and charged as a whole. Once the service has accepted the
+                # request, silence does not prove that nothing was made: only a failure the service
+                # reports itself is sent again.
+                resend = image is None or not accepted or reported
+                if not received and resend and retries < len(self._backoff_delays):
                     delay = self._backoff_delays[retries]
                     retries += 1
                     if await _cancelable_sleep(delay, ctx):
                         continue
-                if isinstance(stall, _FirstTokenStall) and str(stall) != "first token deadline exceeded":
+                if reported:
                     raise StreamError(str(stall)) from stall
                 raise StreamError(
                     f"Il modello {model_id} su Kira Cloud non ha risposto in tempo. Riprova tra poco."
@@ -1299,7 +1507,8 @@ class KiraCloudBackend(OllamaBackend):
             else:
                 incomplete_tool_input = True
 
-        if not text.strip() and not tool_calls and thought_text.strip():
+        if (not text.strip() and not tool_calls and thought_text.strip()
+                and not (image is not None and image.received)):
             text = thought_text.strip()
             if ctx:
                 await ctx.emit("message.delta", {"content": text, "item_id": item_id})

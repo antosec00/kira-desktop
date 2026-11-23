@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID, uuid4
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
 from PySide6.QtGui import QColorSpace, QImage, QImageReader
 
 from kira.domain.contracts import Json, KiraError
@@ -104,7 +104,8 @@ def _check_container(raw: bytes, format_: bytes) -> None:
     raise _error("The image container is incomplete or invalid; attach the complete image")
 
 
-def _normalize(raw: bytes) -> tuple[bytes, int, int]:
+def _decode(raw: bytes) -> QImage:
+    """Decode one complete still image into sRGB pixels, refusing anything else."""
     source = QBuffer()
     source.setData(QByteArray(raw))
     source.open(QIODevice.OpenModeFlag.ReadOnly)
@@ -130,8 +131,20 @@ def _normalize(raw: bytes) -> tuple[bytes, int, int]:
         raise _error("The decoded image exceeds the pixel limit")
     if decoded.colorSpace().isValid():
         decoded = decoded.convertedToColorSpace(QColorSpace.NamedColorSpace.SRgb)
+    return decoded
+
+
+def _png(decoded: QImage, max_side: int = 0) -> tuple[bytes, int, int]:
+    """Encode decoded pixels as a metadata-free PNG, optionally bounding the longest side."""
+    width, height = decoded.width(), decoded.height()
+    if max_side > 0 and max(width, height) > max_side:
+        decoded = decoded.scaled(max_side, max_side, Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+        width, height = decoded.width(), decoded.height()
+        if decoded.isNull() or width <= 0 or height <= 0:
+            raise _error("The image could not be resized within local memory limits")
     # A new image copies sRGB pixels, not text chunks, EXIF, ICC profiles or comments.
-    # AutoTransform above preserves the visible orientation without resizing.
+    # AutoTransform in _decode preserves the visible orientation.
     pixels = decoded.convertToFormat(QImage.Format.Format_RGBA8888)
     normalized = QImage(width, height, QImage.Format.Format_RGBA8888)
     if normalized.isNull() or pixels.isNull():
@@ -141,7 +154,11 @@ def _normalize(raw: bytes) -> tuple[bytes, int, int]:
     output.open(QIODevice.OpenModeFlag.WriteOnly)
     if not normalized.save(output, "PNG"):  # type: ignore[call-overload]
         raise _error("The image could not be saved as a private PNG")
-    data = bytes(output.data().data())
+    return bytes(output.data().data()), width, height
+
+
+def _normalize(raw: bytes) -> tuple[bytes, int, int]:
+    data, width, height = _png(_decode(raw))
     if len(data) > MAX_IMAGE_BYTES:
         raise _error("The prepared PNG exceeds 8 MiB; choose a smaller image")
     return data, width, height
@@ -215,34 +232,58 @@ class ImageAttachments:
                 data, width, height = _normalize(_bytes(fd, MAX_SOURCE_BYTES))
             finally:
                 os.close(fd)
-            identity = str(uuid4())
-            name = identity + ".png"
-            cache_fd = self._cache()
-            try:
-                output_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-                                    | os.O_CLOEXEC, 0o400, dir_fd=cache_fd)
-                try:
-                    view = memoryview(data)
-                    while view:
-                        count = os.write(output_fd, view)
-                        if count <= 0:
-                            raise OSError("Incomplete image cache write")
-                        view = view[count:]
-                    os.fsync(output_fd)
-                except BaseException:
-                    os.unlink(name, dir_fd=cache_fd)
-                    raise
-                finally:
-                    os.close(output_fd)
-                os.fsync(cache_fd)
-            finally:
-                os.close(cache_fd)
-            return {"id": identity, "name": source.name[:255], "mime": "image/png",
-                    "width": width, "height": height, "bytes": len(data),
-                    "sha256": hashlib.sha256(data).hexdigest(),
-                    "preview_url": (self.root / name).as_uri()}
+            return self._store(data, width, height, source.name)
         except OSError as exc:
             raise _error("The image cannot be opened or saved as a private regular file") from exc
+
+    def import_bytes(self, raw: bytes, name: str, *, max_sides: tuple[int, ...] = (0,)) -> Json:
+        """Save a private normalized copy of image bytes already held in memory.
+
+        ``max_sides`` lists longest-side bounds to try in order (0 keeps the original size);
+        the first copy within the per-image byte limit is kept.
+        """
+        if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_SOURCE_BYTES:
+            raise _error("The image is empty or exceeds its byte limit")
+        decoded = _decode(raw)
+        for side in max_sides:
+            data, width, height = _png(decoded, side)
+            if len(data) <= MAX_IMAGE_BYTES:
+                break
+        else:
+            raise _error("The prepared PNG exceeds 8 MiB; choose a smaller image")
+        try:
+            return self._store(data, width, height, Path(name).name or "image.png")
+        except OSError as exc:
+            raise _error("The image cannot be saved as a private regular file") from exc
+
+    def _store(self, data: bytes, width: int, height: int, display_name: str) -> Json:
+        """Write the normalized PNG to the private cache and describe it."""
+        identity = str(uuid4())
+        name = identity + ".png"
+        cache_fd = self._cache()
+        try:
+            output_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                                | os.O_CLOEXEC, 0o400, dir_fd=cache_fd)
+            try:
+                view = memoryview(data)
+                while view:
+                    count = os.write(output_fd, view)
+                    if count <= 0:
+                        raise OSError("Incomplete image cache write")
+                    view = view[count:]
+                os.fsync(output_fd)
+            except BaseException:
+                os.unlink(name, dir_fd=cache_fd)
+                raise
+            finally:
+                os.close(output_fd)
+            os.fsync(cache_fd)
+        finally:
+            os.close(cache_fd)
+        return {"id": identity, "name": display_name[:255], "mime": "image/png",
+                "width": width, "height": height, "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "preview_url": (self.root / name).as_uri()}
 
     def read_parts(self, attachments: list[Json]) -> list[Json]:
         """Resolve verified local snapshots immediately before a provider request."""

@@ -44,5 +44,14 @@
   "{plan} · credito esaurito": "{plan} · credit used up",
   "{plan} · {amount} disponibili": "{plan} · {amount} available",
   "{remaining} disponibili su {limit}": "{remaining} available of {limit}",
-  "Costo per 1M di token: %1 in ingresso · %2 in uscita": "Cost per 1M tokens: %1 input · %2 output"
+  "Costo per 1M di token: %1 in ingresso · %2 in uscita": "Cost per 1M tokens: %1 input · %2 output",
+  "Apri l'immagine %1": "Open image %1",
+  "Crea e modifica immagini · descrivi l'immagine o allegane una da modificare": "Creates and edits images · describe the image or attach one to edit",
+  "Crea immagini da una descrizione": "Creates images from a description",
+  "Costo indicativo: da %1 per immagine": "Indicative cost: from %1 per image",
+  "Generazione dell’immagine": "Image generation",
+  "L'immagine non è più disponibile su questo computer.": "The image is no longer available on this computer.",
+  "Descrivi l'immagine da creare, o allegane una da modificare…": "Describe the image to create, or attach one to edit…",
+  "Questo modello accetta al massimo {count} immagini di riferimento per richiesta. Rimuovi quelle in più prima di inviare.": "This model accepts at most {count} reference images per request. Remove the extra ones before sending.",
+  "Questo modello accetta una sola immagine di riferimento per richiesta. Rimuovi le altre prima di inviare.": "This model accepts a single reference image per request. Remove the others before sending."
 }

@@ -1700,7 +1700,7 @@ ApplicationWindow {
                                                     KButton { objectName: "messageOpenTeam_" + entry.index; text: qsTr("Apri Team"); subtle: true; visible: entry.kind === "team" && entry.command.length > 0; onClicked: assistant.openTeam(entry.command) }
                                                     KButton { objectName: "messageCopy_" + entry.index; text: qsTr("Copia"); subtle: true; implicitHeight: 23 + Math.max(0, appearance.uiFont.pixelSize - 13); implicitWidth: Math.ceil(48 * appearance.uiFont.pixelSize / 13); visible: entry.body.length > 0; onClicked: workspace.copy(entry.body); Accessible.name: qsTr("Copia messaggio o risultato originale") }
                                                 }
-                                                ImageAttachments { images: entry.attachments; Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
+                                                ImageAttachments { objectName: "messageImages_" + entry.index; images: entry.attachments; generated: entry.kind === "assistant"; Layout.fillWidth: true; Layout.preferredHeight: implicitHeight }
                                                 ReadText {
                                                     id: messageText
                                                     objectName: "messageText_" + entry.index
@@ -2118,7 +2118,7 @@ ApplicationWindow {
                                             imageAttachments: workspace.imageInputsEnabled
                                             width: composerScroll.availableWidth
                                             height: composerScroll.inputHeight
-                                            placeholderText: workbench.guidanceMode ? qsTr("Aggiungi indicazioni al turno in corso…") : qsTr("Descrivi il prossimo passo… (@ per contesto, / per comandi)")
+                                            placeholderText: workbench.guidanceMode ? qsTr("Aggiungi indicazioni al turno in corso…") : workspace.imageGenerationSelected ? qsTr("Descrivi l'immagine da creare, o allegane una da modificare…") : qsTr("Descrivi il prossimo passo… (@ per contesto, / per comandi)")
                                             onTextChanged: {
                                                 workspace.setDraftText(text)
                                                 if (!activeFocus || window.restoringDraft) return
@@ -2392,9 +2392,12 @@ ApplicationWindow {
                                             }
                                             KComboBox {
                                                 palette.dark: window.muted
-                                                id: modelBox; objectName: "modelBox"; model: workspace.models; textRole: "name"; valueRole: "id"
+                                                id: modelBox; objectName: "modelBox"; model: workspace.organizedModels; textRole: "name"; valueRole: "id"
                                                 Layout.fillWidth: true; implicitHeight: 35
-                                                currentIndex: indexOfValue(workspace.selectedModel)
+                                                // Who makes each model and what it costs, beside its name.
+                                                detailFor: function(row) { return kformat.modelDetail(row && row.modelData !== undefined ? row.modelData : row) }
+                                                // Read from the list being shown, so a new order never points at another model.
+                                                currentIndex: { const rows = workspace.organizedModels; for (let i = 0; i < rows.length; i++) if (rows[i].id === workspace.selectedModel) return i; return -1 }
                                                 displayText: currentIndex < 0 ? (workspace.selectedModel || qsTr("Scegli un modello…")) : currentText
                                                 onActivated: workspace.setModel(currentValue)
                                                 enabled: !workspace.busy && !assistant.active
@@ -2412,6 +2415,7 @@ ApplicationWindow {
                                                 Accessible.name: qsTr("Livello di ragionamento")
                                             }
                                         }
+                                        ModelFilterBar { objectName: "popoverModelFilters"; view: workspace.modelView; compact: true; prefix: "popover"; Layout.fillWidth: true; onSearchAccepted: if (modelBox.enabled) modelBox.popup.open() }
                                         RowLayout {
                                             Layout.fillWidth: true; spacing: 8
                                             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("SESSIONE"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 4); font.letterSpacing: 1 }
@@ -2659,6 +2663,10 @@ ApplicationWindow {
                         readonly property string shownBackend: viewedBackend.length > 0 ? viewedBackend : workspace.backend
                         readonly property bool shownProviderEnabled: providerEnabled(shownBackend)
                         readonly property var viewedCatalog: { workspace.models; return foreign ? workspace.catalogFor(viewedBackend) : ({}) }
+                        // The list on this page, read through the same filters and order as the chat's model choice.
+                        readonly property var shownRows: !shownProviderEnabled ? [] : foreign ? (viewedCatalog.models || []) : workspace.models
+                        readonly property var shownView: { workspace.modelView; return workspace.modelViewFor(shownRows) }
+                        readonly property var shownSections: { workspace.modelView; return workspace.modelSections(shownRows) }
                         function providerEnabled(backend) {
                             const disabled = workspace.disabledBackends || []
                             return disabled.indexOf(backend) < 0
@@ -2744,12 +2752,37 @@ ApplicationWindow {
                         KiraCloudPane { objectName: "kiraCloudPane"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "kira_cloud"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
                         OpenRouterPane { objectName: "openrouterPane"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "openrouter"; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
                         ReadText { objectName: "claudeCodePersonalNotice"; visible: modelsPage.shownProviderEnabled && modelsPage.shownBackend === "claude_code"; text: qsTr("Claude Code usa l'accesso già fatto nel tuo Claude Code locale: Kira non legge né conserva le credenziali. Solo per uso personale: non distribuire Kira con questo provider. I permessi del progetto decidono gli strumenti di Claude Code; Kira blocca i percorsi fuori dal progetto e registra le azioni osservate."); Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; color: muted; wrapMode: Text.Wrap }
-                        GridLayout {
-                            visible: modelsPage.shownProviderEnabled
+                        ModelFilterBar { objectName: "pageModelFilters"; view: modelsPage.shownView; prefix: "page"; visible: modelsPage.shownProviderEnabled && modelsPage.shownView.useful === true; Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin }
+                        RowLayout {
+                            objectName: "modelsNoMatch"
+                            visible: modelsPage.shownProviderEnabled && modelsPage.shownRows.length > 0 && modelsPage.shownSections.length === 0
+                            Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin; spacing: 10
+                            Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: qsTr("Nessun modello corrisponde alla ricerca o ai filtri scelti."); color: muted; font.pixelSize: appearance.uiFont.pixelSize; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                            KButton { text: qsTr("Mostra tutti"); onClicked: workspace.resetModelView() }
+                        }
+                        Repeater {
+                          model: modelsPage.shownSections
+                          delegate: ColumnLayout {
+                            id: modelSection
+                            required property var modelData
+                            required property int index
                             Layout.fillWidth: true; Layout.leftMargin: modelsPage.sideMargin; Layout.rightMargin: modelsPage.sideMargin
+                            spacing: 10
+                            Text {
+                                objectName: "modelSectionTitle_" + modelSection.index
+                                visible: String(modelSection.modelData.id || "").length > 0
+                                font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic
+                                textFormat: Text.PlainText
+                                text: kformat.modelGroupLabel(modelSection.modelData.id) + "  ·  " + modelSection.modelData.models.length
+                                color: appearance.colors.textSecondary
+                                font.pixelSize: appearance.uiFont.pixelSize + 1; font.weight: Font.DemiBold
+                                Layout.fillWidth: true; elide: Text.ElideRight
+                            }
+                        GridLayout {
+                            Layout.fillWidth: true
                             columns: modelsScroll.availableWidth - modelsPage.sideMargin * 2 < 700 ? 1 : 2; columnSpacing: 14; rowSpacing: 14
                             Repeater {
-                                model: !modelsPage.shownProviderEnabled ? [] : modelsPage.foreign ? (modelsPage.viewedCatalog.models || []) : workspace.models
+                                model: modelSection.modelData.models
                                 delegate: Rectangle {
                                     id: modelCard
                                     required property var modelData
@@ -2769,9 +2802,12 @@ ApplicationWindow {
                                             Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelCard.modelData.name || modelCard.modelData.id; color: appearance.colors.text; font.pixelSize: appearance.uiFont.pixelSize + 4; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Text { font.family: appearance.codeFont.family; textFormat: Text.PlainText; text: modelCard.modelData.id; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); elide: Text.ElideMiddle; Layout.maximumWidth: 200 }
                                         }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; text: modelsPage.shownBackend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : modelsPage.shownBackend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : modelsPage.shownBackend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["kira_cloud", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter"].indexOf(modelsPage.shownBackend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelMaker_" + modelCard.modelData.id; text: modelsPage.shownView.sort !== "recommended" && modelCard.modelData.group !== "__quick__" ? kformat.modelGroupLabel(modelCard.modelData.group) : ""; visible: text.length > 0; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 2); Layout.fillWidth: true; elide: Text.ElideRight }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelDescription_" + modelCard.modelData.id; text: String(modelCard.modelData.description || ""); visible: text.length > 0; color: appearance.colors.text; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelCapability_" + modelCard.modelData.id; text: modelsPage.shownBackend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : modelsPage.shownBackend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.capabilities && modelCard.modelData.capabilities.image_generation === true ? (modelCard.modelData.capabilities.images === true ? qsTr("Crea e modifica immagini · descrivi l'immagine o allegane una da modificare") : qsTr("Crea immagini da una descrizione")) : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : modelsPage.shownBackend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["kira_cloud", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter"].indexOf(modelsPage.shownBackend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelSize_" + modelCard.modelData.id; visible: !!modelCard.modelData.size_bytes || modelsPage.shownBackend === "ollama"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg(Number(modelCard.modelData.size_bytes / 1073741824).toLocaleString(Qt.locale(localization.language), "f", 2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelPrice_" + modelCard.modelData.id; readonly property var pricing: modelCard.modelData.pricing || null; readonly property string unit: pricing && pricing.currency === "USD" ? "$" : "€"; visible: !!pricing && (pricing.input_per_1m > 0 || pricing.output_per_1m > 0); text: visible ? qsTr("Costo per 1M di token: %1 in ingresso · %2 in uscita").arg(Number(pricing.input_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit).arg(Number(pricing.output_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit) : ""; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelPrice_" + modelCard.modelData.id; readonly property var pricing: modelCard.modelData.pricing || null; readonly property string unit: pricing && pricing.currency === "USD" ? "$" : "€"; readonly property bool perImage: !!pricing && pricing.per_image > 0; visible: !!pricing && (perImage || pricing.input_per_1m > 0 || pricing.output_per_1m > 0); text: !visible ? "" : perImage ? qsTr("Costo indicativo: da %1 per immagine").arg(Number(pricing.per_image).toLocaleString(Qt.locale(), "f", pricing.per_image < 0.1 ? 3 : 2) + " " + unit) : qsTr("Costo per 1M di token: %1 in ingresso · %2 in uscita").arg(Number(pricing.input_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit).arg(Number(pricing.output_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelScore_" + modelCard.modelData.id; readonly property real score: kformat.modelScore(modelCard.modelData); visible: score > 0; text: visible ? qsTr("Indice di capacità: %1 · da test indipendenti").arg(Number(score).toLocaleString(Qt.locale(), "f", 0)) : ""; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
                                         Flow {
                                             visible: modelCard.efforts.length > 0
                                             Layout.fillWidth: true; spacing: 4
@@ -2795,6 +2831,8 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                        }
+                          }
                         }
                         // Raw provider data stay available, folded by default.
                         Rectangle {

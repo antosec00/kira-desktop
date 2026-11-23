@@ -243,6 +243,28 @@ current turn keeps the model, session and permissions chosen at its start.
 With **Open the model options with the chat** (in **Settings → Work**) the
 window appears on its own every time you enter a chat.
 
+When a provider offers many models, aids for finding one appear below the
+selectors, the same as on the **Models** page:
+
+- **Search for a model**: type part of the name or of the maker; **Enter**
+  opens the list of results.
+- **All · Text · Images**: show only the models that write, or only those that
+  create images.
+- **Sort**: **Recommended** follows the order proposed by the provider;
+  **Cheapest** and **Most expensive** order by price (for text, the cost of
+  three parts read and one written; for images, the cost of one image);
+  **Most capable** appears when the provider reports a capability index
+  measured by independent tests. The chosen order is remembered.
+- **Maker**: one button per maker, with the number of its models; **Quick
+  choices** gathers the provider's ready-made choices.
+- **Show all** clears the filters.
+
+In the list every model shows its maker and price beside its name. The model
+in use always stays listed, even when the filters would hide it. On the
+**Models** page the cards are grouped by maker, or shown as a single ranking
+when you choose an order by price or capability. The aids do not appear for
+short lists.
+
 ![The Provider, model and reasoning window open above the composer](../images/model-popover.png)
 
 ### The tool tray
@@ -847,7 +869,10 @@ goals and Teams.
 **Kira Cloud.** The simplest way to have models ready to use: in **Models →
 Kira Cloud** press **Sign in to Kira Cloud**, confirm in the browser and pick
 a model. No API keys are needed; you need a kiradesktop.com account with an
-active plan. The panel shows plan, remaining AI credit and limits. Details in
+active plan. The panel shows plan, remaining AI credit and limits. Models
+marked **Creates and edits images** generate images from the chat: describe
+the image, or attach one to edit; the result appears in the answer and, when
+the project allows writing, is saved in `generated_images/`. Details in
 [Providers](PROVIDERS.md#kira-cloud).
 
 **OpenRouter.** In **Models → OpenRouter**

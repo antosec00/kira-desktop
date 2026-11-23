@@ -98,6 +98,7 @@ DEFAULTS = {
     "reduce_motion": False,
     "confirm_close": "active",
     "file_opener": "system",
+    "model_sort": "recommended",
     "default_permission": "read_only",
     "check_updates": True,
     "anonymous_telemetry": True,
@@ -137,6 +138,7 @@ def valid_preference(key: str, value: object) -> bool:
         "sidebar_mode": {"full", "rail", "hidden"},
         "confirm_close": {"active", "always", "never"},
         "file_opener": {"system", "vscode", "kira"},
+        "model_sort": {"recommended", "price_low", "price_high", "capability"},
         "default_permission": {"read_only", "project_write", "trusted_host", "full_access"},
     }
     return isinstance(value, str) and value in enums.get(key, set())

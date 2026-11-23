@@ -254,6 +254,9 @@ class TranscriptModel(QAbstractListModel):
             target = values.get("action")
         elif name == "web_search":
             target = values.get("query")
+        elif name == "kira_cloud.image_generation":
+            # The saved file once the picture exists; the model while it is being made.
+            target = values.get("path") or values.get("model")
         elif name.startswith(cls.CLAUDE_CODE_PREFIX):
             tool = name[len(cls.CLAUDE_CODE_PREFIX):]
             if "." in tool:
@@ -347,6 +350,7 @@ class TranscriptModel(QAbstractListModel):
         "browser.manual_login": lambda: tr("Accesso manuale al sito"),
         "computer.observe": lambda: tr("Osservazione del browser"),
         "computer.act": lambda: tr("Interazione con il browser"),
+        "kira_cloud.image_generation": lambda: tr("Generazione dell’immagine"),
     }
     CODEX_TOOL_LABELS = {
         "commandExecution": lambda: tr("Esecuzione del comando"),

@@ -6,6 +6,8 @@ ComboBox {
     id: control
     // A chip is a compact pill for the composer; the popup keeps the full width.
     property bool chip: false
+    // Optional: a function giving one line of muted detail for a row (shown at its right).
+    property var detailFor: null
     palette.dark: appearance.colors.muted
     hoverEnabled: true
     HoverHandler { cursorShape: appearance.pointerCursors && control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
@@ -55,7 +57,7 @@ ComboBox {
         readonly property bool current: control.currentIndex === index
         width: ListView.view.width
         height: Math.max(34, appearance.uiFont.pixelSize + 20)
-        leftPadding: 12; rightPadding: 12
+        leftPadding: 12; rightPadding: rowDetail.visible ? rowDetail.width + 24 : 12
         text: model[control.textRole]
         Accessible.name: text
         palette.base: control.palette.base
@@ -66,6 +68,21 @@ ComboBox {
         highlighted: control.highlightedIndex === index
         hoverEnabled: control.hoverEnabled
         HoverHandler { cursorShape: appearance.pointerCursors && entry.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        Text {
+            id: rowDetail
+            objectName: "comboRowDetail"
+            visible: text.length > 0
+            anchors.right: parent.right; anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, Math.max(0, parent.width * 0.6))
+            text: control.detailFor ? String(control.detailFor(entry.model) || "") : ""
+            textFormat: Text.PlainText
+            elide: Text.ElideLeft
+            horizontalAlignment: Text.AlignRight
+            font.family: appearance.uiFont.family
+            font.pixelSize: Math.max(9, appearance.uiFont.pixelSize - 2)
+            color: entry.emphasized ? entry.palette.highlightedText : appearance.colors.muted
+        }
         contentItem: Text {
             text: entry.text
             textFormat: Text.PlainText

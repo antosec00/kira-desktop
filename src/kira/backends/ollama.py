@@ -746,7 +746,8 @@ class OllamaBackend:
                    and "tools" in detail.get("capabilities", []))
         if enabled:
             enabled = await self._probe_tools(ctx.model, ctx)
-        if not enabled and tools_requested:
+        # A model that answers with pictures has no tools by design: nothing to warn about.
+        if not enabled and tools_requested and "image_output" not in detail.get("capabilities", []):
             await ctx.emit("backend.notice", {"message": "Chat-only mode: tool capability was "
                             "not verified", "model": ctx.model, "tools_verified": False})
         elif enabled:
@@ -929,11 +930,14 @@ class OllamaBackend:
             else:
                 messages.append(message)
             public_message = {k: v for k, v in message.items()
-                              if k not in {"thinking", "reasoning_details", "reasoning_state"}}
+                              if k not in {"thinking", "reasoning_details", "reasoning_state", "attachments"}}
             calls = message.get("tool_calls", [])
+            # Images the model produced: private normalized copies saved by the service.
+            produced = message.get("attachments")
             await ctx.emit("message.completed", {"content": message.get("content", ""),
                             "item_id": item_id,
-                            "provider_messages": [public_message]})
+                            "provider_messages": [public_message],
+                            **({"attachments": produced} if isinstance(produced, list) and produced else {})})
             if terminal.get("tool_input_incomplete") is True:
                 return {"state": "interrupted", "error": f"{provider} returned incomplete tool arguments; no tool from that response was executed. Continue explicitly.",
                         "outcome": {"done_reason": "tool_input_incomplete",

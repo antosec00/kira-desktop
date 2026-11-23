@@ -25,6 +25,60 @@ QtObject {
         return ["ollama", "deepseek_web"].indexOf(String(backend || "")) < 0
     }
 
+    // Model lists. Kinds, orders and the special groups are named here; a maker keeps the
+    // name the catalog gives it.
+    function modelKindLabel(kind) {
+        switch (String(kind || "")) {
+        case "text": return qsTr("Testo")
+        case "image": return qsTr("Immagini")
+        }
+        return qsTr("Tutti")
+    }
+    function modelSortLabel(sort) {
+        switch (String(sort || "")) {
+        case "price_low": return qsTr("Più economici")
+        case "price_high": return qsTr("Più costosi")
+        case "capability": return qsTr("Più capaci")
+        }
+        return qsTr("Consigliati")
+    }
+    function modelGroupLabel(group) {
+        switch (String(group || "")) {
+        case "__quick__": return qsTr("Scelte rapide")
+        case "__text__": return qsTr("Modelli di testo")
+        case "__image__": return qsTr("Modelli per immagini")
+        }
+        return String(group || "")
+    }
+    function money(value, currency, digits) {
+        return Number(value).toLocaleString(Qt.locale(), "f", digits) + " " + (currency === "USD" ? "$" : "€")
+    }
+    // The price as the catalog states it: per image for pictures, read / written per 1M tokens for text.
+    function modelPrice(row) {
+        const pricing = row && row.pricing ? row.pricing : null
+        if (!pricing) return ""
+        if (pricing.per_image > 0) return qsTr("da %1 a immagine").arg(money(pricing.per_image, pricing.currency, pricing.per_image < 0.1 ? 3 : 2))
+        if (!(pricing.input_per_1m > 0) && !(pricing.output_per_1m > 0)) return ""
+        return qsTr("%1 / %2 per 1M").arg(Number(pricing.input_per_1m).toLocaleString(Qt.locale(), "f", 2)).arg(money(pricing.output_per_1m, pricing.currency, 2))
+    }
+    function modelScore(row) {
+        const scores = row && row.scores ? row.scores : null
+        const value = scores ? Number(row.kind === "image" ? scores.image : scores.intelligence) : 0
+        return value > 0 ? value : 0
+    }
+    // One line beside a model's name in a list: who makes it, how capable, what it costs.
+    function modelDetail(row) {
+        if (!row) return ""
+        const parts = []
+        const group = modelGroupLabel(row.group)
+        if (group.length > 0) parts.push(group)
+        const score = modelScore(row)
+        if (score > 0) parts.push(qsTr("indice %1").arg(Number(score).toLocaleString(Qt.locale(), "f", 0)))
+        const price = modelPrice(row)
+        if (price.length > 0) parts.push(price)
+        return parts.join("  ·  ")
+    }
+
     // Service timestamps are ISO 8601 in UTC; show them in the interface
     // language and the computer's time zone, like the Python views do.
     function timestamp(value) {
