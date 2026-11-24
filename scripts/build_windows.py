@@ -402,7 +402,7 @@ def _read_version() -> str:
     for line in init_text.splitlines():
         if line.startswith("__version__"):
             return line.split('"')[1]
-    return "0.32.0"
+    return "0.32.1"
 
 
 def _write_post_install_script(target_dir: Path) -> None:
