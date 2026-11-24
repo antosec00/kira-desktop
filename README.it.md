@@ -21,7 +21,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/licenza-MIT-2ea043" alt="Licenza MIT"></a>
   <a href="docs/it/INSTALLAZIONE.md"><img src="https://img.shields.io/badge/Linux-Ubuntu%2024.04%20%7C%2026.04%20(.deb)-3b82f6" alt="Pacchetti Ubuntu 24.04 e 26.04"></a>
   <a href="docs/it/INSTALLAZIONE.md#installazione-nativa-su-windows-10-e-11"><img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20(x64)-0ea5e9" alt="Installer Windows 10 e 11"></a>
-  <a href="#provider"><img src="https://img.shields.io/badge/provider-8%20locali%20e%20cloud-8b5cf6" alt="8 provider locali e cloud"></a>
+  <a href="#provider"><img src="https://img.shields.io/badge/provider-9%20locali%20e%20cloud-8b5cf6" alt="9 provider locali e cloud"></a>
 </p>
 
 ![Kira Desktop: una chat di progetto con le ricevute degli strumenti, tabelle e il campo di scrittura](docs/images/chat-dark.png)
@@ -101,6 +101,7 @@ più sicuro, e tu possa sempre vedere che cosa è successo davvero.
 | **Codex** | OpenAI Codex App Server, con l'accesso ufficiale | Codex, con le sue sandbox; Kira osserva ogni operazione ed espone browser isolato, Computer e strumenti di progetto via MCP |
 | **OpenAI · ChatGPT** | Il tuo piano ChatGPT, con l'accesso ufficiale | Kira; immagini in ingresso, ricerca web ospitata, contesto gestito automaticamente |
 | **Google Cloud · Vertex AI** | Multi-account OAuth2 PKCE isolato in Kira, `gcloud` ADC di sistema (in sola lettura) o API Key | Kira; modelli nativi Google (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) e modelli Partner Claude su Vertex AI, visione e riepiloghi del ragionamento |
+| **Kira Cloud** | Account Kira con un piano attivo; accesso confermato nel browser, senza chiavi API | Kira; modelli già pronti, creazione e modifica di immagini |
 | **OpenRouter** | Chiave API OpenRouter (`sk-or-v1-...` nel profilo locale `0600` o variabile `OPENROUTER_API_KEY`) | Kira; catalogo dinamico (`/api/v1/models`), adattamento automatico a contesto, `max_tokens`, `reasoning`/`thinking`, prompt caching (Claude/Gemini), visione multimodale e fallback anti-stallo per modelli `:free` |
 | **DeepSeek API** | Accesso account DeepSeek o proxy DeeperSeeker | Kira |
 | **DeepSeek Web** | Token di sessione del sito | Kira, con un protocollo testuale per gli strumenti |

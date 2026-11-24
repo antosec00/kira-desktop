@@ -15,19 +15,23 @@ a ogni risposta.
 | **Codex** | Codex installato a parte; **Modelli → Codex → Accedi con Codex** | Il provider (strumenti nativi di Codex, osservati da Kira) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | Sì | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | **Continua con ChatGPT** in **Modelli → OpenAI · ChatGPT** | Kira | Sì | Sì (fino a 4 PNG/JPEG/WebP/GIF statica) | Sì | Sì | Sì | Sì |
 | **Google Cloud · Vertex AI** | **Modelli → Google Cloud → Aggiungi / Cambia account Google** (OAuth2 PKCE isolato), `gcloud` ADC di sistema in sola lettura o API Key | Kira | Sì | Sì (PNG/JPEG/WebP/GIF) | Sì | Sì | Sì | Sì |
-| **Kira Cloud** | **Modelli → Kira Cloud → Accedi a Kira Cloud**: l'accesso si conferma nel browser, senza chiavi API | Kira | Sì (Computer con visione per i modelli che accettano immagini) | Sì, con i modelli che accettano immagini | Sì | Sì | Sì | Sì (per i modelli con ragionamento) |
+| **Kira Cloud** | **Modelli → Kira Cloud → Accedi o registrati nel browser**: l'accesso si conferma nel browser, senza chiavi API | Kira | Sì (Computer con visione per i modelli che accettano immagini) | Sì, con i modelli che accettano immagini | Sì | Sì | Sì | Sì (per i modelli con ragionamento) |
 | **OpenRouter** | **Modelli → OpenRouter → Chiave API OpenRouter** (`sk-or-v1-...` nel profilo locale `0600`) o variabile `OPENROUTER_API_KEY` | Kira | Sì (Computer con visione per i modelli multimodali) | Sì, con i modelli che dichiarano input `image` nel catalogo `/api/v1/models` | Sì | Sì | Sì | Sì (per i modelli con `reasoning` / `thinking`) |
 | **DeepSeek Account** (sperimentale) | **Modelli → DeepSeek API → Accedi con DeepSeek**, oppure **Usa DeeperSeeker** | Kira | Sì | Sì, solo modelli con visione | Sì | Sì | Sì | No |
 | **DeepSeek Web** (sperimentale) | `userToken` della sessione web incollato nel pannello **DeepSeek Web · accesso diretto** | Kira (protocollo testuale) | Browser sì, Computer no | Sì (DeepSeek V4 Flash web, DeepSeek Reasoner web) | No | No | Sì | Sì, con DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Extra `claude-code` dal sorgente; accesso già fatto in Claude Code | Il provider (strumenti integrati di Claude Code) più gli strumenti Kira via MCP | Sì | Sì (fino a 4 PNG) | No | Sì | Sì | No |
 
 La colonna «Chi esegue gli strumenti» è la differenza più importante tra i
-provider. Con Ollama, OpenAI diretto, Google Cloud · Vertex AI, OpenRouter e DeepSeek il modello *chiede* a Kira di
+provider. Con Ollama, OpenAI diretto, Google Cloud · Vertex AI, Kira Cloud,
+OpenRouter e DeepSeek il modello *chiede* a Kira di
 leggere un file, lanciare un comando o aprire una pagina, e Kira esegue
 l'operazione applicando permessi, modalità e approvazioni del progetto. Con
 Codex e Claude Code le operazioni sui file e i comandi sono eseguiti dal runtime
 del provider; Kira li osserva, li registra come ricevute nella chat e li
 vincola ai permessi del progetto tramite la sandbox o i filtri del provider.
+Con **Host fidato** e **Accesso completo** i comandi di questi due provider non
+hanno alcuna sandbox: che cosa viene limitato, e che cosa no, è descritto in
+[Permessi e sicurezza](PERMESSI_E_SICUREZZA.md#che-cosa-limita-davvero-host-fidato).
 
 ## Principi comuni a tutti i provider
 
@@ -64,20 +68,32 @@ conferma che quel modello è davvero utilizzabile con i tuoi permessi e il tuo
 piano. Vale per i programmi di accesso speciali, per i modelli con visione e
 per i livelli di ragionamento.
 
-**Kira non cambia mai modello, account o provider da sola.** Se una richiesta
-viene rifiutata per autenticazione, quota, politica dell'account o modello non
-disponibile, l'errore resta visibile e la chat mantiene la configurazione che
-hai scelto. Non viene selezionato un modello alternativo, non viene usata una
-chiave API a pagamento, non viene cambiato il livello di fatturazione (l'unica
-eccezione esplicita riguarda i modelli gratuiti `:free` di OpenRouter quando la
-coda gratuita a monte è bloccata o satura, descritta nella sezione OpenRouter).
+**Kira non cambia modello, account o provider da sola, con due eccezioni
+dichiarate.** Se una richiesta viene rifiutata per autenticazione, quota,
+politica dell'account o modello non disponibile, l'errore resta visibile e la
+chat mantiene la configurazione che hai scelto: non viene selezionato un
+modello alternativo, non viene usata una chiave API a pagamento, non viene
+cambiato il livello di fatturazione. Le due eccezioni valgono per la singola
+richiesta, sono segnalate da un **AVVISO** nella chat e non modificano il
+modello selezionato per la chat:
+
+- **OpenRouter, modelli gratuiti** (`:free` e `openrouter/free`): quando il
+  modello gratuito scelto è saturo o non risponde, Kira completa la richiesta
+  con un altro modello gratuito (vedi
+  [Protezione anti-stallo e fallback automatico](#protezione-anti-stallo-e-fallback-automatico-per-i-modelli-free)).
+- **Google Cloud · Vertex AI**: Kira alterna gli account Google collegati che
+  non hai escluso e, con l'impostazione predefinita, quando la quota è esaurita
+  o il modello non risponde può completare la richiesta con un modello Gemini
+  inferiore, che Google fattura con le proprie tariffe. Il cambio di modello si
+  disattiva dal pannello del provider (vedi
+  [Pool di account e continuità del modello](#pool-di-account-e-continuità-del-modello)).
 
 **Le credenziali restano nel flusso ufficiale del provider.** Kira non legge
 cookie del browser, non importa file di autenticazione di altre applicazioni e
 non copia token nel database, negli eventi, negli export o nella diagnostica.
-Quando esiste un accesso gestito da Kira (ChatGPT, Google Cloud, OpenRouter,
-DeepSeek Account, DeepSeek Web), le credenziali vivono in file privati del
-profilo Kira (`0600`), separati dai dati della conversazione.
+Quando esiste un accesso gestito da Kira (ChatGPT, Google Cloud, Kira Cloud,
+OpenRouter, DeepSeek Account, DeepSeek Web), le credenziali vivono in file
+privati del profilo Kira (`0600`), separati dai dati della conversazione.
 
 
 **Dati del provider** mostra il JSON grezzo restituito dal catalogo, chiuso
@@ -705,8 +721,12 @@ accettabile solo per il tuo uso.
 ### Strumenti scelti dal permesso
 
 Kira avvia Claude Code tramite un lanciatore privato, senza impostazioni utente
-o di progetto, senza server MCP esterni e senza `CLAUDE.md`: istruzioni e
-contesto li fornisce Kira. Il permesso del progetto decide quali strumenti
+o di progetto, senza i server MCP configurati in Claude Code e senza
+`CLAUDE.md`: istruzioni e contesto li fornisce Kira. I server MCP esterni che
+colleghi in Kira arrivano invece anche a Claude Code, attraverso lo strumento
+`kira.mcp_tools` (vedi
+[Anima e conoscenza](ANIMA_E_CONOSCENZA.md#server-mcp-esterni)). Il permesso
+del progetto decide quali strumenti
 integrati vengono offerti:
 
 | Permesso Kira | Strumenti integrati di Claude Code |
@@ -718,6 +738,9 @@ integrati vengono offerti:
 Sub-agenti e altri strumenti integrati non vengono offerti. Tutto ciò che non è
 nell'elenco viene negato, e un controllo prima di ogni strumento blocca i
 percorsi di file e i pattern che escono dal progetto, salvo **Accesso completo**.
+Questo controllo riguarda gli strumenti di file: un comando lanciato con `Bash`
+gira con il tuo utente e può raggiungere il resto del sistema, senza il blocco
+delle scritture che Kira applica ai propri comandi.
 
 Le operazioni di Claude Code compaiono nella chat come ricevute con le stesse
 etichette italiane degli altri provider (**Lettura del file**, **Esecuzione del
@@ -863,6 +886,31 @@ Il catalogo integrato espone:
   aggiungere qualsiasi ulteriore ID modello del Model Garden separato da
   virgola.
 
+### Pool di account e continuità del modello
+
+Gli account Google collegati che non hai escluso formano un **pool**: Kira li
+alterna da una richiesta all'altra e, quando uno esaurisce temporaneamente la
+quota del modello (HTTP `429`), prosegue con un altro. Ogni account usa il
+proprio progetto Google Cloud e la propria fatturazione. **Escludi account
+selezionato dal pool di Kira** toglie un account dalla rotazione.
+
+**Continuità modello in caso di quota 429**, nello stesso pannello, decide che
+cosa succede quando la quota resta esaurita su tutti gli account:
+
+- **Scala automaticamente a Gemini 3.1 Pro / Flash** (predefinito): Kira può
+  completare la richiesta con un modello inferiore, da `gemini-4-argon` a
+  `gemini-3.1-pro-preview` e poi a `gemini-3-flash-preview`. Lo stesso
+  passaggio avviene dopo un timeout di lettura e dopo una risposta vuota o
+  bloccata dai filtri del provider.
+- **Attendi sempre il modello selezionato (es. Gemini 4 Argon)**: Kira non
+  cambia modello; attende il ripristino della quota e riprova a rotazione sugli
+  account del pool.
+
+Ogni passaggio di account o di modello è segnalato da un **AVVISO** nella chat
+e vale per quella richiesta: il modello selezionato per la chat non cambia. Un
+identificativo ritirato (per esempio `gemini-2.5-pro`) viene inoltre servito dal
+modello che lo sostituisce quando Google risponde `404`.
+
 ## Kira Cloud
 
 **Kira Cloud** (`kira_cloud`) è il servizio facoltativo di Kira Desktop che
@@ -874,11 +922,14 @@ provider descritti in questa guida.
 
 ### Accesso
 
-In **Modelli → Kira Cloud** premi **Accedi a Kira Cloud**: si apre il browser
-sulla pagina di accesso di kiradesktop.com, confermi il collegamento del
-dispositivo e l'applicazione risulta collegata. **La password non viene mai
-digitata dentro l'applicazione.** In alternativa puoi incollare il token di
-collegamento che trovi nella Console del tuo account.
+In **Modelli → Kira Cloud** premi **Accedi o registrati nel browser**: si apre
+il browser sulla pagina di accesso di kiradesktop.com, confermi il collegamento
+del dispositivo e l'applicazione risulta collegata. **La password non viene mai
+digitata dentro l'applicazione.** In alternativa premi **Accedi con un token**,
+incolla il token di collegamento che trovi nella Console del tuo account e
+premi **Collega**. Lo stesso pannello si apre anche dal pulsante **Accedi a
+Kira** della barra laterale e da **Accedi a Kira Account** nella riga di stato
+del provider.
 
 Sul computer Kira conserva solo il token di collegamento del dispositivo, in
 un file del profilo locale leggibile solo dal tuo utente (`0600`). Puoi
@@ -988,7 +1039,7 @@ Moonshot Kimi, Mistral, xAI Grok) con tutti gli strumenti nativi di Kira.
 In **Modelli → OpenRouter** inserisci la tua chiave API OpenRouter
 (`sk-or-v1-...`) e premi **Salva configurazione OpenRouter**:
 - La chiave viene verificata tramite `GET /api/v1/key` e salvata nel profilo
-  locale privato di Kira (`$XDG_CONFIG_HOME/kira/openrouter/config.json`) con
+  locale privato di Kira (`$XDG_CONFIG_HOME/kira/openrouter/account.json`) con
   permessi `0600`, oscurata nei log e mai esposta in chiaro.
 - In alternativa, puoi esportare nell'ambiente la variabile `OPENROUTER_API_KEY`:
   Kira la rileva automaticamente senza scriverla su disco.
@@ -1038,14 +1089,18 @@ I modelli gratuiti di OpenRouter (`...:free` e `openrouter/free`) condividono
 code pubbliche sui provider a monte che talvolta inviano commenti keep-alive SSE
 (`: OPENROUTER PROCESSING`) senza mai iniziare a generare token:
 - Kira distingue i commenti keep-alive SSE dai veri chunk `data:` e applica ai
-  modelli `:free` un timeout dedicato sul primo evento utile (28 secondi),
+  modelli `:free` un timeout dedicato sul primo evento utile (15 secondi),
   evitando attese infinite quando un'istanza gratuita a monte è bloccata in coda.
-- Se il modello selezionato è un modello `:free` e l'upstream va in stallo,
-  restituisce rate-limit (`429`) o errore temporaneo (`502`, `503`, `504`), Kira
-  prova automaticamente una catena di fallback tra altri modelli `:free`
-  compatibili con gli strumenti (e infine `openrouter/free`), notificando
-  chiaramente nella barra di stato quale modello gratuito alternativo ha preso in
-  carico il turno.
+- Se il modello selezionato è un modello gratuito e l'upstream va in stallo
+  prima del primo token oppure restituisce `404`, `408`, `429`, `500`, `502`,
+  `503` o `504`, Kira prova automaticamente una catena di altri modelli
+  gratuiti, a partire da `openrouter/free`. Con immagini allegate la catena
+  comprende solo i modelli gratuiti che le accettano. Un **AVVISO** nella chat
+  indica quale modello gratuito ha preso in carico la richiesta.
+- Il cambio vale per quella richiesta: la chat mantiene il modello che hai
+  selezionato e la richiesta successiva riparte da quello. È una delle due
+  eccezioni alla regola per cui Kira non cambia modello da sola; i modelli a
+  pagamento di OpenRouter non vengono mai sostituiti.
 
 ## Cambiare provider o modello nella stessa chat
 
@@ -1066,9 +1121,9 @@ visione.
 **Che cosa non si trasferisce:** lo stato interno del provider, il ragionamento
 privato, lo stato nativo cifrato e le capacità specifiche. Kira passa al nuovo
 provider un contesto portabile entro limiti dichiarati: con Codex, Ollama,
-Google Cloud, OpenRouter, DeepSeek e Claude Code un estratto della conversazione e degli esiti degli
-strumenti; con OpenAI diretto l'intero archivio paginato nel suo contesto
-persistente. Istruzioni del progetto, note importanti e obiettivo vengono
+Google Cloud, Kira Cloud, OpenRouter, DeepSeek Web e Claude Code un estratto
+della conversazione e degli esiti degli strumenti; con OpenAI diretto e
+DeepSeek Account l'intero archivio paginato nel loro contesto persistente. Istruzioni del progetto, note importanti e obiettivo vengono
 forniti a parte. Le chiamate di strumenti precedenti sono dati storici: non
 vengono mai rieseguite durante un passaggio.
 
@@ -1122,6 +1177,7 @@ stai consultando: non cambia il provider della chat.
 | Codex | Finestre di quota, percentuali, ripristino, crediti letti dall'account Codex (**Aggiorna**) | Token dell'ultimo rapporto del provider |
 | OpenAI diretto | Account della chat e link **Utilizzo del piano ↗**; nessuna quota esposta | Token registrati negli ultimi sette giorni per questo profilo |
 | Google Cloud · Vertex AI | Account attivo (isolato o sistema WSL2), `project_id` e region (`global`) | Token di input/cache/output e telemetria di costo API stimata sulle tariffe Vertex AI |
+| Kira Cloud | Account e piano, **Credito mensile del piano** e **Crediti extra** con la quota disponibile, gli importi residuo e totale e la data di rinnovo, più il credito complessivo, letti dal tuo account Kira (**Aggiorna**). I limiti di richieste del piano sono in **Modelli → Kira Cloud** | Token registrati negli ultimi sette giorni per questo profilo; nessun costo ricavato dai prezzi di listino, perché la spesa reale è il credito |
 | OpenRouter | Etichetta chiave API, utilizzo totale/giornaliero, budget residuo e stato *Free tier* da `/api/v1/key` | Token di input/cache/output e costo reale o stimato dai prezzi dinamici del catalogo OpenRouter |
 | Ollama | Nessun account | Token, durate e contesto caricato dall'ultima risposta; RAM/VRAM del modello se Ollama le riporta |
 | DeepSeek Account | Nessuna quota esposta | Token riportati dalle risposte |
@@ -1177,6 +1233,7 @@ quello corrente.
 | Codex | Sì |
 | OpenAI diretto · ChatGPT | Sì |
 | Google Cloud · Vertex AI | Sì (`includeThoughts` su Gemini 3.x / 4 Argon e blocchi `thinking` su Claude Vertex) |
+| Kira Cloud | Sì, con i modelli che espongono il ragionamento |
 | OpenRouter | Sì (delta `reasoning` / `reasoning_details` sui modelli con ragionamento esteso) |
 | Ollama | No (il ragionamento interno grezzo resta escluso) |
 | DeepSeek Account | No |

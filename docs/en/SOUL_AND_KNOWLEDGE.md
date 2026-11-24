@@ -322,7 +322,9 @@ dependencies and does not import browser sessions or credentials.
 | Run | **Execute** | **Trusted host** or **Full access** |
 
 Testing and running require **Trusted host** because the code runs as your
-user, not in a sandbox; a passed test does not raise permissions. Running also
+user, not in a sandbox: on Linux with Landlock Kira only blocks writes outside
+the project, and the result states whether that block was there. A passed test
+does not raise permissions. Running also
 requires an enabled revision with the declared tests passed. The tests verify
 the declared cases, the validity of the JSON and the exit code; they do not
 confirm every external effect (files written, network, services called). See
@@ -348,9 +350,13 @@ until it is resolved.
 Alongside tools built inside a single project, you can connect third-party or
 local **Model Context Protocol (MCP)** servers (for example GitHub, Postgres,
 Notion, Sentry, Linear) from **Settings → Connections → External MCP servers**.
-Discovered tools become available across all 6 providers (**Ollama**,
-**DeepSeek Web**, **DeepSeek Account**, **Direct OpenAI · ChatGPT**, **Codex**
-and **Claude Code**) without bloating the initial conversation prompt.
+Discovered tools become available with all nine providers (**Ollama**,
+**Codex**, **Direct OpenAI · ChatGPT**, **Google Cloud · Vertex AI**, **Kira
+Cloud**, **OpenRouter**, **DeepSeek Account**, **DeepSeek Web** and **Claude
+Code**) without bloating the initial conversation prompt, in chats with Kira's
+tools enabled that do not belong to a Team member. Codex and Claude Code
+receive them through Kira, like the other `kira` tools: MCP servers configured
+directly in Claude Code are not loaded.
 
 ### Configuration and import
 

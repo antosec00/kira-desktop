@@ -10,8 +10,10 @@ from typing import Any
 from kira import __version__
 from kira.domain.contracts import KiraError
 
+# Every provider the service routes (service/provider_routing.py BACKENDS); a test
+# keeps the two lists equal, so a new provider cannot be left out of the report.
 DOCTOR_BACKENDS = ("ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web",
-                   "claude_code")
+                   "claude_code", "google_cloud", "openrouter", "kira_cloud")
 
 
 def error_report(exc: BaseException) -> dict[str, Any]:

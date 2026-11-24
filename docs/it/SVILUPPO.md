@@ -15,8 +15,8 @@ Kira è fatta di tre parti che cooperano dentro una sola sessione utente:
 | Parte | Cartella | Responsabilità |
 | --- | --- | --- |
 | **Interfaccia** (Qt Quick / PySide6) | `src/kira/ui/` | Intenzioni e presentazione: QML in `ui/qml/`, controller esposti al QML come proprietà di contesto (`Workspace`, ricerca, web, workbench, allegati…), preferenze solo-GUI in `config/ui.json`. |
-| **Servizio** (asyncio, SQLite in WAL, IPC privata su socket Unix) | `src/kira/service/` | Esecuzione e durabilità: progetti, sessioni, esecuzioni e i loro eventi sequenziati, esecuzione degli strumenti con il permesso del progetto, l'attore browser/Computer, Team, registro di Ricerca, domande, allegati. È l'unico processo che scrive su SQLite. |
-| **Backend** (adapter dei provider) | `src/kira/backends/` | Un adapter per provider (`ollama`, `codex`, `openai_chatgpt`, `deepseek_account`, `deepseek_web`, `claude_code`, `google_cloud`, `openrouter`). Riceve un `RunContext`, rimanda gli eventi con `ctx.emit` e, a seconda del provider, fa eseguire al servizio gli strumenti di base con `ctx.execute_tool` e quelli client di Kira con `ctx.client_tool_call`, oppure osserva gli strumenti nativi del provider e offre quelli di Kira via MCP. |
+| **Servizio** (asyncio, SQLite in WAL, IPC privata su socket Unix; su Windows TCP di loopback autenticato) | `src/kira/service/` | Esecuzione e durabilità: progetti, sessioni, esecuzioni e i loro eventi sequenziati, esecuzione degli strumenti con il permesso del progetto, l'attore browser/Computer, Team, registro di Ricerca, domande, allegati. È l'unico processo che scrive su SQLite. |
+| **Backend** (adapter dei provider) | `src/kira/backends/` | Un adapter per provider (`ollama`, `codex`, `openai_chatgpt`, `deepseek_account`, `deepseek_web`, `claude_code`, `google_cloud`, `openrouter`, `kira_cloud`). Riceve un `RunContext`, rimanda gli eventi con `ctx.emit` e, a seconda del provider, fa eseguire al servizio gli strumenti di base con `ctx.execute_tool` e quelli client di Kira con `ctx.client_tool_call`, oppure osserva gli strumenti nativi del provider e offre quelli di Kira via MCP. |
 
 `src/kira/domain/` contiene le definizioni pure condivise dalle tre parti:
 specifiche degli strumenti, contratti, insiemi di provider per capacità
@@ -34,7 +34,7 @@ src/kira/
   backends/         adapter dei provider, client_tools.py (ponte degli strumenti Kira),
                     kira_mcp.py (relay MCP per Codex), deepseek_pow_solver.wasm
   domain/           contratti, insiemi di provider (providers.py), specifiche degli strumenti,
-                    domande, namespace web/computer
+                    domande, namespace web/computer, trasporto e autenticazione dell'IPC (ipc.py)
   service/          server.py (dispatch IPC), assistant.py, teams.py, web.py (attore browser),
                     research.py, knowledge.py, questions.py, attachment_inputs.py,
                     provider_routing.py, tool_policy.py, storage.py
@@ -160,10 +160,11 @@ pacchetto installato, senza checkout e con dati sintetici; lo usa `check_deb.py`
    capacità hanno allowlist proprie in `service/assistant.py` (strumenti
    dell'assistente), `conversation_controls.py` (indicazioni), `project_tools.py`,
    `research.py`, `knowledge.py`, `autonomous_goals.py`, `reasoning_summaries.py`,
-   `attachment_inputs.py` (immagini), `tool_policy.py` e in `cli.py` (`doctor`).
+   `attachment_inputs.py` (immagini) e `tool_policy.py`.
    Lasciare fuori il provider da un insieme è una scelta legittima, non una
    dimenticanza, ma deve essere coerente con la tabella delle capacità in
-   [Provider](PROVIDER.md).
+   [Provider](PROVIDER.md). Fa eccezione `DOCTOR_BACKENDS` in `cli.py`: `doctor`
+   interroga tutti i provider e un test lo confronta con `BACKENDS`.
 3. **Interfaccia.** Esponilo in `ui/controller.py` (`setBackend`, etichette,
    capacità), nelle etichette condivise di `qml/KFormat.qml` (`providerLabel`),
    nella pagina dei modelli e nel popover del campo di scrittura in

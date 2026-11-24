@@ -325,7 +325,9 @@ dipendenze e non importa sessioni o credenziali del browser.
 | Eseguire | **Esegui** | **Host fidato** o **Accesso completo** |
 
 Provare ed eseguire richiedono **Host fidato** perché il codice gira come il tuo
-utente, non in una sandbox; una prova superata non alza i permessi. Eseguire
+utente, non in una sandbox: su Linux con Landlock Kira blocca soltanto le
+scritture fuori dal progetto, e il risultato dichiara se quel blocco c'era.
+Una prova superata non alza i permessi. Eseguire
 richiede inoltre una revisione abilitata con i test dichiarati superati. I test
 verificano i casi dichiarati, la validità del JSON e il codice di uscita; non
 confermano ogni effetto esterno (file scritti, rete, servizi chiamati). Vedi
@@ -351,9 +353,14 @@ sul progetto finché non è risolto.
 Oltre agli strumenti creati nel singolo progetto, puoi collegare server **Model
 Context Protocol (MCP)** di terze parti o locali (per esempio GitHub, Postgres,
 Notion, Sentry, Linear) da **Impostazioni → Connessioni → Server MCP esterni**.
-Gli strumenti rilevati diventano disponibili per tutti i 6 provider (**Ollama**,
-**DeepSeek Web**, **DeepSeek Account**, **OpenAI diretto · ChatGPT**, **Codex**
-e **Claude Code**) senza gonfiare il prompt iniziale della conversazione.
+Gli strumenti rilevati diventano disponibili con tutti e nove i provider
+(**Ollama**, **Codex**, **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex
+AI**, **Kira Cloud**, **OpenRouter**, **DeepSeek Account**, **DeepSeek Web** e
+**Claude Code**) senza gonfiare il prompt iniziale della conversazione, nelle
+chat con gli strumenti di Kira attivi che non appartengono a un membro di un
+Team. Codex e Claude Code li ricevono attraverso Kira, come gli altri
+strumenti `kira`: i server MCP configurati direttamente in Claude Code non
+vengono caricati.
 
 ### Configurazione e importazione
 

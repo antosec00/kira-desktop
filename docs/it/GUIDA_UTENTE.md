@@ -47,7 +47,8 @@ servizio. Il servizio esegue un lavoro autonomo alla volta per ciascun progetto.
 ### Il modello ragiona, Kira esegue
 
 Il modello (quello che scegli tra i **provider** collegati: Ollama, Codex,
-OpenAI diretto, Google Cloud, OpenRouter, DeepSeek, Claude Code) decide che cosa
+OpenAI diretto, Google Cloud, Kira Cloud, OpenRouter, DeepSeek, Claude Code)
+decide che cosa
 fare e scrive le risposte. Kira mette a disposizione gli strumenti — lettura e
 scrittura di file, comandi, browser, memoria, team — e li esegue entro i
 permessi che hai dato al progetto. La scelta del modello è tua, chat per chat.
@@ -69,9 +70,11 @@ ricevute, artefatti e la tua verifica.
 
 ### Avviare Kira
 
-Se hai installato il pacchetto, apri **Kira Desktop** dal menu delle
-applicazioni (su Windows con WSL anche dal menu Start) oppure esegui da
-qualsiasi cartella:
+Se hai installato Kira su Windows con il programma di installazione, aprila
+dal collegamento **Kira Desktop** sul Desktop o nel menu Start. Se hai
+installato il pacchetto per Ubuntu, apri **Kira Desktop** dal menu delle
+applicazioni (con WSL compare anche nel menu Start di Windows) oppure esegui
+da qualsiasi cartella:
 
 ```sh
 kira
@@ -79,7 +82,9 @@ kira
 
 `kira` è il nome breve di `kira-desktop`: i due comandi sono equivalenti.
 `kira --version` stampa la versione installata. In WSL serve una sessione
-grafica funzionante, per esempio WSLg.
+grafica funzionante, per esempio WSLg. Le differenze tra l'installazione nativa
+su Windows e quella in WSL sono in
+[Installazione](INSTALLAZIONE.md#installazione-nativa-su-windows-10-e-11).
 
 Per avviare dal codice sorgente, apri il terminale nella radice del repository
 (dove si trova `pyproject.toml`):
@@ -126,11 +131,15 @@ mostrarlo di nuovo da **Impostazioni → Lavoro**.
 | --- | --- |
 | **Sola lettura** | Lettura e ricerca nei file del progetto. Modifiche e comandi vengono rifiutati dal servizio. Codex usa la propria modalità di sola lettura. |
 | **Scrittura nel progetto** | Lettura e scrittura dei file del progetto. Codex usa la propria sandbox di lavoro. I comandi eseguiti da Kira non sono autorizzati. |
-| **Host fidato** | Come sopra, più comandi eseguiti con i permessi del tuo utente sul sistema dove gira Kira. Gli strumenti di file restano nel progetto, ma la cartella di lavoro non è una sandbox: un comando può raggiungere il resto del sistema. |
+| **Host fidato** | Come sopra, più comandi eseguiti con i permessi del tuo utente sul sistema dove gira Kira. Gli strumenti di file restano nel progetto, ma la cartella di lavoro non è una sandbox: un comando può leggere il resto del sistema e usare la rete. Su Linux, quando il sistema lo permette, Kira blocca le scritture fuori dal progetto per i comandi che esegue lei; non lo fa su Windows né per i comandi di Codex e Claude Code. |
 | **Accesso completo** | Come Host fidato, più lettura, ricerca e scrittura anche fuori dal progetto, nelle cartelle accessibili al tuo utente. Valgono i permessi del sistema operativo, senza privilegi amministrativi automatici. |
 
-«Host» indica il sistema dove gira l'app: in WSL è quell'ambiente Linux. Con
-**Accesso completo** la cartella del progetto resta il punto di partenza dei
+«Host» indica il sistema dove gira l'app: Linux, l'ambiente Linux di WSL oppure
+Windows con l'installazione nativa. Scegli **Host fidato** solo per progetti e
+modelli di cui ti fidi: che cosa viene davvero limitato, caso per caso, è
+spiegato in
+[Permessi e sicurezza](PERMESSI_E_SICUREZZA.md#che-cosa-limita-davvero-host-fidato).
+Con **Accesso completo** la cartella del progetto resta il punto di partenza dei
 percorsi relativi (puoi indicare `../cartella-vicina/file.txt` o un percorso
 assoluto). Gli strumenti di file chiedono il contenuto attuale prima di
 sovrascrivere e non seguono i collegamenti simbolici. In **Impostazioni →
@@ -148,22 +157,41 @@ esecuzioni, Team o browser manuali attivi.
 ### Collegare un provider
 
 Apri **Modelli** nella barra laterale. I provider sono una fila di pulsanti:
-**Ollama**, **Codex**, **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**,
-**OpenRouter**, **DeepSeek Account**, **DeepSeek Web · sperimentale** e **Claude
-Code · uso personale**. Sotto, una riga riporta lo stato del provider con un
+**Kira Cloud**, **Ollama**, **Codex**, **OpenAI · ChatGPT**, **DeepSeek API**,
+**DeepSeek Web**, **Claude Code**, **Google Cloud · Vertex AI** e
+**OpenRouter**. I pulsanti usano nomi brevi: nel resto dell'app e in questa
+guida gli stessi provider si chiamano **OpenAI diretto · ChatGPT**, **DeepSeek
+Account**, **DeepSeek Web · sperimentale** e **Claude Code · uso personale**.
+Sotto, una riga riporta lo stato del provider con un
 punto colorato (verde collegato, ambra da collegare o senza modelli, rosso non
 disponibile, grigio disattivato), il pulsante **Disattiva provider** / **Attiva
 provider** (per nascondere o mostrare il provider nei selettori rapidi della
 chat e del Team conservando le credenziali salvate) e l'eventuale azione da
-compiere, per esempio **Accedi con Codex**, **Continua con ChatGPT** o
-**Configura OpenRouter**. Premi **Aggiorna** per rileggere il catalogo, poi
+compiere, per esempio **Accedi a Kira Account**, **Accedi con Codex**,
+**Continua con ChatGPT** o **Configura OpenRouter**. Premi **Aggiorna** per
+rileggere il catalogo, poi
 scegli un modello con **Usa modello** e, quando il modello lo dichiara, un
 livello di ragionamento.
 
 ![La pagina Modelli con i provider e le schede dei modelli](../images/models.png)
 
 Un modello elencato nel catalogo non prova che tu abbia diritto a usarlo: lo
-conferma la prima risposta riuscita. Kira non cambia mai il modello da sola.
+conferma la prima risposta riuscita. Kira non cambia il modello da sola: se una
+richiesta viene rifiutata, l'errore resta visibile e la chat mantiene il modello
+scelto. Ci sono due eccezioni, che valgono per la singola richiesta, sono
+segnalate da un avviso nella chat e non cambiano il modello selezionato:
+
+- con i modelli gratuiti di **OpenRouter** (`:free` e `openrouter/free`),
+  quando quello scelto è saturo o non risponde Kira completa la richiesta con
+  un altro modello gratuito;
+- con **Google Cloud · Vertex AI**, quando la quota è esaurita o il modello non
+  risponde Kira può completare la richiesta con un modello Gemini inferiore,
+  finché in **Modelli → Google Cloud** resta attiva l'opzione predefinita
+  **Scala automaticamente a Gemini 3.1 Pro / Flash**; se hai collegato più
+  account Google, Kira li alterna.
+
+I dettagli sono in
+[Provider](PROVIDER.md#principi-comuni-a-tutti-i-provider).
 Il collegamento di ciascun provider è descritto in [Provider](PROVIDER.md) e
 riassunto più avanti in [Provider in breve](#provider-in-breve).
 
@@ -273,6 +301,8 @@ produttrice, oppure in un'unica classifica quando scegli un ordine per prezzo
 o capacità. Gli aiuti non compaiono per gli elenchi corti.
 
 ![La finestra Provider, modello e ragionamento aperta sopra il campo di scrittura](../images/model-popover.png)
+
+![La pagina Modelli con la ricerca, i filtri per tipo e casa produttrice e le schede raggruppate; account, modelli e prezzi sono di esempio](../images/model-filters.png)
 
 ### Il vassoio degli strumenti
 
@@ -423,7 +453,7 @@ memoria](#contesto-e-memoria)).
   indicazioni**: il testo viene aggiunto al lavoro in corso senza fermare lo
   strumento già avviato. Le indicazioni sono solo testo, fino a 32.000 byte; gli
   allegati richiedono una richiesta separata. Con OpenAI diretto, Google Cloud,
-  OpenRouter, DeepSeek Account e Ollama le indicazioni entrano nella prossima
+  Kira Cloud, OpenRouter, DeepSeek Account e Ollama le indicazioni entrano nella prossima
   chiamata al modello, dopo la risposta o lo strumento in corso; con Codex Kira
   usa il suo invio al turno attivo, quando disponibile. Con DeepSeek Web e
   Claude Code le indicazioni non sono disponibili: usa **Accoda**. Le operazioni
@@ -465,14 +495,14 @@ di premere **Invia**. La preparazione è locale: il contenuto viene trasmesso al
 provider solo insieme al messaggio. Puoi inviare anche solo immagini, o
 accodarle con il testo.
 
-Le immagini arrivano al modello come **contenuto visivo** con
-**OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**, **OpenRouter** (solo
-con i modelli che nel catalogo dichiarano l'input `image`), **DeepSeek Account**
-(solo con i modelli che nel catalogo dichiarano il supporto alle immagini),
-**DeepSeek Web** (con entrambi i suoi modelli) e **Claude Code · uso personale**
-(fino a quattro PNG). Con **Codex** e **Ollama**, **Allega** e incolla
-inseriscono nel messaggio il percorso locale del file, anche per le immagini: il
-modello riceve testo, non pixel.
+Le immagini arrivano al modello come **contenuto visivo** con **Codex** (fino a
+quattro PNG), **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**,
+**Kira Cloud** e **OpenRouter** (solo con i modelli che nel catalogo dichiarano
+di accettare immagini), **DeepSeek Account** (solo con i modelli che nel
+catalogo dichiarano il supporto alle immagini), **DeepSeek Web** (con entrambi
+i suoi modelli) e **Claude Code · uso personale** (fino a quattro PNG). Con
+**Ollama**, **Allega** e incolla inseriscono nel messaggio il percorso locale
+del file, anche per le immagini: il modello riceve testo, non pixel.
 
 Limiti per le immagini come contenuto visivo:
 
@@ -566,8 +596,12 @@ copiato con **Copia**, la vista sorgente e l'esportazione restano originali.
 Le operazioni compaiono come righe collegate da un filo colorato. Ogni riga
 mostra il nome (**Lettura del file**, **Esecuzione del comando**, **Ricerca nel
 testo**…), il percorso o il comando, l'esito registrato e un'anteprima limitata
-di un eventuale errore. Gli strumenti sconosciuti mantengono il loro nome
-letterale. Premi la riga per aprire l'output originale, **Copia** e **Dati**.
+di un eventuale errore. Una riga riuscita può portare anche un avviso: per
+esempio, con **Host fidato**, **Eseguito senza blocco delle scritture: questo
+sistema non lo offre.** quando il comando è partito senza alcuna limitazione
+(vedi [Permessi e sicurezza](PERMESSI_E_SICUREZZA.md#che-cosa-limita-davvero-host-fidato)).
+Gli strumenti sconosciuti mantengono il loro nome letterale. Premi la riga per
+aprire l'output originale, **Copia** e **Dati**.
 
 Le operazioni consecutive della stessa richiesta sono raccolte in **Attività di
 Kira**, con il numero di operazioni e lo stato complessivo. Apri il gruppo per
@@ -617,7 +651,8 @@ modello: prima di riprovare, controlla le azioni già eseguite.
 ### Il riepilogo del ragionamento
 
 Quando il provider lo fornisce (Codex, OpenAI diretto, Google Cloud · Vertex AI,
-OpenRouter con i modelli di ragionamento e DeepSeek Web con DeepSeek Reasoner),
+Kira Cloud e OpenRouter con i modelli di ragionamento e DeepSeek Web con
+DeepSeek Reasoner),
 sotto la chat compare
 **Riepilogo del ragionamento**: un'anteprima compatta che puoi espandere e
 selezionare, con l'indicazione del provider e di eventuali parti incomplete.
@@ -778,12 +813,18 @@ conteggio preliminare del provider**. Stima e conteggio descrivono l'ultimo
 calcolo disponibile, non il prossimo invio. I token in cache occupano comunque
 contesto; i totali cumulativi non indicano lo spazio libero.
 
-Con **Google Cloud · Vertex AI**, **OpenRouter** e **DeepSeek Account** la
-modalità è **Automatico — compattazione Kira**: Kira stima la pressione prima
-dell'invio in base alla finestra di contesto del modello scelto, la calibra con
-i token riportati dal provider, mantiene gli scambi recenti e usa il modello
-selezionato per sintetizzare quelli precedenti, senza strumenti. La sintesi
-consuma quota dell'account o della chiave.
+Con **DeepSeek Account** la modalità è **Automatico — compattazione Kira**:
+Kira stima la pressione prima dell'invio in base alla finestra di contesto del
+modello scelto, la calibra con i token riportati dal provider, mantiene gli
+scambi recenti e usa il modello selezionato per sintetizzare quelli precedenti,
+senza strumenti. La sintesi consuma quota dell'account.
+
+Con **Google Cloud · Vertex AI**, **Kira Cloud** e **OpenRouter** non c'è un
+contesto salvato tra una richiesta e l'altra: a ogni richiesta Kira ricostruisce
+la conversazione recente dalla cronologia registrata e, se non entra nella
+finestra del modello, accorcia i risultati degli strumenti e i messaggi più
+vecchi, lasciando intatti gli ultimi. Non viene prodotta alcuna sintesi e il
+pannello **Contesto e memoria** mostra soltanto **Note e fonti della chat**.
 
 Prima di esaurire il budget, anche durante un lavoro con strumenti, Kira prepara
 un contesto più compatto: preferisce la compattazione nativa quando il provider
@@ -797,9 +838,9 @@ con lo stesso modello; se fallisce anche quello, il contesto precedente resta
 disponibile e l'errore viene segnalato. Nessun comando viene ripetuto per
 ricostruire il risultato.
 
-Con OpenAI diretto, Google Cloud, OpenRouter e DeepSeek Account, **Compatta
-ora** avvia una compattazione esplicita a chat inattiva (termina il lavoro e
-completa o rimuovi le richieste in coda). Può usare risorse del piano e
+Con OpenAI diretto e DeepSeek Account, **Compatta ora** avvia una
+compattazione esplicita a chat inattiva (termina il lavoro e completa o
+rimuovi le richieste in coda); con gli altri provider il pulsante non compare. Può usare risorse del piano e
 aggiungere attesa; non modifica file. Chiudere il pannello non annulla
 l'operazione. Per **Codex**, **Gestisci chat → Riduci il contesto** chiede al
 provider di compattare la sua conversazione, con conferma e chat inattiva; Kira
@@ -847,6 +888,7 @@ limite sull'attesa, non sulla durata totale.
 | **Codex** | Sì | Sì (fino a 4 PNG) | Sì | Sì | Sì |
 | **OpenAI diretto · ChatGPT** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
 | **Google Cloud · Vertex AI** | Sì | Sì (fino a 4) | Sì | Sì | Sì |
+| **Kira Cloud** | Sì (screenshot e Computer con modelli che accettano immagini) | Sì, solo modelli che accettano immagini (fino a 4) | Sì | Sì | Sì, con i modelli che espongono il ragionamento |
 | **OpenRouter** | Sì (screenshot e Computer con modelli che accettano immagini) | Sì, solo modelli con visione (fino a 4) | Sì | Sì | Sì, con i modelli che espongono il ragionamento |
 | **DeepSeek Account** (sperimentale) | Sì | Sì, solo modelli con visione | Sì | Sì | No |
 | **DeepSeek Web** (sperimentale) | Browser sì, Computer no | Sì | No | No | Sì, con DeepSeek Reasoner |
@@ -897,8 +939,8 @@ Kira gestisce l'intero ciclo degli strumenti, le immagini allegate, il
 ragionamento, il browser, gli obiettivi autonomi e i Team.
 
 **Kira Cloud.** È il modo più semplice per avere i modelli già pronti: in
-**Modelli → Kira Cloud** premi **Accedi a Kira Cloud**, conferma nel browser
-e scegli un modello. Non servono chiavi API; serve un account su
+**Modelli → Kira Cloud** premi **Accedi o registrati nel browser**, conferma
+nel browser e scegli un modello. Non servono chiavi API; serve un account su
 kiradesktop.com con un piano attivo. Il pannello mostra piano, credito AI
 residuo e limiti. I modelli indicati come **Crea e modifica immagini**
 generano immagini dalla chat: descrivi l'immagine, oppure allegane una da
@@ -909,7 +951,7 @@ scrittura, viene salvato in `generated_images/`. Dettagli in
 **OpenRouter.** In **Modelli → OpenRouter**
 incolla la tua chiave API OpenRouter (`sk-or-v1-...`, oppure imposta
 `OPENROUTER_API_KEY`). Kira la salva privatamente in
-`$XDG_CONFIG_HOME/kira/openrouter/config.json` (permessi `0600`), verifica lo
+`$XDG_CONFIG_HOME/kira/openrouter/account.json` (permessi `0600`), verifica lo
 stato e il consumo della chiave tramite `/api/v1/key` e scarica il catalogo
 dinamico da `/api/v1/models` (puoi aggiungere anche ID personalizzati o
 varianti come `:free`, `:nitro`, `:online`). Per ogni modello Kira adatta
@@ -1001,7 +1043,9 @@ collegato allo stesso account). Per **Google Cloud** e **OpenRouter**: i token
 registrati per ingresso, uscita, cache e ragionamento con la stima di costo in
 USD (per OpenRouter ricavata anche dalle tariffe dinamiche del modello e dal
 riepilogo crediti/consumo restituito da `/api/v1/key` nel pannello di
-configurazione). Per **Claude Code**: la finestra di sessione
+configurazione). Per **Kira Cloud**: il piano, il credito mensile e i crediti
+extra con gli importi residui e la data di rinnovo, letti dal tuo account Kira;
+da una chat Kira Cloud il pannello si apre già su questa voce. Per **Claude Code**: la finestra di sessione
 (5 ore) e quella settimanale con percentuale disponibile, ora del ripristino e
 uso extra, come le comunica Claude Code durante le esecuzioni; senza un turno
 recente la misura resta quella dell'ultima esecuzione. Sotto la chat una riga
@@ -1012,9 +1056,9 @@ riassume la quota già usata, **Piano Claude · sessione X% · settimana Y%**, c
 
 Kira include un browser isolato che il modello può usare per ricerca web,
 lettura di pagine e, con **Computer di Kira**, controllo visivo con mouse e
-tastiera. È disponibile con tutti i provider tranne Codex, che usa i propri
-strumenti. La guida completa, inclusi passkey e WSL, è in [Browser e
-Computer](BROWSER_E_COMPUTER.md).
+tastiera. Il browser è disponibile con tutti i provider, Codex compreso; con
+DeepSeek Web manca solo il Computer. La guida completa, inclusi passkey e WSL,
+è in [Browser e Computer](BROWSER_E_COMPUTER.md).
 
 ### Preparazione
 
@@ -1026,7 +1070,9 @@ kira-desktop browser-install
 
 (dal sorgente `uv run kira-desktop browser-install`). Kira scarica un motore
 Chromium dedicato; dal sorgente servono anche i pacchetti Linux `xvfb` e
-`libxtst6`, che i pacchetti nativi dichiarano tra le dipendenze.
+`libxtst6`, che i pacchetti nativi dichiarano tra le dipendenze. Sull'installazione
+nativa di Windows questo passo non serve: il motore viene scaricato da solo la
+prima volta che una chat apre il browser.
 
 ### Aprire il browser
 
@@ -1110,8 +1156,8 @@ pagina cambia mentre il modello decide, l'azione sulla vecchia schermata viene
 rifiutata e il modello deve osservare di nuovo; le operazioni non confermate non
 vengono ripetute. Ogni richiesta dispone di al massimo 32 cicli visuali; le
 immagini originali restano negli artefatti privati e il modello mantiene le due
-più recenti. Con OpenRouter e Ollama serve un modello che accetti immagini; con
-DeepSeek Web il Computer non è disponibile.
+più recenti. Con Kira Cloud, OpenRouter e Ollama serve un modello che accetti
+immagini; con DeepSeek Web il Computer non è disponibile.
 
 ## Team di agenti
 
@@ -1120,8 +1166,8 @@ assegna incarichi, i membri li eseguono e si scrivono tramite una casella di
 messaggi gestita da Kira. Le analisi indipendenti procedono in parallelo; le
 modifiche ai file le fa un membro alla volta. I ruoli indicano responsabilità,
 ma i permessi effettivi restano quelli del progetto e un lettore usa sempre la
-sola lettura. Funziona con Codex, OpenAI diretto, Google Cloud, OpenRouter,
-Ollama e DeepSeek Account; i dettagli sono in [Team](TEAM.md).
+sola lettura. Funziona con Codex, OpenAI diretto, Google Cloud, Kira Cloud,
+OpenRouter, Ollama e DeepSeek Account; i dettagli sono in [Team](TEAM.md).
 
 ### Dalla vista Team
 
@@ -1144,9 +1190,10 @@ senza esiti registrati dei membri è segnato **Conclusione da verificare**.
 
 ### Dalla chat
 
-Con Codex, OpenAI diretto, Google Cloud, OpenRouter, Ollama o DeepSeek Account e
-gli strumenti attivi puoi chiedere un Team direttamente nella chat (con
-OpenRouter e Ollama il modello deve supportare gli strumenti), per esempio:
+Con Codex, OpenAI diretto, Google Cloud, Kira Cloud, OpenRouter, Ollama o
+DeepSeek Account e gli strumenti attivi puoi chiedere un Team direttamente
+nella chat (con Kira Cloud, OpenRouter e Ollama il modello deve supportare gli
+strumenti), per esempio:
 «Organizza un team di tre membri: un coordinatore, un analista dei test e un
 revisore indipendente, in sola lettura». Claude Code e DeepSeek Web non eseguono
 Team, quindi le loro chat non possono richiederne uno. Il team eredita modello,
@@ -1529,11 +1576,11 @@ Ctrl+V, oppure usa **Allega** (il disco C: è `/mnt/c`). Aspetta l'anteprima
 prima di inviare.
 
 **Ho allegato un'immagine ma il modello non la vede.**
-Con Codex e Ollama le immagini arrivano come percorso testuale. Le immagini come
-contenuto visivo richiedono OpenAI diretto, Google Cloud · Vertex AI, OpenRouter
-(modelli con visione), DeepSeek Account (modelli con visione), DeepSeek Web o
-Claude Code, e un modello che le supporti: Kira avvisa se il modello selezionato
-non supporta immagini.
+Con Ollama le immagini arrivano come percorso testuale. Le immagini come
+contenuto visivo richiedono Codex, OpenAI diretto, Google Cloud · Vertex AI,
+Kira Cloud o OpenRouter (modelli che accettano immagini), DeepSeek Account
+(modelli con visione), DeepSeek Web o Claude Code, e un modello che le
+supporti: Kira avvisa se il modello selezionato non supporta immagini.
 
 **Il pulsante Invia è diventato «Invia indicazioni».**
 Nella chat c'è un turno attivo: il testo si aggiunge al lavoro in corso. Per

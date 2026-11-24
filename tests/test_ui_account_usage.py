@@ -11,7 +11,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QObject, QRectF
 from PySide6.QtQml import QQmlEngine, QQmlExpression
 
 from kira.domain.paths import Paths
-from kira.ui.account_usage import plan_summary, present_account_usage
+from kira.ui.account_usage import BACKENDS, plan_summary, present_account_usage
 from kira.ui.app import create_engine
 from kira.ui.controller import Workspace
 from test_ui_support import wait_opened
@@ -334,3 +334,111 @@ def test_plan_notice_refreshes_the_open_claude_view_and_feeds_the_footnote(usage
     workspace._backend = "codex"
     workspace.changed.emit()
     assert controller.planSummary == ""
+
+
+def kira_snapshot(**updates):
+    return {"available": True, "source": "kira_cloud", "scope": "provider_account",
+            "observed_at": "2026-02-03T10:20:00+00:00",
+            "account": {"type": "kira_cloud", "email": "person@example.test",
+                        "label": "Synthetic <person> (person@example.test)", "plan_type": "Synthetic plan",
+                        "connected": True},
+            "limits": [{"id": "kira_cloud_credit", "name": "Kira Cloud", "plan_type": "Synthetic plan",
+                        "status": "allowed",
+                        "credits": {"has_credits": True, "unlimited": False, "balance": "17.00 €"},
+                        "windows": [{"kind": "kira_monthly_credit", "used_percent": 40, "remaining_percent": 60,
+                                     "value_text": "12.00 € / 20.00 €", "resets_at": 1770459600},
+                                    {"kind": "kira_extra_credit", "used_percent": 0, "remaining_percent": 100,
+                                     "value_text": "5.00 € / 5.00 €", "resets_at": None}]}],
+            "local_usage": {"since": "2026-01-27T10:20:00Z", "until": "2026-02-03T10:20:00Z", "period_days": 7,
+                            "runs": 2, "requests": 3, "input_tokens": 1500, "cached_input_tokens": 500,
+                            "output_tokens": 250, "total_tokens": 1750},
+            **updates}
+
+
+def test_kira_cloud_chat_opens_its_own_usage_instead_of_codex(usage):
+    workspace, controller, requests = usage
+    workspace._backend = "kira_cloud"
+    workspace.changed.emit()
+    controller.open()
+    assert controller.backend == "kira_cloud"
+    assert requests[-1][:2] == ("backend.usage", {"backend": "kira_cloud"})
+    requests[-1][2](kira_snapshot())
+    assert controller.report["loaded"] and controller.report["source"] == "Kira Cloud"
+    # From another provider's chat, the selector entry loads Kira Cloud too.
+    controller.hide()
+    workspace._backend = "codex"
+    workspace.changed.emit()
+    controller.open()
+    assert requests[-1][:2] == ("backend.usage", {"backend": "codex"})
+    requests[-1][2](snapshot())
+    controller.setBackend("kira_cloud")
+    assert controller.backend == "kira_cloud" and not controller.report["loaded"]
+    assert requests[-1][:2] == ("backend.usage", {"backend": "kira_cloud"})
+
+
+def test_kira_cloud_credit_is_shown_as_amounts_with_renewal_and_no_invented_price():
+    report = present_account_usage(kira_snapshot(), "kira_cloud")
+    assert report["account"] == "Synthetic <person> (person@example.test)" and report["plan"] == "Synthetic plan"
+    assert report["account_status"] == "" and report["source"] == "Kira Cloud"
+    assert report["note"].startswith("Piano e credito AI riportati dal tuo account Kira")
+    group = report["groups"][0]
+    monthly, extra = group["windows"]
+    assert monthly["title"] == "Credito mensile del piano" and monthly["known"] and monthly["remaining"] == 60
+    assert monthly["value"] == "60% disponibile · 12.00 € / 20.00 €"
+    assert monthly["reset"].startswith("Rinnovo: ") and "2026" in monthly["reset"]
+    assert extra["title"] == "Crediti extra" and extra["value"] == "100% disponibile · 5.00 € / 5.00 €"
+    assert extra["reset"] == "Non scadono"
+    assert group["credits"] == "17.00 €" and group["status"] == ""
+    labels = [row["label"] for row in report["local_rows"]]
+    assert "Token in ingresso" in labels and report["local_rows"][labels.index("Token in ingresso")]["value"] == "1.500"
+    # What was charged is the credit above: no cost is derived from list prices.
+    assert not any("Costo" in label or "Risparmio" in label for label in labels)
+    assert any("Costo" in row["label"] for row in present_account_usage(kira_snapshot(), "openrouter")["local_rows"])
+
+    disconnected = present_account_usage(kira_snapshot(
+        available=False, reason="not_connected", limits=[],
+        account={"type": "kira_cloud", "label": "Kira Cloud", "plan_type": "Kira Cloud", "connected": False}),
+        "kira_cloud")
+    assert disconnected["account_status"] == "Account non collegato" and not disconnected["groups"]
+    assert disconnected["note"].startswith("Kira Cloud non è collegato")
+
+
+def test_usage_selector_entry_for_kira_cloud_is_wired_to_the_controller(usage, qtbot, qtlog):
+    workspace, controller, requests = usage
+    workspace._backend = "kira_cloud"
+    workspace.changed.emit()
+    engine = create_engine(workspace)
+    window = engine.rootObjects()[0]
+    window.setWidth(880)
+    window.setHeight(620)
+    try:
+        dialog = window.findChild(QObject, "usageDialog")
+        evaluate(dialog, "open()")
+        qtbot.waitUntil(lambda: bool(requests) and requests[-1][:2] == ("backend.usage", {"backend": "kira_cloud"}))
+        requests[-1][2](kira_snapshot())
+        choice = window.findChild(QObject, "usageProviderChoice")
+        card = window.findChild(QObject, "accountUsageCard")
+        joined = evaluate(card, "providers.join(',')")
+        joined = joined[0] if isinstance(joined, tuple) else joined
+        providers = str(joined.toString() if hasattr(joined, "toString") else joined).split(",")
+        # Every entry the selector offers is one the controller accepts.
+        assert sorted(providers) == sorted(BACKENDS)
+        qtbot.waitUntil(lambda: choice.property("currentIndex") == providers.index("kira_cloud"))
+        assert choice.property("currentText") == "Kira Cloud"
+        identity = window.findChild(QObject, "usageAccountIdentity")
+        assert "person@example.test" in identity.property("text")
+        choice.setProperty("currentIndex", providers.index("openrouter"))
+        evaluate(choice, f"activated({providers.index('openrouter')})")
+        assert controller.backend == "openrouter"
+        requests[-1][2](snapshot("openrouter", limits=[]))
+        choice.setProperty("currentIndex", providers.index("kira_cloud"))
+        evaluate(choice, f"activated({providers.index('kira_cloud')})")
+        assert controller.backend == "kira_cloud"
+        assert requests[-1][:2] == ("backend.usage", {"backend": "kira_cloud"})
+        assert not any("binding loop" in record.message.lower() or "ReferenceError" in record.message
+                       or "TypeError" in record.message for record in qtlog.records)
+    finally:
+        window.setProperty("closeConfirmed", True)
+        window.close()
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

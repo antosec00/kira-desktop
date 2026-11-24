@@ -21,7 +21,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea043" alt="MIT License"></a>
   <a href="docs/en/INSTALLATION.md"><img src="https://img.shields.io/badge/Linux-Ubuntu%2024.04%20%7C%2026.04%20(.deb)-3b82f6" alt="Ubuntu 24.04 and 26.04 packages"></a>
   <a href="docs/en/INSTALLATION.md#native-installation-on-windows-10-and-11"><img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20(x64)-0ea5e9" alt="Windows 10 and 11 installer"></a>
-  <a href="#providers"><img src="https://img.shields.io/badge/providers-8%20local%20%26%20cloud-8b5cf6" alt="8 local and cloud providers"></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-9%20local%20%26%20cloud-8b5cf6" alt="9 local and cloud providers"></a>
 </p>
 
 <p align="center">
@@ -102,6 +102,7 @@ always see what really happened.
 | **Codex** | OpenAI Codex App Server, with the official sign-in | Codex, with its sandboxes; Kira observes every operation and exposes its isolated browser, Computer and project tools via MCP |
 | **OpenAI · ChatGPT** | Your ChatGPT plan, with the official sign-in | Kira; image input, hosted web search, automatically managed context |
 | **Google Cloud · Vertex AI** | Isolated multi-account OAuth2 PKCE in Kira, read-only system `gcloud` ADC, or API Key | Kira; native Google models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.1-pro-preview`) and Vertex AI Partner Claude models, vision, and public reasoning summaries |
+| **Kira Cloud** | Kira account with an active plan; sign-in confirmed in the browser, no API keys | Kira; ready-to-use models, image creation and editing |
 | **OpenRouter** | OpenRouter API key (`sk-or-v1-...` stored in your local `0600` profile or `OPENROUTER_API_KEY` env var) | Kira; dynamic catalog (`/api/v1/models`), automatic adaptation to context window, `max_tokens`, `reasoning`/`thinking`, prompt caching (Claude/Gemini), multimodal vision, and anti-stall fallback for `:free` models |
 | **DeepSeek API** | DeepSeek account sign-in or DeeperSeeker proxy | Kira |
 | **DeepSeek Web** | Session token from the website | Kira, with a text protocol for the tools |

@@ -38,7 +38,9 @@ will be published with a note in the next release.
   user's profile and never reads another application's credentials, including
   Claude Code's.
 - **Private IPC.** GUI and service talk over a Unix socket in a 0700 runtime
-  directory; the service is the only SQLite writer.
+  directory; on native Windows, over a `127.0.0.1` port that accepts commands
+  only from whoever presents a secret renewed at every start and kept in the
+  profile. The service is the only SQLite writer.
 - **Browser.** Pages run in an isolated profile through a service-owned proxy;
   page content is untrusted data, consents and logins are yours.
 - **Attachments and tool data.** Bounded sizes, hashed artifacts, no replay of

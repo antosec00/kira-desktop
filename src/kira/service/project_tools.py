@@ -7,6 +7,7 @@ import base64
 import contextlib
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Any
@@ -24,7 +25,8 @@ from kira.service.storage import now
 from kira.service.tool_policy import kira_tools_enabled
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import command_environment
-from kira.tools.sandbox import sandbox_preexec, sandbox_tmpdir
+from kira.tools import sandbox
+from kira.tools.sandbox import sandbox_tmpdir
 
 if TYPE_CHECKING:
     from kira.service.server import Service
@@ -305,6 +307,7 @@ class ProjectTools:
         cancelled = False
         interrupted = False
         result: Json = {}
+        confinement: Json | None = None
         self.store.db.execute("UPDATE project_tool_operations SET state='running',cleanup_state='pending',updated_at=? WHERE id=?",
                               (now(), identifier))
         try:
@@ -313,9 +316,12 @@ class ProjectTools:
             project_record = self.store.one("projects", operation["project_id"])
             project_root = Path(project_record["root"])
             sandbox_mode = "unrestricted" if project_record["permission"] == "full_access" else "workspace_write"
-            preexec = sandbox_preexec(project_root, sandbox_mode)
+            # The worker is this interpreter, not a wrapped argv: Landlock or nothing.
+            applied = sandbox.confinement(sandbox_mode, wrapper=False)
+            preexec = sandbox.sandbox_preexec(project_root, sandbox_mode) if applied == "landlock" else None
+            confinement = sandbox.confinement_record(sandbox_mode, applied)
             env = command_environment()
-            if sandbox_mode != "unrestricted" and preexec is not None:
+            if preexec is not None:
                 env["TMPDIR"] = str(sandbox_tmpdir(project_root))
             process = await asyncio.create_subprocess_exec(sys.executable, "-I", "-S", "-B",
                 str(Path(__file__).resolve().parents[1] / "tools/project_tool_worker.py"),
@@ -375,6 +381,9 @@ class ProjectTools:
             interrupted = True
         except KiraError as exc:
             result = failure(exc.code, str(exc))
+        except subprocess.SubprocessError:
+            # The confinement could not be enforced in the worker: nothing ran.
+            result = failure("SANDBOX_FAILED", "The write confinement could not be applied; the tool was not run")
         except (OSError, ValueError):
             result = failure("WORKER_ERROR", "The project tool worker failed")
         finally:
@@ -412,6 +421,8 @@ class ProjectTools:
             start_released=started, exit_code=process.returncode if process else None,
             cleanup_confirmed=cleanup, external_effects="unverified",
             stderr=bytes(buffers["stderr"]).decode("utf-8", "replace")[:2000])
+        if confinement is not None and started:
+            result["write_confinement"] = confinement
         if not cleanup:
             result["state"] = "unknown"
         if interrupted:

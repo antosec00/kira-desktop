@@ -2,7 +2,6 @@
 
 import json
 import logging
-import sys
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -15,6 +14,7 @@ from kira.ui.presentation import tr
 from kira.ui.service_errors import service_error_text
 
 from kira import __version__
+from kira.domain import ipc
 from kira.domain.contracts import IPC_VERSION, MAX_FRAME_BYTES
 
 Json = dict[str, Any]
@@ -56,10 +56,12 @@ class LocalClient(QObject):
         super().__init__(parent)
         self.socket_path = socket_path
         self.socket: QLocalSocket | QTcpSocket = (
-            QTcpSocket(self) if sys.platform == "win32" else QLocalSocket(self)
+            QTcpSocket(self) if ipc.tcp_transport() else QLocalSocket(self)
         )
+        # The secret read with the loopback endpoint; empty on a Unix socket.
+        self._token = ""
         self.socket.setReadBufferSize(MAX_FRAME_BYTES + 1)
-        self.socket.connected.connect(self._hello)
+        self.socket.connected.connect(self._authenticate)
         self.socket.readyRead.connect(self._read)
         self.socket.disconnected.connect(self._disconnected)
         self.socket.errorOccurred.connect(self._error)
@@ -82,9 +84,10 @@ class LocalClient(QObject):
                 return
             self._buffer.clear()
             try:
-                ep_text = Path(self.socket_path).read_text(encoding="utf-8").strip()
-                host, port_str = ep_text.rsplit(":", 1)
-                self.socket.connectToHost(host, int(port_str))
+                # Read again at every attempt: a restarted service listens on
+                # another port with another secret.
+                host, port, self._token = ipc.read_endpoint(Path(self.socket_path))
+                self.socket.connectToHost(host, port)
             except (OSError, ValueError):
                 if not self.compatible and not self.incompatible:
                     self.problem.emit(tr("In attesa del servizio locale…"))
@@ -107,6 +110,24 @@ class LocalClient(QObject):
         self.socket.abort()
 
     @Slot()
+    def _authenticate(self) -> None:
+        """Present the loopback secret before the handshake; a Unix socket needs none."""
+        if not self._token:
+            self._hello()
+            return
+
+        def refused(error: Json) -> None:
+            if error.get("code") == "DISCONNECTED":
+                return
+            # The service restarted after the endpoint was read: the next
+            # attempt reads the new secret. This is not another version.
+            if not self.incompatible:
+                self.problem.emit(tr("In attesa del servizio locale…"))
+            self.socket.abort()
+
+        self.request(ipc.AUTH_METHOD, {"token": self._token}, lambda _result: self._hello(),
+                     refused, handshake=True)
+
     def _hello(self) -> None:
         def checked(result: Json) -> None:
             if result.get("version") != IPC_VERSION or result.get("app_version") != __version__:

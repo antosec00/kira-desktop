@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from kira import __version__
+from kira.domain import ipc
 from kira.domain.contracts import IPC_VERSION, MAX_FRAME_BYTES, KiraError
 from kira.domain.paths import Paths
 
@@ -42,11 +43,10 @@ class Client:
         ``same_version=False`` is only for stopping a service of another
         version, which still enforces its own idle checks.
         """
-        if sys.platform == "win32":
+        token = ""
+        if ipc.tcp_transport():
             try:
-                ep_text = self.paths.socket.read_text(encoding="utf-8").strip()
-                host, port_str = ep_text.rsplit(":", 1)
-                port = int(port_str)
+                host, port, token = ipc.read_endpoint(self.paths.socket)
             except (OSError, ValueError) as exc:
                 raise FileNotFoundError(str(self.paths.socket)) from exc
             self.reader, self.writer = await asyncio.open_connection(
@@ -58,6 +58,14 @@ class Client:
             )
         self._reader_task = asyncio.create_task(self._read())
         try:
+            if token:
+                # Loopback TCP: the service reads no command before this secret.
+                # A refusal usually means the service restarted since the file
+                # was read, so it is reported like an unreachable service.
+                try:
+                    await self.request(ipc.AUTH_METHOD, {"token": token}, timeout=ipc.AUTH_TIMEOUT)
+                except KiraError as exc:
+                    raise ConnectionError("Kira service refused this connection's secret") from exc
             hello = await self.request("hello")
             if hello.get("version") != IPC_VERSION:
                 raise KiraError("VERSION_MISMATCH", "The running Kira service uses an incompatible protocol")

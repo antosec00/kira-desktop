@@ -141,6 +141,9 @@ def _sync_tree(src: Path, dst: Path) -> int:
 
 
 def _write_launchers(install_dir: Path, wsl_repo_win_path: str) -> None:
+    # A packaged installation follows no development copy. An empty path must
+    # not become Path(""), which is the current directory of whoever starts Kira.
+    dev_repo = f"Path({wsl_repo_win_path!r})" if wsl_repo_win_path else "None"
     launch_pyw = install_dir / "launch_kira.pyw"
     launch_pyw.write_text(
         f'''"""Native Windows launcher for Kira Desktop with automatic dev-repo sync."""
@@ -154,7 +157,8 @@ from pathlib import Path
 
 INSTALL_DIR = Path(__file__).resolve().parent
 APP_DIR = INSTALL_DIR / "app"
-DEV_REPO = Path({wsl_repo_win_path!r})
+# The development copy this installation follows; None when installed from a package.
+DEV_REPO: Path | None = {dev_repo}
 
 
 def _sync_dir(src: Path, dst: Path) -> int:
@@ -194,6 +198,10 @@ def _sync_dir(src: Path, dst: Path) -> int:
 
 
 def _auto_sync_from_dev_repo() -> bool:
+    # Only an explicit absolute development copy is ever followed: a relative
+    # one would be whatever folder Kira happens to be started from.
+    if DEV_REPO is None or not DEV_REPO.is_absolute():
+        return False
     try:
         src_kira = DEV_REPO / "src" / "kira"
         if not src_kira.is_dir():

@@ -208,7 +208,7 @@ async def test_shadow_checkpoints_auto_run_diff_and_instant_rollback():
         await service.start()
         try:
             hello = await service.dispatch("hello", {})
-            assert hello["capabilities"]["os_sandbox"] is True
+            assert hello["capabilities"]["os_sandbox"] is probe_sandbox()["available"]
             assert hello["capabilities"]["shadow_checkpoints"] is True
 
             resources = await service.dispatch("system.resources", {})

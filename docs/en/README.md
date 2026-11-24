@@ -23,7 +23,7 @@ are. It is written in Italian; the English translation is in `docs/en/`.
 | --- | --- |
 | Using Kira every day: projects, chats, requests, results, settings, shortcuts, frequently asked questions | [User guide](USER_GUIDE.md) |
 | Requirements, packages, running from source, data paths, profiles, backups, upgrades, troubleshooting | [Installation](INSTALLATION.md) |
-| Ollama, Codex, OpenAI · ChatGPT, Google Cloud · Vertex AI, OpenRouter, DeepSeek, Claude Code; enabling/disabling providers; switching provider in the same chat; usage and resources | [Providers](PROVIDERS.md) |
+| Ollama, Codex, OpenAI · ChatGPT, Google Cloud · Vertex AI, Kira Cloud, OpenRouter, DeepSeek, Claude Code; enabling/disabling providers; switching provider in the same chat; usage and resources | [Providers](PROVIDERS.md) |
 
 | Project permissions, read-only modes, full access, native actions, command line, data that stays local | [Permissions and security](PERMISSIONS_AND_SECURITY.md) |
 | Web search, isolated browser, Kira's Computer, consents, manual login, passkeys | [Browser and Computer](BROWSER_AND_COMPUTER.md) |

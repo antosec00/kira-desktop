@@ -50,8 +50,12 @@ QtObject {
         }
         return String(group || "")
     }
+    // Numbers follow the interface language, like the amounts the account panel shows.
+    function uiLocale() {
+        return Qt.locale(typeof localization !== "undefined" ? localization.language : "")
+    }
     function money(value, currency, digits) {
-        return Number(value).toLocaleString(Qt.locale(), "f", digits) + " " + (currency === "USD" ? "$" : "€")
+        return Number(value).toLocaleString(uiLocale(), "f", digits) + " " + (currency === "USD" ? "$" : "€")
     }
     // The price as the catalog states it: per image for pictures, read / written per 1M tokens for text.
     function modelPrice(row) {
@@ -59,7 +63,7 @@ QtObject {
         if (!pricing) return ""
         if (pricing.per_image > 0) return qsTr("da %1 a immagine").arg(money(pricing.per_image, pricing.currency, pricing.per_image < 0.1 ? 3 : 2))
         if (!(pricing.input_per_1m > 0) && !(pricing.output_per_1m > 0)) return ""
-        return qsTr("%1 / %2 per 1M").arg(Number(pricing.input_per_1m).toLocaleString(Qt.locale(), "f", 2)).arg(money(pricing.output_per_1m, pricing.currency, 2))
+        return qsTr("%1 / %2 per 1M").arg(Number(pricing.input_per_1m).toLocaleString(uiLocale(), "f", 2)).arg(money(pricing.output_per_1m, pricing.currency, 2))
     }
     function modelScore(row) {
         const scores = row && row.scores ? row.scores : null
@@ -73,7 +77,7 @@ QtObject {
         const group = modelGroupLabel(row.group)
         if (group.length > 0) parts.push(group)
         const score = modelScore(row)
-        if (score > 0) parts.push(qsTr("indice %1").arg(Number(score).toLocaleString(Qt.locale(), "f", 0)))
+        if (score > 0) parts.push(qsTr("indice %1").arg(Number(score).toLocaleString(uiLocale(), "f", 0)))
         const price = modelPrice(row)
         if (price.length > 0) parts.push(price)
         return parts.join("  ·  ")

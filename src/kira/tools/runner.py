@@ -4,13 +4,15 @@ import asyncio
 import os
 import shutil
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 from kira.domain.contracts import KiraError
-from kira.tools.sandbox import SANDBOX_MODES, bwrap_usable, sandbox_preexec, sandbox_tmpdir, wrap_bwrap_argv
+from kira.tools import sandbox
+from kira.tools.sandbox import SANDBOX_MODES, sandbox_tmpdir
 
 # Commands create project files (git clone, package managers, build output) with
 # the conventional user default, independent of the umask of the service that
@@ -75,10 +77,12 @@ class CommandRunner:
             return {"ok": False, "cancelled": True, "exit_code": None, "stdout": "", "stderr": ""}
         started = time.monotonic()
         loop = asyncio.get_running_loop()
-        preexec = sandbox_preexec(root, sandbox_mode)
-        exec_argv = list(wrap_bwrap_argv(argv, root, sandbox_mode) if (preexec is None and bwrap_usable()) else argv)
+        # Decided once, so the result states exactly what this process got.
+        applied = sandbox.confinement(sandbox_mode)
+        preexec = sandbox.sandbox_preexec(root, sandbox_mode) if applied == "landlock" else None
+        exec_argv = list(sandbox.wrap_bwrap_argv(argv, root, sandbox_mode) if applied == "bwrap" else argv)
         env = command_environment()
-        if sandbox_mode != "unrestricted" and preexec is not None:
+        if preexec is not None:
             env["TMPDIR"] = str(sandbox_tmpdir(root))
         if sys.platform == "win32" and exec_argv:
             cmd0 = exec_argv[0]
@@ -91,12 +95,17 @@ class CommandRunner:
                     exec_argv[0] = resolved_cmd
         # The transport is kept so the pipes can be closed even when a process
         # outside the owned group still holds their write ends.
-        transport, protocol = await loop.subprocess_exec(
-            lambda: asyncio.subprocess.SubprocessStreamProtocol(limit=STREAM_LIMIT, loop=loop),
-            *exec_argv, cwd=root, env=env, start_new_session=True,
-            umask=COMMAND_UMASK, preexec_fn=preexec, stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            transport, protocol = await loop.subprocess_exec(
+                lambda: asyncio.subprocess.SubprocessStreamProtocol(limit=STREAM_LIMIT, loop=loop),
+                *exec_argv, cwd=root, env=env, start_new_session=True,
+                umask=COMMAND_UMASK, preexec_fn=preexec, stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+        except subprocess.SubprocessError as exc:
+            # The confinement could not be enforced in the child: nothing ran.
+            raise KiraError("SANDBOX_FAILED", "The write confinement could not be applied; "
+                            "the command was not run") from exc
         proc = asyncio.subprocess.Process(transport, protocol, loop)
         chunks: dict[str, bytearray] = {"stdout": bytearray(), "stderr": bytearray()}
         total = 0
@@ -195,6 +204,7 @@ class CommandRunner:
             "timeout": timed_out, "timeout_seconds": timeout, "cancelled": cancelled,
             "background_processes_terminated": background_terminated,
             "duration_seconds": round(time.monotonic() - started, 4),
+            "write_confinement": sandbox.confinement_record(sandbox_mode, applied),
         }
         if detached:
             result["detached_pipe_holder"] = True

@@ -233,7 +233,7 @@ queue.
 
 - **Codex** uses its own delivery to the active turn, when the turn allows it.
 - **Direct OpenAI · ChatGPT**, **DeepSeek Account**, **Google Cloud · Vertex
-  AI**, **OpenRouter** and **Ollama** receive it at the **next request** to the
+  AI**, **Kira Cloud**, **OpenRouter** and **Ollama** receive it at the **next request** to the
   model: the response or tool already in progress finishes normally, then the
   waiting text is added in order. Tools of a group not yet started can be
   deferred with outcome `DEFERRED_FOR_USER_GUIDANCE`, so that the model
@@ -454,16 +454,20 @@ start or resume work.
 
 | Provider | Visual content of attachments |
 | --- | --- |
+| **Codex** | Yes, up to 4 PNGs |
 | **Direct OpenAI · ChatGPT** | Yes |
 | **Google Cloud · Vertex AI** | Yes |
+| **Kira Cloud** | Yes, with models whose catalog entry declares that they accept images |
 | **OpenRouter** | Yes, with models whose catalog entry declares vision (`image` in `architecture.input_modalities`) |
 | **DeepSeek Account** (experimental) | Yes, only with the models whose catalog entry declares image support |
 | **DeepSeek Web** (experimental) | Yes, with DeepSeek V4 Flash (web) and DeepSeek Reasoner (web) |
 | **Claude Code · personal use** (experimental) | Yes, up to 4 PNGs |
-| **Codex**, **Ollama** | No: the attachment becomes a reference to the path, as text |
+| **Ollama** | No: the attachment becomes a reference to the path, as text |
 
 A refusal by the model is shown as an error: Kira does not change model on its
-own.
+own, except for the two exceptions declared in
+[Providers](PROVIDERS.md#principles-shared-by-all-providers) (OpenRouter free
+models and Google Cloud continuity).
 
 ### Attaching an image
 
@@ -502,10 +506,9 @@ draft but sending is blocked: choose a compatible model or remove them.
 ### Paths as text
 
 **Writing or pasting a path remains text**: it does not attach the bytes and
-does not let the model see the image. With **Codex** and **Ollama**,
-**Attach** and paste always insert the local path, even for images; with the
-other providers the same applies to non-image files and to free-text answers
-to questions. An image pasted from the clipboard into an answer to a question
+does not let the model see the image. With **Ollama**, **Attach** and paste
+always insert the local path, even for images; with the other providers the
+same applies to non-image files and to free-text answers to questions. An image pasted from the clipboard into an answer to a question
 is saved as a private PNG in the `attachments/` folder and inserted as a path.
 Reading a path requires the project's tools and permissions and does not
 guarantee visual understanding.
@@ -640,9 +643,12 @@ send or for your own cancellations.
 
 An **HTTP 503** means the provider was unavailable for that request; the code
 alone does not say whether the cause was overload, a billing problem or
-something else. Kira **does not resend** automatically, does not replace the
-draft and does not change model: the sent message is saved in the chat
-anyway. Before retrying, check in **Activity** the actions already executed.
+something else. Once the error appears, Kira **does not resend**
+automatically, does not replace the draft and does not change model: the sent
+message is saved in the chat anyway. The only automatic model changes, which
+happen before the error is shown, are the two exceptions declared in
+[Providers](PROVIDERS.md#principles-shared-by-all-providers). Before retrying,
+check in **Activity** the actions already executed.
 
 ## 14. Chat preferences
 
@@ -667,7 +673,7 @@ credentials.
 | **Show reasoning summaries** | yes / no | Shows or hides the **Reasoning summary** panel under the chat without interrupting the work. |
 
 The **Reasoning summary** is the public summary that some providers (Codex,
-Direct OpenAI, Google Cloud, OpenRouter) supply during processing, or the
+Direct OpenAI, Google Cloud, Kira Cloud, OpenRouter) supply during processing, or the
 reasoning that DeepSeek Web shows on its own site with DeepSeek Reasoner; it
 does not certify that an operation happened and is not the final response; with
 Ollama, DeepSeek Account and Claude Code it is not available. Themes, fonts,

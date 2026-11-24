@@ -86,6 +86,7 @@ from kira.service.omnibox import METHODS as OMNIBOX_METHODS
 from kira.service.studio import METHODS as STUDIO_METHODS, Studio
 from kira.tools.filesystem import FileTools
 from kira.tools.runner import CommandRunner
+from kira.domain import ipc
 from kira.tools.sandbox import probe_sandbox
 
 DEFAULT_SETTINGS: Json = {"ollama_url": "http://127.0.0.1:11434", "codex_binary": "codex",
@@ -197,6 +198,10 @@ class Service:
         self.clients: set[Client] = set()
         self.redactor = Redactor()
         self._lock_fd: int | None = None
+        # Set only on loopback TCP, where a connection proves nothing about its peer.
+        self._ipc_token: str | None = None
+        # What this system can really enforce, probed once at start.
+        self._sandbox: Json = {"available": False, "backend": "none"}
         self._started = False
         self._closing = False
         self._stream_bytes: dict[str, int] = defaultdict(int)
@@ -216,6 +221,8 @@ class Service:
 
     async def start(self) -> None:
         self.paths.ensure()
+        # The probe starts trial processes: keep it off the event loop.
+        self._sandbox = await asyncio.to_thread(probe_sandbox)
         lock_path = self.paths.db.with_suffix(".lock")
         self._lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         try:
@@ -240,14 +247,13 @@ class Service:
                         _ = accounts.auth
             if self.paths.socket.exists() or self.paths.socket.is_symlink():
                 info = self.paths.socket.lstat()
-                if sys.platform == "win32":
+                if ipc.tcp_transport():
                     if not stat.S_ISREG(info.st_mode):
                         raise KiraError("UNSAFE_PATH", "Refusing to replace an unsafe socket path")
                     try:
-                        ep_text = self.paths.socket.read_text(encoding="utf-8").strip()
-                        ep_host, ep_port_str = ep_text.rsplit(":", 1)
+                        ep_host, ep_port, _ = ipc.read_endpoint(self.paths.socket)
                         _, existing = await asyncio.wait_for(
-                            asyncio.open_connection(ep_host, int(ep_port_str)), 1
+                            asyncio.open_connection(ep_host, ep_port), 1
                         )
                     except (OSError, ValueError):
                         pass
@@ -330,12 +336,13 @@ class Service:
             self.goals = AutonomousGoals(self)
             self.goals.recover()
             self.triggers = TriggerService(self)
-            if sys.platform == "win32":
+            if ipc.tcp_transport():
+                self._ipc_token = ipc.new_token()
                 self.server = await asyncio.start_server(
-                    self._client, host="127.0.0.1", port=0, limit=MAX_FRAME_BYTES
+                    self._client, host=ipc.LOOPBACK, port=0, limit=MAX_FRAME_BYTES
                 )
                 bound_port = self.server.sockets[0].getsockname()[1]
-                self.paths.socket.write_text(f"127.0.0.1:{bound_port}\n", encoding="utf-8")
+                ipc.write_endpoint(self.paths.socket, bound_port, self._ipc_token)
             else:
                 self.server = await asyncio.start_unix_server(self._client, path=self.paths.socket,
                                                               limit=MAX_FRAME_BYTES)
@@ -415,10 +422,65 @@ class Service:
             self._lock_fd = None
         self._started = False
 
+    async def _authenticate(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> bool:
+        """Accept a loopback connection only after it presents this start's secret.
+
+        The first frame must be the authentication request and nothing else: a
+        peer that sends anything different (another program, a web page posting
+        to the port) is answered once and closed before any command is read.
+        """
+        assert self._ipc_token is not None
+        request_id: str | None = None
+        accepted = False
+        try:
+            line = await asyncio.wait_for(reader.readline(), ipc.AUTH_TIMEOUT)
+        except (TimeoutError, ValueError, asyncio.LimitOverrunError, ConnectionError):
+            return False
+        if line.endswith(b"\n") and len(line) <= ipc.AUTH_FRAME_BYTES:
+            try:
+                request = json.loads(line)
+            except (ValueError, UnicodeError, RecursionError):
+                request = None
+            if isinstance(request, dict):
+                candidate = request.get("id")
+                if isinstance(candidate, str) and len(candidate) <= 128:
+                    request_id = candidate
+                params = request.get("params")
+                accepted = (type(request.get("version")) is int and request["version"] == IPC_VERSION
+                            and request.get("method") == ipc.AUTH_METHOD
+                            and isinstance(params, dict) and set(params) == {"token"}
+                            and ipc.token_matches(self._ipc_token, params["token"]))
+        reply: Json = {"version": IPC_VERSION, "id": request_id}
+        if accepted:
+            reply["result"] = {"authenticated": True}
+        else:
+            reply["error"] = {"code": "UNAUTHENTICATED", "message": (
+                "This connection did not present the Kira service secret. Close Kira, stop "
+                "the service and open Kira again so that interface and service match.")}
+        with contextlib.suppress(ConnectionError):
+            writer.write(encode(reply).encode("utf-8") + b"\n")
+            await writer.drain()
+        return accepted
+
     async def _client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         task = asyncio.current_task()
         if task:
             self._client_tasks.add(task)
+        if self._ipc_token is not None:
+            # A stranger is never registered as a client: it receives no event
+            # or broadcast while the service waits for its secret.
+            accepted = False
+            try:
+                accepted = await self._authenticate(reader, writer)
+            finally:
+                if not accepted:
+                    writer.close()
+                    with contextlib.suppress(ConnectionError, asyncio.CancelledError):
+                        await writer.wait_closed()
+                    if task:
+                        self._client_tasks.discard(task)
+            if not accepted:
+                return
         client = Client(writer)
         self.clients.add(client)
         sender = asyncio.create_task(client.pump())
@@ -621,7 +683,8 @@ class Service:
                      "event_triggers": True, "ambient_spotlight": True,
                      "provider_continuity": True, "image_attachments": True, "embedded_browser": True,
                      "project_research": True, "knowledge": True, "project_tools": True, "personalized_souls": True,
-                     "os_sandbox": True, "shadow_checkpoints": True, "semantic_code_index": True,
+                     "os_sandbox": self._sandbox["available"] is True,
+                     "shadow_checkpoints": True, "semantic_code_index": True,
                      "interactive_canvas": True, "omnibox_search": True,
                      **({"studio_m1": True, "studio_agent_gateway": True}
                         if studio_domain.STUDIO_AVAILABLE else {})}}

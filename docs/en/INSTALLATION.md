@@ -27,7 +27,7 @@ own system: **they are not interchangeable**. The package for Ubuntu 26.04
 requires Python 3.14 and does not install on Ubuntu 24.04; the one for Ubuntu
 24.04 requires Python 3.12. On Windows 10 and 11 the `.exe` installer configures
 an isolated native Python 3.12 environment under
-`%LOCALAPPDATA%\Programs\KiraDesktop` without requiring WSL and without
+`%LOCALAPPDATA%\Programs\Kira Desktop` without requiring WSL and without
 modifying any Python installations already present on the system.
 
 On Windows you can choose between [native installation](#native-installation-on-windows-10-and-11)
@@ -135,10 +135,42 @@ directly on the system, without needing WSL:
 
 2. Run `kira-desktop_windows_amd64_setup.exe`: the installer extracts the
    source, sets up an isolated Python 3.12 environment in
-   `%LOCALAPPDATA%\Programs\KiraDesktop` through `uv`, builds the dedicated
+   `%LOCALAPPDATA%\Programs\Kira Desktop` through `uv`, builds the dedicated
    `KiraDesktop.exe` launcher with Kira's icon and creates **Kira Desktop**
-   shortcuts on the Desktop and in the Start menu.
+   shortcuts on the Desktop and in the Start menu. The first installation
+   needs an Internet connection: if `uv` is not already present it is
+   downloaded, and with it Python 3.12 and Kira's libraries.
 3. Launch **Kira Desktop** from the Desktop shortcut or the Start menu.
+
+Compared with Ubuntu, this is what changes on the native Windows installation:
+
+- **Terminal commands.** `kira` and `kira-desktop` are not added to the `PATH`.
+  The installation folder contains `kira.cmd`, which accepts the same arguments
+  described in this guide, for example
+  `"%LOCALAPPDATA%\Programs\Kira Desktop\kira.cmd" doctor` from the Command
+  Prompt, or `& "$env:LOCALAPPDATA\Programs\Kira Desktop\kira.cmd" doctor`
+  from PowerShell. Where the guide writes `kira-desktop <command>`, on Windows
+  use `kira.cmd <command>`.
+- **Service.** There is no systemd: the interface starts the service as a
+  windowless background process, which keeps working after the window is
+  closed. Its log is `%LOCALAPPDATA%\Kira\state\service.log` and it is
+  stopped with `kira.cmd stop-service`.
+- **Data.** The profile lives in `%LOCALAPPDATA%\Kira` (see
+  [Where the data lives](#where-the-data-lives)); `KIRA_HOME` works on Windows
+  too.
+- **Isolated browser.** The Chromium engine is downloaded by itself the first
+  time a chat opens the browser and runs without a window: `browser-install` is
+  not needed and the virtual screen used on Linux does not exist (see
+  [Isolated browser](#isolated-browser)).
+- **Agent commands.** With **Trusted host** commands have no write block at
+  all, which exists on Linux only: see
+  [Permissions and security](PERMISSIONS_AND_SECURITY.md#what-trusted-host-really-restricts).
+- **Claude Code.** The installation already includes the library required by
+  the **Claude Code · personal use** provider; Claude Code still has to be
+  installed and signed in separately, as described in
+  [Providers](PROVIDERS.md).
+- **Updating and removing.** See [Updating from Kira](#updating-from-kira) and
+  [What remains after uninstalling](#what-remains-after-uninstalling).
 
 If you work from source (on Windows or from WSL2 on Windows), you can also
 build or update the local Windows installation directly with:
@@ -153,9 +185,12 @@ Git, ripgrep, Codex and Claude Code) run without flashing console windows
 
 ## On Windows with WSL
 
-On Windows Kira runs inside WSL2, in an Ubuntu distribution, and shows its
-windows through WSLg. WSLg is included in Windows 11 and, on Windows 10 (build
-19044 or later), in the version of WSL distributed through the Microsoft Store.
+As an alternative to the native installation, on Windows you can use the
+Linux version of Kira inside WSL2, in an Ubuntu distribution, which shows its
+windows through WSLg. In this case the Ubuntu instructions apply, including the
+write block on **Trusted host** commands when the WSL kernel offers Landlock.
+WSLg is included in Windows 11 and, on Windows 10 (build 19044 or later), in
+the version of WSL distributed through the Microsoft Store.
 
 1. Open PowerShell as administrator. If WSL was already installed, first run
    `wsl --update`, which brings it to the latest version. Then install Ubuntu
@@ -241,10 +276,11 @@ separately and activate them with the [upgrade procedure](#upgrading).
 ## First launch and useful commands
 
 Start Kira from the application menu or with `kira` (the full name
-`kira-desktop` is equivalent). The interface looks for the Kira service (the
-process that owns the database and talks to the providers): if it is not
-running, it starts it, through systemd in the package installation or as a
-background process from source or when you use a separate profile with
+`kira-desktop` is equivalent); on native Windows from the **Kira Desktop**
+shortcut. The interface looks for the Kira service (the process that owns the
+database and talks to the providers): if it is not running, it starts it,
+through systemd in the package installation or as a background process from
+source, on native Windows or when you use a separate profile with
 `KIRA_HOME`. The service keeps working even when you close the window, as long
 as your user session stays open.
 
@@ -262,7 +298,7 @@ These commands work from any folder. `kira` is the short name of
 | `kira-desktop` | Opens the interface and, if needed, starts the service |
 | `kira-desktop --version` | Shows the installed version |
 | `kira-desktop diagnostics` | Prints a local report on the state of the installation, with private data filtered out; `--export` saves it as a JSON file in `diagnostics/` inside the data folder |
-| `kira-desktop doctor` | Queries the service and reports the real state of the resources and of each provider (Ollama, Codex, Direct OpenAI, Google Cloud, OpenRouter, DeepSeek Account, DeepSeek Web, Claude Code); an unavailable provider does not hide the others |
+| `kira-desktop doctor` | Queries the service and reports the real state of the resources (including the command confinement available, in `resources.sandbox`) and of all nine providers (Ollama, Codex, Direct OpenAI, DeepSeek Account, DeepSeek Web, Claude Code, Google Cloud, OpenRouter, Kira Cloud); an unavailable provider does not hide the others |
 | `kira-desktop service` | Runs the service in the foreground in the terminal, useful to see the logs while you try something |
 | `kira-desktop stop-service` | Stops the running service, but only if it is idle, even when it belongs to another version of Kira; if no service is running it starts none and says so |
 | `kira-desktop browser-install` | Downloads the Chromium engine of the isolated browser for the selected profile |
@@ -297,7 +333,7 @@ and, if they are missing, the standard paths under your home folder:
 | Database `kira.sqlite3`, attachments, artifacts, captures, browser | `$XDG_DATA_HOME/kira/` | `$HOME/.local/share/kira/` |
 | Interface preferences | `$XDG_CONFIG_HOME/kira/ui.json` | `$HOME/.config/kira/ui.json` |
 | Chat drafts and reusable history | `$XDG_CONFIG_HOME/kira/composer.json` | `$HOME/.config/kira/composer.json` |
-| Provider sign-ins managed by Kira (Direct OpenAI, Google Cloud, OpenRouter, DeepSeek Account, DeepSeek Web) | `$XDG_CONFIG_HOME/kira/` (`openai-chatgpt/`, `google-cloud/`, `openrouter/`, `deepseek-account/`, `deepseek-web/`) | `$HOME/.config/kira/` (same folders) |
+| Provider sign-ins managed by Kira (Direct OpenAI, Google Cloud, Kira Cloud, OpenRouter, DeepSeek Account, DeepSeek Web) | `$XDG_CONFIG_HOME/kira/` (`openai-chatgpt/`, `google-cloud/`, `kira_cloud/`, `openrouter/`, `deepseek-account/`, `deepseek-web/`) | `$HOME/.config/kira/` (same folders) |
 | Drafts and pending identities of Soul, Research and project tools | `$XDG_STATE_HOME/kira/` (`souls-ui/`, `research-ui/`, `knowledge-ui/`, each with `composer.json`) | `$HOME/.local/state/kira/` (same folders) |
 | State and log of the service started in the background | `$XDG_STATE_HOME/kira/` | `$HOME/.local/state/kira/` |
 | Communication socket between interface and service | `$XDG_RUNTIME_DIR/kira/service.sock` | `runtime/service.sock` inside the state folder |
@@ -316,8 +352,12 @@ On **native Windows 10 and 11**, when `KIRA_HOME` and the XDG variables are
 not set, Kira stores all profile data under `%LOCALAPPDATA%\Kira`:
 `%LOCALAPPDATA%\Kira\data` (database and files), `%LOCALAPPDATA%\Kira\config`
 (preferences and provider sign-ins), `%LOCALAPPDATA%\Kira\state` (service
-state and logs) and `%LOCALAPPDATA%\Kira\runtime` (local loopback TCP endpoint
-`service.tcp` authenticated with a per-user secret token).
+state and logs) and `%LOCALAPPDATA%\Kira\runtime` (the `service.sock` file,
+which on Windows holds the local address `127.0.0.1:<port>` the service listens
+on and the secret, renewed at every start, that the interface and the command
+line must present to connect; see
+[Permissions and security](PERMISSIONS_AND_SECURITY.md#command-line-and-local-ipc)).
+Keep this folder reserved to your user, as it is by default.
 
 ### Separate profiles with `KIRA_HOME`
 
@@ -370,7 +410,8 @@ systemd as well (for example with `systemctl --user set-environment`) or, more
 simply, use `KIRA_HOME`. With `KIRA_HOME` set, or if starting through systemd
 fails, Kira starts the service directly in the background, with the same
 environment as the interface; its log ends up in `service.log` in the state
-folder.
+folder. This is what always happens on native Windows, where systemd does not
+exist.
 
 ### What remains after uninstalling
 
@@ -385,6 +426,14 @@ the command no longer exists after the removal. Finally remove by hand the
 folders listed above. Codex and Claude Code, instead, keep their own sign-ins in
 their own configuration, which Kira does not touch.
 
+On native Windows the installer adds no uninstall entry to Windows Settings. To
+remove Kira close the window, stop the service with
+`"%LOCALAPPDATA%\Programs\Kira Desktop\kira.cmd" stop-service`, then delete
+the `%LOCALAPPDATA%\Programs\Kira Desktop` folder and the **Kira Desktop**
+shortcuts on the Desktop and in the Start menu. Here too your data remains: it
+is in `%LOCALAPPDATA%\Kira` until you delete that folder. `uv` and the Python
+it downloaded belong to your user and are removed separately.
+
 Mind one detail: the file references saved in the database may contain
 absolute paths. If you move a profile to another folder or another machine,
 Kira does not rewrite those references: check that the referenced files remain
@@ -394,9 +443,12 @@ reachable.
 
 For web search and for the chat's **Browser** Kira does not use the system
 browser: it downloads its own Chromium engine, isolated from the rest of the
-computer and started on a virtual display (Xvfb). The engine is neither
-included in the package nor downloaded automatically on first launch: you
-install it, once per profile.
+computer and started on a virtual display (Xvfb). On Linux the engine is
+neither included in the package nor downloaded automatically on first launch:
+you install it, once per profile. On native Windows the engine is downloaded by
+itself the first time a chat opens the browser, into the same `browser-engine`
+folder, and runs without a window, because the virtual display does not exist:
+the command below is not needed.
 
 ```sh
 kira-desktop browser-install
@@ -527,6 +579,10 @@ What is checked and how the update works depends on the installation:
   without a signature, with an invalid signature or with a different checksum is
   refused and nothing is installed. The downloaded package stays in `updates/`:
   you can delete it after the update.
+- **Windows installation** (code in `%LOCALAPPDATA%\Programs\Kira Desktop`):
+  the same check and the same signature and checksum verification. Kira
+  downloads `kira-desktop_windows_amd64_setup.exe` into `updates\` and runs it
+  in silent mode, with no password prompt.
 - **Source checkout** (a git clone with Kira's `pyproject.toml`): Kira runs
   `git fetch` and shows the subjects of the new commits on the remote branch the
   checkout tracks. It updates with `git merge --ff-only` and `uv sync --frozen`,
@@ -553,8 +609,8 @@ What is checked and how the update works depends on the installation:
    changes and you can try again when it has finished.
 4. **Installation**: for the package
    `pkexec apt-get install -y --no-remove <package>`, with the system password
-   prompt; for the checkout the branch fast-forward and the sync described
-   above.
+   prompt; on Windows the silent run of the downloaded installer; for the
+   checkout the branch fast-forward and the sync described above.
 5. **Restarting Kira** on the new version, with the same profile.
 
 If `pkexec` is missing, or the password prompt is dismissed or cannot appear
@@ -598,7 +654,9 @@ This procedure applies to both the package and the source.
    kira-desktop stop-service
    ```
 
-   The command refuses to stop if there is still active work (runs, Teams,
+   On native Windows:
+   `"%LOCALAPPDATA%\Programs\Kira Desktop\kira.cmd" stop-service`. The command
+   refuses to stop if there is still active work (runs, Teams,
    automatic continuations, context maintenance, branches or compactions, a
    browser under manual control) and tells you why. In that case go back to the
    previous steps; do not kill the process and do not delete the socket or the
@@ -609,7 +667,9 @@ This procedure applies to both the package and the source.
    command also stops a service of another version of Kira; if no service is
    running, it says so without starting one.
 7. **Update the code**: download and install the new package as in
-   [Installing from the package](#installing-from-the-package), or update the
+   [Installing from the package](#installing-from-the-package) (on Windows run
+   the new installer, which replaces the application and keeps the data), or
+   update the
    checkout and repeat `uv sync --frozen`, with `--extra claude-code` if you
    use Claude Code: without the extra the command removes its support.
 8. **Restart with the same profile** (same `KIRA_HOME` or same XDG variables)
@@ -722,7 +782,7 @@ Code structure, tests and customization are in [Development](DEVELOPMENT.md).
 | EGL/Zink warnings in WSLg | They are harmless: Kira uses software rendering for the interface. If you set a renderer by hand, your choice prevails |
 | Provider unavailable | Check the configured executable or endpoint and the account status at the provider. A model listed in the catalog does not guarantee that your account can use it |
 | Dragging a file from Windows does not work | Use paste or **Attach**: in WSLg the drag event does not always reach Kira |
-| A native action is unavailable | Native actions use fixed applications (Dolphin, Konsole, Kate, Firefox, Spectacle, Plasma's system settings and system monitor, Discover, Déjà Dup): install the required one, or use the available actions. An accepted launch request does not mean that the window opened: check |
+| A native action is unavailable | Native actions use fixed applications (Dolphin, Konsole, Kate, Firefox, Spectacle, Plasma's system settings and system monitor, Discover, Déjà Dup; on native Windows File Explorer, Windows Terminal or PowerShell, Visual Studio Code or Notepad, the default browser and Windows Settings): install the required one, or use the available actions. An accepted launch request does not mean that the window opened: check |
 | The service does not start | Read the logs (below) or start `kira-desktop service` in the foreground to see the error in the terminal: `diagnostics` and `doctor` need a running service. Do not delete the socket or the database and do not repeat an uncertain operation as a "repair" |
 | Queued requests do not start after a restart | It is normal: the queue stays paused. Check the queue and the outcome of the interrupted operations, then press **Queue → Resume queue** |
 | Draft not saved | Copy the text out of the app right away, then read the error reported on `composer.json` before closing |
@@ -742,9 +802,10 @@ without `KIRA_HOME`) the service writes to the systemd journal:
 journalctl --user -u kira-desktop.service
 ```
 
-With `KIRA_HOME`, from source, or when systemd is not available, the service
-started in the background writes to `service.log` in the profile's state folder
-(`$HOME/.local/state/kira/service.log` by default; if it exceeds 2 MB at the
+With `KIRA_HOME`, from source, on native Windows or when systemd is not
+available, the service started in the background writes to `service.log` in the
+profile's state folder (`$HOME/.local/state/kira/service.log` by default,
+`%LOCALAPPDATA%\Kira\state\service.log` on Windows; if it exceeds 2 MB at the
 next start, it is moved to `service.previous.log`). A source checkout never
 goes through systemd: the service it starts always writes to `service.log`,
 even when the package is installed. With `kira-desktop service` in the

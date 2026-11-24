@@ -20,15 +20,17 @@ REVIEWED_BINARY = {
     # Documentation and showcase media rendered by scripts/render_doc_screenshots.py
     # and scripts/render_showcase_media.py from synthetic fixture data.
     "docs/images/chat-dark.png":
-        "456accb29144ce12c4ca6bf46c468d0c6c0a7b89a5549b1ba804fa4e1ddeac32",
+        "0d532259365ba6f5a4e94e2a2419548b31395b80017c4103bdc5dd4d58837c7e",
     "docs/images/chat-light.png":
-        "2e7c51153914b10e35042ab6af12701ee1a85fd0d3405ae1e1bdac8a06fae987",
+        "6cebf557c02e5c50150c9ff9759e572af2f8eb4e45f51ead1006ad293d0878c7",
     "docs/images/model-popover.png":
-        "e6bf5b48f7be6f1dcd4e4b685613fc15f28081febc77021b1d9bf59e6379c79b",
+        "32d0b4c388298cafb24de25ad73f9f2992b5d3a55d2b5902b36577da6de7317c",
     "docs/images/models.png":
-        "da44e604f377745a6168223e3acadaac21908a8afe28d5d28be36333f2ff9e49",
+        "94fc57d7caeb0341a7fdfe858abe4bd35fa953f1e8803cb9f5351bc64987f243",
     "docs/images/settings.png":
-        "81e33f26a43c0ecfb0306963a1ee7beb5202b3d8be01163009356cfbdf4a18e4",
+        "746eb94edf506a091c32a163bfc488ceb4979fecb3039916c634516b0bcc0026",
+    "docs/images/model-filters.png":
+        "bedd04286cbf5e07e04398128dc5eda16ad6315fcf17253fec3dd1a2b3f5379d",
     "docs/images/chat-dark-en.png":
         "5aaa14d8513f9e677e1504505df6015fa8cd4fbaa402178a4f3776e7edad2a4b",
     "docs/images/chat-browser-en.png":
@@ -47,19 +49,26 @@ REVIEWED_BINARY = {
 }
 HISTORICAL_REVIEWED_BINARY = {
     "docs/images/chat-dark.png": {
+        "456accb29144ce12c4ca6bf46c468d0c6c0a7b89a5549b1ba804fa4e1ddeac32",
         "04a33083480a04ac7df40d42c5d55a64f0ffc275d50a9500f28e5c6479247e23",
         "e250593fac75694d09957f6c1e1ad0e659b4f19943d7bff5084e9d747acd9c6e",
     },
     "docs/images/chat-light.png": {
+        "2e7c51153914b10e35042ab6af12701ee1a85fd0d3405ae1e1bdac8a06fae987",
         "bb094e3addbf7e306d945f54e294ba55a4bce111a5661e3ef28ebb19bac1a6b7",
         "240e2f371e600b55e0a39017a096a52d056aa16082cd248765400cd8401be40c",
     },
-    "docs/images/model-popover.png": {"f8d0e29924051e13e02e2d3ae753441a50c5636dcb7e33ce03b30e8819d4fd09"},
+    "docs/images/model-popover.png": {
+        "f8d0e29924051e13e02e2d3ae753441a50c5636dcb7e33ce03b30e8819d4fd09",
+        "e6bf5b48f7be6f1dcd4e4b685613fc15f28081febc77021b1d9bf59e6379c79b",
+    },
     "docs/images/models.png": {
+        "da44e604f377745a6168223e3acadaac21908a8afe28d5d28be36333f2ff9e49",
         "fad14491b799abe415824a674166bbec04ba733837215e5d00daa5085b3acafd",
         "95460fada5d95a6d2a2b6e0c9651f3d6fae68b4520c363367320c618f83c175d",
     },
     "docs/images/settings.png": {
+        "81e33f26a43c0ecfb0306963a1ee7beb5202b3d8be01163009356cfbdf4a18e4",
         "d921946b0ac3fde61699a148411e2c09e763d30fb6ea6f83659dd8ad028effb1",
         "b125f1aad891d9cd51404fb8e00caad585422bc61ceb78ee050cac3a36e3e3fe",
     },

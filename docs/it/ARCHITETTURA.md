@@ -13,16 +13,17 @@ e da un adapter per ogni provider, tutti nella sessione dell'utente.
 
 ```mermaid
 flowchart LR
-  GUI[Interfaccia Qt Quick] -->|IPC privata su socket Unix| Service[Servizio asyncio]
+  GUI[Interfaccia Qt Quick] -->|IPC locale: socket Unix, TCP autenticato su 127.0.0.1 in Windows| Service[Servizio asyncio]
   GUI --> Composer[Bozze e cronologia del campo di scrittura]
   Service --> DB[(SQLite in modalità WAL)]
   Service --> Artifacts[Artefatti, allegati e catture private]
   Service --> Ollama[Ollama: API nativa] & OpenAI[OpenAI diretto: Responses HTTP/SSE]
   Service --> DSAccount[DeepSeek Account: accesso con l'account] & DSWeb[DeepSeek Web: sessione web]
   Service --> GCloud[Google Cloud: Vertex AI / Gemini API] & OpenRouter[OpenRouter: gateway multi-provider]
+  Service --> KiraCloud[Kira Cloud: modelli inclusi nel piano Kira]
   Service --> Codex[Codex App Server gestito] & Claude[Claude Code via Agent SDK]
-  Service --> Browser[Worker browser: Chromium su display Xvfb privato]
-  Ollama & OpenAI & DSAccount & DSWeb & GCloud & OpenRouter -->|richieste validate| Tools[Strumenti di Kira: file, comandi, browser, Computer]
+  Service --> Browser[Worker browser: Chromium su display Xvfb privato, senza finestra in Windows]
+  Ollama & OpenAI & DSAccount & DSWeb & GCloud & OpenRouter & KiraCloud -->|richieste validate| Tools[Strumenti di Kira: file, comandi, browser, Computer]
   Codex -->|ponte MCP temporaneo| KiraMcp[Strumenti kira via MCP]
   Claude -->|server MCP interno| KiraMcp
   Codex --> NativeTools[Strumenti nativi di Codex]
@@ -33,13 +34,24 @@ flowchart LR
 L'interfaccia raccoglie le intenzioni dell'utente e mostra lo stato. Il servizio
 possiede l'esecuzione ed è l'**unico processo che scrive nel database SQLite**.
 È un processo utente non privilegiato, indipendente dalla finestra, avviato da
-un'unità systemd utente dove disponibile e altrimenti come processo staccato;
-non esiste alcun servizio di sistema né alcun "linger" attivo.
+un'unità systemd utente dove disponibile e altrimenti come processo staccato
+(sempre così su Windows, senza finestra di terminale); non esiste alcun
+servizio di sistema né alcun "linger" attivo.
+
+Su Linux interfaccia e servizio comunicano attraverso un socket Unix privato
+dell'utente. Su Windows nativo, dove Kira gira grazie a uno strato di
+compatibilità che fornisce le primitive POSIX mancanti, il servizio ascolta su
+`127.0.0.1`, su una porta scelta all'avvio. Poiché una porta di loopback non
+appartiene a nessun utente, il servizio genera a ogni avvio un segreto, lo
+scrive con la porta in un file del profilo e non legge alcun comando da una
+connessione che non lo presenti per prima cosa: l'isolamento tra utenti, che
+su Linux viene dai permessi del socket, lì viene dalla riservatezza di quel
+file.
 
 I provider si dividono in due famiglie:
 
-- **Ollama, OpenAI diretto, DeepSeek Account, DeepSeek Web, Google Cloud e
-  OpenRouter** fanno inferenza mentre Kira gestisce un piccolo ciclo di
+- **Ollama, OpenAI diretto, DeepSeek Account, DeepSeek Web, Google Cloud,
+  OpenRouter e Kira Cloud** fanno inferenza mentre Kira gestisce un piccolo ciclo di
   strumenti proprio: il modello chiede uno strumento, il servizio valida la
   richiesta, la esegue e restituisce il risultato. OpenAI diretto usa un gestore
   OAuth del servizio e un trasporto Responses HTTP/SSE senza passare da Codex
@@ -50,15 +62,18 @@ I provider si dividono in due famiglie:
   un Service Account JSON verso Vertex AI / Gemini API; OpenRouter usa la tua
   chiave API (`sk-or-v1-...`) verso l'endpoint unificato
   `/api/v1/chat/completions` con adattamento dinamico al catalogo
-  `/api/v1/models`. I file delle credenziali sono configurazione privata e non
+  `/api/v1/models`; Kira Cloud usa il token di collegamento del dispositivo
+  ottenuto con l'accesso all'account Kira e legge catalogo, prezzi e credito
+  dal servizio. I file delle credenziali sono configurazione privata e non
   entrano nelle esportazioni.
 - **Codex e Claude Code** possiedono i propri strumenti nativi. Kira osserva le
   loro notifiche (una sola volta: una notifica osservata non viene mai rieseguita
   da Kira) e offre in aggiunta i propri strumenti `kira` attraverso MCP.
 
 Il browser isolato gira in un **worker separato**: un Chromium con interfaccia
-grafica su un display Xvfb privato, posseduto dal servizio. Né l'interfaccia né
-i provider parlano direttamente con Chromium; ogni azione passa dal servizio.
+grafica su un display Xvfb privato, posseduto dal servizio (su Windows nativo,
+dove Xvfb non esiste, un Chromium senza finestra). Né l'interfaccia né i
+provider parlano direttamente con Chromium; ogni azione passa dal servizio.
 
 ## Proprietà durevole e recupero
 
@@ -128,7 +143,16 @@ Il servizio applica i permessi **indipendentemente dall'interfaccia**:
   modificare un file.
 - I comandi arbitrari (vettore `argv`, senza shell) richiedono il permesso
   **Host fidato** o **Accesso completo** e agiscono come l'utente: la cartella di
-  lavoro non è una sandbox.
+  lavoro non è una sandbox. Con **Host fidato**, per i soli comandi lanciati dal
+  servizio, Kira aggiunge su Linux un blocco delle scritture fuori dal progetto
+  quando Landlock (o, in sua assenza, Bubblewrap) è disponibile; lettura e rete
+  restano quelle dell'utente e senza quei meccanismi, come su Windows, il
+  comando gira senza limitazioni. Ogni risultato dichiara il confinamento
+  applicato e la ricevuta segnala quando manca. I dettagli sono in
+  [Contratti](CONTRATTI.md#confinamento-dei-comandi-eseguiti-dal-servizio).
+- I comandi di Codex e lo strumento `Bash` di Claude Code sono eseguiti dal
+  runtime del provider: con **Host fidato** non hanno né la sandbox del provider
+  né il blocco di Kira.
 - Codex riceve una mappatura del permesso di progetto sulla propria policy
   nativa. Dati esterni (testo del progetto, pagine web, risposte di altri agenti)
   non possono allargare la policy scelta; configurazione globale e credenziali
@@ -220,8 +244,9 @@ argomenti di uno strumento.
 
 I thread nativi di Codex ricevono gli strumenti `kira` (e, con un obiettivo
 autonomo, quelli dell'obiettivo) tramite un **ponte MCP temporaneo**: un
-descrittore privato e un relay su socket Unix dello stesso utente, legati a quel
-`RunContext`. Solo gli strumenti Kira registrati ricevono l'approvazione
+descrittore privato con un segreto casuale e un relay su socket Unix dello
+stesso utente (su Windows una porta TCP su `127.0.0.1`), legati a quel
+`RunContext`; il relay accetta solo le richieste che presentano quel segreto. Solo gli strumenti Kira registrati ricevono l'approvazione
 esplicita per thread; gli altri strumenti, la sandbox e le impostazioni
 dell'account mantengono le loro policy. Il relay non espone una superficie RPC
 generica verso il servizio e il suo bootstrap installato è ancorato alla

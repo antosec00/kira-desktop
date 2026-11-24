@@ -18,9 +18,11 @@ from kira.cli import main
 from kira.client import Client, ensure_service
 from kira.domain.contracts import KiraError
 from kira.domain.paths import Paths
+from kira.service.provider_routing import BACKENDS as ROUTED_BACKENDS
 
 PACKAGED_UNIT = "/usr/lib/systemd/user/kira-desktop.service"
-PROVIDERS = ("ollama", "codex", "openai_chatgpt", "deepseek_account", "deepseek_web", "claude_code")
+# The service's own list: doctor must cover every provider it routes, in the same order.
+PROVIDERS = tuple(ROUTED_BACKENDS)
 
 
 @pytest.fixture
@@ -203,6 +205,10 @@ def test_browser_install_errors_are_reported_without_traceback(profile, capsys, 
 
 # TL-20: doctor reports every provider, even when one of them fails.
 def test_doctor_reports_every_provider_even_when_one_fails(service, bootstrap_noop, capsys, cli):
+    from kira.cli import DOCTOR_BACKENDS
+
+    assert DOCTOR_BACKENDS == PROVIDERS and len(PROVIDERS) == 9
+    assert {"google_cloud", "openrouter", "kira_cloud"} <= set(DOCTOR_BACKENDS)
     def discover(params):
         if params["backend"] == "codex":
             return {"error": {"code": "UNAVAILABLE", "message": "Codex executable not found"}}

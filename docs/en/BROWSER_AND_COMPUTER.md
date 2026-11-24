@@ -61,6 +61,12 @@ listed in [Installation](INSTALLATION.md#running-from-source-with-uv), including
 Chromium's and the `xvfb` and `libxtst6` packages, which provide the private
 virtual screen; the `.deb` packages declare them as dependencies.
 
+On the native Windows installation this setup is not needed: Kira downloads the
+engine by itself the first time a chat opens the browser. There Chromium runs
+without a window, because the private virtual screen exists on Linux only: the
+**Browser** panel shows the page, while the **Full browser** view, with the
+browser's own dialogs, is not available.
+
 Web options are per chat. Open them with **⚙** in the browser panel or with
 **Web settings** in the tool tray under the message field:
 
@@ -258,6 +264,9 @@ from the isolated browser work; native Linux dialogs appear in the **Full
 browser** view when you take control. The integrated browser by itself does
 not provide Windows Hello and does not import your personal browser's passkey
 manager.
+
+The bridge described below concerns Kira started in WSL: on the native Windows
+installation it is not enabled.
 
 In WSL, Kira can enable an optional bridge when Windows interoperability,
 Windows PowerShell and a supported version of the Windows WebAuthn API are

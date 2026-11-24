@@ -28,6 +28,7 @@ or a sequential task an ordinary chat is simpler and cheaper.
 | **Codex** | Yes |
 | **Direct OpenAI · ChatGPT** | Yes |
 | **Google Cloud · Vertex AI** | Yes |
+| **Kira Cloud** | Yes (tools depend on the chosen model) |
 | **OpenRouter** | Yes (tools depend on the chosen model) |
 | **Ollama** | Yes (tools depend on the chosen model) |
 | **DeepSeek Account** (experimental) | Yes |
@@ -37,8 +38,8 @@ or a sequential task an ordinary chat is simpler and cheaper.
 Provider, model and reasoning level are chosen once for the Team and apply to
 every member, coordinator included. No silent switches of model or account
 happen during the work. The optional service tier concerns Codex only. With
-OpenRouter and Ollama, tool availability depends on what the chosen model
-supports, and the coordinator must be able to answer with a structured plan.
+Kira Cloud, OpenRouter and Ollama, tool availability depends on what the chosen
+model supports, and the coordinator must be able to answer with a structured plan.
 
 ## Creating a Team from the Team view
 
@@ -82,9 +83,9 @@ useful when you want the discipline of task-based planning.
 ## Requesting a Team from the chat
 
 With **Codex**, **Direct OpenAI · ChatGPT**, **Google Cloud · Vertex AI**,
-**OpenRouter**, **Ollama** or **DeepSeek Account** and tools enabled, you can
-ask for a Team directly in the conversation; with **OpenRouter** and **Ollama**
-the model must support tools. **Claude Code · personal use** and **DeepSeek
+**Kira Cloud**, **OpenRouter**, **Ollama** or **DeepSeek Account** and tools
+enabled, you can ask for a Team directly in the conversation; with **Kira
+Cloud**, **OpenRouter** and **Ollama** the model must support tools. **Claude Code · personal use** and **DeepSeek
 Web** do not run Teams, so their chats cannot request one. For example:
 
 > Organize a team of three members: a coordinator, a test analyst and an

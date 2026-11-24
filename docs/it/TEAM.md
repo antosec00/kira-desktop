@@ -25,6 +25,7 @@ breve o un compito sequenziale una chat ordinaria è più semplice ed economica.
 | **Codex** | Sì |
 | **OpenAI diretto · ChatGPT** | Sì |
 | **Google Cloud · Vertex AI** | Sì |
+| **Kira Cloud** | Sì (gli strumenti dipendono dal modello scelto) |
 | **OpenRouter** | Sì (gli strumenti dipendono dal modello scelto) |
 | **Ollama** | Sì (gli strumenti dipendono dal modello scelto) |
 | **DeepSeek Account** (sperimentale) | Sì |
@@ -34,8 +35,8 @@ breve o un compito sequenziale una chat ordinaria è più semplice ed economica.
 Provider, modello e livello di ragionamento si scelgono una volta per il Team e
 valgono per tutti i membri, coordinatore compreso. Non avvengono cambi silenziosi
 di modello o di account durante il lavoro. Il service tier facoltativo riguarda
-solo Codex. Con OpenRouter e Ollama, la disponibilità degli strumenti dipende dal
-supporto del modello scelto, e il coordinatore deve saper rispondere con un piano
+solo Codex. Con Kira Cloud, OpenRouter e Ollama, la disponibilità degli
+strumenti dipende dal supporto del modello scelto, e il coordinatore deve saper rispondere con un piano
 strutturato.
 
 ## Creare un Team dalla vista Team
@@ -82,9 +83,10 @@ valido e utile quando vuoi la disciplina della pianificazione per incarichi.
 ## Chiedere un Team dalla chat
 
 Con **Codex**, **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**,
-**OpenRouter**, **Ollama** o **DeepSeek Account** e gli strumenti attivi, puoi
-chiedere un Team direttamente nella conversazione; con **OpenRouter** e
-**Ollama** il modello deve supportare gli strumenti. **Claude Code · uso
+**Kira Cloud**, **OpenRouter**, **Ollama** o **DeepSeek Account** e gli
+strumenti attivi, puoi chiedere un Team direttamente nella conversazione; con
+**Kira Cloud**, **OpenRouter** e **Ollama** il modello deve supportare gli
+strumenti. **Claude Code · uso
 personale** e **DeepSeek Web** non eseguono Team, quindi le loro chat non possono
 richiederne uno. Per esempio:
 

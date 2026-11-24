@@ -39,7 +39,9 @@ sarà pubblicata con una nota nella versione successiva.
   profilo dell'utente e non legge mai le credenziali di un'altra applicazione,
   comprese quelle di Claude Code.
 - **IPC privato.** Interfaccia e servizio comunicano su un socket Unix in una
-  cartella runtime 0700; il servizio è l'unico a scrivere nel database SQLite.
+  cartella runtime 0700; su Windows nativo, su una porta di `127.0.0.1` che
+  accetta comandi solo da chi presenta un segreto rinnovato a ogni avvio e
+  conservato nel profilo. Il servizio è l'unico a scrivere nel database SQLite.
 - **Browser.** Le pagine girano in un profilo isolato attraverso un proxy del
   servizio; il contenuto delle pagine è un dato non fidato, consensi e accessi
   sono tuoi.

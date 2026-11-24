@@ -316,9 +316,10 @@ class TranscriptModel(QAbstractListModel):
                 exit_code = values.get("exitCode")
                 if not evidence["error"] and type(exit_code) is int and exit_code != 0:
                     evidence["error"] = f"exit {exit_code}"
-            # A completed browser call can still report a page that did not load
-            # or a network budget that ran out; both keep their literal details.
-            for key in ("page_error", "network_budget"):
+            # A completed call can still report a page that did not load, a
+            # network budget that ran out or a command that nothing confined;
+            # each keeps its literal details.
+            for key in ("page_error", "network_budget", "write_confinement"):
                 notice = values.get(key)
                 notice_code = notice.get("code") if isinstance(notice, dict) else None
                 if isinstance(notice_code, str) and tool_error_summary(name, notice_code) is not None:

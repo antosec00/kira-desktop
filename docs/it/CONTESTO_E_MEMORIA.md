@@ -136,10 +136,11 @@ aperto, Kira può rifiutare la ripresa o la compattazione: va risolto in Codex.
 
 Ollama non ha memoria tra una richiesta e l'altra: Kira invia una **finestra
 recente** della chat, per impostazione predefinita le ultime **8 esecuzioni**
-entro **32.000 byte**. Se nel modello imposti un `num_ctx` positivo, il budget
-diventa **il doppio di quel valore in byte**, compreso tra 4.096 e 64.000. È un
-budget di trasporto, non un conteggio di token, e non garantisce che tutta la
-richiesta entri nel modello. Le omissioni sono segnalate; istruzioni e note
+entro **32.000 byte**. Se per la chat scegli un **Contesto richiesto**
+(`num_ctx`), il budget diventa **due volte e mezzo quel valore in byte**,
+compreso tra 4.096 e 262.144, e le esecuzioni considerate salgono a **14** da
+65.536 token e a **20** da 131.072. È un budget di trasporto, non un conteggio
+di token, e non garantisce che tutta la richiesta entri nel modello. Le omissioni sono segnalate; istruzioni e note
 non vengono mai tagliate da questa finestra. Il resto della conversazione
 resta raggiungibile dal modello con gli strumenti di cronologia (sezione 8),
 se il modello supporta gli strumenti.
@@ -210,26 +211,30 @@ portabile di Kira. In **Uso e risorse** trovi, per ogni turno, i token del
 turno, quelli dell'ultima richiesta e l'**occupazione della finestra di
 contesto** riportata da Claude Code.
 
-### Google Cloud · Vertex AI e OpenRouter
+### Google Cloud · Vertex AI, Kira Cloud e OpenRouter
 
-Con **Google Cloud · Vertex AI** e **OpenRouter** Kira mantiene un **contesto
-persistente gestito da Kira** in modalità **Automatico — compattazione Kira**,
-calibrato sulla finestra e sul limite di uscita dichiarati dal modello (per
-OpenRouter letti dinamicamente da `context_length` e
-`top_provider.max_completion_tokens` nel catalogo `/api/v1/models`). Quando la
-conversazione si avvicina alla soglia o se il provider restituisce un errore di
-contesto pieno (o un blocco preventivo `PROMPT_SAFETY` sulla cronologia lunga),
-Kira compatta le esecuzioni più vecchie in una sintesi strutturata con fonti e
-conserva verbatim i turni più recenti. Per i modelli Anthropic Claude e Google
-Gemini su OpenRouter, Kira inserisce inoltre marcatori `cache_control:
-{"type": "ephemeral"}` sul prompt di sistema e sull'ultimo messaggio stabile per
-sfruttare il prompt caching del provider.
+Con **Google Cloud · Vertex AI**, **Kira Cloud** e **OpenRouter** non c'è un
+contesto salvato tra una richiesta e l'altra. A ogni richiesta Kira ricostruisce
+la conversazione recente dalla cronologia registrata (al massimo le ultime 30
+esecuzioni entro 200.000 byte) e, se non entra nella finestra dichiarata dal
+modello (per OpenRouter letta da `context_length` nel catalogo
+`/api/v1/models`), accorcia i risultati degli strumenti e i messaggi più
+vecchi, lasciando intatti gli ultimi. Se il provider risponde comunque con un
+errore di contesto pieno (o, su Google Cloud, con un blocco preventivo
+`PROMPT_SAFETY` sulla cronologia lunga), Kira accorcia di più e ritenta. Non
+viene prodotta alcuna sintesi né salvato un checkpoint: il pannello **Contesto
+e memoria** mostra soltanto **Note e fonti della chat** e **Compatta ora** non
+è disponibile. Per i modelli Anthropic Claude e Google Gemini su OpenRouter,
+Kira inserisce inoltre marcatori `cache_control: {"type": "ephemeral"}` sul
+prompt di sistema e sull'ultimo messaggio stabile per sfruttare il prompt
+caching del provider.
 
 ## 6. Contesto e memoria: compattare
 
 Apri **Contesto e memoria** dal pulsante **Contesto** sotto la chat, da
-**Gestisci chat** o dal pannello **Uso**. Con OpenAI diretto, DeepSeek Account,
-Google Cloud e OpenRouter, **Compatta ora** avvia una compattazione esplicita:
+**Gestisci chat** o dal pannello **Uso**. Con OpenAI diretto e DeepSeek Account (con gli
+altri provider il pulsante non compare), **Compatta ora** avvia una
+compattazione esplicita:
 richiede una **chat inattiva** e una **coda vuota** (completa o rimuovi le
 richieste in attesa, anche se la coda è in pausa). Durante l'operazione il
 pulsante della chat mostra **Compattazione…** e il pannello aggiorna lo stato

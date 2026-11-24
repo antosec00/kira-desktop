@@ -355,6 +355,29 @@ async def test_worker_has_clean_environment_project_cwd_and_no_site_import(proje
     assert "synthetic-secret-never-inherited" not in encode(service.store.events(context.run_id))
 
 
+async def test_worker_result_states_the_write_confinement_it_ran_with(project_tools, monkeypatch):
+    from kira.tools import sandbox
+
+    context = await start(project_tools)
+    tool = await qualified_tool(context)
+    confined = await call(context, "run", {**tool, "arguments": {"a": 1, "b": 2}})
+    # The worker cannot be wrapped in another program: Landlock or nothing.
+    expected = sandbox.confinement("workspace_write", wrapper=False)
+    assert confined["ok"] and confined["write_confinement"]["applied"] == expected
+    assert ("code" in confined["write_confinement"]) is (expected == "none")
+    monkeypatch.setattr(sandbox, "landlock_usable", lambda: False)
+    unconfined = await call(context, "run", {**tool, "arguments": {"a": 2, "b": 3}})
+    assert unconfined["ok"] and unconfined["result"] == {"sum": 5}
+    assert unconfined["write_confinement"] == sandbox.confinement_record("workspace_write", "none")
+    assert unconfined["write_confinement"]["code"] == "write_confinement_unavailable"
+    # Enforceable in principle but refused for this worker: the tool does not run.
+    monkeypatch.setattr(sandbox, "landlock_usable", lambda: True)
+    monkeypatch.setattr(sandbox, "apply_landlock_sandbox", lambda root, mode: False)
+    refused = await call(context, "run", {**tool, "arguments": {"a": 3, "b": 4}})
+    assert refused["error"]["code"] == "SANDBOX_FAILED" and "result" not in refused
+    assert "write_confinement" not in refused
+
+
 async def test_cross_project_and_model_cannot_configure_or_choose_run(project_tools):
     service, _, project, session = project_tools
     context = await start(project_tools)

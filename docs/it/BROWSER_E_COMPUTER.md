@@ -59,6 +59,12 @@ avvii Kira dal sorgente servono anche le librerie di sistema elencate in
 Chromium e i pacchetti `xvfb` e `libxtst6`, che forniscono lo schermo virtuale
 privato; i pacchetti `.deb` le dichiarano come dipendenze.
 
+Sull'installazione nativa di Windows questa preparazione non serve: Kira
+scarica il motore da sola la prima volta che una chat apre il browser. Lì
+Chromium gira senza finestra, perché lo schermo virtuale privato esiste solo
+su Linux: il pannello **Browser** mostra la pagina, mentre la vista **Browser
+completo**, con i dialoghi propri del browser, non è disponibile.
+
 Le opzioni web sono per chat. Aprile con **⚙** nel pannello del browser oppure
 con **Impostazioni web** nel vassoio degli strumenti sotto il campo di
 scrittura:
@@ -261,6 +267,9 @@ raggiungibili dal browser isolato; i dialoghi nativi Linux compaiono nella
 vista **Browser completo** quando prendi il controllo. Il browser integrato da
 solo non fornisce Windows Hello e non importa il gestore di passkey del tuo
 browser personale.
+
+Il ponte descritto qui sotto riguarda Kira avviata in WSL: sull'installazione
+nativa di Windows non viene attivato.
 
 In WSL, Kira può attivare un ponte opzionale quando sono disponibili
 l'interoperabilità con Windows, Windows PowerShell e una versione supportata

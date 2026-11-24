@@ -15,14 +15,14 @@ permissions, [Permissions and security](PERMISSIONS_AND_SECURITY.md).
 ### Process chain
 
 ```
-GUI (PySide6/QML)  →  private Unix socket  →  asyncio service  →  providers
+GUI (PySide6/QML)  →  local IPC (private Unix socket; on Windows authenticated TCP on 127.0.0.1)  →  asyncio service  →  providers
 ```
 
 - The GUI never executes tools and never writes the database: it sends
   requests, receives responses and events, and presents them.
 - Only the service writes SQLite. Every state change is recorded in the
   database before being published to clients.
-- Providers (Ollama, Codex, Direct OpenAI, DeepSeek, Claude Code, Google Cloud, OpenRouter) receive a
+- Providers (Ollama, Codex, Direct OpenAI, DeepSeek, Claude Code, Google Cloud, OpenRouter, Kira Cloud) receive a
   `RunContext` from the service and use its callbacks to emit events, execute
   tools and request approvals. A provider has no direct access to the database
   or the GUI.
@@ -33,6 +33,28 @@ The socket lives in `$XDG_RUNTIME_DIR/kira/service.sock` (with `KIRA_HOME`, in
 `runtime/` under that folder; without `XDG_RUNTIME_DIR`, in `runtime/` under the
 state folder): the folder has `0700` permissions, the socket `0600`, and a
 process lock guarantees a single service per data profile.
+
+On native Windows the service listens on `127.0.0.1` instead, on an ephemeral
+port assigned at start. A loopback port has no owner, so at every start the
+service generates a random secret of 64 hexadecimal digits and writes, with an
+atomic replacement, a two-line text file at the same `runtime\service.sock`
+path (under `%LOCALAPPDATA%\Kira` or `KIRA_HOME`): `127.0.0.1:<port>` and the
+secret. The GUI and the command line read that file again at every connection.
+On this transport the first frame of every connection must be
+
+```json
+{"version": 1, "id": "a1", "method": "auth", "params": {"token": "<secret>"}}
+```
+
+to which the service answers `{"version": 1, "id": "a1", "result":
+{"authenticated": true}}`. Any other first frame, a frame over 4096 bytes or no
+frame within 10 seconds gets the `UNAUTHENTICATED` error and the connection is
+closed without reading anything else: an unauthenticated connection does not
+become a client and receives no events. After `auth` the protocol is identical
+to that of the Unix socket, which does not use `auth`. The secret is protected
+as the file that holds it is, that is, as the profile folder is. A file with
+only the first line belongs to a service that predates authentication: clients
+reach it without `auth`, so that an update can ask it to stop.
 
 ### Main entities
 
@@ -60,8 +82,8 @@ a run to a session; the sessions of Team members cannot be started with
 | --- | --- | --- |
 | `read_only` | **Read only** | Only reading and searching files inside the project; no commands. |
 | `project_write` | **Project write** | Writing files with Kira's tools, limited to the project root; for Codex this corresponds to the `workspace-write` sandbox. No arbitrary commands. |
-| `trusted_host` | **Trusted host** | Arbitrary commands confined at OS level (`workspace_write` Landlock / Bubblewrap: writes restricted to project root and `/tmp`). |
-| `full_access` | **Full access** | Like Trusted host without sandbox restrictions, and in addition the file tools accept paths outside the project, within the limits of the system user's permissions. No automatic administrative privilege. |
+| `trusted_host` | **Trusted host** | Like `project_write`, plus arbitrary commands run as the user; the working directory is not a sandbox. Only for commands launched by the service (`run_command`, project tool workers) the `workspace_write` mode is requested, which on Linux restricts writes when Landlock or Bubblewrap are available (see [Confinement of commands run by the service](#confinement-of-commands-run-by-the-service)). For Codex it maps to `danger-full-access`. |
+| `full_access` | **Full access** | Like Trusted host with no restriction on writes (`unrestricted`), and in addition the file tools accept paths outside the project, within the limits of the system user's permissions. No automatic administrative privilege. |
 
 The sets used by the code are: write = `project_write, trusted_host,
 full_access`; host = `trusted_host, full_access`. The **Plan**, **Review** and
@@ -147,7 +169,12 @@ refuses to continue if `app_version` does not match its own. The
 `workbench`, `prompt_queue`, `run_modes`, `chat_goals`, `autonomous_goals`,
 `provider_continuity`, `image_attachments`, `embedded_browser`,
 `project_research`, `knowledge`, `project_tools`, `personalized_souls`,
-`os_sandbox`, `shadow_checkpoints`, `semantic_code_index`).
+`os_sandbox`, `shadow_checkpoints`, `semantic_code_index`). On the Windows TCP
+transport `hello` follows the `auth` frame described in §1. `os_sandbox` is
+`true` only when the system can really confine a command (Landlock verified
+with a trial process, or a usable Bubblewrap); the detail is in
+`system.resources`, field `sandbox` (`{available,
+backend:"landlock"|"bwrap"|"none", landlock_abi, bwrap_available}`).
 
 ### Validation rules
 
@@ -164,7 +191,8 @@ refuses to continue if `app_version` does not match its own. The
   (feature not available with that provider or in that chat),
   `PERMISSION_DENIED`, `UNAVAILABLE`, `UNSAFE_PATH`, `QUEUE_FULL`,
   `OUTPUT_LIMIT`, `SHUTTING_DOWN`. The transport also uses `INVALID_REQUEST`
-  (invalid frame), `METHOD_NOT_FOUND` and `INTERNAL_ERROR`.
+  (invalid frame), `METHOD_NOT_FOUND`, `INTERNAL_ERROR` and, on the Windows TCP
+  transport, `UNAUTHENTICATED`.
 - While `settings.update` is in progress, `run.start`, `team.start`,
   `team.resume`, `goal.start`, `goal.resume`, `assistant.resume`,
   `session.switch/configure/fork/compact`, another `settings.update` and the
@@ -223,9 +251,9 @@ Convention: `method {parameters} → {result}`; `?` marks an optional field.
 | `session.providers` | `{project_id, session_id}` → `{session, current_generation, providers:[{backend, model, reasoning_effort, account_id, used, current}], transitions:[...], transitions_truncated}` | Read-only; up to 100 recent generations. |
 | `session.switch` | `{project_id, session_id, request_id, backend, model, reasoning_effort, account_id?}` → `{session, current_generation, replayed, switch:{request_id, generation, backend, model, account_id, changed, transitioned}}` | `reasoning_effort` is required even when empty (DeepSeek Web does not save it); `account_id` only for Direct OpenAI. Settings the new provider does not use are not carried over. Requires an inactive chat with no queues, Teams or reservations. A repetition returns the original receipt plus the **current** session. |
 | `session.compact` | `{project_id, session_id, request_id}` → `{operation}` | Native compaction (Codex) of an inactive chat; completion requires the provider's terminal outcome. |
-| `session.context` | `{project_id, session_id}` → `{backend, model, account_id, provider_generation, mode, policy, metrics, memory:{pins, summary, sources}, status, operation, revision, has_state, error}` | Public state of the chat's context. With Direct OpenAI, DeepSeek Account, Google Cloud and OpenRouter, where Kira manages the context, it includes capacity, estimates, generated memory and the latest receipt; the important notes are in `memory.pins`. |
+| `session.context` | `{project_id, session_id}` → `{backend, model, account_id, provider_generation, mode, policy, metrics, memory:{pins, summary, sources}, status, operation, revision, has_state, error}` | Public state of the chat's context. With Direct OpenAI and DeepSeek Account, where Kira manages the durable context, it includes capacity, estimates, generated memory and the latest receipt; with the other providers `mode` is `provider_managed`. The important notes are in `memory.pins`. |
 | `session.context.pin` / `.unpin` | `{project_id, session_id, request_id, content}` / `{..., note_id}` | Important user notes, supplied verbatim on every turn. They require an unarchived chat (`ARCHIVED`), no active work in the project or an overlapping one and no queued requests (`BUSY`). |
-| `session.context.compact` | `{project_id, session_id, request_id}` → `{context, operation}` | Explicit context maintenance with Direct OpenAI, DeepSeek Account, Google Cloud and OpenRouter, only on an inactive chat with no queued requests; reserves the project root. |
+| `session.context.compact` | `{project_id, session_id, request_id}` → `{context, operation}` | Explicit context maintenance with Direct OpenAI and DeepSeek Account (`UNSUPPORTED` with the other providers), only on an inactive chat with no queued requests; reserves the project root. |
 | `session.history.search` | `{project_id, session_id, query, limit?, before_id?}` → `{results, ...}` | Literal Unicode search in the chat's original archive; bounded pages. |
 | `session.history.read` | `{project_id, session_id, source_id, offset?, limit?}` → `{content, next_offset, ...}` | Paginated reading of an original record, up to 32,000 characters per page. |
 | `session.web.get` | `{project_id, session_id}` → `{settings, browser}` | Web preferences and state/preview of the chat's browser. |
@@ -475,10 +503,10 @@ later changes apply from the following turn.
 
 | Method | Parameters → result | Rules |
 | --- | --- | --- |
-| `backend.discover` | `{backend, account_id?}` → `{available, models:[{id, name, capabilities, ...}], capabilities, account?, error?}` | `backend` ∈ `ollama, codex, openai_chatgpt, deepseek_account, deepseek_web, claude_code, google_cloud, openrouter`; `account_id` only for `openai_chatgpt`. No automatic model change. |
+| `backend.discover` | `{backend, account_id?}` → `{available, models:[{id, name, capabilities, ...}], capabilities, account?, error?}` | `backend` ∈ `ollama, codex, openai_chatgpt, deepseek_account, deepseek_web, claude_code, google_cloud, openrouter, kira_cloud`; `account_id` only for `openai_chatgpt`. No automatic model change. |
 | `backend.login` | `{backend, account_id?}` → login information | Starts the explicit login: Codex (optional), Direct OpenAI (OAuth PKCE with a local listener), DeepSeek Account, Google Cloud (`gcloud auth application-default login`). DeepSeek Web and OpenRouter have no OAuth browser login flow (`INVALID_ARGUMENT`): their credential is saved with `backend.account`. |
-| `backend.account` | `{backend, action, account_id?, ...}` → state | Direct OpenAI: `status, login, select, logout, cancel`; DeepSeek Account: `status, login, cancel, logout, configure_proxy` (`url`, `api_key`, `enabled` for DeeperSeeker); DeepSeek Web: `status, login` (with `token`), `logout`, where `login` and `logout` answer `BUSY` while DeepSeek Web work is active or queued; Google Cloud: `status, login, cancel, logout, configure_auth` (ADC/Vertex mode, Gemini API key, Service Account JSON, `project_id`, `location`, `custom_models`); OpenRouter: `status, configure_auth, logout` (`api_key`, `custom_models`, plus `/api/v1/key` telemetry). Credentials stay in the private profile, never in SQLite, in events or in exports. An unsafe or invalid credential store does not stop the service from starting and makes only that provider unavailable; for DeepSeek Web, `status` answers `UNSAFE_PATH` or `CREDENTIAL_STORE` until the token is saved again. |
-| `backend.usage` | `{backend, account_id?}` → reported limits and local measurements | `backend` ∈ `codex, openai_chatgpt, ollama, claude_code, google_cloud, openrouter`; read-only, no inference and no billing changes; at most 10,000 recent usage events examined. |
+| `backend.account` | `{backend, action, account_id?, ...}` → state | Direct OpenAI: `status, login, select, logout, cancel`; DeepSeek Account: `status, login, cancel, logout, configure_proxy` (`url`, `api_key`, `enabled` for DeeperSeeker); DeepSeek Web: `status, login` (with `token`), `logout`, where `login` and `logout` answer `BUSY` while DeepSeek Web work is active or queued; Google Cloud: `status, login, cancel, logout, configure_auth` (ADC/Vertex mode, Gemini API key, Service Account JSON, `project_id`, `location`, `custom_models`); OpenRouter: `status, configure_auth, logout` (`api_key`, `custom_models`, plus `/api/v1/key` telemetry); Kira Cloud: `status, refresh, login, start_browser_login, poll_browser_login` (with `code`), `connect_token` (with `token`), `console_link, logout`. Credentials stay in the private profile, never in SQLite, in events or in exports. An unsafe or invalid credential store does not stop the service from starting and makes only that provider unavailable; for DeepSeek Web, `status` answers `UNSAFE_PATH` or `CREDENTIAL_STORE` until the token is saved again. |
+| `backend.usage` | `{backend, account_id?}` → reported limits and local measurements | `backend` ∈ `codex, openai_chatgpt, ollama, claude_code, google_cloud, deepseek_account, openrouter, kira_cloud`; read-only, no inference and no billing changes; at most 10,000 recent usage events examined. |
 | `settings.get` / `settings.update` | `{}` / `{ollama_url?, codex_binary?, tool_timeout?, max_output_bytes?, max_tool_rounds?}` → `{settings}` | Rejected with `BUSY` while there is active work or reservations. No automatic endpoint or model change. |
 | `system.resources` | `{}` → `{memory, gpus:[], platform}` | Unknown values are `null`. |
 
@@ -619,8 +647,8 @@ class Backend(Protocol):
 
 Reference constructors: `OllamaBackend(endpoint="http://127.0.0.1:11434")`
 (the default is `ollama_url` from the settings) and
-`CodexBackend(binary="codex")`. Direct OpenAI, DeepSeek, Google Cloud and
-OpenRouter receive the service's account manager; Claude Code receives the
+`CodexBackend(binary="codex")`. Direct OpenAI, DeepSeek, Google Cloud,
+OpenRouter and Kira Cloud receive the service's account manager; Claude Code receives the
 private runtime folder, where it writes its own launcher, and receives Kira's
 tools from an MCP server inside the service process.
 
@@ -645,7 +673,7 @@ tools from an MCP server inside the service process.
 | `provider_started(pid)` | callback | Registers the child process before inference, for cleanup and recovery. |
 | `register_control(handler)` | callback | Registers native control operations (Codex steering, compaction). |
 | `guidance(kind, payload)` | callback | Boundary for user guidance in providers with a service-managed inbox. |
-| `context_state`, `context_save`, `context_page`, `context_catalog` | state and callbacks | Durable context managed by Kira (Direct OpenAI, DeepSeek Account, Google Cloud, OpenRouter). |
+| `context_state`, `context_save`, `context_page`, `context_catalog` | state and callbacks | Durable context managed by Kira (Direct OpenAI, DeepSeek Account). |
 | `tool_image(ref)` | callback | Retrieves the pixels of a screenshot owned by the service. |
 | `save_generated_image(bytes, type, tool_id)` | callback | Saves an image produced by the model: the original in `generated_images/` when the turn may write to the project, otherwise in Kira's private data; returns its record and the private normalized copy. |
 | `generated_image_inputs()` | callback | The images of the latest answer of this chat that produced any, as image parts for a follow-up edit. |
@@ -680,7 +708,7 @@ Computer only if the model declares image input (with Ollama, through
 | `search_files` | `{query, path?:"."}` | Reports its own limits: 1,000 entries, 100 matches, depth 32, 16 MiB examined; it does not enter `.git`, `.venv` or `node_modules`. Files over the size limit and unreadable or vanished files or folders are skipped, counted (`skipped_large`, `skipped_unreadable`, the first 20 in `skipped`) and set `truncated`. |
 | `read_file` | `{path}` | Returns content and `sha256`. A file that is not valid UTF-8 is returned with replacement characters and `lossy:true` (`encoding:"non_utf8"`); devices, FIFOs and sockets are refused without being opened. |
 | `write_file` | `{path, content, expected_sha256?:string\|null}` | Requires the expected hash of the existing content; `null` means "create only" and also creates the missing parent folders (listed in `created_directories`). Refuses with `UNSUPPORTED` to replace a file that is not valid UTF-8. New files 0644, new folders 0755. Requires a write permission; paths inside `.git` require **Full access**. |
-| `run_command` | `{argv:string[], timeout?:number}` | Explicit `argv`, cwd in the root, no implicit shell; requires `trusted_host` or `full_access`. `timeout` can only shorten **Tool timeout (seconds)**. The command receives only `PATH`, `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER`, `LOGNAME` (plus `PYTHONUNBUFFERED=1`) and umask 022. Process groups belong to Kira: timeouts and cancellation terminate descendants with bounded escalation; a process that leaves the group while keeping the output open is reported with `detached_pipe_holder:true`. |
+| `run_command` | `{argv:string[], timeout?:number}` | Explicit `argv`, cwd in the root, no implicit shell; requires `trusted_host` or `full_access`. `timeout` can only shorten **Tool timeout (seconds)**. The command receives only `PATH`, `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER`, `LOGNAME` (plus `PYTHONUNBUFFERED=1`) and umask 022. Process groups belong to Kira: timeouts and cancellation terminate descendants with bounded escalation; a process that leaves the group while keeping the output open is reported with `detached_pipe_holder:true`. The result reports in `write_confinement` the confinement the command ran with (see [Confinement of commands run by the service](#confinement-of-commands-run-by-the-service)). |
 
 Results are `{ok:bool, ...}`; a rejected input produces a structured
 `{ok:false, error:{code, message}}`. An unexpected failure is `TOOL_ERROR`, a
@@ -710,10 +738,11 @@ matches the requested one):
 | `trusted_host` | `danger-full-access` | no sandbox |
 | `full_access` | `danger-full-access` | no sandbox |
 
-Plan, Review and Recap always require `read-only`.
+Plan, Review and Recap always require `read-only`. Codex commands are executed
+by its runtime: the confinement described further below does not cover them.
 
 **Direct OpenAI, Ollama, DeepSeek Account, DeepSeek Web, Google Cloud,
-OpenRouter**: tools are executed by the service through `execute_tool`, so the
+OpenRouter, Kira Cloud**: tools are executed by the service through `execute_tool`, so the
 policy is an allowlist. In read-only mode the model receives `list_files`,
 `search_files`, `read_file`; with a write permission `write_file` is added;
 with `trusted_host` or `full_access` `run_command` is added. The service
@@ -729,8 +758,41 @@ permission: `Read, Glob, Grep` in read-only mode; `Edit, Write, NotebookEdit`
 with a write permission; `Bash, WebFetch, WebSearch` with `trusted_host` or
 `full_access`; plus Kira's MCP tools (`mcp__kira__*`). A `PreToolUse` hook
 denies every other tool and every path outside the project before execution
-(except with Full access). The execution of the built-ins belongs to Claude
-Code and is only observed; Kira neither reads nor stores its credentials.
+(except with Full access). The path check covers the file tools (`Read`,
+`Edit`, `Write`, `NotebookEdit`, `Glob`, `Grep`): `Bash` has no path field and
+runs as the user, without the confinement described below. The execution of
+the built-ins belongs to Claude Code and is only observed; Kira neither reads
+nor stores its credentials.
+
+### Confinement of commands run by the service
+
+`run_command` and project tool workers are launched by the service with a mode
+derived from the permission: `workspace_write` for `trusted_host`,
+`unrestricted` for `full_access` (`src/kira/tools/sandbox.py`). With
+`workspace_write`:
+
+| Condition | Effect |
+| --- | --- |
+| Linux (x86_64, aarch64, riscv64) with usable Landlock | Before `exec` the child process sets `no_new_privs` and a Landlock ruleset: read and execute on `/`; write on the project root, on the temporary folder (`/tmp`, or `/tmp/kira-sandbox-<uid>` when the project is under `/tmp`, also exported as `TMPDIR`), on `/dev/shm` and on the `/dev/null`, `/dev/zero`, `/dev/full`, `/dev/random` and `/dev/urandom` devices. The ruleset does not handle the network. |
+| Linux without Landlock, with a usable `bwrap` | Only `run_command` is wrapped in `bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --bind <root> <root>`; the network stays shared. Project tool workers use Landlock only and in this case run unconfined. |
+| Neither, or Windows | No confinement. |
+
+Landlock counts as usable only after a trial process has really been confined.
+Every result of `run_command` and of a started worker states what was applied
+to that process:
+
+```json
+"write_confinement": {"mode": "workspace_write", "applied": "landlock"}
+```
+
+`applied` is `landlock`, `bwrap` or `none`; `mode` is `workspace_write` or
+`unrestricted`. When confinement was requested and the system does not offer
+it (`mode:"workspace_write"`, `applied:"none"`), the command runs anyway and
+the record also carries `code:"write_confinement_unavailable"` and a `message`:
+the receipt in the interface shows it. If instead Landlock is usable but the
+rules do not take effect for that process, the process is not started and the
+tool answers with the `SANDBOX_FAILED` error: a command never starts
+unconfined behind a result that states otherwise.
 
 ## 6. Namespaces of the tools exposed to the model
 
@@ -742,7 +804,7 @@ which no argument can change. Recognized namespaces: `team`, `kira`,
 | Namespace and tool | Arguments | Notes |
 | --- | --- | --- |
 | `kira.environment` | `{}` | Current capabilities, scope and state reported by the service. |
-| `kira.team_delegate` | `{goal, brief, mode, members?, max_agents?, concurrency?, round_limit?}` | Only in **Execute** with tools enabled and a provider that runs Teams (`codex`, `openai_chatgpt`, `ollama`, `deepseek_account`, `google_cloud`, `openrouter`); one accepted delegation per originating run; the Team starts after the turn completes and is cleaned up. |
+| `kira.team_delegate` | `{goal, brief, mode, members?, max_agents?, concurrency?, round_limit?}` | Only in **Execute** with tools enabled and a provider that runs Teams (`codex`, `openai_chatgpt`, `ollama`, `deepseek_account`, `google_cloud`, `openrouter`, `kira_cloud`); one accepted delegation per originating run; the Team starts after the turn completes and is cleaned up. |
 | `kira.team_status` | `{delegation_id?}` | Without an ID: lightweight recent summary. |
 | `kira.team_message` | `{delegation_id, recipient_id, content}` | Sender `assistant`; does not restart a finished Team. |
 | `kira.team_resume` | `{delegation_id, instruction?, round_limit?}` | Same providers as `kira.team_delegate`; continuation queued after the turn; source Team finished and cleaned up. |
@@ -765,7 +827,7 @@ which no argument can change. Recognized namespaces: `team`, `kira`,
 
 Wire names: Direct OpenAI uses `kira_browser.*` and `kira_computer.*` (because
 `browser` and `computer` are namespaces reserved by the provider); Ollama,
-DeepSeek Account, DeepSeek Web, Google Cloud and OpenRouter receive flat
+DeepSeek Account, DeepSeek Web, Google Cloud, OpenRouter and Kira Cloud receive flat
 `<namespace>__<tool>` functions, such as `browser__navigate` and
 `computer__act` (DeepSeek Web without Computer); Claude Code sees `mcp__kira__browser__*` and
 `mcp__kira__computer__*`; Codex receives, on the `kira` MCP server, the

@@ -234,7 +234,7 @@ la voce e mette la coda in pausa.
 
 - **Codex** usa il proprio invio al turno attivo, quando il turno lo consente.
 - **OpenAI diretto · ChatGPT**, **DeepSeek Account**, **Google Cloud · Vertex
-  AI**, **OpenRouter** e **Ollama** le ricevono alla **richiesta successiva** al
+  AI**, **Kira Cloud**, **OpenRouter** e **Ollama** le ricevono alla **richiesta successiva** al
   modello: la risposta o lo strumento già in corso finisce normalmente, poi il
   testo in attesa viene aggiunto in ordine. Gli strumenti di un gruppo non
   ancora avviati possono essere rinviati con esito
@@ -462,16 +462,20 @@ approvano comandi e non avviano o riprendono lavoro.
 
 | Provider | Contenuto visivo degli allegati |
 | --- | --- |
+| **Codex** | Sì, fino a 4 PNG |
 | **OpenAI diretto · ChatGPT** | Sì |
 | **Google Cloud · Vertex AI** | Sì |
+| **Kira Cloud** | Sì, con i modelli che nel catalogo dichiarano di accettare immagini |
 | **OpenRouter** | Sì, con i modelli che nel catalogo dichiarano visione (`image` in `architecture.input_modalities`) |
 | **DeepSeek Account** (sperimentale) | Sì, solo con i modelli che nel catalogo indicano il supporto alle immagini |
 | **DeepSeek Web** (sperimentale) | Sì, con DeepSeek V4 Flash (web) e DeepSeek Reasoner (web) |
 | **Claude Code · uso personale** (sperimentale) | Sì, fino a 4 PNG |
-| **Codex**, **Ollama** | No: l'allegato diventa un riferimento al percorso, come testo |
+| **Ollama** | No: l'allegato diventa un riferimento al percorso, come testo |
 
 Un rifiuto del modello viene mostrato come errore: Kira non cambia modello da
-sola.
+sola, salvo le due eccezioni dichiarate in
+[Provider](PROVIDER.md#principi-comuni-a-tutti-i-provider) (modelli gratuiti di
+OpenRouter e continuità di Google Cloud).
 
 ### Allegare un'immagine
 
@@ -511,8 +515,8 @@ bozza ma l'invio è bloccato: scegli un modello compatibile o rimuovile.
 ### Percorsi come testo
 
 **Scrivere o incollare un percorso resta testo**: non allega i byte e non
-permette al modello di vedere l'immagine. Con **Codex** e **Ollama**, **Allega**
-e l'incolla inseriscono sempre il percorso locale, anche per le immagini; con
+permette al modello di vedere l'immagine. Con **Ollama**, **Allega** e
+l'incolla inseriscono sempre il percorso locale, anche per le immagini; con
 gli altri provider vale lo stesso per i file che non sono immagini e per le
 risposte libere alle domande. Un'immagine incollata dagli appunti in una
 risposta a una domanda viene salvata come PNG privato nella cartella
@@ -655,9 +659,12 @@ carica, durante un nuovo invio o per le tue cancellazioni.
 
 Un **HTTP 503** indica che il provider non era disponibile per quella
 richiesta; il solo codice non dice se la causa sia un sovraccarico, un problema
-di fatturazione o altro. Kira **non reinvia** automaticamente, non sostituisce
-la bozza e non cambia modello: il messaggio inviato è comunque salvato nella
-chat. Prima di riprovare, controlla in **Attività** le azioni già eseguite.
+di fatturazione o altro. Quando l'errore compare, Kira **non reinvia**
+automaticamente, non sostituisce la bozza e non cambia modello: il messaggio
+inviato è comunque salvato nella chat. I soli cambi automatici di modello, che
+avvengono prima che l'errore venga mostrato, sono le due eccezioni dichiarate
+in [Provider](PROVIDER.md#principi-comuni-a-tutti-i-provider). Prima di
+riprovare, controlla in **Attività** le azioni già eseguite.
 
 ## 14. Preferenze della chat
 
@@ -681,7 +688,7 @@ e non toccano permessi dei progetti, modelli o credenziali.
 | **Mostra riepiloghi del ragionamento** | sì / no | Mostra o nasconde il pannello **Riepilogo del ragionamento** sotto la chat senza interrompere il lavoro. |
 
 Il **Riepilogo del ragionamento** è il riassunto pubblico che alcuni provider
-(Codex, OpenAI diretto, Google Cloud, OpenRouter) forniscono durante
+(Codex, OpenAI diretto, Google Cloud, Kira Cloud, OpenRouter) forniscono durante
 l'elaborazione, o il ragionamento che DeepSeek Web mostra sul proprio sito con
 DeepSeek Reasoner; non certifica che un'operazione sia avvenuta e non è la
 risposta finale; con Ollama, DeepSeek Account e Claude Code non è disponibile.

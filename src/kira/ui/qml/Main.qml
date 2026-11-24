@@ -974,9 +974,13 @@ ApplicationWindow {
                 id: projectHeader
                 objectName: "projectHeader"
                 // One bar: where you are on the left, what you can do on the right.
-                // Actions drop their labels before they crowd the title; the
-                // threshold uses full labels so changing presentation cannot loop.
-                readonly property bool compactActions: width - 70 < headerActions.fullWidth + 400
+                // As room runs out the account button keeps only its icon, then the
+                // project name yields to the chat title, then the actions drop their
+                // labels. Every threshold uses full labels, so a choice cannot loop.
+                readonly property real labelsNeed: 70 + headerActions.fullWidth + 55
+                readonly property bool compactActions: width < labelsNeed + 250
+                readonly property bool compactKicker: compactActions || width < labelsNeed + 400
+                readonly property bool compactAccount: compactKicker || width < labelsNeed - 55 + accountButton.fullLabelWidth + 17 + 400
                 Layout.fillWidth: true
                 implicitHeight: (window.compact ? 52 : 58) + Math.max(0, appearance.uiFont.pixelSize - 13)
                 color: appearance.colors.background
@@ -1000,7 +1004,7 @@ ApplicationWindow {
                             font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText
                             text: window.page === 0 ? (window.projectsOverview ? "" : (workspace.project.name || "")) : ["", qsTr("Inferenza e agenti"), qsTr("Evidenza durabile"), qsTr("Preferenze"), qsTr("Collaborazione")][window.page]
                             // The chat title keeps its room; the project name yields first.
-                            visible: text.length > 0 && !projectHeader.compactActions
+                            visible: text.length > 0 && !projectHeader.compactKicker
                             color: muted; font.pixelSize: Math.max(10, appearance.uiFont.pixelSize - 1)
                             elide: Text.ElideRight; Layout.maximumWidth: Math.max(80, headerLayout.width * 0.26); Layout.minimumWidth: 0
                         }
@@ -1053,9 +1057,14 @@ ApplicationWindow {
                     }
                     Rectangle { width: 1; height: 22; color: appearance.colors.border }
                     KButton {
+                        id: accountButton
                         objectName: "topBarKiraAccountButton"
                         iconName: "user"
-                        text: projectHeader.compactActions ? "" : (kiraCloudAccount.connected ? ((kiraCloudAccount.userName || kiraCloudAccount.userEmail || qsTr("Account Kira")) + " · " + kiraCloudAccount.totalAvailableText) : qsTr("Accedi a Kira"))
+                        readonly property string fullLabel: kiraCloudAccount.connected ? ((kiraCloudAccount.userName || kiraCloudAccount.userEmail || qsTr("Account Kira")) + " · " + kiraCloudAccount.totalAvailableText) : qsTr("Accedi a Kira")
+                        // Measured from the full label, whatever is shown, so the bar's choice cannot loop.
+                        readonly property real fullLabelWidth: Math.max(38, accountLabel.advanceWidth + 28 + 29)
+                        TextMetrics { id: accountLabel; text: accountButton.fullLabel; font: accountButton.font }
+                        text: projectHeader.compactAccount ? "" : fullLabel
                         subtle: kiraCloudAccount.connected
                         primary: !kiraCloudAccount.connected
                         implicitHeight: 34
@@ -2806,8 +2815,8 @@ ApplicationWindow {
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelDescription_" + modelCard.modelData.id; text: String(modelCard.modelData.description || ""); visible: text.length > 0; color: appearance.colors.text; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelCapability_" + modelCard.modelData.id; text: modelsPage.shownBackend === "claude_code" ? qsTr("Agente Claude Code · azioni native osservate da Kira") : modelsPage.shownBackend === "deepseek_web" ? qsTr("Strumenti mediati da Kira · protocollo sperimentale") : modelCard.modelData.capabilities && modelCard.modelData.capabilities.image_generation === true ? (modelCard.modelData.capabilities.images === true ? qsTr("Crea e modifica immagini · descrivi l'immagine o allegane una da modificare") : qsTr("Crea immagini da una descrizione")) : modelCard.modelData.tools_verified ? qsTr("Strumenti verificati") : modelCard.modelData.tools_metadata ? qsTr("Supporto strumenti dichiarato · verifica al primo uso") : modelsPage.shownBackend === "codex" ? qsTr("Agente Codex · l'accesso va confermato con un turno reale") : ["kira_cloud", "openai_chatgpt", "deepseek_account", "google_cloud", "openrouter"].indexOf(modelsPage.shownBackend) >= 0 ? qsTr("Strumenti gestiti da Kira · verifica al primo uso") : qsTr("Conversazione"); color: appearance.colors.textSecondary; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); Layout.fillWidth: true; wrapMode: Text.Wrap }
                                         Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelSize_" + modelCard.modelData.id; visible: !!modelCard.modelData.size_bytes || modelsPage.shownBackend === "ollama"; text: modelCard.modelData.size_bytes ? qsTr("Dimensione modello: %1 GiB").arg(Number(modelCard.modelData.size_bytes / 1073741824).toLocaleString(Qt.locale(localization.language), "f", 2)) : qsTr("Dimensione / VRAM: consulta i dati disponibili sotto"); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 3); Layout.fillWidth: true; wrapMode: Text.Wrap }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelPrice_" + modelCard.modelData.id; readonly property var pricing: modelCard.modelData.pricing || null; readonly property string unit: pricing && pricing.currency === "USD" ? "$" : "€"; readonly property bool perImage: !!pricing && pricing.per_image > 0; visible: !!pricing && (perImage || pricing.input_per_1m > 0 || pricing.output_per_1m > 0); text: !visible ? "" : perImage ? qsTr("Costo indicativo: da %1 per immagine").arg(Number(pricing.per_image).toLocaleString(Qt.locale(), "f", pricing.per_image < 0.1 ? 3 : 2) + " " + unit) : qsTr("Costo per 1M di token: %1 in ingresso · %2 in uscita").arg(Number(pricing.input_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit).arg(Number(pricing.output_per_1m).toLocaleString(Qt.locale(), "f", 2) + " " + unit); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
-                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelScore_" + modelCard.modelData.id; readonly property real score: kformat.modelScore(modelCard.modelData); visible: score > 0; text: visible ? qsTr("Indice di capacità: %1 · da test indipendenti").arg(Number(score).toLocaleString(Qt.locale(), "f", 0)) : ""; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelPrice_" + modelCard.modelData.id; readonly property var pricing: modelCard.modelData.pricing || null; readonly property string unit: pricing && pricing.currency === "USD" ? "$" : "€"; readonly property bool perImage: !!pricing && pricing.per_image > 0; visible: !!pricing && (perImage || pricing.input_per_1m > 0 || pricing.output_per_1m > 0); text: !visible ? "" : perImage ? qsTr("Costo indicativo: da %1 per immagine").arg(Number(pricing.per_image).toLocaleString(kformat.uiLocale(), "f", pricing.per_image < 0.1 ? 3 : 2) + " " + unit) : qsTr("Costo per 1M di token: %1 in ingresso · %2 in uscita").arg(Number(pricing.input_per_1m).toLocaleString(kformat.uiLocale(), "f", 2) + " " + unit).arg(Number(pricing.output_per_1m).toLocaleString(kformat.uiLocale(), "f", 2) + " " + unit); color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                        Text { font.family: appearance.uiFont.family; font.styleName: appearance.uiFont.styleName; font.weight: appearance.uiFont.weight; font.italic: appearance.uiFont.italic; textFormat: Text.PlainText; objectName: "modelScore_" + modelCard.modelData.id; readonly property real score: kformat.modelScore(modelCard.modelData); visible: score > 0; text: visible ? qsTr("Indice di capacità: %1 · da test indipendenti").arg(Number(score).toLocaleString(kformat.uiLocale(), "f", 0)) : ""; color: muted; font.pixelSize: Math.max(8, appearance.uiFont.pixelSize - 1); wrapMode: Text.Wrap; Layout.fillWidth: true }
                                         Flow {
                                             visible: modelCard.efforts.length > 0
                                             Layout.fillWidth: true; spacing: 4

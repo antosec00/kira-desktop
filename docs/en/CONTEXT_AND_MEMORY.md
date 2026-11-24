@@ -134,9 +134,11 @@ the resume or the compaction: it has to be resolved in Codex.
 
 Ollama has no memory between one request and the next: Kira sends a **recent
 window** of the chat, by default the last **8 runs** within **32,000 bytes**.
-If you set a positive `num_ctx` in the model, the budget becomes **twice that
-value in bytes**, between 4,096 and 64,000. It is a transport budget, not a
-token count, and does not guarantee that the whole request fits in the model.
+If you choose a **Requested context** (`num_ctx`) for the chat, the budget
+becomes **two and a half times that value in bytes**, between 4,096 and
+262,144, and the runs considered rise to **14** from 65,536 tokens and to
+**20** from 131,072. It is a transport budget, not a token count, and does not
+guarantee that the whole request fits in the model.
 Omissions are flagged; instructions and notes are never cut by this window.
 The rest of the conversation remains reachable by the model with the history
 tools (section 8), if the model supports tools.
@@ -205,26 +207,29 @@ provider change the first turn receives Kira's portable context. In **Usage
 and resources** you find, for every turn, the turn's tokens, those of the last
 request and the **context window occupancy** reported by Claude Code.
 
-### Google Cloud · Vertex AI and OpenRouter
+### Google Cloud · Vertex AI, Kira Cloud and OpenRouter
 
-With **Google Cloud · Vertex AI** and **OpenRouter**, Kira maintains a
-**Kira-managed persistent context** in **Automatic — Kira compaction** mode,
-calibrated to the window and output limit declared by the model (for OpenRouter,
-read dynamically from `context_length` and
-`top_provider.max_completion_tokens` in the `/api/v1/models` catalog). When the
-conversation approaches the threshold or if the provider returns a full-context
-error (or a preventive `PROMPT_SAFETY` block on long history), Kira compacts the
-oldest runs into a source-linked structured summary and keeps the most recent
-turns verbatim. For Anthropic Claude and Google Gemini models on OpenRouter,
-Kira also inserts `cache_control: {"type": "ephemeral"}` markers on the system
+With **Google Cloud · Vertex AI**, **Kira Cloud** and **OpenRouter** no context
+is saved between one request and the next. On every request Kira rebuilds the
+recent conversation from the recorded history (at most the last 30 runs within
+200,000 bytes) and, if it does not fit the window declared by the model (for
+OpenRouter read from `context_length` in the `/api/v1/models` catalog),
+shortens tool results and the oldest messages, leaving the latest ones intact.
+If the provider still answers with a full-context error (or, on Google Cloud,
+a preventive `PROMPT_SAFETY` block on long history), Kira shortens further and
+retries. No summary is produced and no checkpoint is saved: the **Context and
+memory** panel shows only **Chat notes and sources** and **Compact now** is not
+available. For Anthropic Claude and Google Gemini models on OpenRouter, Kira
+also inserts `cache_control: {"type": "ephemeral"}` markers on the system
 prompt and on the latest stable message to take advantage of provider prompt
 caching.
 
 ## 6. Context and memory: compacting
 
 Open **Context and memory** from the **Context** button under the chat, from
-**Manage chat** or from the **Usage** panel. With Direct OpenAI, DeepSeek
-Account, Google Cloud and OpenRouter, **Compact now** starts an explicit
+**Manage chat** or from the **Usage** panel. With Direct OpenAI and DeepSeek
+Account (with the other providers the button does not appear), **Compact now**
+starts an explicit
 compaction: it requires an **idle chat** and an **empty queue** (complete or
 remove the waiting requests, even if the queue is paused). During the operation
 the chat's button shows **Compacting…** and the panel updates the status while

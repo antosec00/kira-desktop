@@ -19,7 +19,10 @@ if TYPE_CHECKING:
     from kira.ui.controller import Workspace
 
 Json = dict[str, Any]
-BACKENDS = ("codex", "openai_chatgpt", "ollama", "claude_code", "google_cloud", "deepseek_account", "openrouter")
+BACKENDS = ("codex", "openai_chatgpt", "ollama", "claude_code", "google_cloud", "deepseek_account",
+            "kira_cloud", "openrouter")
+#: Credit windows of a Kira account: an amount of money, not a rate limit.
+KIRA_CREDIT_WINDOWS = frozenset({"kira_monthly_credit", "kira_extra_credit"})
 CLAUDE_USAGE_URL = "https://claude.ai/settings/usage"
 MAX_TIMESTAMP = 253402300799
 
@@ -122,6 +125,15 @@ def _window(window: Json, recorded: bool) -> Json:
         reset = tr("Ripristino: {time}", time=_date(window.get("resets_at")))
         if until is not None and until > 0:
             reset += " · " + _countdown(until)
+    kind = window.get("kind")
+    if kind in KIRA_CREDIT_WINDOWS:
+        # The account reports amounts: show them beside the share that is left.
+        amounts = window.get("value_text")
+        if remaining is not None and isinstance(amounts, str) and amounts.strip():
+            value += " · " + amounts.strip()[:64]
+        # The plan's credit renews; extra credits have no date at all.
+        reset = (tr("Non scadono") if kind == "kira_extra_credit"
+                 else tr("Rinnovo: {date}", date=_date(window.get("resets_at"))))
     known = remaining is not None and not elapsed
     return {"title": _window_title(window), "known": known,
             "remaining": remaining if known else 0, "value": value, "reset": reset}
@@ -201,7 +213,8 @@ def present_account_usage(data: Json, backend: str) -> Json:
     if "context_compaction_requests" in local:
         local_rows.insert(2, {"label": tr("Richieste per la gestione del contesto"),
                               "value": count(local["context_compaction_requests"])})
-    if local:
+    # What Kira Cloud charged is the credit above; list prices would be invented here.
+    if local and backend != "kira_cloud":
         local_cost = calculate_cost_telemetry(local, backend=backend)
         has_both = number(local.get("input_tokens")) is not None and number(local.get("output_tokens")) is not None
         local_rows.append({
@@ -222,8 +235,13 @@ def present_account_usage(data: Json, backend: str) -> Json:
     gcloud = backend == "google_cloud"
     deepseek = backend == "deepseek_account"
     openrouter = backend == "openrouter"
+    kira_cloud = backend == "kira_cloud"
     available = data.get("available") is True
-    if direct and data.get("reason") == "not_connected":
+    if kira_cloud and not available:
+        note = tr("Kira Cloud non è collegato: accedi in Modelli → Kira Cloud per consultare piano e credito AI.")
+    elif kira_cloud:
+        note = tr("Piano e credito AI riportati dal tuo account Kira al momento dell'aggiornamento.")
+    elif direct and data.get("reason") == "not_connected":
         note = tr("L’account di questa chat non è collegato. Accedi nelle impostazioni per consultarne l’utilizzo.")
     elif direct:
         note = tr("Il collegamento diretto non fornisce a Kira le quote settimanali o i crediti del piano. Controllali in ChatGPT.")
@@ -237,7 +255,8 @@ def present_account_usage(data: Json, backend: str) -> Json:
         note = tr("Quote riportate dall'account collegato a Codex. L'account e i limiti possono essere diversi da quelli di OpenAI diretto.")
     else:
         note = tr("Quote dell'account Codex non disponibili. Verifica l'accesso e premi Aggiorna.")
-    account_status = (tr("Account non collegato") if (direct or gcloud or deepseek or openrouter) and account.get("connected") is False
+    account_status = (tr("Account non collegato") if (direct or gcloud or deepseek or openrouter or kira_cloud)
+                      and account.get("connected") is False
                       else tr("Uso del piano non autorizzato") if direct and account.get("plan_enabled") is False
                       else "")
     account_label: str
@@ -258,7 +277,8 @@ def present_account_usage(data: Json, backend: str) -> Json:
                       tr("Claude Code") if claude else
                       tr("Google Cloud · Vertex AI") if gcloud else
                       tr("DeepSeek Account") if deepseek else
-                      tr("OpenRouter") if openrouter else "Ollama",
+                      tr("OpenRouter") if openrouter else
+                      tr("Kira Cloud") if kira_cloud else "Ollama",
             "observed": tr("Aggiornato: {time}", time=_date(data.get("observed_at"))),
             "local_rows": local_rows,
             "local_period": tr("Periodo: {start} — {end}", start=_date(local.get("since")), end=_date(local.get("until"))),

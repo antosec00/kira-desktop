@@ -42,22 +42,20 @@ ampio da sola.
 | --- | --- | --- | --- |
 | **Sola lettura** | Lettura e ricerca dentro il progetto; le modifiche sono rifiutate | Negati | Modalità di sola lettura di Codex |
 | **Scrittura nel progetto** | Lettura e scrittura dentro il progetto | Negati | Sandbox workspace di Codex |
-| **Host fidato** | Lettura e scrittura dentro il progetto | Eseguiti con confinamento OS (`workspace_write` Landlock / Bubblewrap: scrittura limitata alla radice del progetto e `/tmp`) | Accesso completo di Codex |
-| **Accesso completo** | Lettura e scrittura in tutti i percorsi accessibili al tuo utente, anche fuori dal progetto | Eseguiti con il tuo utente senza restrizioni di sandbox | Accesso completo di Codex |
+| **Host fidato** | Lettura e scrittura dentro il progetto | Eseguiti con il tuo utente. Su Linux, quando il sistema lo permette, Kira blocca le scritture fuori dal progetto per i comandi che esegue lei; lettura e rete non sono mai limitate (vedi [Che cosa limita davvero Host fidato](#che-cosa-limita-davvero-host-fidato)) | Accesso completo di Codex, senza sandbox |
+| **Accesso completo** | Lettura e scrittura in tutti i percorsi accessibili al tuo utente, anche fuori dal progetto | Eseguiti con il tuo utente, senza alcuna limitazione aggiunta da Kira | Accesso completo di Codex, senza sandbox |
 
 Alcune precisazioni importanti:
 
-- «Host» indica il sistema dove gira Kira. Se la avvii in WSL, l'host è
-  quell'ambiente Linux, con le cartelle Windows montate che il tuo utente può
-  raggiungere.
-- Con **Host fidato**, i comandi avviati da Kira (`run_command` e i worker Python
-  degli strumenti di progetto) vengono confinati a livello di kernel tramite
-  **Linux Landlock LSM** (o **Bubblewrap** `bwrap` quando disponibile) in modalità
-  `workspace_write`: possono leggere ed eseguire i binari di sistema ma il kernel
-  blocca con `EACCES` qualsiasi creazione, modifica, rinomina o cancellazione di
-  file fuori dalla cartella del progetto e dalle directory temporanee (`/tmp`).
-  La lettura del file system e la rete restano quelle dell'utente: scegli questo
-  permesso solo per progetti di cui ti fidi.
+- «Host» indica il sistema dove gira Kira: Linux, l'ambiente Linux di WSL (con
+  le cartelle Windows montate che il tuo utente può raggiungere) oppure
+  Windows, se usi l'installazione nativa.
+- **Host fidato non è una sandbox.** I comandi girano con il tuo utente: la
+  cartella di lavoro è il loro punto di partenza, non un recinto. In alcuni
+  casi Kira aggiunge un blocco delle scritture fuori dal progetto, ma non
+  sempre e mai per la lettura o per la rete: i dettagli sono in
+  [Che cosa limita davvero Host fidato](#che-cosa-limita-davvero-host-fidato).
+  Scegli questo permesso solo per progetti e modelli di cui ti fidi.
 - Fuori da **Accesso completo**, lo strumento di scrittura di Kira rifiuta con
   `PATH_DENIED` i percorsi dentro `.git`: i metadati Git contengono hook e filtri
   che Git esegue poi con il tuo utente. Con **Host fidato** i comandi restano
@@ -65,11 +63,11 @@ Alcune precisazioni importanti:
 - Le politiche di Codex limitano scritture e rete secondo il suo runtime, ma non
   promettono che solo la cartella del progetto sia leggibile. Codex tratta
   **Host fidato** e **Accesso completo** allo stesso modo; la differenza fra i
-  due vale per gli strumenti di file gestiti da Kira.
+  due vale per gli strumenti di file e per i comandi gestiti da Kira.
 - Con **OpenAI diretto · ChatGPT**, **Google Cloud · Vertex AI**,
-  **OpenRouter**, **Ollama**, **DeepSeek** e **Claude Code** il modello riceve
-  solo gli strumenti ammessi dal permesso: in sola lettura non vede nemmeno la
-  definizione dello strumento di scrittura.
+  **Kira Cloud**, **OpenRouter**, **Ollama**, **DeepSeek** e **Claude Code** il
+  modello riceve solo gli strumenti ammessi dal permesso: in sola lettura non
+  vede nemmeno la definizione dello strumento di scrittura.
 - Cambiare permesso non cambia modello, account, livello di ragionamento o
   cartella del progetto. Un cambio richiesto mentre c'è lavoro attivo viene
   rifiutato: aspetta che il progetto sia libero.
@@ -77,6 +75,53 @@ Alcune precisazioni importanti:
 Nessun messaggio, file, percorso o risultato di strumento può alzare il
 permesso. Se il modello chiede un permesso in più, Kira lo nega: l'unico modo di
 ampliarlo è la tua scelta esplicita in **Memoria e istruzioni del progetto**.
+
+### Che cosa limita davvero Host fidato
+
+**Host fidato** autorizza comandi che girano con il tuo utente: consideralo il
+permesso di usare il computer, non un recinto intorno alla cartella del
+progetto. Che cosa viene limitato dipende da chi esegue il comando e dal
+sistema su cui gira Kira.
+
+**Comandi eseguiti da Kira.** Con Ollama, OpenAI diretto · ChatGPT, Google
+Cloud · Vertex AI, Kira Cloud, OpenRouter, DeepSeek Account e DeepSeek Web è il
+servizio di Kira a lanciare i comandi (`run_command`) e i worker Python degli
+strumenti di progetto. Solo per questi processi Kira prova ad aggiungere un
+blocco delle scritture:
+
+| Sistema | Che cosa applica Kira |
+| --- | --- |
+| Linux (anche dentro WSL2) con un kernel che offre **Landlock** | Il kernel rifiuta creazione, modifica, rinomina e cancellazione di file fuori dalla cartella del progetto, da `/tmp` e da `/dev/shm`; restano scrivibili i dispositivi standard come `/dev/null`. Se il progetto si trova sotto `/tmp`, è scrivibile una cartella temporanea dedicata al posto dell'intera `/tmp`. |
+| Linux senza Landlock, con **Bubblewrap** (`bwrap`) utilizzabile | Solo per `run_command`: il comando vede il file system in sola lettura, tranne la cartella del progetto e una `/tmp` privata e vuota. I worker degli strumenti di progetto girano senza limitazioni. |
+| Linux senza nessuno dei due e **Windows nativo** | Nessuna limitazione: il comando può scrivere ovunque possa farlo il tuo utente. |
+
+In tutti i casi il comando può **leggere** ogni file leggibile dal tuo utente,
+comprese chiavi e configurazioni nella tua cartella personale, **usare la
+rete** e interagire con gli altri processi del tuo utente: Kira limita soltanto
+le scritture sul file system.
+
+Kira ti dice quando il blocco manca. Se il sistema non lo offre, il comando
+viene eseguito comunque e la sua ricevuta nella chat riporta **Eseguito senza
+blocco delle scritture: questo sistema non lo offre.**; i dati originali della
+ricevuta indicano sempre, alla voce `write_confinement`, che cosa è stato
+applicato (`landlock`, `bwrap` oppure `none`). Se invece Landlock è presente
+ma le regole non si attivano per un comando, quel comando non viene eseguito e
+la ricevuta mostra l'errore `SANDBOX_FAILED`. `kira-desktop doctor` riporta in
+`resources.sandbox` il meccanismo disponibile sul tuo sistema.
+
+**Comandi eseguiti dal provider.** Con **Codex** e **Claude Code** i comandi li
+lancia il runtime del provider, non Kira, e il blocco descritto sopra non si
+applica:
+
+- a Codex, con **Host fidato** come con **Accesso completo**, Kira chiede la
+  modalità `danger-full-access`: nessuna sandbox di Codex;
+- a Claude Code, **Host fidato** aggiunge gli strumenti `Bash`, `WebFetch` e
+  `WebSearch`. `Bash` gira con il tuo utente senza limitazioni aggiunte da
+  Kira: il controllo dei percorsi che Kira applica agli strumenti di file di
+  Claude Code non riguarda ciò che fa un comando.
+
+Anche un server MCP esterno di tipo `stdio` è un programma avviato con il tuo
+utente, senza queste limitazioni.
 
 ## Accesso completo
 
@@ -116,9 +161,10 @@ Alcune protezioni valgono in ogni modalità, anche con accesso completo:
 - Gli strumenti di file non seguono i collegamenti simbolici e rifiutano i
   file speciali.
 - I comandi ricevono un ambiente ridotto (solo `PATH`, `HOME`, `LANG`,
-  `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER` e `LOGNAME`: niente credenziali
-  dei provider né variabili di proxy) e creano i file con i permessi consueti
-  (umask 022).
+  `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER` e `LOGNAME`, più le variabili di
+  sistema indispensabili su Windows, come `SYSTEMROOT`, `TEMP` e `USERPROFILE`:
+  niente credenziali dei provider né variabili di proxy) e su Linux creano i
+  file con i permessi consueti (umask 022).
 - Letture, ricerche e output dei comandi hanno limiti di dimensione; le
   troncature sono segnalate.
 
@@ -207,10 +253,13 @@ Dolphin (cartella), Konsole (terminale), Kate (editor), Firefox, Spectacle
 (aggiornamenti) e Déjà Dup (backup dei file). Kira le avvia con argomenti fissi e
 un ambiente ripulito: quello che scrivi non sceglie un eseguibile arbitrario né
 un frammento di shell. Se un'applicazione manca o non c'è una sessione grafica,
-Kira lo segnala. **Apertura richiesta** significa che la richiesta è stata
-consegnata all'applicazione, non che una finestra sia diventata visibile:
-un'applicazione lanciata in questo modo può restare aperta anche dopo la
-chiusura di Kira.
+Kira lo segnala. Su Windows nativo le stesse azioni usano Esplora file,
+Windows Terminal o PowerShell, Visual Studio Code o Blocco note, il browser
+predefinito, le impostazioni di Windows, Gestione attività, Windows Update e le
+impostazioni di backup di Windows. **Apertura richiesta** significa che la
+richiesta è stata consegnata all'applicazione, non che una finestra sia
+diventata visibile: un'applicazione lanciata in questo modo può restare aperta
+anche dopo la chiusura di Kira.
 
 ## Riga di comando e IPC locale
 
@@ -233,11 +282,26 @@ messaggi, artefatti e metadati); se è troppo grande per la risposta, lo salva i
 i metadati dei progetti non avvia nessuna inferenza; aprire uno spazio di lavoro
 è una richiesta di lancio nativo esplicita, come dal pulsante **Riprendi**.
 
-L'interfaccia, il servizio e la riga di comando parlano attraverso un socket
-Unix privato (`$XDG_RUNTIME_DIR/kira/service.sock`, con permessi 0600, in una
-cartella con permessi 0700). Non è un server di rete: nessun altro utente del
-sistema e nessun altro computer può collegarsi. Il servizio è l'unico processo
-che scrive nel database.
+Su Linux l'interfaccia, il servizio e la riga di comando parlano attraverso un
+socket Unix privato (`$XDG_RUNTIME_DIR/kira/service.sock`, con permessi 0600,
+in una cartella con permessi 0700). Non è un server di rete: nessun altro
+utente del sistema e nessun altro computer può collegarsi.
+
+Su Windows nativo il canale è una connessione TCP locale: il servizio ascolta
+soltanto su `127.0.0.1`, su una porta scelta a ogni avvio, e nessun altro
+computer può raggiungerla. Una porta locale, però, può essere aperta da
+qualunque programma del computer: per questo a ogni avvio il servizio genera
+un segreto casuale, lo scrive insieme alla porta nel file
+`runtime\service.sock` del profilo e non legge alcun comando da una
+connessione che non presenti quel segreto per prima cosa. L'interfaccia e la
+riga di comando lo leggono da quel file. La protezione è quindi quella del
+file: può collegarsi chi può leggere la cartella del tuo profilo
+(`%LOCALAPPDATA%\Kira`, che con le impostazioni predefinite di Windows è
+riservata al tuo utente e agli amministratori del computer). Se sposti il
+profilo con `KIRA_HOME`, scegli una cartella che gli altri utenti non possano
+leggere.
+
+In entrambi i casi il servizio è l'unico processo che scrive nel database.
 
 Se usi un profilo separato con `KIRA_HOME`, imposta lo stesso valore per
 l'interfaccia, il servizio e ogni comando che riguarda quel profilo: un comando
@@ -258,10 +322,16 @@ Tutti i dati di Kira restano in locale, nelle cartelle del tuo utente:
 - stato, log e bozze di Anima, Ricerca e strumenti di progetto in
   `$HOME/.local/state/kira/`.
 
-Questi sono i percorsi predefiniti; variabili XDG e `KIRA_HOME` li cambiano come
-descritto in [Installazione](INSTALLAZIONE.md). I file privati sono creati con
-permessi 0600. I file e le cartelle che gli strumenti e i comandi di Kira creano
-nei tuoi progetti hanno invece i permessi consueti (0644 e 0755).
+Questi sono i percorsi predefiniti su Linux; su Windows nativo il profilo sta
+sotto `%LOCALAPPDATA%\Kira` (`data`, `config`, `state` e `runtime`). Variabili
+XDG e `KIRA_HOME` li cambiano come descritto in
+[Installazione](INSTALLAZIONE.md). Su Linux i file privati sono creati con
+permessi 0600, mentre i file e le cartelle che gli strumenti e i comandi di Kira
+creano nei tuoi progetti hanno i permessi consueti (0644 e 0755). Su Windows i
+permessi Unix non esistono: Kira non imposta regole di accesso proprie e i file
+del profilo hanno la protezione della cartella `%LOCALAPPDATA%` del tuo utente.
+Dove questa documentazione indica i permessi 0600 o 0700, su Windows vale
+questa regola.
 
 Kira non raccoglie mai il contenuto di progetti, chat, prompt, file o comandi,
 non invia segnalazioni automatiche di errori e non scarica né installa
@@ -312,8 +382,12 @@ Ogni provider gestisce le proprie credenziali con il flusso ufficiale:
   la configurazione di progetto/regione nella cartella privata `google-cloud/`
   sotto la configurazione di Kira, con permessi 0600, escluse da database,
   esportazioni e diagnostica.
+- **Kira Cloud** conserva soltanto il token di collegamento del dispositivo,
+  nel file privato `kira_cloud/account.json` sotto la configurazione di Kira,
+  con permessi 0600. La password dell'account si inserisce nel browser, sul
+  sito di Kira, mai nell'applicazione.
 - **OpenRouter** conserva la chiave API (`sk-or-v1-...`) e la configurazione
-  nel file privato `openrouter/config.json` sotto la configurazione di Kira, con
+  nel file privato `openrouter/account.json` sotto la configurazione di Kira, con
   permessi 0600 (oppure legge `OPENROUTER_API_KEY` dall'ambiente senza salvarla
   su disco); la chiave non compare mai in database, eventi, esportazioni o
   diagnostica.

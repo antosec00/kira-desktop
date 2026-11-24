@@ -51,6 +51,9 @@ def browser_error_summary(code: Any) -> str | None:
 
 def tool_error_summary(tool: str, code: Any) -> str | None:
     """Explain a recorded tool result code, which can depend on the tool that reported it."""
+    if code == "write_confinement_unavailable":
+        # A completed command under Trusted host that nothing confined.
+        return tr("Eseguito senza blocco delle scritture: questo sistema non lo offre.")
     if code == "UNSUPPORTED" and (tool == "write_file" or tool.endswith(".write_file")):
         return tr("Il file esistente non è testo UTF-8: write_file non lo sostituisce, perché read_file non può mostrarne i byte. Modificalo con un comando o fuori da Kira.")
     return browser_error_summary(code)
