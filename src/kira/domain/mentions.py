@@ -8,6 +8,9 @@ import re
 import subprocess
 from typing import Any
 
+from kira.domain.contracts import KiraError
+from kira.domain.project_paths import project_relative_parts
+
 Json = dict[str, Any]
 
 MAX_FILE_MENTION_CHARS = 12_000
@@ -533,10 +536,13 @@ def _resolve_safe_project_path(project_root: Path | None, rel_path: str) -> Path
     try:
         root = project_root.resolve(strict=True)
         clean = rel_path.strip().strip("\"'")
-        target = (root / clean).resolve(strict=True)
+        # Refused from its text alone: resolving a share, a device or another
+        # drive would already contact it.
+        names = project_relative_parts(clean, root, allow_parent=True)
+        target = root.joinpath(*names).resolve(strict=True)
         target.relative_to(root)
         return target
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, RuntimeError, KiraError):
         return None
 
 

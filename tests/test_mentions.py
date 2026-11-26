@@ -190,3 +190,36 @@ def test_ui_mentions_controller_and_qml_integration(qapp, tmp_path: Path, monkey
             root.deleteLater()
         engine.deleteLater()
         qapp.processEvents()
+
+
+def test_file_mention_is_refused_from_its_text_before_the_file_system_is_asked(tmp_path: Path, monkeypatch) -> None:
+    import functools
+
+    from kira.domain import mentions
+    from kira.domain.project_paths import project_relative_parts
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "notes.txt").write_text("inside the project", encoding="utf-8")
+    # A legitimate file name on Linux; on Windows the same text names a device.
+    (tmp_path / "NUL").write_text("not a file on Windows", encoding="utf-8")
+    monkeypatch.setattr(mentions, "project_relative_parts",
+                        functools.partial(project_relative_parts, windows=True))
+    resolved: list[str] = []
+    real_resolve = Path.resolve
+
+    def recording_resolve(self: Path, strict: bool = False) -> Path:
+        resolved.append(str(self))
+        return real_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", recording_resolve)
+    for value in ("notes.txt", "sub/../notes.txt", "sub\\..\\notes.txt"):
+        assert "inside the project" in resolve_mention_context({"kind": "file", "value": value}, tmp_path)
+    resolved.clear()
+    for value in ("//server/share/notes.txt", "\\\\server\\share\\notes.txt", "\\\\?\\C:\\notes.txt", "C:notes.txt",
+                  "\\notes.txt", "sub/C:/notes.txt", "NUL", "notes.txt:stream", "notes.txt."):
+        context = resolve_mention_context({"kind": "file", "value": value}, tmp_path)
+        assert "File non trovato o non accessibile" in context
+        folder = resolve_mention_context({"kind": "folder", "value": value}, tmp_path)
+        assert "Cartella non trovata" in folder
+    # Only the project folder itself was resolved: no refused text reached the file system.
+    assert set(resolved) == {str(tmp_path)}

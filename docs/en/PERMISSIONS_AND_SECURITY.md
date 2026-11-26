@@ -59,8 +59,10 @@ Some important clarifications:
   Choose this permission only for projects and models you trust.
 - Outside **Full access**, Kira's write tool refuses paths inside `.git` with
   `PATH_DENIED`: Git metadata holds hooks and filters that Git later runs as
-  your user. With **Trusted host** commands remain free to change the project
-  folder.
+  your user. The refusal holds however the name is spelled, including the
+  names a Windows drive resolves to `.git` (for example `.git.` or the short
+  name `GIT~1`). With **Trusted host** commands remain free to change the
+  project folder.
 - Codex policies restrict writes and network access according to its runtime,
   but they do not promise that only the project folder is readable. Codex
   treats **Trusted host** and **Full access** the same way; the difference
@@ -155,7 +157,11 @@ Some protections apply in every mode, even with full access:
   except on file systems without hard links (FAT, exFAT), where the content is
   written in place. A file that is not valid UTF-8 is read with replacement
   characters and the write tool cannot overwrite it.
-- The file tools do not follow symbolic links and refuse special files.
+- The file tools do not follow symbolic links and refuse special files. On
+  Windows they also refuse names that the system would open as a device
+  (`NUL`, `CON`, `COM1`…), alternate data streams (`name:stream`) and names
+  that end with a dot or a space; outside **Full access** they also refuse
+  junctions, like symbolic links.
 - Commands receive a reduced environment (only `PATH`, `HOME`, `LANG`,
   `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER` and `LOGNAME`, plus the system
   variables Windows requires, such as `SYSTEMROOT`, `TEMP` and `USERPROFILE`:

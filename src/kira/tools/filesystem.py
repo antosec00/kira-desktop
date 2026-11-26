@@ -12,8 +12,17 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from kira.domain import compat
 from kira.domain.contracts import KiraError
+from kira.domain.project_paths import (
+    OUTSIDE_PROJECT,
+    git_metadata_name,
+    host_parts,
+    project_relative_parts,
+    windows_name_problem,
+)
 
+WINDOWS = sys.platform == "win32"
 MAX_ENTRIES = 1000
 MAX_REPORTED_SKIPS = 20
 # Files and directories created by the tools get the conventional user modes
@@ -21,6 +30,9 @@ MAX_REPORTED_SKIPS = 20
 NEW_FILE_MODE = 0o644
 NEW_DIRECTORY_MODE = 0o755
 SYMLINK_REFUSED = "Symbolic links are not followed; use the real file or directory path"
+GIT_REFUSED = "Git metadata (.git) can only be changed with Full access"
+# Reparse tag of a Windows junction or mounted folder: a directory that leads elsewhere.
+MOUNT_POINT_TAG = 0xA0000003
 # link() errors meaning that the filesystem has no hard links (FAT, exFAT, some FUSE).
 NO_HARD_LINKS = frozenset({errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS})
 # fsync() errors meaning that the filesystem cannot sync a directory.
@@ -45,12 +57,27 @@ def display_name(name: str) -> tuple[str, bool]:
     return name, False
 
 
+def link_like(info: os.stat_result) -> bool:
+    """A symbolic link or, on Windows, a junction: an entry that leads to another place."""
+    return stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) == MOUNT_POINT_TAG
+
+
 def entry_kind(mode: int) -> str:
     if stat.S_ISLNK(mode):
         return "symlink"
     if stat.S_ISDIR(mode):
         return "directory"
     return "file" if stat.S_ISREG(mode) else "special"
+
+
+def _real_path(path: Path) -> Path:
+    """The real location of ``path`` with links and Windows name aliases resolved."""
+    real = os.path.realpath(path)
+    for prefix, plain in (("\\\\?\\UNC\\", "\\\\"), ("\\\\?\\", "")):
+        if real.startswith(prefix):
+            real = plain + real[len(prefix):]
+            break
+    return Path(real)
 
 
 class FileTools:
@@ -61,6 +88,7 @@ class FileTools:
             raise KiraError("PATH_DENIED", "Project root changed to a symlink")
         self.max_bytes = max_bytes
         self.allow_external = allow_external
+        self._real_root: Path | None = None
 
     def _parts(self, value: Any) -> tuple[str, ...]:
         if not isinstance(value, str) or "\0" in value:
@@ -70,40 +98,33 @@ class FileTools:
         except UnicodeEncodeError:
             # Lone surrogates stand for undecodable name bytes, which are not addressable.
             raise KiraError("INVALID_ARGUMENT", "path must be valid Unicode text") from None
-        candidate = Path(value)
         if self.allow_external:
             # Normalize lexically, never with resolve(): an explicit host path
             # still must pass every descriptor-relative O_NOFOLLOW check below.
             # Relative/default paths continue to start in the current project.
             if value == "~" or value.startswith(("~/", "~\\")):
                 try:
-                    candidate = candidate.expanduser()
+                    value = str(Path(value).expanduser())
                 except RuntimeError as exc:
                     raise KiraError("INVALID_ARGUMENT", "Home directory is unavailable") from exc
-            if not candidate.is_absolute():
-                candidate = self.root / candidate
-            normed = Path(os.path.normpath(candidate))
-            if sys.platform == "win32" and normed.anchor.upper() != (self.root.anchor or "").upper():
-                return normed.parts
-            return normed.parts[1:]
-        if candidate.is_absolute():
-            try:
-                candidate = candidate.relative_to(self.root)
-            except ValueError as exc:
-                raise KiraError("PATH_DENIED", "Path is outside the project") from exc
-        if ".." in candidate.parts:
-            raise KiraError("PATH_DENIED", "Parent traversal is not allowed")
-        return tuple(part for part in candidate.parts if part not in {"", "."})
+            return host_parts(value, self.root)
+        return project_relative_parts(value, self.root)
 
-    def _root_anchor(self, parts: tuple[str, ...] = ()) -> str:
-        if sys.platform == "win32" and parts and len(parts[0]) >= 2 and parts[0][1] == ":":
-            return parts[0]
-        return self.root.anchor or "/"
+    def _anchored(self, parts: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
+        """The anchor a path starts from and the entry names below it.
+
+        Only a full-access path on Windows can carry its own anchor (another
+        drive, a share, a device prefix) as first part; names never contain
+        ``\\``, ``/`` or ``:``, so a part with one of them is that anchor.
+        """
+        if self.allow_external and WINDOWS and parts and any(mark in parts[0] for mark in "\\/:"):
+            return parts[0], parts[1:]
+        return self.root.anchor or "/", parts
 
     def _absolute_path(self, parts: tuple[str, ...]) -> Path:
         if self.allow_external:
-            rel = parts[1:] if (sys.platform == "win32" and parts and len(parts[0]) >= 2 and parts[0][1] == ":") else parts
-            return Path(self._root_anchor(parts)).joinpath(*rel)
+            anchor, names = self._anchored(parts)
+            return Path(anchor).joinpath(*names)
         return self.root.joinpath(*parts)
 
     def _reported_path(self, parts: tuple[str, ...]) -> str:
@@ -132,7 +153,8 @@ class FileTools:
 
     @contextmanager
     def _directory(self, parts: tuple[str, ...], *, readable: bool = True,
-                   created: list[tuple[str, ...]] | None = None) -> Iterator[int]:
+                   created: list[tuple[str, ...]] | None = None,
+                   refuse_git: bool = False) -> Iterator[int]:
         """Yield a descriptor of a directory reached without following symlinks.
 
         Components are opened with O_PATH, which needs only search permission,
@@ -141,16 +163,28 @@ class FileTools:
         is true, as listing requires; an O_PATH descriptor serves as ``dir_fd``.
         With ``created``, missing directories below the project root (any
         missing directory with full access) are created and recorded there.
+        With ``refuse_git``, a directory that is Git metadata under any
+        spelling is refused. Outside full access a Windows junction is
+        refused like a symbolic link, and the directory reached must really
+        lie inside the project.
         """
-        anchor = self._root_anchor(parts)
-        rel_parts = parts[1:] if (sys.platform == "win32" and parts and len(parts[0]) >= 2 and parts[0][1] == ":") else parts
-        prefix = () if self.allow_external else self.root.parts[1:]
-        components = (*prefix, *rel_parts)
+        anchor, names = self._anchored(parts)
+        for name in names:
+            # Every name is one entry: ".." or a separator would walk elsewhere.
+            if name in {"", ".", ".."} or "/" in name or (WINDOWS and ("\\" in name or ":" in name)):
+                raise KiraError("PATH_DENIED", "A path component is not the name of one entry")
+        confined = not self.allow_external
+        prefix = self.root.parts[1:] if confined else ()
+        components = (*prefix, *names)
         descriptor = os.open(anchor, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             for index, part in enumerate(components):
                 final = index == len(components) - 1
                 flags = (os.O_RDONLY if readable and final else os.O_PATH) | os.O_DIRECTORY
+                if confined and index >= len(prefix):
+                    self._refuse_junction(descriptor, part)
+                    if refuse_git and self._names_git_metadata(descriptor, part):
+                        raise KiraError("PATH_DENIED", GIT_REFUSED)
                 try:
                     child = self._open_at(descriptor, part, flags)
                 except FileNotFoundError:
@@ -165,9 +199,64 @@ class FileTools:
                 child = os.open(".", os.O_RDONLY | os.O_DIRECTORY, dir_fd=descriptor)
                 os.close(descriptor)
                 descriptor = child
+            if confined:
+                self._confirm_inside(descriptor)
             yield descriptor
         finally:
             os.close(descriptor)
+
+    @staticmethod
+    def _refuse_junction(parent: int, name: str) -> None:
+        """Refuse a Windows junction as a path component, like a symbolic link.
+
+        O_NOFOLLOW already refuses symbolic links everywhere; a junction is a
+        directory to Windows and would be entered.
+        """
+        if not WINDOWS:
+            return
+        try:
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if link_like(info):
+            raise KiraError("PATH_DENIED", SYMLINK_REFUSED)
+
+    def _confirm_inside(self, descriptor: int) -> None:
+        """Verify where a directory really is, on systems that reach it by path.
+
+        Windows has no descriptor-relative open here: a directory is reached
+        by joining names. Whatever the names were, the real location of the
+        directory must lie inside the real project folder, so a name that
+        Windows resolved to another place is refused even when no lexical rule
+        knew that spelling.
+        """
+        reached = compat.directory_path(descriptor)
+        if reached is None:
+            return
+        if self._real_root is None:
+            self._real_root = _real_path(self.root)
+        real = _real_path(reached)
+        if real != self._real_root and self._real_root not in real.parents:
+            raise KiraError("PATH_DENIED", OUTSIDE_PROJECT)
+
+    @staticmethod
+    def _names_git_metadata(parent: int, name: str) -> bool:
+        """Whether ``name`` in this directory is Git metadata, under any spelling."""
+        if git_metadata_name(name):
+            return True
+        try:
+            entry = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except OSError:
+            return False  # Not there yet: a new entry has only its spelling.
+        folder = compat.directory_path(parent)
+        if folder is not None:
+            # Windows: the real name of the entry, whatever alias reached it.
+            return git_metadata_name(_real_path(folder / name).name)
+        try:
+            metadata = os.stat(".git", dir_fd=parent, follow_symlinks=False)
+        except OSError:
+            return False
+        return (entry.st_dev, entry.st_ino) == (metadata.st_dev, metadata.st_ino)
 
     def _make_directory(self, parent: int, name: str) -> bool:
         """Create one missing directory; False when another writer created it first."""
@@ -190,7 +279,7 @@ class FileTools:
     def _open_regular(self, parent: int, name: str, use: str) -> tuple[int, os.stat_result]:
         """Open a regular file read-only; links, devices, FIFOs and sockets are never opened."""
         info = os.stat(name, dir_fd=parent, follow_symlinks=False)
-        if stat.S_ISLNK(info.st_mode):
+        if link_like(info):
             raise KiraError("PATH_DENIED", SYMLINK_REFUSED)
         if not stat.S_ISREG(info.st_mode):
             raise KiraError("PATH_DENIED", f"Only regular files can be {use}")
@@ -221,7 +310,7 @@ class FileTools:
 
     def read_file(self, args: dict[str, Any]) -> dict[str, Any]:
         parts = self._parts(args.get("path"))
-        if not parts:
+        if not self._anchored(parts)[1]:
             raise KiraError("INVALID_ARGUMENT", "A file path is required")
         with self._directory(parts[:-1], readable=False) as parent:
             data, _ = self._read(parent, parts[-1])
@@ -251,12 +340,14 @@ class FileTools:
         parts = self._parts(args.get("path"))
         content = args.get("content")
         expected = args.get("expected_sha256")
-        if not parts or not isinstance(content, str):
+        if not self._anchored(parts)[1] or not isinstance(content, str):
             raise KiraError("INVALID_ARGUMENT", "write_file requires a path and string content")
-        if not self.allow_external and any(part.casefold() == ".git" for part in parts):
+        guard_git = not self.allow_external
+        if guard_git and any(git_metadata_name(part) for part in parts):
             # Git metadata can define hooks and filter commands that later run
-            # as the user; project-scoped writing must not reach it.
-            raise KiraError("PATH_DENIED", "Git metadata (.git) can only be changed with Full access")
+            # as the user; project-scoped writing must not reach it, whatever
+            # spelling a file system resolves to ".git".
+            raise KiraError("PATH_DENIED", GIT_REFUSED)
         if expected is not None and (not isinstance(expected, str) or len(expected) != 64):
             raise KiraError("INVALID_ARGUMENT", "expected_sha256 must be a SHA-256 string or null")
         try:
@@ -271,11 +362,14 @@ class FileTools:
                 # A create-only write also creates missing parent directories. A
                 # compare-and-swap write needs the file it read: nothing is created.
                 parent = stack.enter_context(self._directory(
-                    parts[:-1], readable=False, created=created if expected is None else None))
+                    parts[:-1], readable=False, created=created if expected is None else None,
+                    refuse_git=guard_git))
             except FileNotFoundError:
                 if expected is None:
                     raise
                 raise KiraError("CONFLICT", "Expected file no longer exists") from None
+            if guard_git and self._names_git_metadata(parent, parts[-1]):
+                raise KiraError("PATH_DENIED", GIT_REFUSED)
             old: os.stat_result | None = None
             try:
                 current, old = self._read(parent, parts[-1])
@@ -396,13 +490,18 @@ class FileTools:
             with os.scandir(directory) as entries:
                 names = sorted(entry.name for entry in itertools.islice(entries, MAX_ENTRIES + 1))
             for name in names[:MAX_ENTRIES]:
-                try:
-                    info = os.stat(name, dir_fd=directory, follow_symlinks=False)
-                except FileNotFoundError:
-                    continue  # Removed after the directory was read.
                 shown, undecodable = display_name(name)
-                item: dict[str, Any] = {"name": shown, "kind": entry_kind(info.st_mode),
-                                        "bytes": info.st_size}
+                if WINDOWS and windows_name_problem(name):
+                    # Written by another system under a name Windows cannot
+                    # address as a plain entry: listed, never opened.
+                    item: dict[str, Any] = {"name": shown, "kind": "special", "bytes": 0}
+                else:
+                    try:
+                        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue  # Removed after the directory was read.
+                    item = {"name": shown, "bytes": info.st_size,
+                            "kind": "symlink" if link_like(info) else entry_kind(info.st_mode)}
                 if undecodable:
                     item["undecodable"] = True
                 items.append(item)
@@ -438,10 +537,14 @@ class FileTools:
                 return False
             counts["examined"] += 1
             path = (*relative, name)
+            if WINDOWS and windows_name_problem(name):
+                return True  # Not a plain entry for Windows: like a special file.
             try:
                 info = os.stat(name, dir_fd=parent, follow_symlinks=False)
             except FileNotFoundError:
                 skip(path, "vanished")
+                return True
+            if link_like(info):
                 return True
             if stat.S_ISDIR(info.st_mode):
                 if name not in {".git", ".venv", "node_modules"}:
@@ -513,7 +616,7 @@ class FileTools:
     def hash_file(self, path: str) -> dict[str, Any]:
         """Hash a stable regular file without decoding it or following symlinks."""
         parts = self._parts(path)
-        if not parts:
+        if not self._anchored(parts)[1]:
             raise KiraError("INVALID_ARGUMENT", "A file path is required")
         with self._directory(parts[:-1], readable=False) as parent:
             descriptor, before = self._open_regular(parent, parts[-1], "watched")

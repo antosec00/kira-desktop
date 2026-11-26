@@ -429,3 +429,47 @@ async def test_large_canvas_artifacts_stay_within_64kib_client_tool_limit(tmp_pa
     finally:
         await service.close()
 
+
+
+def test_canvas_content_path_is_refused_from_its_text_and_keeps_project_files(tmp_path: Path, monkeypatch) -> None:
+    import functools
+
+    from kira.domain.contracts import KiraError
+    from kira.domain.project_paths import project_relative_parts
+    from kira.service import canvas as canvas_module
+
+    root = tmp_path / "project"
+    (root / "sub").mkdir(parents=True)
+    (root / "page.html").write_text("<p>inside</p>", encoding="utf-8")
+    (root / "NUL").write_text("not a file on Windows", encoding="utf-8")
+    outside = tmp_path / "outside.html"
+    outside.write_text("<p>outside</p>", encoding="utf-8")
+    resolve = canvas_module.CanvasService._resolve_content_from_payload
+    project = {"root": str(root), "permission": "project_write"}
+
+    for value in ("page.html", "sub/../page.html", str(root / "page.html")):
+        assert resolve(project, {"content_path": value}) == "<p>inside</p>"
+    for value in ("../outside.html", str(outside), "sub/../../outside.html"):
+        with pytest.raises(KiraError, match="inside the project root") as caught:
+            resolve(project, {"content_path": value})
+        assert caught.value.code == "PERMISSION_DENIED"
+    assert resolve({**project, "permission": "full_access"}, {"content_path": str(outside)}) == "<p>outside</p>"
+
+    # With Windows rules the text alone decides, before anything is resolved.
+    monkeypatch.setattr(canvas_module, "project_relative_parts",
+                        functools.partial(project_relative_parts, windows=True))
+    resolved: list[str] = []
+    real_resolve = Path.resolve
+
+    def recording_resolve(self: Path, strict: bool = False) -> Path:
+        resolved.append(str(self))
+        return real_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", recording_resolve)
+    assert resolve(project, {"content_path": "sub\\..\\page.html"}) == "<p>inside</p>"
+    resolved.clear()
+    for value in ("//server/share/page.html", "\\\\server\\share\\page.html", "\\\\.\\pipe\\fixture", "C:page.html",
+                  "\\page.html", "sub/C:/page.html", "NUL", "page.html:stream", "page.html."):
+        with pytest.raises(KiraError, match="inside the project root"):
+            resolve(project, {"content_path": value})
+    assert set(resolved) == {str(root)}

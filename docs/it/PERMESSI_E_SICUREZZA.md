@@ -58,8 +58,10 @@ Alcune precisazioni importanti:
   Scegli questo permesso solo per progetti e modelli di cui ti fidi.
 - Fuori da **Accesso completo**, lo strumento di scrittura di Kira rifiuta con
   `PATH_DENIED` i percorsi dentro `.git`: i metadati Git contengono hook e filtri
-  che Git esegue poi con il tuo utente. Con **Host fidato** i comandi restano
-  comunque liberi di modificare la cartella del progetto.
+  che Git esegue poi con il tuo utente. Il rifiuto vale comunque sia scritto il
+  nome, compresi quelli che un disco di Windows riconduce a `.git` (per
+  esempio `.git.` o il nome corto `GIT~1`). Con **Host fidato** i comandi
+  restano comunque liberi di modificare la cartella del progetto.
 - Le politiche di Codex limitano scritture e rete secondo il suo runtime, ma non
   promettono che solo la cartella del progetto sia leggibile. Codex tratta
   **Host fidato** e **Accesso completo** allo stesso modo; la differenza fra i
@@ -159,7 +161,11 @@ Alcune protezioni valgono in ogni modalità, anche con accesso completo:
   contenuto viene scritto sul posto. Un file non UTF-8 valido viene letto con
   caratteri sostitutivi e lo strumento di scrittura non può sovrascriverlo.
 - Gli strumenti di file non seguono i collegamenti simbolici e rifiutano i
-  file speciali.
+  file speciali. Su Windows rifiutano anche i nomi che il sistema aprirebbe
+  come un dispositivo (`NUL`, `CON`, `COM1`…), i flussi alternativi
+  (`nome:flusso`) e i nomi che terminano con un punto o uno spazio; fuori da
+  **Accesso completo** rifiutano anche le giunzioni, come i collegamenti
+  simbolici.
 - I comandi ricevono un ambiente ridotto (solo `PATH`, `HOME`, `LANG`,
   `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `USER` e `LOGNAME`, più le variabili di
   sistema indispensabili su Windows, come `SYSTEMROOT`, `TEMP` e `USERPROFILE`:

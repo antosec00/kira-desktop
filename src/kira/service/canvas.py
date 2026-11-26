@@ -32,6 +32,7 @@ from kira.domain.canvas import (
     validate_canvas_action,
 )
 from kira.domain.contracts import WRITE_PERMISSIONS, Json, KiraError
+from kira.domain.project_paths import project_relative_parts
 from kira.service.desktop import private_directory
 from kira.service.project_context import ProjectChats
 from kira.service.storage import new_id, now
@@ -1366,13 +1367,18 @@ class CanvasService:
         if not content_path:
             return str(payload.get("content") or "")
         root = Path(str(project.get("root") or "")).resolve()
-        candidate = Path(content_path)
-        target = (candidate if candidate.is_absolute() else (root / candidate)).resolve()
         if project.get("permission") != "full_access":
             try:
+                # Refused from its text alone: resolving a share, a device or
+                # another drive would already contact it.
+                names = project_relative_parts(content_path, root, allow_parent=True)
+                target = root.joinpath(*names).resolve()
                 target.relative_to(root)
-            except ValueError as exc:
+            except (KiraError, ValueError) as exc:
                 raise KiraError("PERMISSION_DENIED", "content_path must be inside the project root") from exc
+        else:
+            candidate = Path(content_path)
+            target = (candidate if candidate.is_absolute() else (root / candidate)).resolve()
         if not target.is_file():
             raise KiraError("NOT_FOUND", f"content_path not found: {content_path}")
         raw = target.read_bytes()

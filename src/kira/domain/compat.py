@@ -22,27 +22,51 @@ _DIR_FD_PATHS: dict[int, Path] = {}
 _LOCKED_FDS: set[int] = set()
 
 
+def directory_path(descriptor: int) -> Path | None:
+    """The folder an emulated directory descriptor stands for; None for any other descriptor."""
+    return _DIR_FD_PATHS.get(descriptor)
+
+
+def _entry_name(name: str) -> str:
+    """A name used with an emulated directory descriptor: one entry of that folder, or ``.``.
+
+    The emulation joins strings, so a separator, a drive letter, a stream or
+    ``..`` would let the joined path leave the folder: joining ``\\`` or ``C:``
+    leads to the root of the drive. Only a single name is ever joined.
+    """
+    if name != "." and (not name or name == ".." or any(mark in name for mark in "/\\:")):
+        raise PermissionError(errno.EACCES, "Not the name of one entry of the opened folder", name)
+    return name
+
+
 def _resolve_with_dir_fd(path: Any, dir_fd: int | None) -> Path:
     raw_str = os.fsdecode(path) if not isinstance(path, int) else str(path)
+    if dir_fd is not None:
+        folder = _DIR_FD_PATHS.get(dir_fd)
+        if folder is None:
+            raise OSError(errno.EBADF, "Not an open directory descriptor")
+        return folder / _entry_name(raw_str)
     if IS_WINDOWS and raw_str == "/":
         return Path(Path.cwd().anchor or "C:\\")
     if IS_WINDOWS and len(raw_str) == 2 and raw_str[1] == ":":
         return Path(raw_str + "\\")
-    p = Path(raw_str)
-    if dir_fd is not None and dir_fd in _DIR_FD_PATHS and not p.is_absolute():
-        return _DIR_FD_PATHS[dir_fd] / p
-    return p
+    return Path(raw_str)
 
 
 def _patch_stat_result(res: os.stat_result, is_symlink: bool = False) -> os.stat_result:
-    """Normalize Windows stat_result so POSIX ownership and 0o700/0o600 checks succeed."""
+    """Normalize Windows stat_result so POSIX ownership and 0o700/0o600 checks succeed.
+
+    Devices and pipes keep their type: only a regular file is reported as one.
+    """
     mode = res.st_mode
     if is_symlink:
         mode = stat.S_IFLNK | 0o777
     elif stat.S_ISDIR(mode):
         mode = stat.S_IFDIR | 0o700
-    else:
+    elif stat.S_ISREG(mode):
         mode = stat.S_IFREG | 0o600
+    else:
+        mode = stat.S_IFMT(mode) | 0o600
     ino = res.st_ino if res.st_ino > 0 else 1
     dev = res.st_dev if res.st_dev > 0 else 1
     nlink = 1 if stat.S_ISREG(mode) else max(1, res.st_nlink)
